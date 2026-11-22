@@ -121,6 +121,17 @@ describe('Web 外壳端到端回归（iframe 安全隔离 + 选区防抖同步 +
       </QueryClientProvider>,
     )
 
+    // 0. 首次挂载即使选区为空，也应同步一次空选区到 Daemon（防止页面刷新后残留旧选区上下文）
+    await waitFor(() => {
+      expect(
+        fetchCalls.some(
+          (c) =>
+            c.url.includes(`/api/v1/projects/${ARTIFACT.projectId}/selection`) &&
+            c.body?.includes('"element":null'),
+        ),
+      ).toBe(true)
+    })
+
     // 1. iframe 严格设置 sandbox="allow-scripts" 且绝不含 allow-same-origin
     const iframe = container.querySelector('iframe')
     expect(iframe).toBeTruthy()

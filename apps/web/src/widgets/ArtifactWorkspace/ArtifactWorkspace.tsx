@@ -79,14 +79,8 @@ export function ArtifactWorkspace({
   const versionPinsRef = useRef(versionPins)
   versionPinsRef.current = versionPins
   const hadSelectionRef = useRef(false)
-  const lastSyncedSelectionRef = useRef<string>(
-    JSON.stringify({
-      projectId: artifact.projectId,
-      artifactId: artifact.publicId,
-      element: null,
-      draftText: '',
-    }),
-  )
+  // 初始置为 null：页面刷新后客户端选区清空，首次挂载仍须同步一次以清理 Daemon 上残留的旧选区。
+  const lastSyncedSelectionRef = useRef<string | null>(null)
 
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const hostRef = useRef<SandboxBridgeHost | null>(null)

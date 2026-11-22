@@ -18,4 +18,5 @@ export {
   type AsyncWakeupMonitorOptions,
   classifyWakeupEvent,
   type WakeupBatch,
+  type WakeupReason,
 } from './wakeup-monitor.js'

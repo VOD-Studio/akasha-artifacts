@@ -4,10 +4,12 @@ import {
   RealtimeServerEventSchema,
 } from '@akasha/protocol'
 
+export type WakeupReason = 'feedback' | 'round.submitted' | 'resync'
+
 export interface WakeupBatch {
   projectId: string
   artifactIds: string[]
-  reasons: Array<'feedback' | 'round.submitted'>
+  reasons: WakeupReason[]
   latestSeq: number
   events: RealtimeServerEvent[]
 }
@@ -22,20 +24,22 @@ export interface AsyncWakeupMonitorOptions {
 }
 
 // 判定某条实时事件是否应当触发后台异步唤醒：
-// 未提交评审轮次中的草稿评论（draft === true）与非 submitted 轮次一律不唤醒，严防中途打断用户。
-export function classifyWakeupEvent(
-  event: RealtimeServerEvent,
-): 'feedback' | 'round.submitted' | null {
+// 未提交评审轮次中的草稿评论（draft === true）与非 submitted 轮次一律不唤醒，严防中途打断用户；
+// 服务端下发 resync 时触发一次对账唤醒，避免断线或 Daemon 重启期间遗漏反馈。
+export function classifyWakeupEvent(event: RealtimeServerEvent): WakeupReason | null {
   if (event.type === 'feedback.created') {
     return event.feedback.draft ? null : 'feedback'
   }
   if (event.type === 'round.updated' && event.round.status === 'submitted') {
     return 'round.submitted'
   }
+  if (event.type === 'resync') {
+    return 'resync'
+  }
   return null
 }
 
-// 后台异步唤醒监视器：监听 Daemon WS 事件流，过滤草稿事件，并将突发通知按防抖窗口合并为单次唤醒。
+// 后台异步唤醒监视器：监听 Daemon WS 事件流，过滤草稿与无关 Artifact 事件，并将突发通知按防抖窗口合并为单次唤醒。
 export class AsyncWakeupMonitor {
   private ws: WebSocket | null = null
   private lastSeq = 0
@@ -43,7 +47,7 @@ export class AsyncWakeupMonitor {
   private retryTimer: ReturnType<typeof setTimeout> | undefined
   private debounceTimer: ReturnType<typeof setTimeout> | undefined
   private bufferedEvents: RealtimeServerEvent[] = []
-  private bufferedReasons = new Set<'feedback' | 'round.submitted'>()
+  private bufferedReasons = new Set<WakeupReason>()
   private bufferedArtifacts = new Set<string>()
 
   private readonly wsUrl: string
@@ -87,11 +91,24 @@ export class AsyncWakeupMonitor {
     }
   }
 
-  // 直接喂入事件（便于单元测试验证防抖合并与草稿过滤逻辑）
+  // 直接喂入事件（便于单元测试验证防抖合并、目标 Artifact 过滤、resync 对账与草稿过滤逻辑）
   handleEvent(event: RealtimeServerEvent): void {
-    if (event.seq > this.lastSeq) {
+    // 收到 resync 说明游标失效或 Daemon 重启导致序列重置，必须同步采纳服务端当前 seq
+    if (event.type === 'resync') {
+      this.lastSeq = event.seq
+    } else if (event.seq > this.lastSeq) {
       this.lastSeq = event.seq
     }
+
+    if (
+      this.artifactId &&
+      'artifactId' in event &&
+      event.artifactId &&
+      event.artifactId !== this.artifactId
+    ) {
+      return
+    }
+
     const reason = classifyWakeupEvent(event)
     if (!reason) return
 
@@ -99,6 +116,8 @@ export class AsyncWakeupMonitor {
     this.bufferedReasons.add(reason)
     if ('artifactId' in event && event.artifactId) {
       this.bufferedArtifacts.add(event.artifactId)
+    } else if (this.artifactId) {
+      this.bufferedArtifacts.add(this.artifactId)
     }
 
     if (this.debounceMs <= 0) {
@@ -134,12 +153,12 @@ export class AsyncWakeupMonitor {
     this.ws = socket
 
     socket.onopen = () => {
+      // RealtimeEventHub 对 artifactId 与 projectId 采用 OR 匹配；指定单 Artifact 监听时只订阅 artifactId，防止收到同项目其它 Artifact 的事件。
       socket.send(
         JSON.stringify({
           v: PROTOCOL_VERSION,
           type: 'subscribe',
-          projectId: this.projectId,
-          ...(this.artifactId ? { artifactId: this.artifactId } : {}),
+          ...(this.artifactId ? { artifactId: this.artifactId } : { projectId: this.projectId }),
           ...(this.lastSeq > 0 ? { lastSeq: this.lastSeq } : {}),
         }),
       )

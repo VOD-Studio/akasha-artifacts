@@ -59,7 +59,7 @@ export function buildPromptContext(input: PromptContextInput): string {
     sections.push(lines.join('\n'))
   }
 
-  const pending = (input.pendingFeedback ?? []).filter((f) => !f.draft && f.status !== 'resolved')
+  const pending = (input.pendingFeedback ?? []).filter((f) => !f.draft && f.status === 'pending')
   if (pending.length > 0) {
     const lines = [
       `[未消费反馈摘要（共 ${pending.length} 条，请调用 artifact_pull_feedback 获取详情与 receipt）]`,
