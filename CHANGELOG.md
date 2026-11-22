@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.0](https://github.com/VOD-Studio/akasha-artifacts/compare/v0.2.0...v0.3.0) (2026-11-22)
+
+
+### 新增
+
+* **hooks:** 实现多端钩子技能插件与端到端回归测试 ([f8b27e1](https://github.com/VOD-Studio/akasha-artifacts/commit/f8b27e1eb3d6ba84149370eaf47eb88c168f2df7))
+* **sandbox:** 实现源码位置注入与运行时错误回路 ([#43](https://github.com/VOD-Studio/akasha-artifacts/issues/43)) ([92b291d](https://github.com/VOD-Studio/akasha-artifacts/commit/92b291db3482ca6f6f9c3ed57e6977b7fc8f687b))
+* **web:** 实现元素指认叠层与批注评审闭环 ([#45](https://github.com/VOD-Studio/akasha-artifacts/issues/45)) ([a5f51ad](https://github.com/VOD-Studio/akasha-artifacts/commit/a5f51adefe7a9d8297336ee45d31324c47a5e0e9))
+
 ## [0.2.0](https://github.com/VOD-Studio/akasha-artifacts/compare/v0.1.0...v0.2.0) (2026-11-22)
 
 
