@@ -1,0 +1,104 @@
+@import "./fixed.generated.css";
+
+/* 色阶由 sync 生成；此层只声明用途。命名主题边界重新绑定变量，避免继承父级已求值的颜色。 */
+:root {
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+:root,
+[data-theme] {
+  --radius: 0.625rem;
+  --background: var(--material-page);
+  --foreground: var(--neutral-12);
+  --card: var(--material-sheet);
+  --card-foreground: var(--foreground);
+  --popover: var(--material-sheet);
+  --popover-foreground: var(--foreground);
+  --primary: var(--foreground);
+  --primary-hover: color-mix(in oklab, var(--foreground) 86%, var(--background));
+  --primary-foreground: var(--background);
+  --primary-text: var(--foreground);
+  --secondary: var(--material-sunk);
+  --secondary-foreground: var(--foreground);
+  --muted: var(--material-sunk);
+  --muted-foreground: var(--neutral-11);
+  --accent: var(--material-sunk);
+  --accent-foreground: var(--foreground);
+  --link: var(--material-accent);
+  --link-hover: var(--material-accent);
+  --selected: color-mix(in oklab, var(--material-deco) 16%, var(--card));
+  --selected-hover: color-mix(in oklab, var(--material-deco) 24%, var(--card));
+  --selected-foreground: var(--material-accent);
+  --progress: var(--material-deco);
+  --decoration: var(--material-deco);
+  --decoration-hover: var(--material-deco);
+  --decoration-muted: color-mix(in oklab, var(--material-deco) 16%, var(--card));
+  --decoration-foreground: var(--brand-contrast);
+  --destructive: var(--material-danger);
+  --destructive-hover: var(--danger-10);
+  --destructive-text: var(--material-danger);
+  --destructive-foreground: var(--danger-contrast);
+  --warning: var(--warning-9);
+  --warning-text: var(--warning-11);
+  --warning-foreground: var(--warning-contrast);
+  --success: var(--material-ok);
+  --success-text: var(--material-ok);
+  --success-foreground: var(--success-contrast);
+  --affection: var(--fixed-affection);
+  --border: var(--material-rule);
+  --input: var(--material-rule);
+  --ring: var(--material-accent);
+  --edge-hairline: var(--material-rule);
+  --rule2: var(--material-rule2);
+  --sheet-border: var(--fixed-sheet-border);
+  --ol: var(--sheet-border);
+  --sheet-translucent: color-mix(in oklab, var(--card) 90%, transparent);
+  --surface-glass: var(--sheet-translucent);
+  --shadow-soft: var(--fixed-shadow-soft);
+  --scrim: var(--fixed-scrim);
+  --scrim-soft: var(--fixed-scrim-soft);
+  --image-overlay: var(--fixed-image-overlay);
+  --image-overlay-strong: var(--fixed-image-overlay-strong);
+  --image-overlay-foreground: var(--fixed-image-overlay-foreground);
+  /* 纸色磨砂遮罩：图片预览这类沉浸层用纸色加模糊代替墨色，深浅与四季随页面材质 */
+  --scrim-paper: color-mix(in oklab, var(--background) 90%, transparent);
+  /* 磨砂半径（设计稿「图片预览」给 20px） */
+  --scrim-blur: 20px;
+  --scrollbar-thumb: var(--neutral-a7);
+  --scrollbar-width: thin;
+  --scrollbar-gutter: auto;
+
+  --category-1: var(--category-1-9);
+  --category-1-muted: var(--category-1-3);
+  --category-1-text: var(--category-1-11);
+  --category-1-foreground: var(--category-1-contrast);
+  --category-2: var(--category-2-9);
+  --category-2-muted: var(--category-2-3);
+  --category-2-text: var(--category-2-11);
+  --category-2-foreground: var(--category-2-contrast);
+  --category-3: var(--category-3-9);
+  --category-3-muted: var(--category-3-3);
+  --category-3-text: var(--category-3-11);
+  --category-3-foreground: var(--category-3-contrast);
+  --category-4: var(--category-4-9);
+  --category-4-muted: var(--category-4-3);
+  --category-4-text: var(--category-4-11);
+  --category-4-foreground: var(--category-4-contrast);
+  --category-5: var(--category-5-9);
+  --category-5-muted: var(--category-5-3);
+  --category-5-text: var(--category-5-11);
+  --category-5-foreground: var(--category-5-contrast);
+  --category-6: var(--category-6-9);
+  --category-6-muted: var(--category-6-3);
+  --category-6-text: var(--category-6-11);
+  --category-6-foreground: var(--category-6-contrast);
+  --chart-1: var(--category-1);
+  --chart-2: var(--category-2);
+  --chart-3: var(--category-3);
+  --chart-4: var(--category-4);
+  --chart-5: var(--category-5);
+}

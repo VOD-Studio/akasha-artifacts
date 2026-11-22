@@ -1,15 +1,248 @@
 {
   "name": "@akasha/ui",
   "version": "0.1.0",
-  "description": "Akasha shell UI components and semantic tokens",
+  "description": "Akasha shell UI components and semantic tokens (adapted from @violet/ui, MIT)",
   "license": "MIT",
   "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
   "exports": {
     ".": {
       "@akasha/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./variants": {
+      "@akasha/source": "./src/variants.ts",
+      "types": "./dist/variants.d.ts",
+      "import": "./src/variants.ts",
+      "default": "./src/variants.ts"
+    },
+    "./styles.css": "./src/styles.css",
+    "./tokens.css": "./src/tokens.css",
+    "./alert": {
+      "@akasha/source": "./src/components/alert/index.ts",
+      "types": "./dist/components/alert/index.d.ts",
+      "import": "./src/components/alert/index.ts",
+      "default": "./src/components/alert/index.ts"
+    },
+    "./annotation": {
+      "@akasha/source": "./src/components/annotation/index.ts",
+      "types": "./dist/components/annotation/index.d.ts",
+      "import": "./src/components/annotation/index.ts",
+      "default": "./src/components/annotation/index.ts"
+    },
+    "./avatar": {
+      "@akasha/source": "./src/components/avatar/index.ts",
+      "types": "./dist/components/avatar/index.d.ts",
+      "import": "./src/components/avatar/index.ts",
+      "default": "./src/components/avatar/index.ts"
+    },
+    "./badge": {
+      "@akasha/source": "./src/components/badge/index.ts",
+      "types": "./dist/components/badge/index.d.ts",
+      "import": "./src/components/badge/index.ts",
+      "default": "./src/components/badge/index.ts"
+    },
+    "./button": {
+      "@akasha/source": "./src/components/button/index.ts",
+      "types": "./dist/components/button/index.d.ts",
+      "import": "./src/components/button/index.ts",
+      "default": "./src/components/button/index.ts"
+    },
+    "./card": {
+      "@akasha/source": "./src/components/card/index.ts",
+      "types": "./dist/components/card/index.d.ts",
+      "import": "./src/components/card/index.ts",
+      "default": "./src/components/card/index.ts"
+    },
+    "./checkbox": {
+      "@akasha/source": "./src/components/checkbox/index.ts",
+      "types": "./dist/components/checkbox/index.d.ts",
+      "import": "./src/components/checkbox/index.ts",
+      "default": "./src/components/checkbox/index.ts"
+    },
+    "./command": {
+      "@akasha/source": "./src/components/command/index.ts",
+      "types": "./dist/components/command/index.d.ts",
+      "import": "./src/components/command/index.ts",
+      "default": "./src/components/command/index.ts"
+    },
+    "./comment": {
+      "@akasha/source": "./src/components/comment/index.ts",
+      "types": "./dist/components/comment/index.d.ts",
+      "import": "./src/components/comment/index.ts",
+      "default": "./src/components/comment/index.ts"
+    },
+    "./confirm-dialog": {
+      "@akasha/source": "./src/components/confirm-dialog/index.ts",
+      "types": "./dist/components/confirm-dialog/index.d.ts",
+      "import": "./src/components/confirm-dialog/index.ts",
+      "default": "./src/components/confirm-dialog/index.ts"
+    },
+    "./dialog": {
+      "@akasha/source": "./src/components/dialog/index.ts",
+      "types": "./dist/components/dialog/index.d.ts",
+      "import": "./src/components/dialog/index.ts",
+      "default": "./src/components/dialog/index.ts"
+    },
+    "./dropdown-menu": {
+      "@akasha/source": "./src/components/dropdown-menu/index.ts",
+      "types": "./dist/components/dropdown-menu/index.d.ts",
+      "import": "./src/components/dropdown-menu/index.ts",
+      "default": "./src/components/dropdown-menu/index.ts"
+    },
+    "./empty": {
+      "@akasha/source": "./src/components/empty/index.ts",
+      "types": "./dist/components/empty/index.d.ts",
+      "import": "./src/components/empty/index.ts",
+      "default": "./src/components/empty/index.ts"
+    },
+    "./field": {
+      "@akasha/source": "./src/components/field/index.ts",
+      "types": "./dist/components/field/index.d.ts",
+      "import": "./src/components/field/index.ts",
+      "default": "./src/components/field/index.ts"
+    },
+    "./icons": {
+      "@akasha/source": "./src/components/icons/index.ts",
+      "types": "./dist/components/icons/index.d.ts",
+      "import": "./src/components/icons/index.ts",
+      "default": "./src/components/icons/index.ts"
+    },
+    "./indicator": {
+      "@akasha/source": "./src/components/indicator/index.ts",
+      "types": "./dist/components/indicator/index.d.ts",
+      "import": "./src/components/indicator/index.ts",
+      "default": "./src/components/indicator/index.ts"
+    },
+    "./input": {
+      "@akasha/source": "./src/components/input/index.ts",
+      "types": "./dist/components/input/index.d.ts",
+      "import": "./src/components/input/index.ts",
+      "default": "./src/components/input/index.ts"
+    },
+    "./kbd": {
+      "@akasha/source": "./src/components/kbd/index.ts",
+      "types": "./dist/components/kbd/index.d.ts",
+      "import": "./src/components/kbd/index.ts",
+      "default": "./src/components/kbd/index.ts"
+    },
+    "./list-highlight": {
+      "@akasha/source": "./src/components/list-highlight/index.ts",
+      "types": "./dist/components/list-highlight/index.d.ts",
+      "import": "./src/components/list-highlight/index.ts",
+      "default": "./src/components/list-highlight/index.ts"
+    },
+    "./popover": {
+      "@akasha/source": "./src/components/popover/index.ts",
+      "types": "./dist/components/popover/index.d.ts",
+      "import": "./src/components/popover/index.ts",
+      "default": "./src/components/popover/index.ts"
+    },
+    "./progress": {
+      "@akasha/source": "./src/components/progress/index.ts",
+      "types": "./dist/components/progress/index.d.ts",
+      "import": "./src/components/progress/index.ts",
+      "default": "./src/components/progress/index.ts"
+    },
+    "./radio": {
+      "@akasha/source": "./src/components/radio/index.ts",
+      "types": "./dist/components/radio/index.d.ts",
+      "import": "./src/components/radio/index.ts",
+      "default": "./src/components/radio/index.ts"
+    },
+    "./scroll-area": {
+      "@akasha/source": "./src/components/scroll-area/index.ts",
+      "types": "./dist/components/scroll-area/index.d.ts",
+      "import": "./src/components/scroll-area/index.ts",
+      "default": "./src/components/scroll-area/index.ts"
+    },
+    "./segmented": {
+      "@akasha/source": "./src/components/segmented/index.ts",
+      "types": "./dist/components/segmented/index.d.ts",
+      "import": "./src/components/segmented/index.ts",
+      "default": "./src/components/segmented/index.ts"
+    },
+    "./select": {
+      "@akasha/source": "./src/components/select/index.ts",
+      "types": "./dist/components/select/index.d.ts",
+      "import": "./src/components/select/index.ts",
+      "default": "./src/components/select/index.ts"
+    },
+    "./separator": {
+      "@akasha/source": "./src/components/separator/index.ts",
+      "types": "./dist/components/separator/index.d.ts",
+      "import": "./src/components/separator/index.ts",
+      "default": "./src/components/separator/index.ts"
+    },
+    "./sheet": {
+      "@akasha/source": "./src/components/sheet/index.ts",
+      "types": "./dist/components/sheet/index.d.ts",
+      "import": "./src/components/sheet/index.ts",
+      "default": "./src/components/sheet/index.ts"
+    },
+    "./skeleton": {
+      "@akasha/source": "./src/components/skeleton/index.ts",
+      "types": "./dist/components/skeleton/index.d.ts",
+      "import": "./src/components/skeleton/index.ts",
+      "default": "./src/components/skeleton/index.ts"
+    },
+    "./slider": {
+      "@akasha/source": "./src/components/slider/index.ts",
+      "types": "./dist/components/slider/index.d.ts",
+      "import": "./src/components/slider/index.ts",
+      "default": "./src/components/slider/index.ts"
+    },
+    "./sonner": {
+      "@akasha/source": "./src/components/sonner/index.ts",
+      "types": "./dist/components/sonner/index.d.ts",
+      "import": "./src/components/sonner/index.ts",
+      "default": "./src/components/sonner/index.ts"
+    },
+    "./steps": {
+      "@akasha/source": "./src/components/steps/index.ts",
+      "types": "./dist/components/steps/index.d.ts",
+      "import": "./src/components/steps/index.ts",
+      "default": "./src/components/steps/index.ts"
+    },
+    "./switch": {
+      "@akasha/source": "./src/components/switch/index.ts",
+      "types": "./dist/components/switch/index.d.ts",
+      "import": "./src/components/switch/index.ts",
+      "default": "./src/components/switch/index.ts"
+    },
+    "./tabs": {
+      "@akasha/source": "./src/components/tabs/index.ts",
+      "types": "./dist/components/tabs/index.d.ts",
+      "import": "./src/components/tabs/index.ts",
+      "default": "./src/components/tabs/index.ts"
+    },
+    "./text-mark": {
+      "@akasha/source": "./src/components/text-mark/index.ts",
+      "types": "./dist/components/text-mark/index.d.ts",
+      "import": "./src/components/text-mark/index.ts",
+      "default": "./src/components/text-mark/index.ts"
+    },
+    "./textarea": {
+      "@akasha/source": "./src/components/textarea/index.ts",
+      "types": "./dist/components/textarea/index.d.ts",
+      "import": "./src/components/textarea/index.ts",
+      "default": "./src/components/textarea/index.ts"
+    },
+    "./toggle-group": {
+      "@akasha/source": "./src/components/toggle-group/index.ts",
+      "types": "./dist/components/toggle-group/index.d.ts",
+      "import": "./src/components/toggle-group/index.ts",
+      "default": "./src/components/toggle-group/index.ts"
+    },
+    "./tooltip": {
+      "@akasha/source": "./src/components/tooltip/index.ts",
+      "types": "./dist/components/tooltip/index.d.ts",
+      "import": "./src/components/tooltip/index.ts",
+      "default": "./src/components/tooltip/index.ts"
     }
   },
   "scripts": {
@@ -18,5 +251,22 @@
   },
   "engines": {
     "node": ">=24"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "dependencies": {
+    "cn": "^0.5.0",
+    "lucide-react": "^1.23.0",
+    "radix-ui": "^1.4.3",
+    "sonner": "^2.0.7",
+    "tailwind-variants": "^3.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   }
 }

@@ -1,0 +1,57 @@
+/*
+ * Separator：发丝线、行内元信息圆点、带文字的分隔。
+ * 需先导入 @violet/ui/tokens.css 或 styles.css。
+ */
+
+@layer components {
+  .v-separator {
+    box-sizing: border-box;
+    flex-shrink: 0;
+    margin: 0;
+    border: 0;
+    background-color: var(--border);
+  }
+
+  .v-separator[data-orientation="horizontal"] {
+    inline-size: 100%;
+    block-size: 1px;
+  }
+
+  .v-separator[data-orientation="vertical"] {
+    align-self: stretch;
+    inline-size: 1px;
+    min-block-size: 1em;
+  }
+
+  .v-separator[data-spacing="section"] {
+    margin-block: 32px;
+  }
+
+  .v-separator[data-variant="dot"] {
+    display: inline-block;
+    flex: none;
+    inline-size: 3px;
+    block-size: 3px;
+    min-block-size: 0;
+    margin-inline: 8px;
+    border-radius: 50%;
+    background-color: var(--muted-foreground);
+    vertical-align: middle;
+  }
+
+  .v-separator[data-variant="label"] {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    block-size: auto;
+    background: none;
+    color: var(--muted-foreground);
+    font-size: 0.8125rem;
+  }
+
+  .v-separator__line {
+    flex: 1;
+    block-size: 1px;
+    background-color: var(--border);
+  }
+}

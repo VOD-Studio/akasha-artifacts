@@ -1,9 +1,13 @@
 {
-  "extends": "../../tsconfig.build.base.json",
+  "extends": "./tsconfig.json",
   "compilerOptions": {
+    "customConditions": [],
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "declarationMap": false,
     "rootDir": "src",
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
 }
