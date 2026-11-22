@@ -90,9 +90,11 @@ export function injectHtmlLocations(source: string): InjectLocationsResult {
         if (!hasLocAttr) {
           const rawStartTag = source.slice(startTag.startOffset, startTag.endOffset)
           if (rawStartTag.endsWith('/>')) {
+            const beforeSlash = rawStartTag.slice(0, -2)
+            const hasTrailingSpace = /\s$/.test(beforeSlash)
             insertions.push({
               offset: startTag.endOffset - 2,
-              text: ` data-ak-loc="${loc}"`,
+              text: hasTrailingSpace ? `data-ak-loc="${loc}" ` : ` data-ak-loc="${loc}"`,
             })
           } else if (rawStartTag.endsWith('>')) {
             insertions.push({

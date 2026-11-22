@@ -134,7 +134,7 @@ export class SandboxInspector {
   private resolveTarget(rawTarget: EventTarget | null): Element | null {
     if (!(rawTarget instanceof Element)) return null
     const root = this.getRootEl()
-    if (!root || !root.contains(rawTarget) || rawTarget === root) return null
+    if (!root?.contains(rawTarget) || rawTarget === root) return null
     if (rawTarget.hasAttribute('data-ak-renderer')) return null
     return rawTarget
   }
