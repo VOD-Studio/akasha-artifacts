@@ -1,4 +1,4 @@
-import type { ArtifactType, JsonPatchOp } from '@akasha/protocol'
+import type { Artifact, ArtifactType, JsonPatchOp, Version } from '@akasha/protocol'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   type ArtifactDetailResponse,
@@ -6,9 +6,13 @@ import {
   fetchArtifactSpec,
   fetchArtifacts,
   fetchArtifactVersions,
+  publishHumanVersion,
   pushArtifactState,
   revertArtifactVersion,
+  submitArtifactFeedback,
 } from '../../shared/api/client'
+import { computeLineDiff } from '../../shared/lib/diff'
+import { feedbackKeys } from '../feedback/queries'
 
 export const artifactKeys = {
   all: ['artifacts'] as const,
@@ -90,6 +94,85 @@ export function usePushArtifactStateMutation(id: string) {
           }
         },
       )
+    },
+  })
+}
+
+function summarizeHumanEdit(
+  previousSource: string,
+  nextSource: string,
+  nextVersion: number,
+): string {
+  const diff = computeLineDiff(previousSource, nextSource)
+  const added = diff.filter((l) => l.kind === 'added').length
+  const removed = diff.filter((l) => l.kind === 'removed').length
+  const changedPreview = diff
+    .filter((l) => l.kind !== 'context')
+    .slice(0, 12)
+    .map((l) => `${l.kind === 'added' ? '+' : '-'}${l.text}`)
+    .join('\n')
+  return `人类在 L3 代码编辑器直接保存了 v${nextVersion}（+${added} / -${removed} 行）${
+    changedPreview ? `\n${changedPreview}` : ''
+  }`
+}
+
+export interface SaveHumanVersionVariables {
+  artifact: Artifact
+  previousSource: string
+  source: string
+  baseVersion: number
+  title?: string
+}
+
+// 保存人类 L3 直接编辑的新版本（author='human:web'），并自动写入 kind='edit' 反馈通知 Agent。
+export function useSaveHumanVersionMutation(id: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (
+      input: SaveHumanVersionVariables,
+    ): Promise<{
+      artifact: Artifact
+      version: Version
+    }> => {
+      const saved = await publishHumanVersion({
+        project: input.artifact.projectId,
+        slug: input.artifact.slug,
+        title: input.title ?? input.artifact.title,
+        type: input.artifact.type,
+        source: input.source,
+        baseVersion: input.baseVersion,
+        visibility: input.artifact.visibility,
+        author: 'human:web',
+      })
+      try {
+        await submitArtifactFeedback(id, {
+          project: input.artifact.projectId,
+          version: saved.version.version,
+          roundId: null,
+          kind: 'edit',
+          element: null,
+          body: summarizeHumanEdit(input.previousSource, input.source, saved.version.version),
+        })
+      } catch {
+        // 版本已成功落盘；edit 反馈通知失败不回滚已保存版本
+      }
+      return saved
+    },
+    onSuccess: (saved) => {
+      queryClient.setQueryData<ArtifactDetailResponse | undefined>(
+        artifactKeys.detail(id, undefined),
+        (prev) => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            artifact: saved.artifact,
+            version: saved.version,
+          }
+        },
+      )
+      void queryClient.invalidateQueries({ queryKey: artifactKeys.versions(id) })
+      void queryClient.invalidateQueries({ queryKey: artifactKeys.all })
+      void queryClient.invalidateQueries({ queryKey: feedbackKeys.list(id) })
     },
   })
 }

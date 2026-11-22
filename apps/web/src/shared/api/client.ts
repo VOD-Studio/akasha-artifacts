@@ -2,6 +2,7 @@ import {
   type Artifact,
   type ArtifactSpecOutput,
   type ArtifactType,
+  type Author,
   type DaemonStatus,
   type ElementRef,
   ErrorEnvelopeSchema,
@@ -14,6 +15,7 @@ import {
   type StateStreamSnapshot,
   type Verdict,
   type Version,
+  type Visibility,
 } from '@akasha/protocol'
 import { getApiBaseUrl } from '../config/runtime'
 
@@ -271,4 +273,53 @@ export async function pushArtifactState(
       body: JSON.stringify(input),
     },
   )
+}
+
+export interface PublishHumanVersionInput {
+  project: string
+  slug: string
+  title: string
+  type: ArtifactType
+  source: string
+  baseVersion: number
+  visibility?: Visibility
+  author?: Author
+}
+
+// L3 人类直接保存代码版本：显式声明 baseVersion 与 author='human:web'，落后于 headVersion 时由服务端返回 409 冲突详情。
+export async function publishHumanVersion(
+  input: PublishHumanVersionInput,
+): Promise<{ artifact: Artifact; version: Version }> {
+  return requestJson<{ artifact: Artifact; version: Version }>('/api/v1/artifacts', {
+    method: 'POST',
+    body: JSON.stringify({
+      ...input,
+      author: input.author ?? 'human:web',
+    }),
+  })
+}
+
+export interface VersionConflictDetails {
+  artifactId?: string
+  baseVersion: number
+  headVersion: number
+  diff: string
+  authors: string[]
+}
+
+export function parseVersionConflictDetails(err: unknown): VersionConflictDetails | null {
+  if (!(err instanceof ApiError)) return null
+  if (err.status !== 409 || err.code !== 'VERSION_CONFLICT') return null
+  if (!err.details || typeof err.details !== 'object') return null
+  const d = err.details as Record<string, unknown>
+  if (typeof d.headVersion !== 'number' || typeof d.baseVersion !== 'number') return null
+  return {
+    artifactId: typeof d.artifactId === 'string' ? d.artifactId : undefined,
+    baseVersion: d.baseVersion,
+    headVersion: d.headVersion,
+    diff: typeof d.diff === 'string' ? d.diff : '',
+    authors: Array.isArray(d.authors)
+      ? d.authors.filter((a): a is string => typeof a === 'string')
+      : [],
+  }
 }
