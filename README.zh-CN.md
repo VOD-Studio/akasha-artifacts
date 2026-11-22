@@ -1,8 +1,12 @@
 <p align="center">
-  <img src="docs/assets/logo.svg" width="128" height="128" alt="Akasha Logo">
+  <img src="docs/assets/logo.svg" width="440" alt="Akasha Logo">
 </p>
 
-<h1 align="center">Akasha</h1>
+<h1 align="center">Akasha (虚空) — Interactive Artifacts for Coding Agents</h1>
+
+<p align="center">
+  <em>uh-KAH-shuh · [əˈkɑːʃə] · 梵语与须弥设定中“将知识与推演直接投射为可见全息形态的虚空终端”</em>
+</p>
 
 <p align="center">
   <strong>面向 CLI 编程 Agent 的开源实时交互式 Web Artifact 引擎</strong><br>

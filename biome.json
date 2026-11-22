@@ -6,7 +6,8 @@
       "!**/dist",
       "!**/node_modules",
       "!**/pnpm-lock.yaml",
-      "!**/.release-please-manifest.json"
+      "!**/.release-please-manifest.json",
+      "!docs/assets/*.svg"
     ]
   },
   "formatter": {

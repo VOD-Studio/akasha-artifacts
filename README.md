@@ -1,8 +1,12 @@
 <p align="center">
-  <img src="docs/assets/logo.svg" width="128" height="128" alt="Akasha Logo">
+  <img src="docs/assets/logo.svg" width="440" alt="Akasha Logo">
 </p>
 
-<h1 align="center">Akasha</h1>
+<h1 align="center">Akasha (虚空) — Interactive Artifacts for Coding Agents</h1>
+
+<p align="center">
+  <em>uh-KAH-shuh · [əˈkɑːʃə] · Sanskrit &amp; Sumeru lore for "the ethereal terminal that projects knowledge into visible form"</em>
+</p>
 
 <p align="center">
   <strong>Open-Source Live Web Artifacts for CLI Coding Agents</strong><br>
