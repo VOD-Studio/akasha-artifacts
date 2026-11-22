@@ -13,6 +13,8 @@
 
 ## 规范与文档
 
+- **设计依据**：架构、协议与原则见 `docs/design/architecture.md`，术语见 `CONTEXT.md`，技术选型见 `docs/adr/`。与设计冲突的改动须先更新设计或新增 ADR。
+
 - **双语 README 对称**：修改 `README.md` 必须同步修改 `README.zh-CN.md`，保持章节、配置示例与表格完全对齐。
 - **分支、提交、PR 与 Issue**：遵循 `docs/agents/git.md`（中文 Conventional Commits：`<type>(<scope>): <subject>`）。
 - **代码注释**：遵循 `docs/agents/comments.md`（新写注释用中文，只写契约、不变量与非显然陷阱，不复述签名）。
