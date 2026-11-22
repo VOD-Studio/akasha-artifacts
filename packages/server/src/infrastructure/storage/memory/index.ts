@@ -80,6 +80,10 @@ export class InMemoryProjectRepository implements ProjectRepository {
   async list(): Promise<readonly Project[]> {
     return Array.from(this.byId.values(), (p) => structuredClone(p))
   }
+
+  async remove(id: string): Promise<boolean> {
+    return this.byId.delete(id)
+  }
 }
 
 export class InMemoryArtifactRepository implements ArtifactRepository {

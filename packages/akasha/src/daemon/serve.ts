@@ -119,24 +119,35 @@ export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
       return c.json({ error: { code: 'NOT_FOUND', message: `路径 ${reqPath} 不存在` } }, 404)
     }
     if (resolvedWebDir && fs.existsSync(resolvedWebDir)) {
-      const rel = reqPath === '/' ? 'index.html' : reqPath.replace(/^\/+/, '')
-      const target = path.resolve(resolvedWebDir, rel)
-      const inside = target === resolvedWebDir || target.startsWith(`${resolvedWebDir}${path.sep}`)
-      if (inside && fs.existsSync(target) && fs.statSync(target).isFile()) {
-        const ext = path.extname(target).toLowerCase()
-        return c.body(fs.readFileSync(target), 200, {
-          'Content-Type': MIME_TYPES[ext] ?? 'application/octet-stream',
-        })
-      }
       const indexHtml = path.join(resolvedWebDir, 'index.html')
-      if (fs.existsSync(indexHtml)) {
+      const serveIndex = () => {
         const html = fs
           .readFileSync(indexHtml, 'utf8')
           .replace(
             '</head>',
             `<script>window.__AKASHA_CONFIG__=${JSON.stringify({ sandboxOrigin: activeSandboxSrv.origin })};</script></head>`,
           )
-        return c.html(html)
+        return c.html(html, 200, { 'Cache-Control': 'no-store' })
+      }
+
+      if (reqPath === '/' || reqPath === '/index.html') {
+        if (fs.existsSync(indexHtml)) {
+          return serveIndex()
+        }
+      } else {
+        const rel = reqPath.replace(/^\/+/, '')
+        const target = path.resolve(resolvedWebDir, rel)
+        const inside =
+          target === resolvedWebDir || target.startsWith(`${resolvedWebDir}${path.sep}`)
+        if (inside && fs.existsSync(target) && fs.statSync(target).isFile()) {
+          const ext = path.extname(target).toLowerCase()
+          return c.body(fs.readFileSync(target), 200, {
+            'Content-Type': MIME_TYPES[ext] ?? 'application/octet-stream',
+          })
+        }
+        if (fs.existsSync(indexHtml)) {
+          return serveIndex()
+        }
       }
     }
     return c.html(

@@ -1,0 +1,194 @@
+import type { ArtifactType, PreservedViewState } from '@akasha/protocol'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { SandboxBridgeClient } from './bridge/client'
+import { registerBuiltinRenderers } from './renderers/builtins'
+import { getRenderer } from './renderers/registry'
+import {
+  defaultPreservedStateManager,
+  PreservedStateContext,
+  type PreservedStateManager,
+} from './state/preserve'
+import {
+  ArtifactStateContext,
+  type ArtifactStateStore,
+  defaultArtifactStateStore,
+} from './state/store'
+
+registerBuiltinRenderers()
+
+export interface RenderPayload {
+  artifactType: ArtifactType
+  version: number
+  source: string
+}
+
+export interface SandboxAppProps {
+  bridge?: SandboxBridgeClient | null
+  stateStore?: ArtifactStateStore
+  preserved?: PreservedStateManager
+  initialRender?: RenderPayload | null
+  initialState?: Record<string, unknown>
+  initialPreservedState?: PreservedViewState
+}
+
+export function SandboxApp({
+  bridge,
+  stateStore = defaultArtifactStateStore,
+  preserved = defaultPreservedStateManager,
+  initialRender = null,
+  initialState,
+  initialPreservedState,
+}: SandboxAppProps) {
+  const [payload, setPayload] = useState<RenderPayload | null>(initialRender)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const versionRef = useRef<number>(initialRender?.version ?? 0)
+  versionRef.current = payload?.version ?? 0
+
+  useEffect(() => {
+    if (initialState) stateStore.replace(initialState)
+  }, [initialState, stateStore])
+
+  useEffect(() => {
+    if (initialPreservedState) preserved.hydrate(initialPreservedState)
+  }, [initialPreservedState, preserved])
+
+  // 订阅外壳经 Bridge 发来的 render 与增量 state 补丁（state 仅更新 store，绝不触发外层重挂载）
+  useEffect(() => {
+    if (!bridge) return
+    preserved.setSnapshotReporter((snapshot) => {
+      bridge.send({ type: 'viewState.snapshot', state: snapshot })
+    })
+
+    const off = bridge.onMessage((msg) => {
+      if (msg.type === 'render') {
+        stateStore.replace(msg.state)
+        preserved.hydrate(msg.preservedState)
+        setPayload({
+          artifactType: msg.artifactType,
+          version: msg.version,
+          source: msg.source,
+        })
+      } else if (msg.type === 'state') {
+        try {
+          stateStore.applyPatch(msg.seq, msg.ops)
+        } catch (err) {
+          bridge.send({
+            type: 'error',
+            phase: 'runtime',
+            message: err instanceof Error ? err.message : String(err),
+          })
+        }
+      }
+    })
+
+    bridge.start()
+
+    const handleWindowError = (event: ErrorEvent) => {
+      bridge.send({
+        type: 'error',
+        phase: 'runtime',
+        message: event.message || '未知运行时异常',
+        stack: event.error instanceof Error ? event.error.stack : undefined,
+        loc: event.lineno ? `${event.lineno}:${event.colno || 1}` : undefined,
+      })
+    }
+
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason
+      bridge.send({
+        type: 'error',
+        phase: 'runtime',
+        message: reason instanceof Error ? reason.message : String(reason),
+        stack: reason instanceof Error ? reason.stack : undefined,
+      })
+    }
+
+    window.addEventListener('error', handleWindowError)
+    window.addEventListener('unhandledrejection', handleRejection)
+
+    return () => {
+      off()
+      preserved.setSnapshotReporter(undefined)
+      window.removeEventListener('error', handleWindowError)
+      window.removeEventListener('unhandledrejection', handleRejection)
+      bridge.stop()
+    }
+  }, [bridge, stateStore, preserved])
+
+  // 自动向外壳上报容器尺寸变化，便于外壳自适应高度或视口定位
+  useEffect(() => {
+    if (!bridge || !rootRef.current || typeof ResizeObserver === 'undefined') return
+    const el = rootRef.current
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries.at(-1)
+      if (!entry) return
+      bridge.send({
+        type: 'resize',
+        width: Math.max(0, Math.round(entry.contentRect.width)),
+        height: Math.max(0, Math.round(entry.contentRect.height)),
+      })
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [bridge])
+
+  const handleError = useCallback(
+    (err: { phase: 'compile' | 'runtime'; message: string; stack?: string; loc?: string }) => {
+      bridge?.send({
+        type: 'error',
+        phase: err.phase,
+        message: err.message,
+        ...(err.stack ? { stack: err.stack } : {}),
+        ...(err.loc ? { loc: err.loc } : {}),
+      })
+    },
+    [bridge],
+  )
+
+  const handleRendered = useCallback(() => {
+    const ver = versionRef.current
+    if (!bridge || ver < 1) return
+    const height = rootRef.current
+      ? Math.max(0, Math.round(rootRef.current.scrollHeight))
+      : undefined
+    bridge.send({
+      type: 'rendered',
+      version: ver,
+      ...(height !== undefined ? { height } : {}),
+    })
+  }, [bridge])
+
+  const renderer = useMemo(
+    () => (payload ? getRenderer(payload.artifactType) : undefined),
+    [payload],
+  )
+
+  return (
+    <ArtifactStateContext.Provider value={stateStore}>
+      <PreservedStateContext.Provider value={preserved}>
+        <div ref={rootRef} className="min-h-screen bg-white text-slate-900">
+          {payload ? (
+            renderer ? (
+              renderer({
+                source: payload.source,
+                version: payload.version,
+                stateStore,
+                preserved,
+                onError: handleError,
+                onRendered: handleRendered,
+              })
+            ) : (
+              <div className="p-6 text-sm text-amber-700">
+                暂不支持的 Artifact 类型：{payload.artifactType}
+              </div>
+            )
+          ) : (
+            <div className="flex min-h-screen items-center justify-center p-6 text-xs text-slate-400">
+              Akasha Sandbox 已就绪，等待外壳下发渲染内容…
+            </div>
+          )}
+        </div>
+      </PreservedStateContext.Provider>
+    </ArtifactStateContext.Provider>
+  )
+}
