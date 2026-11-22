@@ -12,6 +12,7 @@ export interface AgentActivityRecord {
 }
 
 export interface SandboxErrorRecord {
+  version: number
   phase: 'compile' | 'runtime'
   message: string
   stack?: string
@@ -28,6 +29,7 @@ export interface WorkspaceStoreState {
   preservedViewByArtifact: Record<string, PreservedViewState>
   unsentDraftsByArtifact: Record<string, string>
   sandboxErrorByArtifact: Record<string, SandboxErrorRecord | null>
+  sentErrorFingerprints: Record<string, boolean>
 
   setSelectedProjectId: (projectId: string | null) => void
   setCommandPaletteOpen: (open: boolean) => void
@@ -38,6 +40,7 @@ export interface WorkspaceStoreState {
   setPreservedView: (artifactId: string, state: PreservedViewState) => void
   setUnsentDraft: (artifactId: string, text: string) => void
   setSandboxError: (artifactId: string, err: SandboxErrorRecord | null) => void
+  markErrorSent: (fingerprint: string) => void
 }
 
 // 客户端工作台状态：管理视角切换、保态快照与未提交草稿，确保 Agent 推送新版本重绘时不丢失用户上下文。
@@ -51,6 +54,7 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set) => ({
   preservedViewByArtifact: {},
   unsentDraftsByArtifact: {},
   sandboxErrorByArtifact: {},
+  sentErrorFingerprints: {},
 
   setSelectedProjectId: (selectedProjectId) => set({ selectedProjectId }),
   setCommandPaletteOpen: (commandPaletteOpen) => set({ commandPaletteOpen }),
@@ -75,5 +79,9 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set) => ({
   setSandboxError: (artifactId, err) =>
     set((s) => ({
       sandboxErrorByArtifact: { ...s.sandboxErrorByArtifact, [artifactId]: err },
+    })),
+  markErrorSent: (fingerprint) =>
+    set((s) => ({
+      sentErrorFingerprints: { ...s.sentErrorFingerprints, [fingerprint]: true },
     })),
 }))

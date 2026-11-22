@@ -1,3 +1,4 @@
+import { injectHtmlLocations } from '@akasha/jsx-source'
 import { gpen, styles } from '@violetjs/inkline'
 import { inkSvg } from '@violetjs/inkline/dom'
 import { marked } from 'marked'
@@ -100,7 +101,8 @@ function HtmlRenderer({ source, preserved, onRendered }: RendererProps) {
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
-    el.innerHTML = sanitizeMarkup(source, 'html')
+    const instrumented = injectHtmlLocations(source).code
+    el.innerHTML = sanitizeMarkup(instrumented, 'html')
     const cleanup = preserved.bindDomPersistence(el, window)
     onRenderedRef.current()
     return cleanup

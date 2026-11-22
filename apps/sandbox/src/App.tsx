@@ -1,6 +1,7 @@
 import type { ArtifactType, PreservedViewState } from '@akasha/protocol'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { SandboxBridgeClient } from './bridge/client'
+import { SandboxInspector } from './inspector/index'
 import { registerBuiltinRenderers } from './renderers/builtins'
 import { getRenderer } from './renderers/registry'
 import {
@@ -59,6 +60,8 @@ export function SandboxApp({
       bridge.send({ type: 'viewState.snapshot', state: snapshot })
     })
 
+    const inspector = new SandboxInspector(() => rootRef.current, bridge)
+
     const off = bridge.onMessage((msg) => {
       if (msg.type === 'render') {
         stateStore.replace(msg.state)
@@ -78,18 +81,25 @@ export function SandboxApp({
             message: err instanceof Error ? err.message : String(err),
           })
         }
+      } else if (msg.type === 'inspect.start') {
+        inspector.startInspecting()
+      } else if (msg.type === 'inspect.stop') {
+        inspector.stopInspecting()
+      } else if (msg.type === 'highlight') {
+        inspector.highlight(msg.element)
       }
     })
 
     bridge.start()
 
     const handleWindowError = (event: ErrorEvent) => {
+      // 浏览器 window.error 的 lineno/colno 指向编译后的 blob JS，而非原始 TSX 源码，
+      // 因此运行时未映射异常不伪造原始源码 loc，避免外壳高亮错误行。
       bridge.send({
         type: 'error',
         phase: 'runtime',
         message: event.message || '未知运行时异常',
         stack: event.error instanceof Error ? event.error.stack : undefined,
-        loc: event.lineno ? `${event.lineno}:${event.colno || 1}` : undefined,
       })
     }
 
@@ -107,6 +117,7 @@ export function SandboxApp({
     window.addEventListener('unhandledrejection', handleRejection)
 
     return () => {
+      inspector.dispose()
       off()
       preserved.setSnapshotReporter(undefined)
       window.removeEventListener('error', handleWindowError)

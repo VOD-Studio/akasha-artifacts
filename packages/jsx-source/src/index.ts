@@ -1,1 +1,9 @@
-export const PACKAGE_JSX_SOURCE_VERSION = '0.1.0'
+export { validateBlockIds } from './block-id.js'
+export { injectHtmlLocations } from './html-loc.js'
+export { injectJsxLocations } from './jsx-loc.js'
+export type {
+  BlockEntry,
+  InjectedLocationEntry,
+  InjectLocationsResult,
+  StringInsertion,
+} from './types.js'
