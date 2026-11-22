@@ -165,6 +165,14 @@ function ArtifactRouteView({
         rounds={rounds}
         sandboxOrigin={sandboxOrigin}
         onRegisterStateForwarder={registerStateForwarder}
+        onVersionSaved={() => {
+          if (requestedVersion !== undefined) {
+            void navigate({
+              to: '/a/$publicId',
+              params: { publicId: detail.artifact.publicId },
+            })
+          }
+        }}
       />
     </div>
   )

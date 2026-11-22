@@ -2,6 +2,7 @@ import type { ElementRect, ElementRef, Feedback, JsonPatchOp, ReviewRound } from
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSelectionStore } from '../../entities/selection/store'
 import { useWorkspaceStore } from '../../entities/workspace/store'
+import { SplitCodeEditor } from '../../features/code-editor/SplitCodeEditor'
 import { RuntimeErrorPanel } from '../../features/error-recovery/RuntimeErrorPanel'
 import { selectActiveRound } from '../../features/review-rounds/round-utils'
 import { VersionDiffView } from '../../features/version-diff/VersionDiffView'
@@ -26,10 +27,11 @@ export interface ArtifactWorkspaceProps {
   rounds?: readonly ReviewRound[]
   sandboxOrigin: string
   onRegisterStateForwarder?: (forwarder: ((seq: number, ops: JsonPatchOp[]) => void) | null) => void
+  onVersionSaved?: (version: ArtifactDetailResponse['version']) => void
 }
 
 // Artifact 主画布工作区：通过独立 Origin + sandbox="allow-scripts"（严禁 allow-same-origin）隔离沙盒，
-// 外壳叠层负责元素选中框与图钉绘制，右侧 InspectorPanel 与底部 RoundSubmitBar 组成完整的 L1 双向评审闭环。
+// 外壳叠层负责元素选中框与图钉绘制，支持 L1 批注评审、L2 属性面板与 L3 CodeMirror 分栏实时编辑。
 export function ArtifactWorkspace({
   detail,
   versions,
@@ -37,10 +39,19 @@ export function ArtifactWorkspace({
   rounds: roundsOverride,
   sandboxOrigin,
   onRegisterStateForwarder,
+  onVersionSaved,
 }: ArtifactWorkspaceProps) {
   const { artifact, version, state } = detail
   const rounds = roundsOverride ?? detail.rounds
   const [livePinRects, setLivePinRects] = useState<Record<string, ElementRect | null>>({})
+  const [liveEditSource, setLiveEditSource] = useState<string | null>(null)
+  const latestVersion = useMemo(() => {
+    if (versions.length === 0) return version
+    return versions.reduce(
+      (acc, cur) => (cur.version > acc.version ? cur : acc),
+      versions[0] ?? version,
+    )
+  }, [versions, version])
   const viewMode = useWorkspaceStore((s) => s.viewMode)
   const inspectorOpen = useWorkspaceStore((s) => s.inspectorOpen)
   const setInspectorOpen = useWorkspaceStore((s) => s.setInspectorOpen)
@@ -194,7 +205,7 @@ export function ArtifactWorkspace({
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
-    const shouldInspect = pickerActive && viewMode === 'preview'
+    const shouldInspect = pickerActive && (viewMode === 'preview' || viewMode === 'edit')
     if (shouldInspect) {
       inspectingSentRef.current = true
       host.send({ type: 'inspect.start' })
@@ -237,7 +248,10 @@ export function ArtifactWorkspace({
     return () => clearTimeout(timer)
   }, [artifact.projectId, artifact.publicId, selectedElement, unsentDraft])
 
-  // 当 Artifact 版本或源码更新时下发 render，并清除旧版本遗留的错误面板，携带保态快照。
+  const effectivePreviewSource =
+    viewMode === 'edit' && liveEditSource !== null ? liveEditSource : version.source
+
+  // 当 Artifact 版本、源码或 L3 实时草稿更新时下发 render，并清除旧版本遗留的错误面板，携带保态快照。
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
@@ -250,13 +264,13 @@ export function ArtifactWorkspace({
       type: 'render',
       artifactType: artifact.type,
       version: version.version,
-      source: version.source,
+      source: effectivePreviewSource,
       state: stateRef.current,
       ...(preservedState ? { preservedState } : {}),
     })
     lastSyncedStateSeqRef.current = stateSeqRef.current
     lastRenderedKeyRef.current = `${artifact.publicId}:${version.version}`
-  }, [artifact.publicId, artifact.type, version.version, version.source, setSandboxError])
+  }, [artifact.publicId, artifact.type, version.version, effectivePreviewSource, setSandboxError])
 
   // 置于 render effect 之后：确保首屏队列先发 render 再发 pins.track，避免被 render 清空预热队列。
   useEffect(() => {
@@ -318,18 +332,34 @@ export function ArtifactWorkspace({
       ) : null}
 
       <div className="flex min-h-0 flex-1">
+        {viewMode === 'edit' ? (
+          <div className="w-1/2 min-w-[320px] shrink-0">
+            <SplitCodeEditor
+              artifact={artifact}
+              version={version}
+              latestVersion={latestVersion}
+              onLivePreviewChange={setLiveEditSource}
+              onVersionSaved={onVersionSaved}
+            />
+          </div>
+        ) : null}
+
         <div className="relative min-w-0 flex-1">
-          {/* 保持沙盒 iframe 挂载，切到 Diff/源码 再切回预览时不丢失运行时状态 */}
+          {/* 保持沙盒 iframe 挂载，切到编辑/Diff/源码 再切回预览时不丢失运行时状态 */}
           <iframe
             ref={iframeRef}
             title={`${artifact.title} 隔离沙盒`}
             src={iframeSrc}
             sandbox={SANDBOX_IFRAME_SANDBOX_ATTR}
             referrerPolicy="no-referrer"
-            className={viewMode === 'preview' ? 'block h-full w-full border-0 bg-white' : 'hidden'}
+            className={
+              viewMode === 'preview' || viewMode === 'edit'
+                ? 'block h-full w-full border-0 bg-white'
+                : 'hidden'
+            }
           />
 
-          {viewMode === 'preview' ? (
+          {viewMode === 'preview' || viewMode === 'edit' ? (
             <ElementOverlay
               hovered={hoveredElement}
               selected={selectedElement}

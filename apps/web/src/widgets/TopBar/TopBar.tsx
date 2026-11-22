@@ -3,7 +3,7 @@ import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
 import { Kbd } from '@akasha/ui/kbd'
 import { Segmented } from '@akasha/ui/segmented'
-import { ArrowLeft, Code2, Eye, GitCompare, MessageSquare, Search } from 'lucide-react'
+import { ArrowLeft, Code2, Eye, GitCompare, MessageSquare, Pencil, Search } from 'lucide-react'
 import { useWorkspaceStore, type WorkspaceViewMode } from '../../entities/workspace/store'
 import { DaemonStatusPill } from '../../features/daemon-control/DaemonStatusPill'
 import { ElementPickerButton } from '../../features/element-picker/ElementPickerButton'
@@ -89,6 +89,7 @@ export function TopBar({
           size="sm"
           segments={[
             { value: 'preview', label: '预览', icon: <Eye size={13} /> },
+            { value: 'edit', label: '编辑', icon: <Pencil size={13} /> },
             { value: 'diff', label: 'Diff', icon: <GitCompare size={13} /> },
             { value: 'source', label: '源码', icon: <Code2 size={13} /> },
           ]}

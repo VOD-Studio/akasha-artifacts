@@ -2,7 +2,7 @@ import type { AgentActivityState, PreservedViewState } from '@akasha/protocol'
 import { create } from 'zustand'
 import type { WsConnectionStatus } from '../../shared/api/ws'
 
-export type WorkspaceViewMode = 'preview' | 'diff' | 'source'
+export type WorkspaceViewMode = 'preview' | 'edit' | 'diff' | 'source'
 
 export interface AgentActivityRecord {
   state: AgentActivityState
