@@ -74,7 +74,7 @@ Akasha pre-bundles an engineering component kit inside its sandbox so agents can
 
 ### 3. Local-First + Cloud Hub Dual-Mode Architecture
 
-- **Local Daemon Mode**: Instant `http://localhost:4321/a/:id` preview with zero external dependencies.
+- **Local Daemon Mode**: Instant `http://localhost:24321/a/:id` preview with zero external dependencies.
 - **Self-Hosted Cloud Hub**: Deploy to your own domain (`https://akasha.your-team.dev/a/:id`) via a single Docker image or serverless Cloudflare Workers (Durable Objects + D1 + R2).
   - **Origin-Isolated Sandbox**: Untrusted AI-generated HTML/React runs in a dedicated sandbox origin (`*.sandbox.your-team.dev`) with strict CSP headers to prevent cookie/token exfiltration.
   - **Visibility Scopes**: `private` (creator & signed token), `team` (SSO / GitHub OAuth), or `public`.
@@ -94,7 +94,7 @@ flowchart TB
     end
 
     subgraph Modes["Unified Local + Cloud Protocol"]
-        LOCAL["Local Daemon (localhost:4321 · Memory / SQLite)"]
+        LOCAL["Local Daemon (localhost:24321 · Memory / SQLite)"]
         CLOUD["Cloud Artifact Hub (Docker / Cloudflare Workers · Postgres/D1 + S3/R2)"]
     end
 
@@ -113,9 +113,28 @@ flowchart TB
 
 ---
 
-## Quick Start
+## Roadmap & Implementation Status
 
-### 1. Connect to Your Coding Agent (MCP)
+> Akasha is under active development. See the [Architecture Design](docs/design/architecture.md), [Domain Glossary](CONTEXT.md), [ADR-0001](docs/adr/0001-server-runtime-typescript-hono.md), and [v1 PRD (#5)](https://github.com/VOD-Studio/akasha-artifacts/issues/5) for the full specification.
+
+| Milestone | Scope                                                                                                                                                        | Status    |
+| :-------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------- |
+| **M0**    | Monorepo workspace, `@akasha/ui` shell kit, `@akasha/protocol` (zod + JSON Schema), immutable versions & RFC 6902 StateStream                                | Completed |
+| **M1**    | Machine-wide Local Daemon (Hono + SQLite), WebSocket resync, MCP tools, `check` gate, isolated sandbox with view-state preservation, multi-project web shell | Planned   |
+| **M2**    | L1 element picker & overlay, `ReviewRound` draft/submit anti-interruption loop, `receipt/ack`, multi-harness Hooks & Skills, runtime error fix loop          | Planned   |
+| **M3**    | `@akasha/kit` schema engine & L2 props panel, `artboard` / `document` / `verify`, L3 split code editor, `.artifacts/` native file storage                    | Planned   |
+| **M4**    | L4 visual direct editing (AST rewrite with undo/redo) & `window.akasha.storage`                                                                              | Planned   |
+| **M5**    | Self-hosted Docker Cloud Hub (OAuth, visibility scopes, offline queue, local-daemon direct fallback)                                                         | Planned   |
+| **M6**    | Cloudflare Workers (D1 + R2 + Durable Objects) & multi-user CRDT collaboration                                                                               | Planned   |
+
+---
+
+## Quick Start _(Planned — M1 / M5)_
+
+> [!NOTE]
+> The CLI daemon (`akasha serve`), MCP server (`akasha mcp`), and Cloud Hub container image are scheduled for **M1** and **M5**. The commands below preview the target developer experience; see [Development](#development) to run and test the workspace today.
+
+### 1. Connect to Your Coding Agent (MCP — M1)
 
 #### Antigravity (AGY) / Claude Code / Codex CLI
 
@@ -128,7 +147,7 @@ Add Akasha to your MCP configuration:
       "command": "npx",
       "args": ["-y", "akasha-artifacts", "mcp"],
       "env": {
-        "AKASHA_HUB_URL": "http://localhost:4321"
+        "AKASHA_HUB_URL": "http://localhost:24321"
       }
     }
   }
@@ -141,13 +160,13 @@ Or with Claude Code CLI:
 claude mcp add akasha -- npx -y akasha-artifacts mcp
 ```
 
-### 2. Cloud Hub Deployment (Self-Hosted)
+### 2. Cloud Hub Deployment (Self-Hosted — M5)
 
 ```bash
 # Single-container Docker deployment (SQLite by default, Postgres/S3 optional)
 docker run -d \
   --name akasha-hub \
-  -p 4321:4321 \
+  -p 24321:24321 \
   -v ./akasha-data:/data \
   ghcr.io/vod-studio/akasha-artifacts:latest
 ```
@@ -162,12 +181,20 @@ npx akasha-artifacts login --hub https://akasha.your-team.dev
 
 ## MCP Tools Reference
 
-| Tool                      | Description                                                                                                                                                                |
-| :------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `artifact_publish`        | Create or update a versioned artifact (`react`, `html`, `markdown`, `mermaid`, `pr-walkthrough`, `live-timeline`, `option-compare`, `data-story`) and return its live URL. |
-| `artifact_push_state`     | Push a zero-flicker incremental JSON state patch to an open artifact page in real time without rewriting the component code.                                               |
-| `artifact_await_feedback` | Render a reviewable artifact and suspend until the user clicks _Approve_ or submits structured inline feedback in the browser.                                             |
-| `artifact_pull_feedback`  | Pull queued asynchronous teammate comments and review decisions from the Cloud Hub.                                                                                        |
+> Defined in `@akasha/protocol` (M0); runtime MCP server lands in M1 / M2.
+
+| Tool                      | Milestone | Description                                                                                                           |
+| :------------------------ | :-------- | :-------------------------------------------------------------------------------------------------------------------- |
+| `artifact_publish`        | M1        | Create or replace a versioned artifact (`baseVersion` enforced on updates) and return its stable `publicId` URL.      |
+| `artifact_update`         | M1        | Apply incremental `old_str → new_str` text edits with exact single-match validation to save output tokens.            |
+| `artifact_check`          | M1        | Run static pre-publish checks (syntax, dependency whitelist, template schema, unique `blockId`).                      |
+| `artifact_spec`           | M1        | Fetch full authoring guide and component whitelist on demand for a given artifact type.                               |
+| `artifact_push_state`     | M1        | Push an atomic RFC 6902 JSON Patch to the artifact's live `StateStream` without rewriting source code.                |
+| `artifact_get`            | M1        | Read latest or historical version source, state snapshot, and active review rounds (used to resolve `409` conflicts). |
+| `artifact_pull_feedback`  | M2        | Pull structured feedback and submitted review rounds; returns a `receipt` only when full details are fetched.         |
+| `artifact_ack_feedback`   | M2        | Acknowledge consumed feedback by `receipt` and optionally mark threads as `resolved`.                                 |
+| `artifact_await_feedback` | M2        | Long-poll wait (up to 50s) for browser feedback in harnesses without async hook wakeup.                               |
+| `artifact_record_verdict` | M2        | Sync terminal-spoken choices or Pass/Reject/Waive verdicts back onto the artifact's active review round.              |
 
 ---
 
@@ -177,9 +204,9 @@ Requirements: **Node.js 24+** and **pnpm 10+**.
 
 ```bash
 make install   # Install dependencies with frozen lockfile
-make lint      # Run Biome check, TypeScript typecheck, and commit lint
-make test      # Run Vitest unit tests
-make build     # Compile TypeScript to dist/
+make lint      # Run Biome check, architecture dependency guard, TypeScript typecheck, and commit lint
+make test      # Run Vitest unit tests across workspace packages
+make build     # Build all workspace packages and export protocol JSON Schemas
 ```
 
 ---

@@ -7,7 +7,9 @@
       "!**/node_modules",
       "!**/pnpm-lock.yaml",
       "!**/.release-please-manifest.json",
-      "!docs/assets/*.svg"
+      "!docs/assets/*.svg",
+      "!packages/ui/src/styles/fixed.generated.css",
+      "!packages/ui/src/styles/palettes/*.generated.css"
     ]
   },
   "formatter": {
@@ -27,5 +29,32 @@
       "quoteStyle": "single",
       "semicolons": "asNeeded"
     }
-  }
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["packages/ui/src/**"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "useSemanticElements": "off",
+            "noStaticElementInteractions": "off"
+          },
+          "suspicious": {
+            "noArrayIndexKey": "off"
+          },
+          "style": {
+            "noDescendingSpecificity": "off"
+          },
+          "correctness": {
+            "noComponentHookFactories": "off"
+          }
+        }
+      }
+    }
+  ]
 }

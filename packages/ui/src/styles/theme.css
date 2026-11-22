@@ -1,0 +1,172 @@
+/*
+ * Tailwind v4 theme 映射：Tailwind 工具类（bg-background、text-primary 等）
+ * 到运行时 CSS 变量的绑定层，以及 --animate-* token 引用的全局 keyframes。
+ * 颜色 token 只写映射，不定义值。
+ *
+ * 必须用 @theme inline：工具类在使用点直接引用 var(--xxx)，实际值由元素所在
+ * 作用域（:root 或方言作用域）求值。去掉 inline 会把映射固定在 :root 提前求值，
+ * 方言作用域覆盖失效（首页黑白回归的根因）。
+ */
+@theme inline {
+  /* 十档字号（设计稿「基础」页） */
+  --text-60: 3.75rem;
+  --text-60--line-height: 1.12;
+  --text-60--letter-spacing: -0.03em;
+  --text-52: 3.25rem;
+  --text-52--line-height: 1.1;
+  --text-52--letter-spacing: -0.03em;
+  --text-36: 2.25rem;
+  --text-36--line-height: 1.3;
+  --text-36--letter-spacing: -0.02em;
+  --text-28: 1.75rem;
+  --text-28--line-height: 1.2;
+  --text-28--letter-spacing: -0.02em;
+  --text-22: 1.375rem;
+  --text-22--line-height: 1.4;
+  --text-19: 1.1875rem;
+  --text-19--line-height: 1.5;
+  --text-17: 1.0625rem;
+  --text-17--line-height: 1.95;
+  --text-17--letter-spacing: 0.02em;
+  --text-14: 0.875rem;
+  --text-14--line-height: 1.6;
+  --text-13: 0.8125rem;
+  --text-13--line-height: 1.8;
+  --text-12: 0.75rem;
+  --text-12--line-height: 1.6;
+
+  /* 圆角档（设计稿「基础」页） */
+  --radius-4: var(--radius-4, 4px);
+  --radius-8: var(--radius-8, 8px);
+  --radius-12: var(--radius-12, 12px);
+  --radius-16: var(--radius-16, 16px);
+
+  /* 动效时长与曲线（设计稿「基础」页） */
+  --transition-duration-hover: 120ms;
+  --transition-duration-popover-in: 180ms;
+  --transition-duration-popover-out: 120ms;
+  --transition-duration-drawer-in: 320ms;
+  --transition-duration-drawer-out: 220ms;
+  --transition-timing-function-drawer-in: cubic-bezier(0.22, 1, 0.36, 1);
+  --transition-timing-function-drawer-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-timing-function-draw: cubic-bezier(0.45, 0.05, 0.25, 1);
+  --animate-caret-blink: caret-blink 1s ease infinite;
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-serif: Georgia, "Times New Roman", serif;
+  --animate-tab-panel-in: tab-panel-in 0.2s ease-out;
+  /* 交互反馈统一过渡：160ms 缓出（悬停显现、复制回显、指示线滑动共用） */
+  --transition-feedback: 160ms ease-out;
+
+  /* —— 设计 token 映射到 Tailwind v4 颜色工具类 —— */
+  /* bg-background / text-foreground / bg-primary / border-border 等 */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-hover: var(--destructive-hover);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-affection: var(--affection);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-link: var(--link);
+  --color-link-hover: var(--link-hover);
+  --color-selected: var(--selected);
+  --color-selected-hover: var(--selected-hover);
+  --color-selected-foreground: var(--selected-foreground);
+  --color-progress: var(--progress);
+  --color-decoration: var(--decoration);
+  --color-decoration-hover: var(--decoration-hover);
+  --color-decoration-muted: var(--decoration-muted);
+  --color-decoration-foreground: var(--decoration-foreground);
+  --color-edge-hairline: var(--edge-hairline);
+  --color-surface-glass: var(--surface-glass);
+  --color-rule2: var(--rule2);
+  --color-sheet-border: var(--sheet-border);
+  --color-sheet-translucent: var(--sheet-translucent);
+  /* 纸色磨砂遮罩：颜色与模糊半径都来自 token，组件不写魔法数 */
+  --color-scrim-paper: var(--scrim-paper);
+  --blur-scrim: var(--scrim-blur);
+  --shadow-soft: var(--shadow-soft);
+  --color-category-1: var(--category-1);
+  --color-category-1-muted: var(--category-1-muted);
+  --color-category-1-foreground: var(--category-1-foreground);
+  --color-category-2: var(--category-2);
+  --color-category-2-muted: var(--category-2-muted);
+  --color-category-2-foreground: var(--category-2-foreground);
+  --color-category-3: var(--category-3);
+  --color-category-3-muted: var(--category-3-muted);
+  --color-category-3-foreground: var(--category-3-foreground);
+  --color-category-4: var(--category-4);
+  --color-category-4-muted: var(--category-4-muted);
+  --color-category-4-foreground: var(--category-4-foreground);
+  --color-category-5: var(--category-5);
+  --color-category-5-muted: var(--category-5-muted);
+  --color-category-5-foreground: var(--category-5-foreground);
+  --color-category-6: var(--category-6);
+  --color-category-6-muted: var(--category-6-muted);
+  --color-category-6-foreground: var(--category-6-foreground);
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  /*
+	 * 角色色在文字上取可读档：Tailwind 的 text- 先查 --text-color-*，
+	 * 所以 text-primary、text-destructive 是可读文字，bg-、border-、fill- 等回落到 --color-* 的实色。
+	 */
+  --text-color-primary: var(--primary-text);
+  --text-color-destructive: var(--destructive-text);
+  --text-color-warning: var(--warning-text);
+  --text-color-success: var(--success-text);
+  --text-color-category-1: var(--category-1-text);
+  --text-color-category-2: var(--category-2-text);
+  --text-color-category-3: var(--category-3-text);
+  --text-color-category-4: var(--category-4-text);
+  --text-color-category-5: var(--category-5-text);
+  --text-color-category-6: var(--category-6-text);
+}
+
+/* —— 主题动画 token 引用的 keyframes（全局注册，随映射层一起维护）—— */
+
+@keyframes tab-panel-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes caret-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}

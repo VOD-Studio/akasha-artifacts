@@ -1,0 +1,30 @@
+/*
+ * Skeleton：只用凹陷底色，透明度 1 ⇄ .55 缓慢起伏，不加扫光。
+ * 需先导入 @violet/ui/tokens.css 或 styles.css。
+ */
+
+@layer components {
+  .v-skeleton {
+    display: block;
+    border-radius: var(--radius-4, 4px);
+    background-color: var(--muted);
+    animation: v-skeleton-breathe var(--duration-skeleton, 1.8s) var(--ease-skeleton, ease-in-out)
+      infinite;
+  }
+
+  @keyframes v-skeleton-breathe {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.55;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .v-skeleton {
+      animation: none;
+    }
+  }
+}

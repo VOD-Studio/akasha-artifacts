@@ -1,0 +1,29 @@
+{
+  "name": "@akasha/protocol",
+  "version": "0.1.0",
+  "description": "Akasha cross-runtime protocol schemas and contract tests",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "@akasha/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node scripts/export-schemas.mjs",
+    "typecheck": "tsc --noEmit",
+    "test:contract": "node dist/contract-cli.js"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "zod": "^4.0.0"
+  }
+}

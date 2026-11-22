@@ -1,0 +1,25 @@
+{
+  "name": "@akasha/hooks",
+  "version": "0.1.0",
+  "description": "Multi-harness hook adapters for context injection and async wakeup",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "@akasha/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@akasha/protocol": "workspace:*"
+  }
+}

@@ -74,7 +74,7 @@ Anthropic 官方的 _Claude Code Artifacts_ 允许从 CLI 会话生成实时网�
 
 ### 3. 本地优先 + 团队云端（Local + Cloud Hub）双模架构
 
-- **本地模式（Local Daemon）**：零外部依赖，本机 `http://localhost:4321/a/:id` 即刻预览。
+- **本地模式（Local Daemon）**：零外部依赖，本机 `http://localhost:24321/a/:id` 即刻预览。
 - **团队私有云模式（Cloud Hub）**：支持单 Docker 容器私有化部署或 Cloudflare Workers（Durable Objects + D1 + R2）零成本 Serverless 部署，生成团队持久化链接（如 `https://akasha.your-team.dev/a/:id`）。
   - **双域名沙盒安全隔离（Origin Isolation）**：AI 生成的不可信前端代码运行在独立沙盒子域名（`*.sandbox.your-team.dev`）的严格 CSP `iframe` 中，彻底杜绝 XSS 窃取主站 Cookie 或 Token。
   - **三级权限控制**：`private`（仅创建者与签名链接）、`team`（团队 SSO / GitHub OAuth 登录可见）、`public`（公开只读分享）。
@@ -94,7 +94,7 @@ flowchart TB
     end
 
     subgraph Modes["Local + Cloud 统一双模协议"]
-        LOCAL["Local Daemon (localhost:4321 · 内存 / SQLite)"]
+        LOCAL["Local Daemon (localhost:24321 · 内存 / SQLite)"]
         CLOUD["Cloud Artifact Hub (Docker / Cloudflare Workers · Postgres/D1 + S3/R2)"]
     end
 
@@ -113,9 +113,28 @@ flowchart TB
 
 ---
 
-## 快速开始
+## 路线图与实现状态
 
-### 1. 接入你的编程 Agent（MCP 模式）
+> Akasha 正在积极开发中。完整规范见[总体设计说明](docs/design/architecture.md)、[领域术语表](CONTEXT.md)、[服务端选型 ADR-0001](docs/adr/0001-server-runtime-typescript-hono.md) 与 [v1 PRD (#5)](https://github.com/VOD-Studio/akasha-artifacts/issues/5)。
+
+| 里程碑 | 范围                                                                                                                     | 状态   |
+| :----- | :----------------------------------------------------------------------------------------------------------------------- | :----- |
+| **M0** | Monorepo 骨架、`@akasha/ui` 外壳组件库、`@akasha/protocol`（zod + JSON Schema）、不可变版本模型与 RFC 6902 状态流        | 已完成 |
+| **M1** | 整机单例 Local Daemon（Hono + SQLite）、WS 断线补齐、MCP 工具、`check` 校验门禁、热更新保态沙盒、多项目外壳工作台        | 计划中 |
+| **M2** | L1 元素指认与选中框、`ReviewRound` 草稿/整轮提交防打断回路、`receipt/ack`、多 Harness Hooks 与 Skills、运行报错修复回路  | 计划中 |
+| **M3** | `@akasha/kit` schema 引擎与 L2 属性面板、`artboard` / `document` / `verify`、L3 分栏代码编辑、`.artifacts/` 原生文件模式 | 计划中 |
+| **M4** | L4 可视化直改（AST 回写与撤销）与 `window.akasha.storage` 作用域存储                                                     | 计划中 |
+| **M5** | Docker 单容器 Cloud Hub 自托管（OAuth、可见性权限、离线反馈队列、本机访问优先直连 Daemon）                               | 计划中 |
+| **M6** | Cloudflare Workers（D1 + R2 + Durable Objects）与多人 CRDT 协同编辑                                                      | 计划中 |
+
+---
+
+## 快速开始 _（计划中 — M1 / M5）_
+
+> [!NOTE]
+> 本地守护进程（`akasha serve`）、MCP 服务（`akasha mcp`）与 Cloud Hub 镜像分别计划在 **M1** 与 **M5** 交付。下方命令展示目标接入方式；当前可按[本地开发](#本地开发)运行与测试工作区代码。
+
+### 1. 接入你的编程 Agent（MCP 模式 — M1）
 
 #### Antigravity (AGY) / Claude Code / Codex CLI
 
@@ -128,7 +147,7 @@ flowchart TB
       "command": "npx",
       "args": ["-y", "akasha-artifacts", "mcp"],
       "env": {
-        "AKASHA_HUB_URL": "http://localhost:4321"
+        "AKASHA_HUB_URL": "http://localhost:24321"
       }
     }
   }
@@ -141,13 +160,13 @@ flowchart TB
 claude mcp add akasha -- npx -y akasha-artifacts mcp
 ```
 
-### 2. 团队云端部署（Cloud Hub 自托管）
+### 2. 团队云端部署（Cloud Hub 自托管 — M5）
 
 ```bash
 # 单容器 Docker 部署（默认内置 SQLite，生产环境可配置 Postgres + S3/R2）
 docker run -d \
   --name akasha-hub \
-  -p 4321:4321 \
+  -p 24321:24321 \
   -v ./akasha-data:/data \
   ghcr.io/vod-studio/akasha-artifacts:latest
 ```
@@ -162,12 +181,20 @@ npx akasha-artifacts login --hub https://akasha.your-team.dev
 
 ## MCP 工具清单
 
-| 工具名称                  | 功能说明                                                                                                                                                              |
-| :------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `artifact_publish`        | 创建或更新带版本历史的 Artifact（支持 `react`、`html`、`markdown`、`mermaid`、`pr-walkthrough`、`live-timeline`、`option-compare`、`data-story`），返回实时访问 URL。 |
-| `artifact_push_state`     | 向已打开的 Artifact 页面流式推送 JSON 增量状态补丁，实现零闪烁原地更新，无需重写完整组件代码。                                                                        |
-| `artifact_await_feedback` | 渲染带审批控件的 Artifact 并挂起等待，直到用户在浏览器中点击“通过”或提交结构化批注后直接作为工具结果返回给 Agent。                                                    |
-| `artifact_pull_feedback`  | 从 Cloud Hub 拉取离线期间团队成员留下的异步评审批注与方案投票结果。                                                                                                   |
+> 契约已在 `@akasha/protocol`（M0）定义，MCP 运行时服务将在 M1 / M2 交付。
+
+| 工具名称                  | 里程碑 | 功能说明                                                                                 |
+| :------------------------ | :----- | :--------------------------------------------------------------------------------------- |
+| `artifact_publish`        | M1     | 新建或整页更新带版本历史的 Artifact（更新须带 `baseVersion`），返回稳定 `publicId` URL。 |
+| `artifact_update`         | M1     | 按 `old_str → new_str` 精确单处匹配做增量修改，显著节省模型输出 Token。                  |
+| `artifact_check`          | M1     | 发布前静态校验门禁（语法、白名单依赖、模板 schema、`blockId` 唯一性）。                  |
+| `artifact_spec`           | M1     | 按需拉取指定 Artifact 类型的完整写作规范与依赖白名单。                                   |
+| `artifact_push_state`     | M1     | 向 Artifact 的 `StateStream` 推送原子 RFC 6902 JSON Patch，无需重写源码即可零闪烁更新。  |
+| `artifact_get`            | M1     | 读取最新或历史版本源码、状态快照与评审轮次（用于在 `409` 冲突后合并）。                  |
+| `artifact_pull_feedback`  | M2     | 非阻塞拉取结构化反馈与已提交轮次；仅完整拉取时签发消费回执 `receipt`。                   |
+| `artifact_ack_feedback`   | M2     | 凭 `receipt` 确认反馈已消费，并可将已处理线程标记为 `resolved`。                         |
+| `artifact_await_feedback` | M2     | 在无异步 Hook 唤醒的客户端中长轮询等待浏览器反馈（单次最长 50 秒）。                     |
+| `artifact_record_verdict` | M2     | 将用户在终端口头表达的选择或 Pass/Reject/Waive 验收裁决回写至对应评审轮次。              |
 
 ---
 
@@ -177,9 +204,9 @@ npx akasha-artifacts login --hub https://akasha.your-team.dev
 
 ```bash
 make install   # 安装锁定依赖
-make lint      # 运行 Biome 代码检查、TypeScript 类型检查与提交信息规范校验
-make test      # 运行 Vitest 单元测试
-make build     # 编译构建至 dist/
+make lint      # 运行 Biome 检查、架构依赖方向检查、TypeScript 类型检查与提交规范校验
+make test      # 运行工作区 Vitest 单元测试
+make build     # 构建全部工作区包并导出协议 JSON Schema
 ```
 
 ---
