@@ -29,7 +29,7 @@ export async function startNodeServer(options: NodeServerOptions = {}) {
 
   const addr = server.address() as AddressInfo
   const actualPort = addr.port
-  container.daemonState.port = actualPort
+  container.syncBoundPort(actualPort)
   container.logs.append({
     level: 'info',
     message: `Akasha 服务已启动于 http://${host}:${actualPort}`,
@@ -38,6 +38,9 @@ export async function startNodeServer(options: NodeServerOptions = {}) {
   const close = async () => {
     await new Promise<void>((resolve) => {
       server.close(() => resolve())
+      if ('closeAllConnections' in server && typeof server.closeAllConnections === 'function') {
+        server.closeAllConnections()
+      }
     })
     container.close()
   }

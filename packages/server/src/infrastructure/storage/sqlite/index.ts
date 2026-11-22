@@ -118,9 +118,15 @@ CREATE TABLE IF NOT EXISTS receipts (
   feedback_ids_json TEXT NOT NULL,
   issued_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `
 
 export class SqliteStorage {
+  private closed = false
   readonly db: DatabaseSync
   readonly projects: SqliteProjectRepository
   readonly artifacts: SqliteArtifactRepository
@@ -147,7 +153,35 @@ export class SqliteStorage {
     this.receipts = new SqliteReceiptRepository(this.db)
   }
 
+  getEventSeq(): number {
+    if (this.closed) return 0
+    const row = this.db.prepare("SELECT value FROM meta WHERE key = 'event_seq'").get() as
+      | { value: string }
+      | undefined
+    return row ? Number.parseInt(row.value, 10) || 0 : 0
+  }
+
+  setEventSeq(seq: number): void {
+    if (this.closed) return
+    this.db
+      .prepare(
+        `INSERT INTO meta (key, value) VALUES ('event_seq', ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      )
+      .run(String(seq))
+  }
+
+  findProjectIdByArtifactSync(publicId: PublicId): string | undefined {
+    if (this.closed) return undefined
+    const row = this.db
+      .prepare('SELECT project_id FROM artifacts WHERE public_id = ?')
+      .get(publicId) as { project_id: string } | undefined
+    return row?.project_id
+  }
+
   close(): void {
+    if (this.closed) return
+    this.closed = true
     this.db.close()
   }
 }

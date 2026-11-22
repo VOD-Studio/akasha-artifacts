@@ -20,6 +20,13 @@ afterEach(async () => {
   }
 })
 
+function authHeaders(token: string): Record<string, string> {
+  return {
+    'content-type': 'application/json',
+    authorization: `Bearer ${token}`,
+  }
+}
+
 function connectWs(url: string): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(url)
@@ -52,7 +59,11 @@ describe('Hono HTTP server & @akasha/protocol contract tests', () => {
     const srv = await startNodeServer({ dbPath: 'memory', port: 0 })
     closers.push(srv.close)
 
-    const report = await runContractTests({ baseUrl: srv.baseUrl, suite: 'full' })
+    const report = await runContractTests({
+      baseUrl: srv.baseUrl,
+      token: srv.token,
+      suite: 'full',
+    })
     expect(report.cases.filter((c) => !c.passed)).toEqual([])
     expect(report.passed).toBe(true)
   })
@@ -61,12 +72,16 @@ describe('Hono HTTP server & @akasha/protocol contract tests', () => {
     const srv = await startNodeServer({ dbPath: ':memory:', port: 0 })
     closers.push(srv.close)
 
-    const report = await runContractTests({ baseUrl: srv.baseUrl, suite: 'full' })
+    const report = await runContractTests({
+      baseUrl: srv.baseUrl,
+      token: srv.token,
+      suite: 'full',
+    })
     expect(report.cases.filter((c) => !c.passed)).toEqual([])
     expect(report.passed).toBe(true)
   })
 
-  it('persists projects, versions, state stream, rounds, and feedbacks across SQLite restarts', async () => {
+  it('persists data across SQLite restarts and sends resync to reconnecting clients', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-sqlite-'))
     tempDirs.push(dir)
     const dbPath = path.join(dir, 'akasha.db')
@@ -74,7 +89,7 @@ describe('Hono HTTP server & @akasha/protocol contract tests', () => {
     const srv1 = await startNodeServer({ dbPath, port: 0 })
     const projRes = await fetch(`${srv1.baseUrl}/api/v1/projects`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: authHeaders(srv1.token),
       body: JSON.stringify({ rootPath: '/repo/demo', name: 'demo' }),
     })
     expect(projRes.status).toBe(201)
@@ -82,7 +97,7 @@ describe('Hono HTTP server & @akasha/protocol contract tests', () => {
 
     const pubRes = await fetch(`${srv1.baseUrl}/api/v1/artifacts`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: authHeaders(srv1.token),
       body: JSON.stringify({
         project: project.id,
         slug: 'document/arch',
@@ -96,13 +111,13 @@ describe('Hono HTTP server & @akasha/protocol contract tests', () => {
 
     await fetch(`${srv1.baseUrl}/api/v1/artifacts/${artifact.publicId}/state`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: authHeaders(srv1.token),
       body: JSON.stringify({ patch: [{ op: 'add', path: '/progress', value: 80 }] }),
     })
 
     await fetch(`${srv1.baseUrl}/api/v1/artifacts/${artifact.publicId}/feedback`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: authHeaders(srv1.token),
       body: JSON.stringify({
         version: 1,
         kind: 'comment',
@@ -111,7 +126,7 @@ describe('Hono HTTP server & @akasha/protocol contract tests', () => {
         author: 'human:sun',
       }),
     })
-
+    const seqBeforeRestart = srv1.realtime.getLatestSeq()
     await srv1.close()
 
     // 重启后用同一 SQLite 文件恢复
@@ -132,29 +147,33 @@ describe('Hono HTTP server & @akasha/protocol contract tests', () => {
     const fb = (await fbRes.json()) as { items: Array<{ body: string }> }
     expect(fb.items).toHaveLength(1)
     expect(fb.items[0]?.body).toBe('重启后仍应存在')
+
+    // 重启后携带重启前的 lastSeq 重连 → 必须收到 resync，避免前端保留陈旧缓存
+    const wsAfterRestart = await connectWs(srv2.wsUrl)
+    const resyncPromise = waitForEvent(wsAfterRestart, (e) => e.type === 'resync')
+    wsAfterRestart.send(
+      JSON.stringify({
+        v: PROTOCOL_VERSION,
+        type: 'subscribe',
+        artifactId: artifact.publicId,
+        lastSeq: seqBeforeRestart,
+      }),
+    )
+    const resync = await resyncPromise
+    expect(resync.type).toBe('resync')
+    wsAfterRestart.close()
   })
 
-  it('enforces local security boundary (Host, Origin, Bearer token)', async () => {
-    const srv = await startNodeServer({
-      dbPath: 'memory',
-      port: 0,
-      security: {
-        token: 'secret-tok',
-        allowedOrigins: ['http://127.0.0.1:24321'],
-      },
-    })
+  it('enables local security boundary by default (Host, Origin, Content-Type, Bearer token)', async () => {
+    // 不传 security 配置也必须默认启用全部本地安全边界
+    const srv = await startNodeServer({ dbPath: 'memory', port: 0 })
     closers.push(srv.close)
 
     // 无令牌写操作 -> 401
     const unauth = await fetch(`${srv.baseUrl}/api/v1/artifacts`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        slug: 'html/a',
-        title: 'A',
-        type: 'html',
-        source: '<p>a</p>',
-      }),
+      body: JSON.stringify({ slug: 'html/a', title: 'A', type: 'html', source: '<p>a</p>' }),
     })
     expect(unauth.status).toBe(401)
 
@@ -162,45 +181,75 @@ describe('Hono HTTP server & @akasha/protocol contract tests', () => {
     const badOrigin = await fetch(`${srv.baseUrl}/api/v1/artifacts`, {
       method: 'POST',
       headers: {
-        'content-type': 'application/json',
-        authorization: 'Bearer secret-tok',
+        ...authHeaders(srv.token),
         origin: 'https://evil.example',
       },
-      body: JSON.stringify({
-        slug: 'html/a',
-        title: 'A',
-        type: 'html',
-        source: '<p>a</p>',
-      }),
+      body: JSON.stringify({ slug: 'html/a', title: 'A', type: 'html', source: '<p>a</p>' }),
     })
     expect(badOrigin.status).toBe(403)
 
-    // 合法令牌 -> 201
-    const ok = await fetch(`${srv.baseUrl}/api/v1/artifacts`, {
+    // 非法 Host 头（模拟 DNS rebinding）-> 403
+    const forgedHost = await srv.app.request('/api/v1/health', {
+      headers: { host: 'evil.rebind.example:24321' },
+    })
+    expect(forgedHost.status).toBe(403)
+
+    // text/plain 简单请求绕过 JSON Content-Type -> 400
+    const textPlain = await fetch(`${srv.baseUrl}/api/v1/artifacts`, {
       method: 'POST',
       headers: {
-        'content-type': 'application/json',
-        authorization: 'Bearer secret-tok',
+        'content-type': 'text/plain',
+        authorization: `Bearer ${srv.token}`,
       },
-      body: JSON.stringify({
-        slug: 'html/a',
-        title: 'A',
-        type: 'html',
-        source: '<p>a</p>',
-      }),
+      body: JSON.stringify({ slug: 'html/a', title: 'A', type: 'html', source: '<p>a</p>' }),
+    })
+    expect(textPlain.status).toBe(400)
+
+    // 合法令牌 + JSON -> 201
+    const ok = await fetch(`${srv.baseUrl}/api/v1/artifacts`, {
+      method: 'POST',
+      headers: authHeaders(srv.token),
+      body: JSON.stringify({ slug: 'html/a', title: 'A', type: 'html', source: '<p>a</p>' }),
     })
     expect(ok.status).toBe(201)
   })
 })
 
 describe('Static check gate & on-demand spec', () => {
-  it('detects duplicate blockIds, SVG scripts, and invalid JSON templates', async () => {
+  it('detects dynamic imports, duplicate blockIds, SVG scripts, invalid JSON, and allows @violetjs/inkline', async () => {
     const srv = await startNodeServer({ dbPath: 'memory', port: 0 })
     closers.push(srv.close)
 
+    // 动态 import 非白名单依赖与非常量表达式都必须拦截
+    const dynBad = await fetch(`${srv.baseUrl}/api/v1/artifacts/check`, {
+      method: 'POST',
+      headers: authHeaders(srv.token),
+      body: JSON.stringify({
+        type: 'react',
+        source: "export default () => { void import('node:fs'); return import(pkgName) }",
+      }),
+    })
+    const dynRes = (await dynBad.json()) as { ok: boolean; errors: Array<{ code: string }> }
+    expect(dynRes.ok).toBe(false)
+    expect(dynRes.errors.some((e) => e.code === 'DISALLOWED_IMPORT')).toBe(true)
+    expect(dynRes.errors.some((e) => e.code === 'DYNAMIC_IMPORT_DISALLOWED')).toBe(true)
+
+    // @violetjs/inkline 属于合法白名单依赖
+    const inkOk = await fetch(`${srv.baseUrl}/api/v1/artifacts/check`, {
+      method: 'POST',
+      headers: authHeaders(srv.token),
+      body: JSON.stringify({
+        type: 'react',
+        source:
+          "import { gpen } from '@violetjs/inkline'\nexport default () => String(Boolean(gpen))",
+      }),
+    })
+    const inkRes = (await inkOk.json()) as { ok: boolean; errors: unknown[] }
+    expect(inkRes.ok).toBe(true)
+
     const dupDoc = await fetch(`${srv.baseUrl}/api/v1/artifacts/check`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: authHeaders(srv.token),
       body: JSON.stringify({
         type: 'document',
         source: '<article>\n<p id="b1">one</p>\n<p id="b1">two</p>\n</article>',
@@ -215,7 +264,7 @@ describe('Static check gate & on-demand spec', () => {
 
     const badSvg = await fetch(`${srv.baseUrl}/api/v1/artifacts/check`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: authHeaders(srv.token),
       body: JSON.stringify({
         type: 'svg',
         source: '<svg><script>alert(1)</script></svg>',
@@ -227,7 +276,7 @@ describe('Static check gate & on-demand spec', () => {
 
     const badArtboard = await fetch(`${srv.baseUrl}/api/v1/artifacts/check`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: authHeaders(srv.token),
       body: JSON.stringify({
         type: 'artboard',
         source: JSON.stringify({ groups: [] }),
@@ -239,20 +288,54 @@ describe('Static check gate & on-demand spec', () => {
   })
 })
 
-describe('WebSocket realtime catch-up, resync, and long-poll await', () => {
-  it('replays missed events in order on reconnect via lastSeq and emits resync when window exceeded', async () => {
+describe('WebSocket realtime catch-up, project routing, resync, and long-poll await', () => {
+  it('routes artifact events to project-only subscribers, replays via lastSeq, and emits resync when window exceeded', async () => {
     const srv = await startNodeServer({ dbPath: 'memory', port: 0, maxEventHistory: 3 })
     closers.push(srv.close)
 
-    const { artifact } = await srv.service.publish({
-      slug: 'live-timeline/ws',
-      title: 'WS Demo',
-      type: 'live-timeline',
-      source: '{"steps":[]}',
-      author: 'agent:claude',
-    })
+    // 仅订阅 projectId，也必须收到该项目下 Artifact 的 version.created 与 state.patched
+    const wsProj = await connectWs(srv.wsUrl)
+    try {
+      const pongReady = new Promise<void>((resolve) => {
+        const onMsg = (raw: WebSocket.RawData) => {
+          const m = JSON.parse(String(raw)) as { type?: string }
+          if (m.type === 'pong') {
+            wsProj.off('message', onMsg)
+            resolve()
+          }
+        }
+        wsProj.on('message', onMsg)
+      })
+      wsProj.send(
+        JSON.stringify({
+          v: PROTOCOL_VERSION,
+          type: 'subscribe',
+          projectId: 'proj-stream',
+        }),
+      )
+      wsProj.send(JSON.stringify({ v: PROTOCOL_VERSION, type: 'ping' }))
+      await pongReady
 
-    // 首次连接并订阅
+      const projVersionPromise = waitForEvent(wsProj, (e) => e.type === 'version.created')
+      const published = await srv.service.publish({
+        projectId: 'proj-stream',
+        slug: 'live-timeline/ws',
+        title: 'WS Demo',
+        type: 'live-timeline',
+        source: '{"steps":[]}',
+        author: 'agent:claude',
+      })
+      const projVersionEv = await projVersionPromise
+      expect(projVersionEv.type === 'version.created' && projVersionEv.artifactId).toBe(
+        published.artifact.publicId,
+      )
+    } finally {
+      wsProj.close()
+    }
+
+    const artifact = await srv.service.resolveArtifact('live-timeline/ws', 'proj-stream')
+
+    // 首次按 artifact 订阅
     const ws1 = await connectWs(srv.wsUrl)
     const presencePromise = waitForEvent(ws1, (e) => e.type === 'presence.changed')
     ws1.send(
@@ -336,11 +419,10 @@ describe('WebSocket realtime catch-up, resync, and long-poll await', () => {
 
     const awaitPromise = fetch(`${srv.baseUrl}/api/v1/feedback/await`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: authHeaders(srv.token),
       body: JSON.stringify({ id: artifact.publicId, timeoutSec: 5 }),
     }).then((r) => r.json() as Promise<{ status: string; items: Array<{ body: string }> }>)
 
-    // 50ms 后在浏览器端提交批注，应立刻唤醒 long-poll
     setTimeout(() => {
       void srv.service.submitFeedback({
         id: artifact.publicId,

@@ -149,6 +149,10 @@ function parseCookies(header: string | undefined): Record<string, string> {
 }
 
 async function parseJsonBody<T>(req: Request, schema: z.ZodType<T>): Promise<T> {
+  const ct = req.headers.get('content-type')?.toLowerCase() ?? ''
+  if (!ct.includes('application/json')) {
+    throw new DomainError('BAD_REQUEST', 'Content-Type 必须为 application/json')
+  }
   let raw: unknown
   try {
     raw = await req.json()

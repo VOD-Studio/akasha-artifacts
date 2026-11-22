@@ -9,6 +9,7 @@ export const SANDBOX_DEPENDENCY_WHITELIST = [
   'shiki',
   'mermaid',
   'marked',
+  '@violetjs/inkline',
   '@akasha/kit',
 ] as const
 
@@ -85,7 +86,7 @@ const BUILTIN_SPECS: ArtifactSpecDefinition[] = [
   {
     type: 'mermaid',
     guide:
-      '纯 Mermaid 图表定义源码（flowchart / sequenceDiagram / stateDiagram-v2 / classDiagram / erDiagram）。',
+      '纯 Mermaid 图表定义源码（flowchart / sequenceDiagram / stateDiagram-v2 / classDiagram / erDiagram）；沙盒内置 @violetjs/inkline 可切换手绘矢量风格。',
     example: 'flowchart LR\n  Agent --> Daemon --> Browser',
   },
   {

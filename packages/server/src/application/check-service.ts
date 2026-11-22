@@ -2,7 +2,8 @@ import type { ArtifactType, CheckDiagnostic, CheckResult } from '@akasha/protoco
 import { SANDBOX_DEPENDENCY_WHITELIST, type SpecRegistry } from './spec-registry.js'
 
 const IMPORT_RE =
-  /(?:^|[\s;])(?:import\s+(?:type\s+)?(?:[\s\S]*?\s+from\s+)?|require\s*\(\s*)['"]([^'"]+)['"]/gm
+  /(?:^|[\s;])(?:import\s+(?:type\s+)?(?:[\s\S]*?\s+from\s+)?|require\s*\(\s*)['"]([^'"]+)['"]|\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/gm
+const NON_LITERAL_DYNAMIC_IMPORT_RE = /\bimport\s*\(\s*(?!['"`])/g
 const BLOCK_ID_RE = /\b(?:data-ak-block|id)\s*=\s*["']([^"']+)["']/g
 const EXTERNAL_URL_TAG_RE = /<(?:script|link)\b[^>]*\b(?:src|href)\s*=\s*["']https?:\/\//gi
 
@@ -84,7 +85,7 @@ export class CheckService {
     if (type === 'react') {
       const stripped = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
       for (const m of stripped.matchAll(IMPORT_RE)) {
-        const mod = m[1]
+        const mod = m[1] ?? m[2]
         if (!mod) continue
         if (!isWhitelisted(mod, whitelist)) {
           diagnostics.push({
@@ -95,6 +96,15 @@ export class CheckService {
             suggestion: `仅可使用白名单依赖：${whitelist.join(', ')}`,
           })
         }
+      }
+      for (const m of stripped.matchAll(NON_LITERAL_DYNAMIC_IMPORT_RE)) {
+        diagnostics.push({
+          severity: 'error',
+          code: 'DYNAMIC_IMPORT_DISALLOWED',
+          message: '沙盒禁止使用非常量表达式的动态 import()',
+          line: lineNumberAt(stripped, m.index ?? 0),
+          suggestion: '请改为静态 import 白名单依赖',
+        })
       }
       if (!/export\s+default\b/.test(stripped)) {
         diagnostics.push({
