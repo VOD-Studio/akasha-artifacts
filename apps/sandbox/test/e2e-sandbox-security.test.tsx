@@ -94,8 +94,10 @@ describe('沙盒端到端回归（100 次 StateStream 零重挂、热更新保�
         state: { count: 0 },
       })
     })
-    await waitFor(() => expect(screen.getByTestId('e2e-counter').textContent).toBe('count:0'))
-    expect(globalThis.__AK_E2E_MOUNT_COUNT__).toBe(1)
+    await waitFor(() => {
+      expect(screen.getByTestId('e2e-counter').textContent).toBe('count:0')
+      expect(globalThis.__AK_E2E_MOUNT_COUNT__).toBe(1)
+    })
 
     act(() => {
       for (let seq = 1; seq <= 100; seq++) {
