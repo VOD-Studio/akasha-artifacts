@@ -307,7 +307,7 @@ function mapVersion(row: VersionRow): Readonly<Version> {
 export class SqliteArtifactRepository implements ArtifactRepository {
   constructor(private readonly db: DatabaseSync) {}
 
-  async saveArtifact(artifact: Artifact): Promise<void> {
+  private upsertArtifactSync(artifact: Artifact): void {
     this.db
       .prepare(
         `INSERT INTO artifacts (public_id, project_id, slug, title, type, visibility, head_version, created_at, updated_at)
@@ -332,6 +332,37 @@ export class SqliteArtifactRepository implements ArtifactRepository {
         artifact.createdAt,
         artifact.updatedAt,
       )
+  }
+
+  private insertVersionSync(version: Readonly<Version>): void {
+    this.db
+      .prepare(
+        `INSERT INTO versions (artifact_id, version, parent_version, author, title, source, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        version.artifactId,
+        version.version,
+        version.parentVersion,
+        version.author,
+        version.title,
+        version.source,
+        version.createdAt,
+      )
+  }
+
+  // 在单个同步 SQLite 事务内原子写入版本与 Artifact 元数据，防止后续校验失败遗留孤儿版本。
+  saveArtifactWithVersionSync(artifact: Artifact, version?: Readonly<Version>): void {
+    runInTx(this.db, () => {
+      if (version) {
+        this.insertVersionSync(version)
+      }
+      this.upsertArtifactSync(artifact)
+    })
+  }
+
+  async saveArtifact(artifact: Artifact): Promise<void> {
+    this.upsertArtifactSync(artifact)
   }
 
   async findByPublicId(publicId: PublicId): Promise<Artifact | undefined> {
@@ -360,20 +391,7 @@ export class SqliteArtifactRepository implements ArtifactRepository {
   }
 
   async appendVersion(version: Readonly<Version>): Promise<void> {
-    this.db
-      .prepare(
-        `INSERT INTO versions (artifact_id, version, parent_version, author, title, source, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        version.artifactId,
-        version.version,
-        version.parentVersion,
-        version.author,
-        version.title,
-        version.source,
-        version.createdAt,
-      )
+    this.insertVersionSync(version)
   }
 
   async getVersions(artifactId: PublicId): Promise<readonly Readonly<Version>[]> {

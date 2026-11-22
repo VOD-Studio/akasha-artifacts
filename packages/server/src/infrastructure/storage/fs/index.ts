@@ -18,7 +18,7 @@ import type {
   RoundRepository,
   StateRepository,
 } from '../../../domain/ports.js'
-import { SqliteStorage } from '../sqlite/index.js'
+import { type SqliteArtifactRepository, SqliteStorage } from '../sqlite/index.js'
 
 export const STATE_DIR_NAME = '.state'
 export const ARTIFACT_ID_FILENAME = '.artifact-id'
@@ -178,11 +178,13 @@ function writeFileAtomic(filePath: string, content: string): void {
 export class FsArtifactRepository implements ArtifactRepository {
   // 记录服务端最近一次落盘的源码内容，供文件监听器识别并跳过自写回环
   private readonly lastWrittenContent = new Map<string, string>()
+  // 暂存 v2+ 待提交版本：先经 saveArtifact 完成项目归属与物理目录碰撞校验，再与元数据在单事务内原子提交，防止校验拒绝后遗留孤儿版本
+  private readonly pendingVersions = new Map<PublicId, Readonly<Version>>()
 
   constructor(
     private readonly artifactsRoot: string,
     private readonly projectId: string,
-    private readonly inner: ArtifactRepository,
+    private readonly inner: SqliteArtifactRepository,
   ) {}
 
   private assertOwnedProject(projectId: string): void {
@@ -330,12 +332,24 @@ export class FsArtifactRepository implements ArtifactRepository {
   }
 
   async saveArtifact(artifact: Artifact): Promise<void> {
+    const staged = this.pendingVersions.get(artifact.publicId)
+    this.pendingVersions.delete(artifact.publicId)
+    const stagedForHead = staged && staged.version === artifact.headVersion ? staged : undefined
+
     this.assertOwnedProject(artifact.projectId)
-    const layout = resolveArtifactFileLayout(this.artifactsRoot, artifact.type, artifact.slug)
+    const layout = resolveArtifactFileLayout(
+      this.artifactsRoot,
+      artifact.type,
+      artifact.slug,
+      stagedForHead?.source,
+    )
     await this.assertNoPhysicalDirCollision(artifact, layout)
     const previous = await this.inner.findByPublicId(artifact.publicId)
-    await this.inner.saveArtifact(artifact)
-    const headVer = await this.inner.getVersion(artifact.publicId, artifact.headVersion)
+
+    this.inner.saveArtifactWithVersionSync(artifact, stagedForHead)
+
+    const headVer =
+      stagedForHead ?? (await this.inner.getVersion(artifact.publicId, artifact.headVersion))
     if (!headVer) return
     const written = this.syncToDisk(artifact, headVer.source)
     if (previous) {
@@ -359,11 +373,16 @@ export class FsArtifactRepository implements ArtifactRepository {
     const artifact = await this.inner.findByPublicId(version.artifactId)
     if (artifact) {
       this.assertOwnedProject(artifact.projectId)
+      // v2+ 更新：先暂存版本，等待随后的 saveArtifact 使用更新后的 type/slug 校验并原子提交；
+      // 若目录碰撞或校验失败，versions 表不会残留孤儿行阻塞后续写入。
+      if (version.version > artifact.headVersion) {
+        this.pendingVersions.set(artifact.publicId, version)
+        return
+      }
       resolveArtifactFileLayout(this.artifactsRoot, artifact.type, artifact.slug, version.source)
     }
     await this.inner.appendVersion(version)
-    // 仅在新建 v1（saveArtifact 先于 appendVersion，此时 version === headVersion）时由此处落盘；
-    // v2+ 更新会在随后的 saveArtifact(updated) 使用新元数据落盘并清理旧类型目录，避免把新源码错写入旧类型目录。
+    // 新建 v1（saveArtifact 先于 appendVersion，此时 version === headVersion）立即落盘原生文件
     if (artifact && version.version === artifact.headVersion) {
       this.syncToDisk(artifact, version.source)
     }
@@ -380,6 +399,8 @@ export class FsArtifactRepository implements ArtifactRepository {
 
 export interface FsArtifactsStorageOptions {
   artifactsRoot: string
+  // 该存储绑定的业务项目根目录（独立于 artifactsRoot，兼容 --artifacts-dir 指向子目录或外部缓存路径）
+  projectRoot?: string
   // 绑定当前 .artifacts/ 根目录的项目 ID；缺省时沿用已登记的同根目录项目或回退为 'default'
   projectId?: string
 }
@@ -389,6 +410,7 @@ export interface FsArtifactsStorageOptions {
 // - 评论、轮次、回执、状态流与版本索引由服务端独占存放在 .artifacts/.state/state.db，彻底避免与源码编辑冲突。
 export class FsArtifactsStorage {
   readonly artifactsRoot: string
+  readonly projectRoot: string
   readonly projectId: string
   readonly stateDir: string
   readonly stateDbPath: string
@@ -402,23 +424,23 @@ export class FsArtifactsStorage {
 
   constructor(options: FsArtifactsStorageOptions) {
     this.artifactsRoot = path.resolve(options.artifactsRoot)
+    this.projectRoot = path.resolve(options.projectRoot ?? path.dirname(this.artifactsRoot))
     this.stateDir = path.join(this.artifactsRoot, STATE_DIR_NAME)
     this.stateDbPath = path.join(this.stateDir, 'state.db')
 
     fs.mkdirSync(this.stateDir, { recursive: true })
     this.sqlite = new SqliteStorage(this.stateDbPath)
 
-    const projectRoot = path.dirname(this.artifactsRoot)
     let resolvedProjectId = options.projectId
     if (!resolvedProjectId) {
       const existingRow = this.sqlite.db
         .prepare('SELECT id FROM projects WHERE root_path = ?')
-        .get(projectRoot) as { id: string } | undefined
+        .get(this.projectRoot) as { id: string } | undefined
       resolvedProjectId = existingRow?.id ?? 'default'
     }
     this.projectId = resolvedProjectId
 
-    // 登记当前 .artifacts/ 所属项目根目录，使宿主从同目录调用 POST /api/v1/projects 时自动复用该 projectId
+    // 登记实际业务项目根目录（而非简单取 artifactsRoot 父目录），使 --artifacts-dir 位于嵌套/外部目录时宿主按 projectDir 登记仍命中同一 projectId
     this.sqlite.db
       .prepare(
         `INSERT OR IGNORE INTO projects (id, root_path, name, last_active_at)
@@ -426,8 +448,8 @@ export class FsArtifactsStorage {
       )
       .run(
         this.projectId,
-        projectRoot,
-        path.basename(projectRoot) || this.projectId,
+        this.projectRoot,
+        path.basename(this.projectRoot) || this.projectId,
         new Date().toISOString(),
       )
 

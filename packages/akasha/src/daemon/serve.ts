@@ -51,6 +51,7 @@ export interface StartDaemonOptions {
   dbPath?: string
   storageMode?: 'sqlite' | 'fs'
   artifactsDir?: string
+  projectRoot?: string
   version?: string
   webDir?: string
   sandboxDir?: string
@@ -104,6 +105,8 @@ export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
       dbPath,
       storageMode: options.storageMode,
       artifactsDir: options.artifactsDir,
+      fsProjectRoot:
+        options.projectRoot ?? (options.storageMode === 'fs' ? process.cwd() : undefined),
       version,
       onShutdown: () => {
         void closeAll?.()

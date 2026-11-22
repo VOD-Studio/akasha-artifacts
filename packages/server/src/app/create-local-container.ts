@@ -28,8 +28,9 @@ export interface LocalContainerOptions {
   storageMode?: 'sqlite' | 'fs'
   // fs 模式下 .artifacts/ 目录路径（默认 <cwd>/.artifacts）
   artifactsDir?: string
-  // fs 模式下关联的项目 ID 与项目根路径
+  // fs 模式下关联的项目 ID 与项目根路径（独立于 artifactsDir，兼容嵌套或外部产物目录）
   fsProjectId?: string
+  fsProjectRoot?: string
   fsWatchDebounceMs?: number
   // 'memory' 走内存适配器；其它路径（含 ':memory:'）走 node:sqlite 适配器
   dbPath?: string
@@ -74,6 +75,7 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
           artifactsRoot: path.resolve(
             options.artifactsDir ?? path.join(process.cwd(), '.artifacts'),
           ),
+          projectRoot: options.fsProjectRoot,
           projectId: options.fsProjectId,
         })
       : undefined

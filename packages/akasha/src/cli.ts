@@ -160,6 +160,7 @@ export async function runCli(argv: string[]): Promise<number> {
         dbPath: strFlag('db'),
         storageMode: rawStorage as 'sqlite' | 'fs' | undefined,
         artifactsDir: strFlag('artifacts-dir'),
+        projectRoot: strFlag('project-dir') ?? (rawStorage === 'fs' ? process.cwd() : undefined),
         idleTimeoutSec: numFlag('idle-timeout'),
       })
       console.log(`Akasha Daemon v${daemon.state.version} 已启动`)

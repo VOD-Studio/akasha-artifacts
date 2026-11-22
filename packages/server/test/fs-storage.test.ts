@@ -486,4 +486,104 @@ describe('.artifacts/ 原生文件存储适配器与外部编辑监听', () => {
     expect(afterRestart.artifact.headVersion).toBe(2)
     expect(afterRestart.version.source).toBe('<section>v2 html</section>')
   })
+
+  it('类型迁移命中物理目录碰撞被拒时，不残留孤儿版本且后续合法更新仍可继续推进', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-orphan-rollback-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    const container = createLocalContainer({
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_tx',
+    })
+    closers.push(container.close)
+    await container.ready
+
+    const reactCard = await container.service.publish({
+      projectId: 'proj_tx',
+      slug: 'card',
+      title: 'React Card',
+      type: 'react',
+      source: 'export default function App() { return <div>react v1</div> }',
+      author: 'agent:cli',
+    })
+    await container.service.publish({
+      projectId: 'proj_tx',
+      slug: 'html/card',
+      title: 'HTML Card',
+      type: 'html',
+      source: '<div>existing html</div>',
+      author: 'agent:cli',
+    })
+
+    // 尝试将 react 'card' 变更为 html（会与 'html/card' 物理目录碰撞）必须失败
+    await expect(
+      container.service.publish({
+        projectId: 'proj_tx',
+        slug: 'card',
+        title: 'Collision Attempt',
+        type: 'html',
+        source: '<div>conflict</div>',
+        baseVersion: 1,
+        author: 'agent:cli',
+      }),
+    ).rejects.toThrow(/物理目录 "html\/card" 已被 Artifact/)
+
+    // versions 表中绝不能残留孤儿 v2，后续合法更新到 v2 必须正常成功
+    const versionsAfterReject = await container.repositories.artifacts.getVersions(
+      reactCard.artifact.publicId,
+    )
+    expect(versionsAfterReject.map((v) => v.version)).toEqual([1])
+
+    const validV2 = await container.service.publish({
+      projectId: 'proj_tx',
+      slug: 'card',
+      title: 'React Card v2',
+      type: 'react',
+      source: 'export default function App() { return <div>react v2 ok</div> }',
+      baseVersion: 1,
+      author: 'agent:cli',
+    })
+    expect(validV2.artifact.headVersion).toBe(2)
+    expect(validV2.version.version).toBe(2)
+  })
+
+  it('当 artifactsDir 位于嵌套或外部目录时，按独立 fsProjectRoot 登记所属项目，确保宿主按仓库根目录登记后可正常发布', async () => {
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-nested-repo-'))
+    const nestedArtifactsDir = path.join(repoRoot, '.cache', 'artifacts')
+    tempDirs.push(repoRoot)
+
+    const container = createLocalContainer({
+      storageMode: 'fs',
+      artifactsDir: nestedArtifactsDir,
+      fsProjectRoot: repoRoot,
+    })
+    closers.push(container.close)
+    await container.ready
+
+    // 模拟 MCP 启动时以实际仓库根 repoRoot 调用项目登记（POST /api/v1/projects）
+    const registered = await container.repositories.projects.upsert({
+      id: 'proj_mcp_generated',
+      rootPath: repoRoot,
+      name: path.basename(repoRoot),
+      lastActiveAt: new Date().toISOString(),
+    })
+
+    // 必须命中与 FsArtifactsStorage 绑定的同一 projectId，而非被拆分为新项目导致写入被拒
+    expect(registered.id).toBe(container.fsStorage?.projectId)
+
+    const pub = await container.service.publish({
+      projectId: registered.id,
+      slug: 'html/nested-ok',
+      title: 'Nested OK',
+      type: 'html',
+      source: '<div>works in nested dir</div>',
+      author: 'agent:mcp',
+    })
+    expect(pub.artifact.headVersion).toBe(1)
+    expect(fs.existsSync(path.join(nestedArtifactsDir, 'html', 'nested-ok', 'index.html'))).toBe(
+      true,
+    )
+  })
 })
