@@ -209,6 +209,30 @@ describe('apps/sandbox 运行时与安全边界', () => {
     expect(globalThis.__AK_TEST_MOUNT_COUNT__).toBe(1)
   })
 
+  it('支持同行分号分隔的连续 import 及全量白名单模块（含 recharts 与 shiki）', async () => {
+    const { bridge, dispatchFromHost, nonce } = createMockBridgeHarness()
+    const stateStore = new ArtifactStateStore()
+    const preserved = new PreservedStateManager({ debounceMs: 0 })
+
+    const oneLineImportsSource = `import React from 'react'; import { useState } from 'react'; import { LineChart } from 'recharts'; import { createHighlighter } from 'shiki'; export default function MultiImport() { const [ok] = useState(Boolean(React && LineChart && createHighlighter)); return <div data-testid="multi-import-ok">{ok ? 'all-loaded' : 'missing'}</div> }`
+
+    render(<SandboxApp bridge={bridge} stateStore={stateStore} preserved={preserved} />)
+    act(() => {
+      dispatchFromHost({
+        v: PROTOCOL_VERSION,
+        nonce,
+        type: 'render',
+        artifactType: 'react',
+        version: 1,
+        source: oneLineImportsSource,
+        state: {},
+      })
+    })
+    await waitFor(() =>
+      expect(screen.getByTestId('multi-import-ok').textContent).toBe('all-loaded'),
+    )
+  })
+
   it('热更新重绘后保留 data-ak-persist 与 usePersistentControl 用户调参值', async () => {
     const { bridge, posted, dispatchFromHost, nonce } = createMockBridgeHarness()
     const stateStore = new ArtifactStateStore()

@@ -38,6 +38,10 @@ export function ArtifactWorkspace({
   const hostRef = useRef<SandboxBridgeHost | null>(null)
   const stateRef = useRef(state.snapshot)
   stateRef.current = state.snapshot
+  const stateSeqRef = useRef(state.seq)
+  stateSeqRef.current = state.seq
+  const lastSyncedStateSeqRef = useRef<number>(-1)
+  const lastRenderedKeyRef = useRef<string>('')
 
   const nonce = useMemo(() => {
     void artifact.publicId
@@ -60,6 +64,8 @@ export function ArtifactWorkspace({
       getIframeWindow: () => iframeRef.current?.contentWindow ?? null,
     })
     hostRef.current = host
+    lastSyncedStateSeqRef.current = -1
+    lastRenderedKeyRef.current = ''
 
     const off = host.onMessage((msg) => {
       if (msg.type === 'viewState.snapshot') {
@@ -78,6 +84,9 @@ export function ArtifactWorkspace({
 
     host.start()
     onRegisterStateForwarder?.((seq, ops) => {
+      if (seq > lastSyncedStateSeqRef.current) {
+        lastSyncedStateSeqRef.current = seq
+      }
       host.send({ type: 'state', seq, ops })
     })
 
@@ -109,7 +118,24 @@ export function ArtifactWorkspace({
       state: stateRef.current,
       ...(preservedState ? { preservedState } : {}),
     })
+    lastSyncedStateSeqRef.current = stateSeqRef.current
+    lastRenderedKeyRef.current = `${artifact.publicId}:${version.version}`
   }, [artifact.publicId, artifact.type, version.version, version.source])
+
+  // 当 WS 断线 resync 刷新了服务端状态快照但源码版本未变时，仅以根路径 RFC 6902 replace 同步最新状态，
+  // 确保不重挂载组件且后续增量补丁的父路径保持一致。
+  useEffect(() => {
+    const host = hostRef.current
+    if (!host) return
+    if (lastRenderedKeyRef.current !== `${artifact.publicId}:${version.version}`) return
+    if (state.seq <= lastSyncedStateSeqRef.current || state.seq < 1) return
+    lastSyncedStateSeqRef.current = state.seq
+    host.send({
+      type: 'state',
+      seq: state.seq,
+      ops: [{ op: 'replace', path: '', value: state.snapshot }],
+    })
+  }, [artifact.publicId, version.version, state.seq, state.snapshot])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-canvas">

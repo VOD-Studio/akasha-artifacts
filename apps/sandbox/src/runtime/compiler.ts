@@ -13,8 +13,10 @@ export class ArtifactCompileError extends Error {
   }
 }
 
-const STATIC_IMPORT_RE = /(?:^|;)[ \t]*import\s+(?:([\s\S]*?)\s+from\s+)?['"]([^'"]+)['"][ \t]*;?/gm
-const REEXPORT_FROM_RE = /(?:^|;)[ \t]*export\s+(?:\*|\{[\s\S]*?\})\s+from\s+['"]([^'"]+)['"]/gm
+// 使用非消耗式后行断言 (?<=;) 保留同行连续分号分隔的 import 边界，避免吞掉下一条 import 的前置分隔符。
+const STATIC_IMPORT_RE = /(?:^|(?<=;))[ \t]*import\s+(?:([\s\S]*?)\s+from\s+)?['"]([^'"]+)['"]/gm
+const REEXPORT_FROM_RE =
+  /(?:^|(?<=;))[ \t]*export\s+(?:\*|\{[\s\S]*?\})\s+from\s+['"]([^'"]+)['"]/gm
 const DYNAMIC_IMPORT_RE = /\bimport\s*\(/g
 
 function lineNumberAt(text: string, offset: number): number {
@@ -64,8 +66,7 @@ export function rewriteWhitelistedImports(code: string): string {
   let modIndex = 0
   return code.replace(
     STATIC_IMPORT_RE,
-    (full, rawClause: string | undefined, spec: string, offset: number) => {
-      const prefix = full.trimStart().startsWith(';') ? ';\n' : ''
+    (_full, rawClause: string | undefined, spec: string, offset: number) => {
       if (!isWhitelistedModule(spec)) {
         const line = lineNumberAt(code, offset)
         throw new ArtifactCompileError(`依赖 "${spec}" 不在沙盒预置白名单内`, `${line}:1`)
@@ -73,13 +74,11 @@ export function rewriteWhitelistedImports(code: string): string {
 
       const clause = rawClause?.trim()
       if (!clause) {
-        return `${prefix}/* whitelisted side-effect import: ${spec} */`
+        return `/* whitelisted side-effect import: ${spec} */`
       }
 
       const modVar = `__ak_mod_${modIndex++}`
-      const lines = [
-        `${prefix}const ${modVar} = globalThis.__AKASHA_MODULES__[${JSON.stringify(spec)}];`,
-      ]
+      const lines = [`const ${modVar} = globalThis.__AKASHA_MODULES__[${JSON.stringify(spec)}];`]
 
       // import * as Foo from 'pkg'
       const nsMatch = /^\*\s+as\s+(\w+)$/.exec(clause)

@@ -342,6 +342,33 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     expect((screen.getByLabelText('未提交批注草稿') as HTMLInputElement).value).toBe(
       '请把按钮改成次要描边样式',
     )
+
+    // 模拟 WS 断线 resync 后重新拉取到更新后的状态快照（版本与源码不变，仅 state.seq 增长）
+    const renderCountBeforeResync = posted.filter((m) => m.type === 'render').length
+    const resyncedDetail: ArtifactDetailResponse = {
+      ...(updatedDetail as ArtifactDetailResponse),
+      state: {
+        artifactId: SAMPLE_ARTIFACT.publicId,
+        seq: 12,
+        snapshot: { step: 12, done: true },
+        updatedAt: '2026-11-22T09:10:00.000Z',
+      },
+    }
+    rerender(
+      <ArtifactWorkspace
+        detail={resyncedDetail}
+        versions={[SAMPLE_V1, SAMPLE_V2]}
+        sandboxOrigin="http://127.0.0.1:24331"
+      />,
+    )
+    // 不应重发 render 触发重挂载，而应以 state 根路径 replace 同步最新快照
+    expect(posted.filter((m) => m.type === 'render')).toHaveLength(renderCountBeforeResync)
+    const syncStateMsg = posted.find((m) => m.type === 'state' && m.seq === 12)
+    expect(syncStateMsg).toMatchObject({
+      type: 'state',
+      seq: 12,
+      ops: [{ op: 'replace', path: '', value: { step: 12, done: true } }],
+    })
   })
 
   it('LibraryShell 支持多项目切换、休眠项目折叠，VersionDiffView 准确展示行级差异', () => {

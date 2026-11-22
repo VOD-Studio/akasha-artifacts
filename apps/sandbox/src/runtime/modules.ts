@@ -7,6 +7,8 @@ import mermaid from 'mermaid'
 import * as React from 'react'
 import * as ReactJsxRuntime from 'react/jsx-runtime'
 import * as ReactDom from 'react-dom'
+import * as Recharts from 'recharts'
+import * as Shiki from 'shiki'
 import { usePersistentControl as usePersistentControlHook } from '../state/preserve'
 import { useArtifactState as useArtifactStateHook } from '../state/store'
 
@@ -15,12 +17,14 @@ const AkashaRuntime = {
   usePersistentControl: usePersistentControlHook,
 }
 
-// 沙盒预打包白名单模块表：所有 Artifact 代码在运行时从此表解析依赖，彻底离线不请求外部 CDN。
+// 沙盒预打包白名单模块表：与服务端 SpecRegistry 宣称的依赖白名单完全一致，彻底离线不请求外部 CDN。
 export const SANDBOX_MODULES: Record<string, unknown> = {
   react: { ...React, default: React },
   'react-dom': { ...ReactDom, default: ReactDom },
   'react/jsx-runtime': ReactJsxRuntime,
   'lucide-react': LucideReact,
+  recharts: Recharts,
+  shiki: Shiki,
   marked: Marked,
   mermaid: { default: mermaid, mermaid },
   '@violetjs/inkline': Inkline,
