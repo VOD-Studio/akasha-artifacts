@@ -64,7 +64,65 @@ export interface ArtifactFileLayout {
   normalizedRelativeDir: string
 }
 
-// 解析 Artifact 在 .artifacts/<type>/<slug>/ 下的安全物理路径，严防路径穿越越界。
+function resolveRealPathAllowMissing(targetPath: string): string {
+  const abs = path.resolve(targetPath)
+  const tail: string[] = []
+  let cur = abs
+  while (!fs.existsSync(cur)) {
+    const parent = path.dirname(cur)
+    if (parent === cur) break
+    tail.unshift(path.basename(cur))
+    cur = parent
+  }
+  const realBase = fs.existsSync(cur) ? fs.realpathSync(cur) : cur
+  return tail.length > 0 ? path.join(realBase, ...tail) : realBase
+}
+
+// 校验目标路径及其每一级已存在祖先（含符号链接与悬空链接）均严格落在 artifactsRoot 真实路径内部，防止通过 symlink 越界读写。
+export function assertRealPathInsideRoot(artifactsRoot: string, targetPath: string): void {
+  const lexicalRoot = path.resolve(artifactsRoot)
+  const lexicalTarget = path.resolve(targetPath)
+  if (lexicalTarget !== lexicalRoot && !lexicalTarget.startsWith(`${lexicalRoot}${path.sep}`)) {
+    throw new DomainError('BAD_REQUEST', `Artifact 路径越界 "${targetPath}"`)
+  }
+
+  const realRoot = resolveRealPathAllowMissing(lexicalRoot)
+  const rel = path.relative(lexicalRoot, lexicalTarget)
+  if (!rel) return
+
+  let cur = lexicalRoot
+  for (const seg of rel.split(path.sep).filter(Boolean)) {
+    cur = path.join(cur, seg)
+    let lstat: fs.Stats | undefined
+    try {
+      lstat = fs.lstatSync(cur)
+    } catch {
+      // 该层及更深目录尚未创建，已到达最深已存在祖先
+      break
+    }
+    if (lstat.isSymbolicLink()) {
+      let realCur: string
+      try {
+        realCur = fs.realpathSync(cur)
+      } catch {
+        throw new DomainError('BAD_REQUEST', `检测到悬空符号链接路径 "${rel}"，拒绝越界访问`)
+      }
+      if (realCur !== realRoot && !realCur.startsWith(`${realRoot}${path.sep}`)) {
+        throw new DomainError(
+          'BAD_REQUEST',
+          `符号链接路径 "${rel}" 指向 .artifacts 目录之外，已拒绝`,
+        )
+      }
+    }
+  }
+
+  const realTarget = resolveRealPathAllowMissing(lexicalTarget)
+  if (realTarget !== realRoot && !realTarget.startsWith(`${realRoot}${path.sep}`)) {
+    throw new DomainError('BAD_REQUEST', `Artifact 真实路径越界 "${rel}"`)
+  }
+}
+
+// 解析 Artifact 在 .artifacts/<type>/<slug>/ 下的安全物理路径，严防路径穿越与符号链接越界。
 export function resolveArtifactFileLayout(
   artifactsRoot: string,
   type: ArtifactType,
@@ -91,10 +149,16 @@ export function resolveArtifactFileLayout(
   }
 
   const entryName = entryFilenameForType(type, source)
+  const entryFile = path.join(artifactDir, entryName)
+  const idFile = path.join(artifactDir, ARTIFACT_ID_FILENAME)
+  assertRealPathInsideRoot(root, artifactDir)
+  assertRealPathInsideRoot(root, entryFile)
+  assertRealPathInsideRoot(root, idFile)
+
   return {
     artifactDir,
-    entryFile: path.join(artifactDir, entryName),
-    idFile: path.join(artifactDir, ARTIFACT_ID_FILENAME),
+    entryFile,
+    idFile,
     normalizedRelativeDir: relDir,
   }
 }
@@ -116,6 +180,11 @@ export function parseArtifactPathFromFs(
   const root = path.resolve(artifactsRoot)
   const target = path.resolve(absoluteFilePath)
   if (!target.startsWith(`${root}${path.sep}`)) return null
+  try {
+    assertRealPathInsideRoot(root, target)
+  } catch {
+    return null
+  }
 
   const rel = path.relative(root, target)
   const segments = rel.split(path.sep).filter(Boolean)
@@ -180,6 +249,8 @@ export class FsArtifactRepository implements ArtifactRepository {
   private readonly lastWrittenContent = new Map<string, string>()
   // 暂存 v2+ 待提交版本：先经 saveArtifact 完成项目归属与物理目录碰撞校验，再与元数据在单事务内原子提交，防止校验拒绝后遗留孤儿版本
   private readonly pendingVersions = new Map<PublicId, Readonly<Version>>()
+  // 同步记录已被占用的规范物理目录（防止并发首次发布 card 与 html/card 同时通过校验并互相覆写）
+  private readonly reservedDirs = new Map<string, PublicId>()
 
   constructor(
     private readonly artifactsRoot: string,
@@ -197,10 +268,47 @@ export class FsArtifactRepository implements ArtifactRepository {
     }
   }
 
-  private async assertNoPhysicalDirCollision(
-    artifact: Artifact,
-    layout: ArtifactFileLayout,
-  ): Promise<void> {
+  // 全同步完成物理目录占用与并发占位校验（中间无 await 间隙），彻底消除别名 slug 并发首次发布竞态。
+  private assertNoPhysicalDirCollisionSync(artifact: Artifact, layout: ArtifactFileLayout): void {
+    const targetDir = path.resolve(layout.artifactDir)
+    const reservedOwner = this.reservedDirs.get(targetDir)
+    if (reservedOwner && reservedOwner !== artifact.publicId) {
+      const existingReserved = this.inner.findByPublicIdSync(reservedOwner)
+      if (
+        !existingReserved ||
+        path.resolve(
+          resolveArtifactFileLayout(
+            this.artifactsRoot,
+            existingReserved.type,
+            existingReserved.slug,
+          ).artifactDir,
+        ) === targetDir
+      ) {
+        throw new DomainError(
+          'BAD_REQUEST',
+          `物理目录 "${layout.normalizedRelativeDir}" 已被 Artifact "${reservedOwner}" 占用，请使用不同的 slug`,
+          { conflictingPublicId: reservedOwner },
+        )
+      }
+      this.reservedDirs.delete(targetDir)
+    }
+
+    for (const existing of this.inner.listByProjectSync(this.projectId)) {
+      if (existing.publicId === artifact.publicId) continue
+      const existingLayout = resolveArtifactFileLayout(
+        this.artifactsRoot,
+        existing.type,
+        existing.slug,
+      )
+      if (path.resolve(existingLayout.artifactDir) === targetDir) {
+        throw new DomainError(
+          'BAD_REQUEST',
+          `物理目录 "${layout.normalizedRelativeDir}" 已被 Artifact "${existing.publicId}"（slug: "${existing.slug}"）占用，请使用不同的 slug`,
+          { conflictingPublicId: existing.publicId, conflictingSlug: existing.slug },
+        )
+      }
+    }
+
     if (!fs.existsSync(layout.idFile)) return
     let rawId: string
     try {
@@ -211,10 +319,10 @@ export class FsArtifactRepository implements ArtifactRepository {
     const parsedId = PublicIdSchema.safeParse(rawId)
     if (!parsedId.success || parsedId.data === artifact.publicId) return
 
-    const owner = await this.inner.findByPublicId(parsedId.data)
+    const owner = this.inner.findByPublicIdSync(parsedId.data)
     if (!owner) return
     const ownerLayout = resolveArtifactFileLayout(this.artifactsRoot, owner.type, owner.slug)
-    if (path.resolve(ownerLayout.artifactDir) === path.resolve(layout.artifactDir)) {
+    if (path.resolve(ownerLayout.artifactDir) === targetDir) {
       throw new DomainError(
         'BAD_REQUEST',
         `物理目录 "${layout.normalizedRelativeDir}" 已被 Artifact "${owner.publicId}"（slug: "${owner.slug}"）占用，请使用不同的 slug`,
@@ -243,7 +351,11 @@ export class FsArtifactRepository implements ArtifactRepository {
     const prevLayout = resolveArtifactFileLayout(this.artifactsRoot, previous.type, previous.slug)
     const prevDir = path.resolve(prevLayout.artifactDir)
     if (prevDir === path.resolve(nextArtifactDir)) return
+    if (this.reservedDirs.get(prevDir) === previous.publicId) {
+      this.reservedDirs.delete(prevDir)
+    }
     if (!fs.existsSync(prevDir)) return
+    assertRealPathInsideRoot(this.artifactsRoot, prevDir)
 
     // 仅清理属于当前 Artifact 的 .artifact-id 与对应类型的规范入口文件，不误删无关用户文件
     if (fs.existsSync(prevLayout.idFile)) {
@@ -320,6 +432,10 @@ export class FsArtifactRepository implements ArtifactRepository {
       }
     }
 
+    assertRealPathInsideRoot(this.artifactsRoot, layout.artifactDir)
+    assertRealPathInsideRoot(this.artifactsRoot, entryFile)
+    assertRealPathInsideRoot(this.artifactsRoot, layout.idFile)
+
     this.lastWrittenContent.set(path.resolve(entryFile), source)
     writeFileAtomic(entryFile, source)
 
@@ -343,10 +459,20 @@ export class FsArtifactRepository implements ArtifactRepository {
       artifact.slug,
       stagedForHead?.source,
     )
-    await this.assertNoPhysicalDirCollision(artifact, layout)
-    const previous = await this.inner.findByPublicId(artifact.publicId)
+    // 以下校验、占位与 SQLite 原子提交全同步执行，避免并发别名 slug 同时通过检查后互相覆盖
+    this.assertNoPhysicalDirCollisionSync(artifact, layout)
+    const previous = this.inner.findByPublicIdSync(artifact.publicId)
+    const targetDir = path.resolve(layout.artifactDir)
+    this.reservedDirs.set(targetDir, artifact.publicId)
 
-    this.inner.saveArtifactWithVersionSync(artifact, stagedForHead)
+    try {
+      this.inner.saveArtifactWithVersionSync(artifact, stagedForHead)
+    } catch (err) {
+      if (!previous) {
+        this.reservedDirs.delete(targetDir)
+      }
+      throw err
+    }
 
     const headVer =
       stagedForHead ?? (await this.inner.getVersion(artifact.publicId, artifact.headVersion))

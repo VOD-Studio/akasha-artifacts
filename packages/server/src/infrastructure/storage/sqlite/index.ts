@@ -380,6 +380,10 @@ export class SqliteArtifactRepository implements ArtifactRepository {
   }
 
   async listByProject(projectId?: string): Promise<readonly Artifact[]> {
+    return this.listByProjectSync(projectId)
+  }
+
+  listByProjectSync(projectId?: string): readonly Artifact[] {
     const rows = projectId
       ? (this.db
           .prepare('SELECT * FROM artifacts WHERE project_id = ? ORDER BY updated_at DESC')
@@ -388,6 +392,13 @@ export class SqliteArtifactRepository implements ArtifactRepository {
           .prepare('SELECT * FROM artifacts ORDER BY updated_at DESC')
           .all() as unknown as ArtifactRow[])
     return rows.map(mapArtifact)
+  }
+
+  findByPublicIdSync(publicId: PublicId): Artifact | undefined {
+    const row = this.db.prepare('SELECT * FROM artifacts WHERE public_id = ?').get(publicId) as
+      | ArtifactRow
+      | undefined
+    return row ? mapArtifact(row) : undefined
   }
 
   async appendVersion(version: Readonly<Version>): Promise<void> {

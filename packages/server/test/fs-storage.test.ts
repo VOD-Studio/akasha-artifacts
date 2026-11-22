@@ -586,4 +586,85 @@ describe('.artifacts/ 原生文件存储适配器与外部编辑监听', () => {
       true,
     )
   })
+
+  it('并发首次发布别名 slug（card 与 html/card）时按物理目录互斥，仅允许一个成功且不互相覆写', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-race-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    const container = createLocalContainer({
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_race',
+    })
+    closers.push(container.close)
+    await container.ready
+
+    const settled = await Promise.allSettled([
+      container.service.publish({
+        projectId: 'proj_race',
+        slug: 'card',
+        title: 'Short Card',
+        type: 'html',
+        source: '<div>from short slug</div>',
+        author: 'agent:1',
+      }),
+      container.service.publish({
+        projectId: 'proj_race',
+        slug: 'html/card',
+        title: 'Prefixed Card',
+        type: 'html',
+        source: '<div>from prefixed slug</div>',
+        author: 'agent:2',
+      }),
+    ])
+
+    const fulfilled = settled.filter((r) => r.status === 'fulfilled')
+    const rejected = settled.filter((r) => r.status === 'rejected')
+    expect(fulfilled).toHaveLength(1)
+    expect(rejected).toHaveLength(1)
+    expect(String(rejected[0]?.reason)).toMatch(/物理目录 "html\/card" 已被 Artifact/)
+
+    const winner = fulfilled[0]?.value
+    expect(winner).toBeDefined()
+    const allInDb = await container.repositories.artifacts.listByProject('proj_race')
+    expect(allInDb).toHaveLength(1)
+    expect(allInDb[0]?.publicId).toBe(winner?.artifact.publicId)
+    expect(
+      fs.readFileSync(path.join(artifactsDir, 'html', 'card', ARTIFACT_ID_FILENAME), 'utf8').trim(),
+    ).toBe(winner?.artifact.publicId)
+  })
+
+  it('拒绝通过目录符号链接向 .artifacts 之外越界落盘', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-symlink-'))
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-outside-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot, outsideDir)
+
+    fs.mkdirSync(path.join(artifactsDir, 'html'), { recursive: true })
+    fs.symlinkSync(outsideDir, path.join(artifactsDir, 'html', 'escape-link'), 'dir')
+
+    const container = createLocalContainer({
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_sym',
+    })
+    closers.push(container.close)
+    await container.ready
+
+    await expect(
+      container.service.publish({
+        projectId: 'proj_sym',
+        slug: 'escape-link',
+        title: 'Escape Attempt',
+        type: 'html',
+        source: '<div>should never escape</div>',
+        author: 'agent:cli',
+      }),
+    ).rejects.toThrow(/符号链接路径|越界/)
+
+    // 外部目录绝不能写入任何文件，state.db 也不应产生记录
+    expect(fs.readdirSync(outsideDir)).toEqual([])
+    expect(await container.repositories.artifacts.listByProject('proj_sym')).toHaveLength(0)
+  })
 })
