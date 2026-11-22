@@ -307,4 +307,138 @@ describe('ReviewRound anti-interruption drafts & Feedback receipt/ack', () => {
     expect(state.rounds.find((r) => r.id === round.id)?.status).toBe('closed')
     expect(state.rounds.find((r) => r.id === round2.id)?.status).toBe('drafting')
   })
+
+  it('keeps promoted drafts reachable after a cursor issued for a later non-draft feedback', async () => {
+    const { service } = createMemoryContainer()
+    const { artifact } = await service.publish({
+      slug: 'artboard/cursor-test',
+      title: 'Cursor Test',
+      type: 'artboard',
+      source: '{}',
+      author: 'agent:claude',
+    })
+    const round = await service.openRound({
+      id: artifact.publicId,
+      groups: [{ id: 'q1', title: '方案', kind: 'choose', options: ['a', 'b'] }],
+    })
+
+    // 先保存草稿 A，再保存非草稿普通评论 B
+    const draftA = await service.submitFeedback({
+      id: artifact.publicId,
+      version: 1,
+      roundId: round.id,
+      groupId: 'q1',
+      kind: 'comment',
+      body: '草稿 A',
+      author: 'human:sun',
+    })
+    const immediateB = await service.submitFeedback({
+      id: artifact.publicId,
+      version: 1,
+      kind: 'comment',
+      body: '立即评论 B',
+      author: 'human:sun',
+    })
+
+    // 拉取拿到 B 与游标
+    const pull1 = await service.pullFeedback({ id: artifact.publicId })
+    expect(pull1.items.map((i) => i.id)).toEqual([immediateB.id])
+    expect(pull1.cursor).not.toBe('')
+
+    // 提交轮次使草稿 A 转正；带上次游标再拉取时必须能拿到 A
+    await service.submitRound({ id: artifact.publicId, roundId: round.id })
+    const pull2 = await service.pullFeedback({ id: artifact.publicId, after: pull1.cursor })
+    expect(pull2.items.map((i) => i.id)).toEqual([draftA.id])
+  })
+
+  it('scopes pullFeedback to projectId when artifact id is omitted', async () => {
+    const { service } = createMemoryContainer()
+    const a1 = await service.publish({
+      projectId: 'proj-alpha',
+      slug: 'html/one',
+      title: 'One',
+      type: 'html',
+      source: '<p>1</p>',
+      author: 'agent:a',
+    })
+    const a2 = await service.publish({
+      projectId: 'proj-beta',
+      slug: 'html/two',
+      title: 'Two',
+      type: 'html',
+      source: '<p>2</p>',
+      author: 'agent:b',
+    })
+
+    const fbAlpha = await service.submitFeedback({
+      id: a1.artifact.publicId,
+      version: 1,
+      kind: 'comment',
+      body: 'alpha 反馈',
+      author: 'human:sun',
+    })
+    await service.submitFeedback({
+      id: a2.artifact.publicId,
+      version: 1,
+      kind: 'comment',
+      body: 'beta 反馈',
+      author: 'human:sun',
+    })
+
+    const onlyAlpha = await service.pullFeedback({ projectId: 'proj-alpha' })
+    expect(onlyAlpha.items.map((i) => i.id)).toEqual([fbAlpha.id])
+
+    const emptyProject = await service.pullFeedback({ projectId: 'proj-empty' })
+    expect(emptyProject.items).toEqual([])
+    expect(emptyProject.receipt).toBeUndefined()
+  })
+
+  it('serializes concurrent version writes and overlapping pushState calls atomically', async () => {
+    const { service } = createMemoryContainer()
+    const { artifact } = await service.publish({
+      slug: 'react/concurrent',
+      title: 'Concurrent',
+      type: 'react',
+      source: 'v1',
+      author: 'agent:a',
+    })
+
+    // 两次并发 publish 基于同一 baseVersion=1：必须一成一败（409），绝不出现双 v2
+    const writeResults = await Promise.allSettled([
+      service.publish({
+        slug: 'react/concurrent',
+        title: 'Write A',
+        type: 'react',
+        source: 'v2-a',
+        baseVersion: 1,
+        author: 'agent:a',
+      }),
+      service.publish({
+        slug: 'react/concurrent',
+        title: 'Write B',
+        type: 'react',
+        source: 'v2-b',
+        baseVersion: 1,
+        author: 'human:sun',
+      }),
+    ])
+    const fulfilled = writeResults.filter((r) => r.status === 'fulfilled')
+    const rejected = writeResults.filter((r) => r.status === 'rejected')
+    expect(fulfilled).toHaveLength(1)
+    expect(rejected).toHaveLength(1)
+    expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(VersionConflictError)
+    expect(await service.getHistory(artifact.publicId)).toHaveLength(2)
+
+    // 两次重叠 pushState：必须分配严格递增的 seq=1,2 且最终快照与回放完全一致
+    const [p1, p2] = await Promise.all([
+      service.pushState({ id: artifact.publicId, ops: [{ op: 'add', path: '/a', value: 1 }] }),
+      service.pushState({ id: artifact.publicId, ops: [{ op: 'add', path: '/b', value: 2 }] }),
+    ])
+    expect([p1.seq, p2.seq].sort()).toEqual([1, 2])
+    const latest = await service.getArtifact({ id: artifact.publicId })
+    const replayed = await service.getStateAt({ id: artifact.publicId })
+    expect(latest.state.seq).toBe(2)
+    expect(latest.state.snapshot).toEqual({ a: 1, b: 2 })
+    expect(replayed.snapshot).toEqual(latest.state.snapshot)
+  })
 })

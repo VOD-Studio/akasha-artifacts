@@ -45,6 +45,7 @@ import {
   withdrawReviewRound,
 } from '../domain/round/index.js'
 import { applyJsonPatch, replayStateStream } from '../domain/state/index.js'
+import { KeyedAsyncLock } from './keyed-lock.js'
 
 export interface ArtifactServiceDeps {
   projects: ProjectRepository
@@ -61,6 +62,10 @@ export interface ArtifactServiceDeps {
 const DEFAULT_PROJECT_ID = 'default'
 
 export class ArtifactService {
+  // 分别串行化同一 Artifact 的版本写入与状态流补丁，避免并发读-检-写竞态
+  private readonly writeLocks = new KeyedAsyncLock()
+  private readonly stateLocks = new KeyedAsyncLock()
+
   constructor(private readonly deps: ArtifactServiceDeps) {}
 
   async registerProject(input: { id?: string; rootPath: string; name: string }): Promise<Project> {
@@ -101,76 +106,87 @@ export class ArtifactService {
     author: Author
   }): Promise<{ artifact: Artifact; version: Readonly<Version> }> {
     const projectId = input.projectId ?? DEFAULT_PROJECT_ID
-    const now = this.deps.clock.now()
-    const existing = await this.deps.artifacts.findBySlug(projectId, input.slug)
+    const slugLockKey = `slug:${projectId}::${input.slug}`
 
-    if (!existing) {
-      const publicId = this.deps.ids.publicId()
-      const version = createImmutableVersion({
-        artifactId: publicId,
-        version: 1,
-        parentVersion: null,
-        author: input.author,
-        title: input.title.trim() || input.slug,
-        source: input.source,
-        createdAt: now,
-      })
-      const artifact: Artifact = {
-        publicId,
-        slug: input.slug,
-        projectId,
-        title: version.title,
-        type: input.type,
-        visibility: input.visibility ?? 'private',
-        headVersion: 1,
-        createdAt: now,
-        updatedAt: now,
+    return this.writeLocks.run(slugLockKey, async () => {
+      const existing = await this.deps.artifacts.findBySlug(projectId, input.slug)
+      const now = this.deps.clock.now()
+
+      if (!existing) {
+        const publicId = this.deps.ids.publicId()
+        const version = createImmutableVersion({
+          artifactId: publicId,
+          version: 1,
+          parentVersion: null,
+          author: input.author,
+          title: input.title.trim() || input.slug,
+          source: input.source,
+          createdAt: now,
+        })
+        const artifact: Artifact = {
+          publicId,
+          slug: input.slug,
+          projectId,
+          title: version.title,
+          type: input.type,
+          visibility: input.visibility ?? 'private',
+          headVersion: 1,
+          createdAt: now,
+          updatedAt: now,
+        }
+        await this.deps.artifacts.saveArtifact(artifact)
+        await this.deps.artifacts.appendVersion(version)
+        await this.deps.states.saveSnapshot({
+          artifactId: publicId,
+          seq: 0,
+          snapshot: {},
+          updatedAt: now,
+        })
+        await this.deps.realtime.publish({
+          type: 'version.created',
+          artifactId: publicId,
+          version,
+        })
+        return { artifact, version }
       }
-      await this.deps.artifacts.saveArtifact(artifact)
-      await this.deps.artifacts.appendVersion(version)
-      await this.deps.states.saveSnapshot({
-        artifactId: publicId,
-        seq: 0,
-        snapshot: {},
-        updatedAt: now,
-      })
-      await this.deps.realtime.publish({
-        type: 'version.created',
-        artifactId: publicId,
-        version,
-      })
-      return { artifact, version }
-    }
 
-    const versions = await this.deps.artifacts.getVersions(existing.publicId)
-    assertBaseVersion(existing, versions, input.baseVersion)
+      // 与按 publicId 寻址的 update/revert 共享同一把 Artifact 锁
+      return this.writeLocks.run(`artifact:${existing.publicId}`, async () => {
+        const fresh = await this.deps.artifacts.findByPublicId(existing.publicId)
+        if (!fresh) {
+          throw new NotFoundError(`未找到 Artifact "${existing.publicId}"`)
+        }
+        const versions = await this.deps.artifacts.getVersions(fresh.publicId)
+        assertBaseVersion(fresh, versions, input.baseVersion)
 
-    const nextNumber = existing.headVersion + 1
-    const version = createImmutableVersion({
-      artifactId: existing.publicId,
-      version: nextNumber,
-      parentVersion: existing.headVersion,
-      author: input.author,
-      title: input.title.trim() || existing.title,
-      source: input.source,
-      createdAt: now,
+        const nextNumber = fresh.headVersion + 1
+        const version = createImmutableVersion({
+          artifactId: fresh.publicId,
+          version: nextNumber,
+          parentVersion: fresh.headVersion,
+          author: input.author,
+          title: input.title.trim() || fresh.title,
+          source: input.source,
+          createdAt: now,
+        })
+        const updated: Artifact = {
+          ...fresh,
+          title: version.title,
+          type: input.type,
+          visibility: input.visibility ?? fresh.visibility,
+          headVersion: nextNumber,
+          updatedAt: now,
+        }
+        await this.deps.artifacts.appendVersion(version)
+        await this.deps.artifacts.saveArtifact(updated)
+        await this.deps.realtime.publish({
+          type: 'version.created',
+          artifactId: updated.publicId,
+          version,
+        })
+        return { artifact: updated, version }
+      })
     })
-    const updated: Artifact = {
-      ...existing,
-      title: version.title,
-      type: input.type,
-      visibility: input.visibility ?? existing.visibility,
-      headVersion: nextNumber,
-      updatedAt: now,
-    }
-    await this.deps.artifacts.appendVersion(version)
-    await this.deps.artifacts.saveArtifact(updated)
-    await this.deps.realtime.publish({
-      type: 'version.created',
-      artifactId: updated.publicId,
-      version,
-    })
-    return { artifact: updated, version }
   }
 
   async update(input: {
@@ -181,40 +197,46 @@ export class ArtifactService {
     edits: readonly TextEdit[]
     author: Author
   }): Promise<{ artifact: Artifact; version: Readonly<Version> }> {
-    const existing = await this.resolveArtifact(input.id, input.projectId)
-    const versions = await this.deps.artifacts.getVersions(existing.publicId)
-    assertBaseVersion(existing, versions, input.baseVersion)
+    const resolved = await this.resolveArtifact(input.id, input.projectId)
+    return this.writeLocks.run(`artifact:${resolved.publicId}`, async () => {
+      const existing = await this.deps.artifacts.findByPublicId(resolved.publicId)
+      if (!existing) {
+        throw new NotFoundError(`未找到 Artifact "${resolved.publicId}"`)
+      }
+      const versions = await this.deps.artifacts.getVersions(existing.publicId)
+      assertBaseVersion(existing, versions, input.baseVersion)
 
-    const head = versions.find((v) => v.version === existing.headVersion)
-    if (!head) {
-      throw new NotFoundError(`缺少头版本 v${existing.headVersion}`)
-    }
-    const nextSource = applyTextEdits(head.source, input.edits)
-    const now = this.deps.clock.now()
-    const nextNumber = existing.headVersion + 1
-    const version = createImmutableVersion({
-      artifactId: existing.publicId,
-      version: nextNumber,
-      parentVersion: existing.headVersion,
-      author: input.author,
-      title: input.title?.trim() || existing.title,
-      source: nextSource,
-      createdAt: now,
+      const head = versions.find((v) => v.version === existing.headVersion)
+      if (!head) {
+        throw new NotFoundError(`缺少头版本 v${existing.headVersion}`)
+      }
+      const nextSource = applyTextEdits(head.source, input.edits)
+      const now = this.deps.clock.now()
+      const nextNumber = existing.headVersion + 1
+      const version = createImmutableVersion({
+        artifactId: existing.publicId,
+        version: nextNumber,
+        parentVersion: existing.headVersion,
+        author: input.author,
+        title: input.title?.trim() || existing.title,
+        source: nextSource,
+        createdAt: now,
+      })
+      const updated: Artifact = {
+        ...existing,
+        title: version.title,
+        headVersion: nextNumber,
+        updatedAt: now,
+      }
+      await this.deps.artifacts.appendVersion(version)
+      await this.deps.artifacts.saveArtifact(updated)
+      await this.deps.realtime.publish({
+        type: 'version.created',
+        artifactId: updated.publicId,
+        version,
+      })
+      return { artifact: updated, version }
     })
-    const updated: Artifact = {
-      ...existing,
-      title: version.title,
-      headVersion: nextNumber,
-      updatedAt: now,
-    }
-    await this.deps.artifacts.appendVersion(version)
-    await this.deps.artifacts.saveArtifact(updated)
-    await this.deps.realtime.publish({
-      type: 'version.created',
-      artifactId: updated.publicId,
-      version,
-    })
-    return { artifact: updated, version }
   }
 
   // 回退历史版本同样作为一次新写入，不覆盖或篡改既有不可变版本历史。
@@ -225,39 +247,45 @@ export class ArtifactService {
     baseVersion: number
     author: Author
   }): Promise<{ artifact: Artifact; version: Readonly<Version> }> {
-    const existing = await this.resolveArtifact(input.id, input.projectId)
-    const versions = await this.deps.artifacts.getVersions(existing.publicId)
-    assertBaseVersion(existing, versions, input.baseVersion)
+    const resolved = await this.resolveArtifact(input.id, input.projectId)
+    return this.writeLocks.run(`artifact:${resolved.publicId}`, async () => {
+      const existing = await this.deps.artifacts.findByPublicId(resolved.publicId)
+      if (!existing) {
+        throw new NotFoundError(`未找到 Artifact "${resolved.publicId}"`)
+      }
+      const versions = await this.deps.artifacts.getVersions(existing.publicId)
+      assertBaseVersion(existing, versions, input.baseVersion)
 
-    const target = versions.find((v) => v.version === input.targetVersion)
-    if (!target) {
-      throw new NotFoundError(`目标版本 v${input.targetVersion} 不存在`)
-    }
-    const now = this.deps.clock.now()
-    const nextNumber = existing.headVersion + 1
-    const version = createImmutableVersion({
-      artifactId: existing.publicId,
-      version: nextNumber,
-      parentVersion: existing.headVersion,
-      author: input.author,
-      title: target.title,
-      source: target.source,
-      createdAt: now,
+      const target = versions.find((v) => v.version === input.targetVersion)
+      if (!target) {
+        throw new NotFoundError(`目标版本 v${input.targetVersion} 不存在`)
+      }
+      const now = this.deps.clock.now()
+      const nextNumber = existing.headVersion + 1
+      const version = createImmutableVersion({
+        artifactId: existing.publicId,
+        version: nextNumber,
+        parentVersion: existing.headVersion,
+        author: input.author,
+        title: target.title,
+        source: target.source,
+        createdAt: now,
+      })
+      const updated: Artifact = {
+        ...existing,
+        title: version.title,
+        headVersion: nextNumber,
+        updatedAt: now,
+      }
+      await this.deps.artifacts.appendVersion(version)
+      await this.deps.artifacts.saveArtifact(updated)
+      await this.deps.realtime.publish({
+        type: 'version.created',
+        artifactId: updated.publicId,
+        version,
+      })
+      return { artifact: updated, version }
     })
-    const updated: Artifact = {
-      ...existing,
-      title: version.title,
-      headVersion: nextNumber,
-      updatedAt: now,
-    }
-    await this.deps.artifacts.appendVersion(version)
-    await this.deps.artifacts.saveArtifact(updated)
-    await this.deps.realtime.publish({
-      type: 'version.created',
-      artifactId: updated.publicId,
-      version,
-    })
-    return { artifact: updated, version }
   }
 
   async pushState(input: {
@@ -269,34 +297,36 @@ export class ArtifactService {
       throw new DomainError('BAD_REQUEST', '状态补丁 ops 不能为空')
     }
     const artifact = await this.resolveArtifact(input.id, input.projectId)
-    const now = this.deps.clock.now()
-    const current = (await this.deps.states.getSnapshot(artifact.publicId)) ?? {
-      artifactId: artifact.publicId,
-      seq: 0,
-      snapshot: {},
-      updatedAt: now,
-    }
-    const nextData = applyJsonPatch(current.snapshot, input.ops)
-    const nextSeq = current.seq + 1
-    const nextSnapshot: StateStreamSnapshot = {
-      artifactId: artifact.publicId,
-      seq: nextSeq,
-      snapshot: nextData,
-      updatedAt: now,
-    }
-    await this.deps.states.appendPatch(artifact.publicId, {
-      seq: nextSeq,
-      ops: structuredClone(input.ops) as JsonPatchOp[],
-      createdAt: now,
+    return this.stateLocks.run(artifact.publicId, async () => {
+      const now = this.deps.clock.now()
+      const current = (await this.deps.states.getSnapshot(artifact.publicId)) ?? {
+        artifactId: artifact.publicId,
+        seq: 0,
+        snapshot: {},
+        updatedAt: now,
+      }
+      const nextData = applyJsonPatch(current.snapshot, input.ops)
+      const nextSeq = current.seq + 1
+      const nextSnapshot: StateStreamSnapshot = {
+        artifactId: artifact.publicId,
+        seq: nextSeq,
+        snapshot: nextData,
+        updatedAt: now,
+      }
+      await this.deps.states.appendPatch(artifact.publicId, {
+        seq: nextSeq,
+        ops: structuredClone(input.ops) as JsonPatchOp[],
+        createdAt: now,
+      })
+      await this.deps.states.saveSnapshot(nextSnapshot)
+      await this.deps.realtime.publish({
+        type: 'state.patched',
+        artifactId: artifact.publicId,
+        stateSeq: nextSeq,
+        ops: structuredClone(input.ops) as JsonPatchOp[],
+      })
+      return nextSnapshot
     })
-    await this.deps.states.saveSnapshot(nextSnapshot)
-    await this.deps.realtime.publish({
-      type: 'state.patched',
-      artifactId: artifact.publicId,
-      stateSeq: nextSeq,
-      ops: structuredClone(input.ops) as JsonPatchOp[],
-    })
-    return nextSnapshot
   }
 
   async getStateAt(input: {
@@ -509,13 +539,24 @@ export class ArtifactService {
     receipt?: string
   }> {
     const artifact = input.id ? await this.resolveArtifact(input.id, input.projectId) : undefined
-    const items = await this.deps.feedbacks.list({
+
+    // 未指定具体 artifact 但指定了 projectId 时，严格限定在项目所属的 Artifact 集合内
+    let artifactIds: Set<PublicId> | undefined
+    if (!artifact && input.projectId) {
+      const projectArtifacts = await this.deps.artifacts.listByProject(input.projectId)
+      artifactIds = new Set(projectArtifacts.map((a) => a.publicId))
+      if (artifactIds.size === 0) {
+        return { items: [], rounds: [], cursor: input.after ?? '' }
+      }
+    }
+
+    const { items, cursor } = await this.deps.feedbacks.list({
       artifactId: artifact?.publicId,
-      afterId: input.after,
+      artifactIds,
+      afterCursor: input.after,
       includeDrafts: input.includeDrafts ?? false,
     })
     const rounds = artifact ? await this.deps.rounds.listByArtifact(artifact.publicId) : []
-    const cursor = items.at(-1)?.id ?? input.after ?? ''
     const detail = input.detail ?? true
 
     // 仅完整拉取且存在待消费条目时签发回执；预览摘要不推进消费游标

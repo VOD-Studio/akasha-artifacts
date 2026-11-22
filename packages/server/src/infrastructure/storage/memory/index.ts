@@ -122,6 +122,9 @@ export class InMemoryArtifactRepository implements ArtifactRepository {
 
   async appendVersion(version: Readonly<Version>): Promise<void> {
     const list = this.versions.get(version.artifactId) ?? []
+    if (list.some((v) => v.version === version.version)) {
+      throw new Error(`Artifact "${version.artifactId}" 已存在重复版本 v${version.version}`)
+    }
     list.push(version)
     this.versions.set(version.artifactId, list)
   }
@@ -189,43 +192,80 @@ export class InMemoryRoundRepository implements RoundRepository {
   }
 }
 
+interface StoredFeedback {
+  feedback: Feedback
+  // 可投递顺序号：草稿为 null，首次进入可投递状态（直接创建或轮次提交转正）时分配单调递增序号，
+  // 保证转正后的草稿永远位于已下发游标之后，不被永久跳过。
+  deliverySeq: number | null
+}
+
 export class InMemoryFeedbackRepository implements FeedbackRepository {
+  private nextDeliverySeq = 0
   private readonly orderedIds: string[] = []
-  private readonly byId = new Map<string, Feedback>()
+  private readonly byId = new Map<string, StoredFeedback>()
 
   async save(feedback: Feedback): Promise<void> {
-    if (!this.byId.has(feedback.id)) {
+    const existing = this.byId.get(feedback.id)
+    let deliverySeq = existing?.deliverySeq ?? null
+    if (!feedback.draft && deliverySeq === null) {
+      this.nextDeliverySeq += 1
+      deliverySeq = this.nextDeliverySeq
+    }
+    if (!existing) {
       this.orderedIds.push(feedback.id)
     }
-    this.byId.set(feedback.id, structuredClone(feedback))
+    this.byId.set(feedback.id, { feedback: structuredClone(feedback), deliverySeq })
   }
 
   async findById(id: string): Promise<Feedback | undefined> {
     const hit = this.byId.get(id)
-    return hit ? structuredClone(hit) : undefined
+    return hit ? structuredClone(hit.feedback) : undefined
   }
 
   async list(filter: {
     artifactId?: PublicId
-    afterId?: string
+    artifactIds?: ReadonlySet<PublicId>
+    afterCursor?: string
     includeDrafts?: boolean
-  }): Promise<readonly Feedback[]> {
-    let startIdx = 0
-    if (filter.afterId) {
-      const idx = this.orderedIds.indexOf(filter.afterId)
-      if (idx !== -1) startIdx = idx + 1
+  }): Promise<{ items: readonly Feedback[]; cursor: string }> {
+    const afterSeq = filter.afterCursor ? Number.parseInt(filter.afterCursor, 10) : 0
+    const validAfter = Number.isFinite(afterSeq) && afterSeq > 0 ? afterSeq : 0
+
+    const matched: StoredFeedback[] = []
+    for (const id of this.orderedIds) {
+      const entry = this.byId.get(id)
+      if (!entry) continue
+      const { feedback, deliverySeq } = entry
+      if (filter.artifactId && feedback.artifactId !== filter.artifactId) continue
+      if (filter.artifactIds && !filter.artifactIds.has(feedback.artifactId)) continue
+      if (!filter.includeDrafts) {
+        if (feedback.draft || deliverySeq === null) continue
+        if (deliverySeq <= validAfter) continue
+      } else if (deliverySeq !== null && deliverySeq <= validAfter) {
+        continue
+      }
+      matched.push(entry)
     }
-    const result: Feedback[] = []
-    for (let i = startIdx; i < this.orderedIds.length; i++) {
-      const id = this.orderedIds[i]
-      if (!id) continue
-      const fb = this.byId.get(id)
-      if (!fb) continue
-      if (filter.artifactId && fb.artifactId !== filter.artifactId) continue
-      if (!filter.includeDrafts && fb.draft) continue
-      result.push(structuredClone(fb))
+
+    // 按投递顺序号升序排列（草稿附于末尾）
+    matched.sort((a, b) => {
+      if (a.deliverySeq === null && b.deliverySeq === null) return 0
+      if (a.deliverySeq === null) return 1
+      if (b.deliverySeq === null) return -1
+      return a.deliverySeq - b.deliverySeq
+    })
+
+    let maxSeq = validAfter
+    for (const entry of matched) {
+      if (entry.deliverySeq !== null && entry.deliverySeq > maxSeq) {
+        maxSeq = entry.deliverySeq
+      }
     }
-    return result
+
+    return {
+      items: matched.map((e) => structuredClone(e.feedback)),
+      cursor: maxSeq > 0 ? String(maxSeq) : (filter.afterCursor ?? ''),
+    }
   }
 
   async promoteRoundDrafts(
@@ -234,9 +274,16 @@ export class InMemoryFeedbackRepository implements FeedbackRepository {
     updatedAt: string,
   ): Promise<number> {
     let count = 0
-    for (const [id, fb] of this.byId.entries()) {
-      if (fb.artifactId === artifactId && fb.roundId === roundId && fb.draft) {
-        this.byId.set(id, { ...fb, draft: false, updatedAt })
+    for (const id of this.orderedIds) {
+      const entry = this.byId.get(id)
+      if (!entry) continue
+      const { feedback } = entry
+      if (feedback.artifactId === artifactId && feedback.roundId === roundId && feedback.draft) {
+        this.nextDeliverySeq += 1
+        this.byId.set(id, {
+          feedback: { ...feedback, draft: false, updatedAt },
+          deliverySeq: this.nextDeliverySeq,
+        })
         count++
       }
     }

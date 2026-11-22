@@ -48,9 +48,10 @@ export interface FeedbackRepository {
   findById(id: string): Promise<Feedback | undefined>
   list(filter: {
     artifactId?: PublicId
-    afterId?: string
+    artifactIds?: ReadonlySet<PublicId>
+    afterCursor?: string
     includeDrafts?: boolean
-  }): Promise<readonly Feedback[]>
+  }): Promise<{ items: readonly Feedback[]; cursor: string }>
   promoteRoundDrafts(artifactId: PublicId, roundId: string, updatedAt: string): Promise<number>
 }
 
