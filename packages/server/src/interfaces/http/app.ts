@@ -111,6 +111,12 @@ const AgentActivityBodySchema = z.object({
   summary: z.string().optional(),
 })
 
+const ProjectSelectionBodySchema = z.object({
+  artifactId: z.string().min(1).optional(),
+  element: ElementRefSchema.nullable(),
+  draftText: z.string().max(4000).optional(),
+})
+
 const OtcCreateBodySchema = z.object({
   // 仅允许站内相对路径，防止开放重定向
   next: z
@@ -187,6 +193,17 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
   const app = new Hono()
   // 一次性浏览器登录码：60 秒有效且仅可消费一次，用于 akasha open 换取 HttpOnly Cookie
   const otcStore = new Map<string, { next: string; expiresAt: number }>()
+  // 项目级浏览器当前选区与草稿快照（供 UserPromptSubmit / PreInvocation Hook 即时注入上下文）
+  const selectionStore = new Map<
+    string,
+    {
+      projectId: string
+      artifactId?: string
+      element: z.infer<typeof ElementRefSchema> | null
+      draftText?: string
+      updatedAt: string
+    }
+  >()
 
   // 本地安全边界中间件：Host 校验（防 DNS rebinding）、Origin 校验与写接口鉴权
   if (deps.security) {
@@ -315,7 +332,31 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
     if (!removed) {
       throw new DomainError('NOT_FOUND', `未找到项目 "${id}"`)
     }
+    selectionStore.delete(id)
     return c.json({ ok: true as const, id })
+  })
+
+  app.get('/api/v1/projects/:id/selection', (c) => {
+    const id = c.req.param('id')
+    return c.json({ selection: selectionStore.get(id) ?? null })
+  })
+
+  app.post('/api/v1/projects/:id/selection', async (c) => {
+    const id = c.req.param('id')
+    const body = await parseJsonBody(c.req.raw, ProjectSelectionBodySchema)
+    if (!body.element && !body.draftText?.trim()) {
+      selectionStore.delete(id)
+      return c.json({ selection: null })
+    }
+    const selection = {
+      projectId: id,
+      ...(body.artifactId ? { artifactId: body.artifactId } : {}),
+      element: body.element,
+      ...(body.draftText !== undefined ? { draftText: body.draftText } : {}),
+      updatedAt: deps.clock.now(),
+    }
+    selectionStore.set(id, selection)
+    return c.json({ selection })
   })
 
   app.get('/api/v1/artifacts', async (c) => {
@@ -530,7 +571,7 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
     const unsubscribe = deps.realtime.subscribe({
       artifactId: artifact.publicId,
       onEvent: (event) => {
-        if (event.type === 'feedback.created') {
+        if (event.type === 'feedback.created' && !event.feedback.draft) {
           earlyWake = 'feedback'
           resolveWake?.('feedback')
         } else if (event.type === 'round.updated' && event.round.status === 'submitted') {

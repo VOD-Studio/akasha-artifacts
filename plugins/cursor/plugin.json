@@ -1,0 +1,14 @@
+{
+  "name": "akasha",
+  "version": "0.2.0",
+  "harness": "cursor",
+  "description": "Live interactive Web Artifacts and two-way HITL review loop for Cursor",
+  "mcpServers": {
+    "akasha": {
+      "command": "npx",
+      "args": ["-y", "akasha-artifacts", "mcp"]
+    }
+  },
+  "hooks": "./hooks.json",
+  "skills": ["akasha-artifacts", "akasha-review-loop"]
+}

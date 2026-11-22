@@ -1,0 +1,3 @@
+[mcp_servers.akasha]
+command = "npx"
+args = ["-y", "akasha-artifacts", "mcp"]

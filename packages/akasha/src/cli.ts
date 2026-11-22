@@ -3,11 +3,20 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  AsyncWakeupMonitor,
+  fetchPromptContext,
+  formatHarnessHookOutput,
+  type HarnessId,
+  type HarnessLifecycleEvent,
+  reportHookActivity,
+} from '@akasha/hooks'
 import { runStdioMcpServer } from '@akasha/mcp'
 import { ArtifactTypeSchema } from '@akasha/protocol'
 import { CheckService, SpecRegistry } from '@akasha/server'
 import { ensureDaemon, probeDaemon, stopDaemon } from './daemon/lifecycle.js'
 import { AKASHA_VERSION, startAkashaDaemon } from './daemon/serve.js'
+import { installHarnessPlugin, runDoctor, SUPPORTED_HARNESSES } from './install/index.js'
 
 export function formatCliBanner(): string {
   return `Akasha Terminal — Open-Source Live Web Artifacts for CLI Agents (v${AKASHA_VERSION})`
@@ -51,6 +60,54 @@ function openBrowserUrl(url: string): void {
   child.unref()
 }
 
+function parseHarnessFlag(raw: string | undefined): HarnessId | null {
+  if (!raw) return null
+  return (SUPPORTED_HARNESSES as readonly string[]).includes(raw) ? (raw as HarnessId) : null
+}
+
+const VALID_HOOK_EVENTS: readonly HarnessLifecycleEvent[] = [
+  'PreToolUse',
+  'PostToolUse',
+  'Stop',
+  'SessionEnd',
+  'UserPromptSubmit',
+  'PreInvocation',
+]
+
+// 按项目 ID 或本地路径从 Daemon 登记表解析真实 projectId，找不到时回退原始入参或 null。
+async function resolveProjectIdFromDaemon(
+  baseUrl: string,
+  token: string,
+  projectHint: string,
+): Promise<string | null> {
+  try {
+    const res = await fetch(`${baseUrl}/api/v1/projects`, {
+      headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(1200),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as {
+      projects?: Array<{ id: string; rootPath: string }>
+    }
+    const projects = data.projects ?? []
+    const byId = projects.find((p) => p.id === projectHint)
+    if (byId) return byId.id
+    const resolved = path.resolve(projectHint)
+    const byPath = projects.find((p) => path.resolve(p.rootPath) === resolved)
+    if (byPath) return byPath.id
+    // 允许当前工作目录位于已登记项目子目录中时向上匹配最近父项目
+    const byAncestor = projects
+      .filter((p) => {
+        const root = path.resolve(p.rootPath)
+        return resolved.startsWith(`${root}${path.sep}`)
+      })
+      .sort((a, b) => b.rootPath.length - a.rootPath.length)[0]
+    return byAncestor?.id ?? null
+  } catch {
+    return null
+  }
+}
+
 function printHelp(): void {
   console.log(`${formatCliBanner()}
 
@@ -65,6 +122,9 @@ function printHelp(): void {
   check    发布前静态校验（akasha check <file> --type <type>）
   spec     查看指定 Artifact 类型的写作规范与依赖白名单
   open     生成一次性浏览器登录链接并打开指定 Artifact（akasha open <id>）
+  install  为 Claude Code / Antigravity / Codex / Cursor 安装插件、MCP 与 Skills
+  doctor   检查 Node 版本、Daemon 连通性、候选端口冲突与插件安装完整性
+  hook     多 Harness Hook 入口（akasha hook <prompt|activity|watch>）
 `)
 }
 
@@ -139,7 +199,7 @@ export async function runCli(argv: string[]): Promise<number> {
     }
 
     case 'status': {
-      const probed = await probeDaemon()
+      const probed = await probeDaemon(strFlag('home'))
       if (!probed) {
         console.log('Akasha Daemon 未运行')
         return 1
@@ -149,13 +209,13 @@ export async function runCli(argv: string[]): Promise<number> {
     }
 
     case 'stop': {
-      const res = await stopDaemon()
+      const res = await stopDaemon(strFlag('home'))
       console.log(res.stopped ? `已停止 Akasha Daemon（pid=${res.pid}）` : 'Akasha Daemon 未运行')
       return 0
     }
 
     case 'logs': {
-      const probed = await probeDaemon()
+      const probed = await probeDaemon(strFlag('home'))
       if (!probed) {
         console.error('Akasha Daemon 未运行')
         return 1
@@ -210,7 +270,7 @@ export async function runCli(argv: string[]): Promise<number> {
 
     case 'open': {
       const id = positional[0]
-      const ensured = await ensureDaemon({ projectDir: process.cwd() })
+      const ensured = await ensureDaemon({ projectDir: process.cwd(), homeDir: strFlag('home') })
       const next = id ? `/a/${encodeURIComponent(id)}` : '/'
       const res = await fetch(`${ensured.baseUrl}/api/v1/auth/otc`, {
         method: 'POST',
@@ -231,6 +291,150 @@ export async function runCli(argv: string[]): Promise<number> {
         openBrowserUrl(url)
       }
       return 0
+    }
+
+    case 'install': {
+      const rawHarness = strFlag('harness') ?? positional[0]
+      const harness = parseHarnessFlag(rawHarness)
+      if (!harness) {
+        console.error(
+          `用法：akasha install --harness <${SUPPORTED_HARNESSES.join('|')}> [--dir <path>]`,
+        )
+        return 2
+      }
+      const res = installHarnessPlugin({
+        harness,
+        targetDir: strFlag('dir'),
+      })
+      console.log(JSON.stringify(res, null, 2))
+      return 0
+    }
+
+    case 'doctor': {
+      const rawHarness = strFlag('harness')
+      const harness = rawHarness ? parseHarnessFlag(rawHarness) : undefined
+      if (rawHarness && !harness) {
+        console.error(`不支持的客户端：${rawHarness}（可选：${SUPPORTED_HARNESSES.join(', ')}）`)
+        return 2
+      }
+      const report = await runDoctor({
+        akashaHome: strFlag('home'),
+        harness: harness ?? undefined,
+        targetDir: strFlag('dir'),
+      })
+      console.log(JSON.stringify(report, null, 2))
+      return report.ok ? 0 : 1
+    }
+
+    case 'hook': {
+      const sub = positional[0]
+      const akashaHome = strFlag('home')
+      const projectHint = strFlag('project') ?? process.cwd()
+
+      if (sub === 'prompt') {
+        const harness = parseHarnessFlag(strFlag('harness') ?? 'claude-code')
+        if (!harness) {
+          console.error(`不支持的客户端：${strFlag('harness')}`)
+          return 2
+        }
+        const probed = await probeDaemon(akashaHome)
+        if (!probed) {
+          console.log('{}')
+          return 0
+        }
+        const projectId = await resolveProjectIdFromDaemon(
+          probed.baseUrl,
+          probed.state.token,
+          projectHint,
+        )
+        if (!projectId) {
+          console.log('{}')
+          return 0
+        }
+        const ctx = await fetchPromptContext({
+          baseUrl: probed.baseUrl,
+          token: probed.state.token,
+          projectId,
+          untrustedExternal: Boolean(flags.untrusted),
+          maxChars: numFlag('max-chars'),
+        })
+        console.log(JSON.stringify(formatHarnessHookOutput(harness, ctx)))
+        return 0
+      }
+
+      if (sub === 'activity') {
+        const rawEvent = strFlag('event') ?? 'PreToolUse'
+        if (!(VALID_HOOK_EVENTS as readonly string[]).includes(rawEvent)) {
+          console.error(`不支持的 Hook 生命周期事件：${rawEvent}`)
+          return 2
+        }
+        const probed = await probeDaemon(akashaHome)
+        if (!probed) return 0
+        const projectId = await resolveProjectIdFromDaemon(
+          probed.baseUrl,
+          probed.state.token,
+          projectHint,
+        )
+        if (!projectId) return 0
+        await reportHookActivity({
+          baseUrl: probed.baseUrl,
+          token: probed.state.token,
+          projectId,
+          artifactId: strFlag('artifact'),
+          event: rawEvent as HarnessLifecycleEvent,
+          summary: strFlag('summary'),
+        })
+        return 0
+      }
+
+      if (sub === 'watch') {
+        const probed = await probeDaemon(akashaHome)
+        if (!probed) {
+          console.error('Akasha Daemon 未运行')
+          return 1
+        }
+        const projectId = await resolveProjectIdFromDaemon(
+          probed.baseUrl,
+          probed.state.token,
+          projectHint,
+        )
+        if (!projectId) {
+          console.error(`未在 Daemon 中找到项目 "${projectHint}"`)
+          return 1
+        }
+        const wsUrl = `ws://${probed.state.host}:${probed.state.port}/api/v1/ws`
+        const once = Boolean(flags.once)
+        await new Promise<void>((resolve) => {
+          const cleanup = () => {
+            process.off('SIGINT', stop)
+            process.off('SIGTERM', stop)
+          }
+          const stop = () => {
+            cleanup()
+            monitor.stop()
+            resolve()
+          }
+          const monitor = new AsyncWakeupMonitor({
+            wsUrl,
+            projectId,
+            artifactId: strFlag('artifact'),
+            debounceMs: numFlag('debounce') ?? 250,
+            onWakeup: (batch) => {
+              console.log(JSON.stringify(batch))
+              if (once) {
+                stop()
+              }
+            },
+          })
+          process.once('SIGINT', stop)
+          process.once('SIGTERM', stop)
+          monitor.start()
+        })
+        return 0
+      }
+
+      console.error('用法：akasha hook <prompt|activity|watch> [options]')
+      return 2
     }
 
     default:

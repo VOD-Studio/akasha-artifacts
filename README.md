@@ -121,7 +121,7 @@ flowchart TB
 | :-------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------- |
 | **M0**    | Monorepo workspace, `@akasha/ui` shell kit, `@akasha/protocol` (zod + JSON Schema), immutable versions & RFC 6902 StateStream                                | Completed |
 | **M1**    | Machine-wide Local Daemon (Hono + SQLite), WebSocket resync, MCP tools, `check` gate, isolated sandbox with view-state preservation, multi-project web shell | Completed |
-| **M2**    | L1 element picker & overlay, `ReviewRound` draft/submit anti-interruption loop, `receipt/ack`, multi-harness Hooks & Skills, runtime error fix loop          | Planned   |
+| **M2**    | L1 element picker & overlay, `ReviewRound` draft/submit anti-interruption loop, `receipt/ack`, multi-harness Hooks & Skills, runtime error fix loop          | Completed |
 | **M3**    | `@akasha/kit` schema engine & L2 props panel, `artboard` / `document` / `verify`, L3 split code editor, `.artifacts/` native file storage                    | Planned   |
 | **M4**    | L4 visual direct editing (AST rewrite with undo/redo) & `window.akasha.storage`                                                                              | Planned   |
 | **M5**    | Self-hosted Docker Cloud Hub (OAuth, visibility scopes, offline queue, local-daemon direct fallback)                                                         | Planned   |
@@ -132,11 +132,20 @@ flowchart TB
 ## Quick Start
 
 > [!NOTE]
-> Local Daemon (`akasha serve`), MCP server (`akasha mcp`), isolated sandbox runtime, and the multi-project web shell are available today (**M1**). Self-hosted Cloud Hub container deployment is scheduled for **M5**.
+> Local Daemon (`akasha serve`), full MCP server (`akasha mcp`), isolated sandbox runtime, L1 element picker & review-round loop, and multi-harness plugin installer (`akasha install` / `akasha doctor`) are available today (**M2**). Self-hosted Cloud Hub container deployment is scheduled for **M5**.
 
-### 1. Connect to Your Coding Agent (MCP — M1)
+### 1. Connect to Your Coding Agent (MCP & Hooks — M1/M2)
 
-#### Antigravity (AGY) / Claude Code / Codex CLI
+#### One-Command Plugin Install (Claude Code / Antigravity / Codex CLI / Cursor)
+
+```bash
+# Install MCP configuration, harness Hooks, and lightweight Skills idempotently
+npx -y akasha-artifacts install --harness claude-code
+# Verify Node.js, Daemon health, port conflicts, and plugin installation
+npx -y akasha-artifacts doctor --harness claude-code
+```
+
+#### Manual MCP Configuration (Antigravity / Claude Code / Codex CLI)
 
 Add Akasha to your MCP configuration:
 
@@ -181,7 +190,7 @@ npx akasha-artifacts login --hub https://akasha.your-team.dev
 
 ## MCP Tools Reference
 
-> Defined in `@akasha/protocol` (M0); runtime MCP server lands in M1 / M2.
+> All 10 MCP tools defined in `@akasha/protocol` are live in Local Daemon & stdio MCP server (**M1 + M2**).
 
 | Tool                      | Milestone | Description                                                                                                           |
 | :------------------------ | :-------- | :-------------------------------------------------------------------------------------------------------------------- |

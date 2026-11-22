@@ -6,6 +6,7 @@ import { RuntimeErrorPanel } from '../../features/error-recovery/RuntimeErrorPan
 import { selectActiveRound } from '../../features/review-rounds/round-utils'
 import { VersionDiffView } from '../../features/version-diff/VersionDiffView'
 import type { ArtifactDetailResponse } from '../../shared/api/client'
+import { syncProjectSelection } from '../../shared/api/client'
 import {
   buildSandboxIframeUrl,
   createBridgeNonce,
@@ -46,6 +47,7 @@ export function ArtifactWorkspace({
   const sandboxError = useWorkspaceStore((s) => s.sandboxErrorByArtifact[artifact.publicId] ?? null)
   const setSandboxError = useWorkspaceStore((s) => s.setSandboxError)
   const setPreservedView = useWorkspaceStore((s) => s.setPreservedView)
+  const unsentDraft = useWorkspaceStore((s) => s.unsentDraftsByArtifact[artifact.publicId] ?? '')
 
   const pickerActive = useSelectionStore((s) => s.pickerActive)
   const setPickerActive = useSelectionStore((s) => s.setPickerActive)
@@ -77,6 +79,8 @@ export function ArtifactWorkspace({
   const versionPinsRef = useRef(versionPins)
   versionPinsRef.current = versionPins
   const hadSelectionRef = useRef(false)
+  // 初始置为 null：页面刷新后客户端选区清空，首次挂载仍须同步一次以清理 Daemon 上残留的旧选区。
+  const lastSyncedSelectionRef = useRef<string | null>(null)
 
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const hostRef = useRef<SandboxBridgeHost | null>(null)
@@ -211,6 +215,27 @@ export function ArtifactWorkspace({
       hostRef.current?.send({ type: 'highlight', element: null })
     }
   }, [selectedElement])
+
+  // 将浏览器当前选区与未提交草稿防抖同步至本机 Daemon，供终端 Hook 在用户提问时无感注入上下文。
+  useEffect(() => {
+    const trimmedDraft = unsentDraft.trim()
+    const sig = JSON.stringify({
+      projectId: artifact.projectId,
+      artifactId: artifact.publicId,
+      element: selectedElement,
+      draftText: trimmedDraft,
+    })
+    if (sig === lastSyncedSelectionRef.current) return
+    const timer = setTimeout(() => {
+      lastSyncedSelectionRef.current = sig
+      void syncProjectSelection(artifact.projectId, {
+        artifactId: artifact.publicId,
+        element: selectedElement,
+        ...(trimmedDraft ? { draftText: trimmedDraft } : {}),
+      })
+    }, 150)
+    return () => clearTimeout(timer)
+  }, [artifact.projectId, artifact.publicId, selectedElement, unsentDraft])
 
   // 当 Artifact 版本或源码更新时下发 render，并清除旧版本遗留的错误面板，携带保态快照。
   useEffect(() => {

@@ -595,7 +595,15 @@ export class ArtifactService {
       afterCursor: input.after,
       includeDrafts: input.includeDrafts ?? false,
     })
-    const rounds = artifact ? await this.deps.rounds.listByArtifact(artifact.publicId) : []
+    const rounds = artifact
+      ? await this.deps.rounds.listByArtifact(artifact.publicId)
+      : artifactIds
+        ? (
+            await Promise.all(
+              Array.from(artifactIds, (aid) => this.deps.rounds.listByArtifact(aid)),
+            )
+          ).flat()
+        : []
     const detail = input.detail ?? true
 
     // 仅完整拉取且存在待消费条目时签发回执；预览摘要不推进消费游标
