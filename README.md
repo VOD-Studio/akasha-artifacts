@@ -214,9 +214,14 @@ Requirements: **Node.js 24+** and **pnpm 10+**.
 ```bash
 make install   # Install dependencies with frozen lockfile
 make lint      # Run Biome check, architecture dependency guard, TypeScript typecheck, and commit lint
+make typecheck # Run only the TypeScript typecheck
 make test      # Run Vitest unit tests across workspace packages
 make build     # Build all workspace packages and export protocol JSON Schemas
+make serve     # Build and start the workbench, backend, and sandbox
+make dev       # Start frontend and sandbox hot reload without the backend
 ```
+
+After `make serve`, open [http://127.0.0.1:24321](http://127.0.0.1:24321), or use the workbench port printed by the daemon. Stop `make dev` before running `make serve` to avoid port conflicts.
 
 ---
 

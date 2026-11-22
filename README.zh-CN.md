@@ -214,9 +214,14 @@ npx akasha-artifacts login --hub https://akasha.your-team.dev
 ```bash
 make install   # 安装锁定依赖
 make lint      # 运行 Biome 检查、架构依赖方向检查、TypeScript 类型检查与提交规范校验
+make typecheck # 单独运行 TypeScript 类型检查
 make test      # 运行工作区 Vitest 单元测试
 make build     # 构建全部工作区包并导出协议 JSON Schema
+make serve     # 构建并启动工作台、后端和沙盒
+make dev       # 启动前端和沙盒热更新，不启动后端
 ```
+
+运行 `make serve` 后，打开 [http://127.0.0.1:24321](http://127.0.0.1:24321)，或使用守护进程输出的工作台端口。启动 `make serve` 前请停止 `make dev`，避免端口冲突。
 
 ---
 
