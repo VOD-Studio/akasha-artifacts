@@ -9,11 +9,6 @@
       "args": ["-y", "akasha-artifacts", "mcp"]
     }
   },
-  "hooks": {
-    "UserPromptSubmit": "npx -y akasha-artifacts hook prompt --harness cursor",
-    "PreToolUse": "npx -y akasha-artifacts hook activity --event PreToolUse",
-    "PostToolUse": "npx -y akasha-artifacts hook activity --event PostToolUse",
-    "SessionEnd": "npx -y akasha-artifacts hook activity --event SessionEnd"
-  },
+  "hooks": "./hooks.json",
   "skills": ["akasha-artifacts", "akasha-review-loop"]
 }

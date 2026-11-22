@@ -7,7 +7,12 @@ import { runCli } from '../src/cli.js'
 import { ensureDaemon, probeDaemon, stopDaemon } from '../src/daemon/lifecycle.js'
 import { startAkashaDaemon } from '../src/daemon/serve.js'
 import { daemonStatePath } from '../src/daemon/state.js'
-import { installHarnessPlugin, runDoctor, SUPPORTED_HARNESSES } from '../src/install/index.js'
+import {
+  installHarnessPlugin,
+  resolveHarnessPaths,
+  runDoctor,
+  SUPPORTED_HARNESSES,
+} from '../src/install/index.js'
 
 const closers: Array<() => Promise<void>> = []
 const tempDirs: string[] = []
@@ -215,61 +220,123 @@ describe('Local singleton Daemon lifecycle & security', () => {
     expect(await probeDaemon(homeDir)).toBeNull()
   })
 
-  it('installHarnessPlugin supports all 4 harnesses idempotently without clobbering existing user configs', () => {
+  it('installHarnessPlugin writes native MCP & Hook locations/formats idempotently for all 4 harnesses', async () => {
+    const fakeUserHome = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-user-home-'))
+    tempDirs.push(fakeUserHome)
+
+    // 预置用户已有原生配置：~/.claude.json、~/.codex/config.toml、~/.cursor/hooks.json、~/.gemini/antigravity/mcp_config.json
+    fs.writeFileSync(
+      path.join(fakeUserHome, '.claude.json'),
+      JSON.stringify({
+        numStartups: 7,
+        mcpServers: { existingClaude: { command: 'echo', args: ['hi'] } },
+      }),
+    )
+    fs.mkdirSync(path.join(fakeUserHome, '.claude'), { recursive: true })
+    fs.writeFileSync(
+      path.join(fakeUserHome, '.claude', 'settings.json'),
+      JSON.stringify({
+        theme: 'dark',
+        hooks: {
+          UserPromptSubmit: [{ matcher: '*', hooks: [{ type: 'command', command: 'echo user' }] }],
+        },
+      }),
+    )
+
+    fs.mkdirSync(path.join(fakeUserHome, '.codex'), { recursive: true })
+    fs.writeFileSync(
+      path.join(fakeUserHome, '.codex', 'config.toml'),
+      'model = "o3"\n\n[mcp_servers.existing]\ncommand = "echo"\nargs = ["ok"]\n',
+    )
+
+    fs.mkdirSync(path.join(fakeUserHome, '.cursor'), { recursive: true })
+    fs.writeFileSync(
+      path.join(fakeUserHome, '.cursor', 'hooks.json'),
+      JSON.stringify({
+        version: 1,
+        hooks: {
+          beforeSubmitPrompt: [{ command: 'echo user-cursor-hook' }],
+        },
+      }),
+    )
+
+    fs.mkdirSync(path.join(fakeUserHome, '.gemini', 'antigravity'), { recursive: true })
+    fs.writeFileSync(
+      path.join(fakeUserHome, '.gemini', 'antigravity', 'mcp_config.json'),
+      JSON.stringify({ mcpServers: { existingAgy: { command: 'echo', args: ['agy'] } } }),
+    )
+
     for (const harness of SUPPORTED_HARNESSES) {
-      const targetDir = fs.mkdtempSync(path.join(os.tmpdir(), `akasha-install-${harness}-`))
-      tempDirs.push(targetDir)
-
-      // 预置用户已有 MCP 与 Hooks 配置
-      const mcpFile = path.join(
-        targetDir,
-        harness === 'antigravity' ? 'mcp_config.json' : 'mcp.json',
-      )
-      fs.writeFileSync(
-        mcpFile,
-        JSON.stringify({ mcpServers: { existingTool: { command: 'echo', args: ['hi'] } } }),
-      )
-      const hooksFile = path.join(
-        targetDir,
-        harness === 'claude-code' ? 'settings.json' : 'hooks.json',
-      )
-      fs.writeFileSync(
-        hooksFile,
-        harness === 'claude-code'
-          ? JSON.stringify({
-              theme: 'dark',
-              hooks: {
-                UserPromptSubmit: [
-                  { matcher: '*', hooks: [{ type: 'command', command: 'echo user' }] },
-                ],
-              },
-            })
-          : JSON.stringify({ customHook: 'echo keep-me' }),
-      )
-
-      const first = installHarnessPlugin({ harness, targetDir })
+      const first = installHarnessPlugin({ harness, homeDir: fakeUserHome })
       expect(first.skillsInstalled).toEqual(['akasha-artifacts', 'akasha-review-loop'])
-      expect(fs.existsSync(path.join(targetDir, 'skills', 'akasha-artifacts', 'SKILL.md'))).toBe(
-        true,
-      )
+      // 幂等重复安装不得重复追加或破坏现有配置
+      installHarnessPlugin({ harness, homeDir: fakeUserHome })
 
-      // 幂等重复安装不得重复追加相同 Hook，且保留用户已有配置
-      installHarnessPlugin({ harness, targetDir })
-      const mcp = JSON.parse(fs.readFileSync(mcpFile, 'utf8')) as {
-        mcpServers: Record<string, unknown>
-      }
-      expect(mcp.mcpServers.existingTool).toBeDefined()
-      expect(mcp.mcpServers.akasha).toBeDefined()
-
-      const hooks = JSON.parse(fs.readFileSync(hooksFile, 'utf8')) as Record<string, unknown>
-      if (harness === 'claude-code') {
-        expect(hooks.theme).toBe('dark')
-        const submitList = (hooks.hooks as Record<string, unknown[]>).UserPromptSubmit
-        expect(submitList).toHaveLength(2)
-      } else {
-        expect(hooks.customHook).toBe('echo keep-me')
-      }
+      const doctor = await runDoctor({
+        akashaHome: path.join(fakeUserHome, '.akasha'),
+        homeDir: fakeUserHome,
+        harness,
+      })
+      expect(doctor.checks.find((c) => c.id === `harness:${harness}`)?.status).toBe('ok')
     }
+
+    // 1. Claude Code：用户级 MCP 写入 ~/.claude.json，保留 numStartups 与既有 mcpServers，Hooks 写入 ~/.claude/settings.json
+    const claudePaths = resolveHarnessPaths('claude-code', { homeDir: fakeUserHome })
+    expect(claudePaths.mcpConfigPath).toBe(path.join(fakeUserHome, '.claude.json'))
+    const claudeMcp = JSON.parse(fs.readFileSync(claudePaths.mcpConfigPath, 'utf8')) as {
+      numStartups: number
+      mcpServers: Record<string, unknown>
+    }
+    expect(claudeMcp.numStartups).toBe(7)
+    expect(claudeMcp.mcpServers.existingClaude).toBeDefined()
+    expect(claudeMcp.mcpServers.akasha).toBeDefined()
+    const claudeSettings = JSON.parse(fs.readFileSync(claudePaths.hooksConfigPath, 'utf8')) as {
+      theme: string
+      hooks: Record<string, unknown[]>
+    }
+    expect(claudeSettings.theme).toBe('dark')
+    expect(claudeSettings.hooks.UserPromptSubmit).toHaveLength(2)
+
+    // 2. Codex：MCP 以 TOML [mcp_servers.akasha] 写入 ~/.codex/config.toml，保留原 model 与既有表
+    const codexPaths = resolveHarnessPaths('codex', { homeDir: fakeUserHome })
+    expect(codexPaths.mcpConfigPath).toBe(path.join(fakeUserHome, '.codex', 'config.toml'))
+    const codexToml = fs.readFileSync(codexPaths.mcpConfigPath, 'utf8')
+    expect(codexToml).toContain('model = "o3"')
+    expect(codexToml).toContain('[mcp_servers.existing]')
+    expect(codexToml.match(/\[mcp_servers\.akasha\]/g)).toHaveLength(1)
+    expect(codexToml).toContain('args = ["-y", "akasha-artifacts", "mcp"]')
+
+    // 3. Cursor：Hooks 按原生 { version: 1, hooks: { beforeSubmitPrompt, preToolUse, postToolUse, sessionEnd } } 结构合并
+    const cursorPaths = resolveHarnessPaths('cursor', { homeDir: fakeUserHome })
+    const cursorHooks = JSON.parse(fs.readFileSync(cursorPaths.hooksConfigPath, 'utf8')) as {
+      version: number
+      hooks: Record<string, Array<{ command: string }>>
+    }
+    expect(cursorHooks.version).toBe(1)
+    expect(cursorHooks.hooks.beforeSubmitPrompt).toHaveLength(2)
+    expect(cursorHooks.hooks.beforeSubmitPrompt?.[0]?.command).toBe('echo user-cursor-hook')
+    expect(cursorHooks.hooks.beforeSubmitPrompt?.[1]?.command).toContain(
+      'hook prompt --harness cursor',
+    )
+    expect(cursorHooks.hooks.sessionEnd).toHaveLength(1)
+
+    // 4. Antigravity：保留已有 mcp_config.json 服务器并写入 akasha
+    const agyPaths = resolveHarnessPaths('antigravity', { homeDir: fakeUserHome })
+    const agyMcp = JSON.parse(fs.readFileSync(agyPaths.mcpConfigPath, 'utf8')) as {
+      mcpServers: Record<string, unknown>
+    }
+    expect(agyMcp.mcpServers.existingAgy).toBeDefined()
+    expect(agyMcp.mcpServers.akasha).toBeDefined()
+
+    // 5. 显式 --dir 时 Claude Code 写入项目级 <dir>/.mcp.json，绝不越界污染用户家目录
+    const customProjectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-claude-proj-'))
+    tempDirs.push(customProjectDir)
+    const customInstall = installHarnessPlugin({
+      harness: 'claude-code',
+      targetDir: customProjectDir,
+    })
+    expect(customInstall.mcpConfigPath).toBe(path.join(customProjectDir, '.mcp.json'))
+    expect(fs.existsSync(customInstall.mcpConfigPath)).toBe(true)
   })
 
   it('runDoctor verifies Daemon health, harness install completeness, and port conflicts', async () => {

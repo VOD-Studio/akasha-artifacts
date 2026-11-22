@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [
+      {
+        "command": "npx -y akasha-artifacts hook prompt --harness cursor"
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "npx -y akasha-artifacts hook activity --event PreToolUse"
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "npx -y akasha-artifacts hook activity --event PostToolUse"
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "npx -y akasha-artifacts hook activity --event SessionEnd"
+      }
+    ]
+  }
+}
