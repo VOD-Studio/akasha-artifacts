@@ -53,6 +53,28 @@ function checkDuplicateBlockIds(source: string): CheckDiagnostic[] {
   return diagnostics
 }
 
+function checkUniqueArrayIds(items: unknown, label: string): CheckDiagnostic[] {
+  if (!Array.isArray(items)) return []
+  const seen = new Set<string>()
+  const diagnostics: CheckDiagnostic[] = []
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue
+    const id = (item as { id?: unknown }).id
+    if (typeof id !== 'string' || !id) continue
+    if (seen.has(id)) {
+      diagnostics.push({
+        severity: 'error',
+        code: 'DUPLICATE_BLOCK_ID',
+        message: `${label} 中存在重复的 id "${id}"`,
+        suggestion: '为每个条目分配唯一且稳定的 id',
+      })
+    } else {
+      seen.add(id)
+    }
+  }
+  return diagnostics
+}
+
 const JSON_REQUIRED_FIELDS: Partial<Record<ArtifactType, readonly string[]>> = {
   artboard: ['boards'],
   verify: ['claims'],
@@ -125,15 +147,52 @@ export class CheckService {
     }
 
     if (type === 'html' || type === 'document') {
-      for (const m of source.matchAll(EXTERNAL_URL_TAG_RE)) {
-        diagnostics.push({
-          severity: 'warning',
-          code: 'EXTERNAL_RESOURCE_BLOCKED',
-          message: '沙盒禁止加载外部网络脚本或样式，请使用内联样式或预置资源',
-          line: lineNumberAt(source, m.index ?? 0),
-        })
+      if (type === 'document' && source.trim().startsWith('{')) {
+        try {
+          const parsed = JSON.parse(source) as Record<string, unknown>
+          if (!Array.isArray(parsed.sections)) {
+            diagnostics.push({
+              severity: 'error',
+              code: 'MISSING_REQUIRED_FIELD',
+              message: 'JSON 格式 document 缺少必需数组字段 "sections"',
+            })
+          } else {
+            const allBlocks: Array<{ id?: unknown }> = []
+            for (const sec of parsed.sections) {
+              if (!sec || typeof sec !== 'object') continue
+              const s = sec as { id?: unknown; paragraphs?: unknown; questions?: unknown }
+              allBlocks.push({ id: s.id })
+              if (Array.isArray(s.paragraphs)) {
+                for (const p of s.paragraphs) {
+                  if (p && typeof p === 'object') allBlocks.push({ id: (p as { id?: unknown }).id })
+                }
+              }
+              if (Array.isArray(s.questions)) {
+                for (const q of s.questions) {
+                  if (q && typeof q === 'object') allBlocks.push({ id: (q as { id?: unknown }).id })
+                }
+              }
+            }
+            diagnostics.push(...checkUniqueArrayIds(allBlocks, 'document blocks'))
+          }
+        } catch (err) {
+          diagnostics.push({
+            severity: 'error',
+            code: 'INVALID_JSON',
+            message: `JSON 解析失败：${err instanceof Error ? err.message : String(err)}`,
+          })
+        }
+      } else {
+        for (const m of source.matchAll(EXTERNAL_URL_TAG_RE)) {
+          diagnostics.push({
+            severity: 'warning',
+            code: 'EXTERNAL_RESOURCE_BLOCKED',
+            message: '沙盒禁止加载外部网络脚本或样式，请使用内联样式或预置资源',
+            line: lineNumberAt(source, m.index ?? 0),
+          })
+        }
+        diagnostics.push(...checkDuplicateBlockIds(source))
       }
-      diagnostics.push(...checkDuplicateBlockIds(source))
     }
 
     if (type === 'svg') {
@@ -174,8 +233,37 @@ export class CheckService {
               })
             }
           }
-          // 额外校验 artboard 选择组的 recommend 引用一致性
-          if (type === 'artboard' && Array.isArray(record.groups)) {
+          // 校验各结构化模板内部条目的 ID 唯一性与引用一致性
+          if (type === 'live-timeline') {
+            diagnostics.push(...checkUniqueArrayIds(record.steps, 'live-timeline.steps'))
+          } else if (type === 'option-compare') {
+            diagnostics.push(...checkUniqueArrayIds(record.options, 'option-compare.options'))
+            const optionIds = new Set(
+              Array.isArray(record.options)
+                ? record.options
+                    .map((o) =>
+                      o && typeof o === 'object' ? (o as { id?: unknown }).id : undefined,
+                    )
+                    .filter((id): id is string => typeof id === 'string')
+                : [],
+            )
+            if (
+              typeof record.recommended === 'string' &&
+              optionIds.size > 0 &&
+              !optionIds.has(record.recommended)
+            ) {
+              diagnostics.push({
+                severity: 'warning',
+                code: 'UNKNOWN_RECOMMENDED_OPTION',
+                message: `推荐方案 "${record.recommended}" 未在 options 中定义`,
+              })
+            }
+          } else if (type === 'verify') {
+            diagnostics.push(...checkUniqueArrayIds(record.claims, 'verify.claims'))
+            diagnostics.push(...checkUniqueArrayIds(record.screens, 'verify.screens'))
+            diagnostics.push(...checkUniqueArrayIds(record.unverified, 'verify.unverified'))
+          } else if (type === 'artboard') {
+            diagnostics.push(...checkUniqueArrayIds(record.boards, 'artboard.boards'))
             const boardIds = new Set(
               Array.isArray(record.boards)
                 ? record.boards
@@ -185,19 +273,39 @@ export class CheckService {
                     .filter((id): id is string => typeof id === 'string')
                 : [],
             )
-            for (const g of record.groups) {
-              if (!g || typeof g !== 'object') continue
-              const group = g as { id?: string; recommended?: string; options?: unknown }
-              if (
-                typeof group.recommended === 'string' &&
-                boardIds.size > 0 &&
-                !boardIds.has(group.recommended)
-              ) {
-                diagnostics.push({
-                  severity: 'warning',
-                  code: 'UNKNOWN_RECOMMENDED_BOARD',
-                  message: `分组 "${group.id ?? '?'}" 的 recommended="${group.recommended}" 未在 boards 中定义`,
-                })
+            if (Array.isArray(record.flows)) {
+              for (const f of record.flows) {
+                if (!f || typeof f !== 'object') continue
+                const flow = f as { from?: unknown; to?: unknown }
+                if (
+                  typeof flow.from === 'string' &&
+                  typeof flow.to === 'string' &&
+                  boardIds.size > 0 &&
+                  (!boardIds.has(flow.from) || !boardIds.has(flow.to))
+                ) {
+                  diagnostics.push({
+                    severity: 'warning',
+                    code: 'UNKNOWN_FLOW_ENDPOINT',
+                    message: `流程连线 "${flow.from} -> ${flow.to}" 引用了未定义的画板 id`,
+                  })
+                }
+              }
+            }
+            if (Array.isArray(record.groups)) {
+              for (const g of record.groups) {
+                if (!g || typeof g !== 'object') continue
+                const group = g as { id?: string; recommended?: string; options?: unknown }
+                if (
+                  typeof group.recommended === 'string' &&
+                  boardIds.size > 0 &&
+                  !boardIds.has(group.recommended)
+                ) {
+                  diagnostics.push({
+                    severity: 'warning',
+                    code: 'UNKNOWN_RECOMMENDED_BOARD',
+                    message: `分组 "${group.id ?? '?'}" 的 recommended="${group.recommended}" 未在 boards 中定义`,
+                  })
+                }
               }
             }
           }

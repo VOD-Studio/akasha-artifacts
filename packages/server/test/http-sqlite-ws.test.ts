@@ -285,6 +285,23 @@ describe('Static check gate & on-demand spec', () => {
     const abRes = (await badArtboard.json()) as { ok: boolean; errors: Array<{ code: string }> }
     expect(abRes.ok).toBe(false)
     expect(abRes.errors.some((e) => e.code === 'MISSING_REQUIRED_FIELD')).toBe(true)
+
+    // Kit 模板元素必填字段校验：与前端沙盒解析器契约保持一致
+    for (const [type, source] of [
+      ['live-timeline', JSON.stringify({ steps: [{ id: 's1' }] })],
+      ['option-compare', JSON.stringify({ options: [{ id: 'o1' }] })],
+      ['artboard', JSON.stringify({ boards: [{ id: 'b1' }] })],
+      ['verify', JSON.stringify({ claims: [{ id: 'c1' }] })],
+    ] as const) {
+      const r = await fetch(`${srv.baseUrl}/api/v1/artifacts/check`, {
+        method: 'POST',
+        headers: authHeaders(srv.token),
+        body: JSON.stringify({ type, source }),
+      })
+      const parsed = (await r.json()) as { ok: boolean; errors: Array<{ code: string }> }
+      expect(parsed.ok).toBe(false)
+      expect(parsed.errors.some((e) => e.code === 'MISSING_ITEM_TITLE')).toBe(true)
+    }
   })
 })
 

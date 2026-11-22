@@ -363,6 +363,9 @@ export function ArtifactWorkspace({
           <InspectorPanel
             artifactId={artifact.publicId}
             projectId={artifact.projectId}
+            artifactType={artifact.type}
+            source={version.source}
+            stateSnapshot={state.snapshot}
             activeVersion={version.version}
             activeRound={activeRound}
             feedbacks={feedbacks}

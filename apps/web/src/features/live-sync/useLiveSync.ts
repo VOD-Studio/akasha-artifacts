@@ -8,6 +8,7 @@ import { useWorkspaceStore } from '../../entities/workspace/store'
 import type { ArtifactDetailResponse } from '../../shared/api/client'
 import { AkashaWsClient } from '../../shared/api/ws'
 import { getWsUrl } from '../../shared/config/runtime'
+import { applyJsonPatchClient } from '../../shared/lib/json-patch'
 
 export interface StatePatchedCallbackPayload {
   artifactId: string
@@ -56,6 +57,22 @@ export function applyRealtimeEventToCache(
     }
 
     case 'state.patched': {
+      // 同步推进 TanStack Query 缓存中的状态快照，保证 L2 属性面板与 Agent 推送的 StateStream 实时一致
+      queryClient.setQueriesData<ArtifactDetailResponse | undefined>(
+        { queryKey: artifactKeys.detailPrefix(event.artifactId) },
+        (prev) => {
+          if (!prev || event.stateSeq <= prev.state.seq) return prev
+          return {
+            ...prev,
+            state: {
+              ...prev.state,
+              seq: event.stateSeq,
+              snapshot: applyJsonPatchClient(prev.state.snapshot, event.ops),
+              updatedAt: event.timestamp,
+            },
+          }
+        },
+      )
       options?.onStatePatched?.({
         artifactId: event.artifactId,
         stateSeq: event.stateSeq,

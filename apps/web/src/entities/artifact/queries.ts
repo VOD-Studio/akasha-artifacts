@@ -1,8 +1,12 @@
+import type { ArtifactType, JsonPatchOp } from '@akasha/protocol'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  type ArtifactDetailResponse,
   fetchArtifactDetail,
+  fetchArtifactSpec,
   fetchArtifacts,
   fetchArtifactVersions,
+  pushArtifactState,
   revertArtifactVersion,
 } from '../../shared/api/client'
 
@@ -12,6 +16,7 @@ export const artifactKeys = {
   detailPrefix: (id: string) => ['artifacts', 'detail', id] as const,
   detail: (id: string, version?: number) => ['artifacts', 'detail', id, version ?? 'head'] as const,
   versions: (id: string) => ['artifacts', 'versions', id] as const,
+  spec: (type: ArtifactType) => ['artifacts', 'spec', type] as const,
 }
 
 export function useArtifactsQuery(projectId?: string) {
@@ -53,6 +58,38 @@ export function useRevertArtifactMutation(id: string) {
       revertArtifactVersion(id, input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: artifactKeys.all })
+    },
+  })
+}
+
+export function useArtifactSpecQuery(type: ArtifactType, enabled = true) {
+  return useQuery({
+    queryKey: artifactKeys.spec(type),
+    queryFn: () => fetchArtifactSpec(type),
+    enabled,
+    staleTime: 60_000,
+  })
+}
+
+export function usePushArtifactStateMutation(id: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { project?: string; patch: JsonPatchOp[] }) => pushArtifactState(id, input),
+    onSuccess: (res) => {
+      queryClient.setQueriesData<ArtifactDetailResponse>(
+        { queryKey: artifactKeys.detailPrefix(id) },
+        (prev) => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            state: {
+              ...prev.state,
+              seq: res.seq,
+              snapshot: res.snapshot,
+            },
+          }
+        },
+      )
     },
   })
 }

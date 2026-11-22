@@ -15,6 +15,13 @@ import {
 } from 'react'
 import { ArtifactCompileError, compileReactArtifact } from '../runtime/compiler'
 import { usePersistentControl } from '../state/preserve'
+import {
+  ArtboardRenderer,
+  DocumentRenderer,
+  LiveTimelineRenderer,
+  OptionCompareRenderer,
+  VerifyRenderer,
+} from './kit-renderers'
 import { type RendererProps, registerRenderer } from './registry'
 import { sanitizeMarkup } from './sanitize'
 
@@ -419,12 +426,12 @@ export function registerBuiltinRenderers(): void {
   registerRenderer('mermaid', (props) => <MermaidRenderer {...props} />)
   registerRenderer('svg', (props) => <SvgRenderer {...props} />)
   registerRenderer('react', (props) => <ReactRenderer {...props} />)
-  // 结构化工程模板占位渲染，M3 阶段由 @akasha/kit 正式模板覆盖
-  registerRenderer('document', (props) => <HtmlRenderer {...props} />)
-  registerRenderer('artboard', (props) => <StructuredJsonFallbackRenderer {...props} />)
-  registerRenderer('verify', (props) => <StructuredJsonFallbackRenderer {...props} />)
+  // M3 @akasha/kit 工程与高阶决策模板渲染器
+  registerRenderer('document', (props) => <DocumentRenderer {...props} />)
+  registerRenderer('artboard', (props) => <ArtboardRenderer {...props} />)
+  registerRenderer('verify', (props) => <VerifyRenderer {...props} />)
+  registerRenderer('live-timeline', (props) => <LiveTimelineRenderer {...props} />)
+  registerRenderer('option-compare', (props) => <OptionCompareRenderer {...props} />)
   registerRenderer('pr-walkthrough', (props) => <StructuredJsonFallbackRenderer {...props} />)
-  registerRenderer('live-timeline', (props) => <StructuredJsonFallbackRenderer {...props} />)
-  registerRenderer('option-compare', (props) => <StructuredJsonFallbackRenderer {...props} />)
   registerRenderer('data-story', (props) => <StructuredJsonFallbackRenderer {...props} />)
 }
