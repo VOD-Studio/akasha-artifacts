@@ -6,8 +6,10 @@ import {
   type Feedback,
   type FeedbackKind,
   type Project,
+  type ReviewGroup,
   type ReviewRound,
   type StateStreamSnapshot,
+  type Verdict,
   type Version,
 } from '@akasha/protocol'
 import { getApiBaseUrl } from '../config/runtime'
@@ -170,5 +172,68 @@ export async function fetchArtifactFeedback(
   })
   return requestJson<{ items: Feedback[]; rounds: ReviewRound[]; cursor: string }>(
     `/api/v1/feedback?${params.toString()}`,
+  )
+}
+
+export async function openReviewRound(
+  id: string,
+  input: { project?: string; groups: ReviewGroup[] },
+): Promise<{ round: ReviewRound }> {
+  return requestJson<{ round: ReviewRound }>(`/api/v1/artifacts/${encodeURIComponent(id)}/rounds`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function submitReviewRound(
+  id: string,
+  roundId: string,
+  projectId?: string,
+): Promise<{ round: ReviewRound }> {
+  const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''
+  return requestJson<{ round: ReviewRound }>(
+    `/api/v1/artifacts/${encodeURIComponent(id)}/rounds/${encodeURIComponent(roundId)}/submit${query}`,
+    {
+      method: 'POST',
+      body: JSON.stringify({}),
+    },
+  )
+}
+
+export async function withdrawReviewRound(
+  id: string,
+  roundId: string,
+  projectId?: string,
+): Promise<{ round: ReviewRound }> {
+  const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''
+  return requestJson<{ round: ReviewRound }>(
+    `/api/v1/artifacts/${encodeURIComponent(id)}/rounds/${encodeURIComponent(roundId)}/withdraw${query}`,
+    {
+      method: 'POST',
+      body: JSON.stringify({}),
+    },
+  )
+}
+
+export interface RecordHumanDecisionInput {
+  project?: string
+  roundId: string
+  groupId: string
+  choice?: string
+  verdict?: Verdict
+  note?: string
+  submitRound?: boolean
+}
+
+export async function recordHumanDecision(
+  id: string,
+  input: RecordHumanDecisionInput,
+): Promise<{ round: ReviewRound }> {
+  return requestJson<{ round: ReviewRound }>(
+    `/api/v1/artifacts/${encodeURIComponent(id)}/verdict`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ ...input, fromAgent: false }),
+    },
   )
 }

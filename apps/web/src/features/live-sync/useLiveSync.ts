@@ -2,6 +2,7 @@ import type { JsonPatchOp, RealtimeServerEvent } from '@akasha/protocol'
 import { type QueryClient, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import { artifactKeys } from '../../entities/artifact/queries'
+import { feedbackKeys } from '../../entities/feedback/queries'
 import { projectKeys } from '../../entities/project/queries'
 import { useWorkspaceStore } from '../../entities/workspace/store'
 import type { ArtifactDetailResponse } from '../../shared/api/client'
@@ -76,11 +77,13 @@ export function applyRealtimeEventToCache(
           return { ...prev, rounds: nextRounds }
         },
       )
+      void queryClient.invalidateQueries({ queryKey: feedbackKeys.list(event.artifactId) })
       return
     }
 
     case 'feedback.created':
     case 'feedback.updated': {
+      void queryClient.invalidateQueries({ queryKey: feedbackKeys.list(event.artifactId) })
       void queryClient.invalidateQueries({
         queryKey: artifactKeys.detail(event.artifactId, undefined),
       })
@@ -108,6 +111,7 @@ export function applyRealtimeEventToCache(
     case 'resync': {
       void queryClient.invalidateQueries({ queryKey: projectKeys.all })
       void queryClient.invalidateQueries({ queryKey: artifactKeys.all })
+      void queryClient.invalidateQueries({ queryKey: feedbackKeys.all })
       return
     }
   }

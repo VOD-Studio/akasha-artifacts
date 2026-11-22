@@ -3,9 +3,10 @@ import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
 import { Kbd } from '@akasha/ui/kbd'
 import { Segmented } from '@akasha/ui/segmented'
-import { ArrowLeft, Code2, Eye, GitCompare, Search } from 'lucide-react'
+import { ArrowLeft, Code2, Eye, GitCompare, MessageSquare, Search } from 'lucide-react'
 import { useWorkspaceStore, type WorkspaceViewMode } from '../../entities/workspace/store'
 import { DaemonStatusPill } from '../../features/daemon-control/DaemonStatusPill'
+import { ElementPickerButton } from '../../features/element-picker/ElementPickerButton'
 import { ExportHtmlButton } from '../../features/export-html/ExportHtmlButton'
 import { VersionTimeline } from '../../features/version-timeline/VersionTimeline'
 import { ARTIFACT_TYPE_LABELS } from '../../shared/lib/format'
@@ -14,6 +15,7 @@ export interface TopBarProps {
   artifact: Artifact
   version: Version
   versions: readonly Version[]
+  feedbackCount?: number
   onBackToLibrary: () => void
   onSelectVersion: (version?: number) => void
 }
@@ -22,11 +24,14 @@ export function TopBar({
   artifact,
   version,
   versions,
+  feedbackCount = 0,
   onBackToLibrary,
   onSelectVersion,
 }: TopBarProps) {
   const viewMode = useWorkspaceStore((s) => s.viewMode)
   const setViewMode = useWorkspaceStore((s) => s.setViewMode)
+  const inspectorOpen = useWorkspaceStore((s) => s.inspectorOpen)
+  const setInspectorOpen = useWorkspaceStore((s) => s.setInspectorOpen)
   const setCommandPaletteOpen = useWorkspaceStore((s) => s.setCommandPaletteOpen)
   const wsStatus = useWorkspaceStore((s) => s.wsStatus)
   const agentActivity = useWorkspaceStore((s) => s.agentActivityByProject[artifact.projectId])
@@ -76,6 +81,7 @@ export function TopBar({
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
+        <ElementPickerButton />
         <Segmented<WorkspaceViewMode>
           aria-label="工作区视图模式"
           value={viewMode}
@@ -93,6 +99,16 @@ export function TopBar({
         <Badge tone={activityBadge.tone} data-testid="agent-activity-badge">
           {activityBadge.label}
         </Badge>
+
+        <Button
+          variant={inspectorOpen ? 'secondary' : 'outline'}
+          size="sm"
+          leftIcon={<MessageSquare size={13} />}
+          onClick={() => setInspectorOpen(!inspectorOpen)}
+          aria-pressed={inspectorOpen}
+        >
+          评审{feedbackCount > 0 ? ` (${feedbackCount})` : ''}
+        </Button>
 
         <Button
           variant="outline"
