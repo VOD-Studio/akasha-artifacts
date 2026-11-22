@@ -1,9 +1,12 @@
+import path from 'node:path'
 import { ArtifactService } from '../application/artifact-service.js'
 import { CheckService } from '../application/check-service.js'
 import { SpecRegistry } from '../application/spec-registry.js'
 import type { Clock, IdGenerator } from '../domain/ports.js'
 import { LogStore } from '../infrastructure/logging/log-store.js'
 import { RealtimeEventHub } from '../infrastructure/realtime/event-hub.js'
+import { FsArtifactsStorage } from '../infrastructure/storage/fs/index.js'
+import { FsArtifactsWatcher } from '../infrastructure/storage/fs/watcher.js'
 import {
   CryptoIdGenerator,
   InMemoryArtifactRepository,
@@ -18,6 +21,13 @@ import { SqliteStorage } from '../infrastructure/storage/sqlite/index.js'
 import { createHttpApp, type HttpSecurityConfig } from '../interfaces/http/app.js'
 
 export interface LocalContainerOptions {
+  // 存储模式：默认 sqlite；选 fs 时使用项目内 .artifacts/ 原生文件存储适配器
+  storageMode?: 'sqlite' | 'fs'
+  // fs 模式下 .artifacts/ 目录路径（默认 <cwd>/.artifacts）
+  artifactsDir?: string
+  // fs 模式下关联的项目 ID 与项目根路径
+  fsProjectId?: string
+  fsWatchDebounceMs?: number
   // 'memory' 走内存适配器；其它路径（含 ':memory:'）走 node:sqlite 适配器
   dbPath?: string
   version?: string
@@ -53,30 +63,46 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
   const checks = new CheckService(specs)
   const logs = new LogStore()
 
+  const storageMode = options.storageMode ?? 'sqlite'
   const dbPath = options.dbPath ?? ':memory:'
-  const sqlite = dbPath === 'memory' ? undefined : new SqliteStorage(dbPath)
+  const fsStorage =
+    storageMode === 'fs'
+      ? new FsArtifactsStorage({
+          artifactsRoot: path.resolve(
+            options.artifactsDir ?? path.join(process.cwd(), '.artifacts'),
+          ),
+        })
+      : undefined
+  const sqlite = fsStorage || dbPath === 'memory' ? undefined : new SqliteStorage(dbPath)
+  const persistentBackend = fsStorage ?? sqlite
 
-  // SQLite 重启时在历史 seq 基础上留出 1 个代差，确保重连客户端必定收到 resync 刷新缓存
-  const persistedSeq = sqlite ? sqlite.getEventSeq() : 0
+  // 持久化存储重启时在历史 seq 基础上留出 1 个代差，确保重连客户端必定收到 resync 刷新缓存
+  const persistedSeq = persistentBackend ? persistentBackend.getEventSeq() : 0
   const initialSeq = persistedSeq > 0 ? persistedSeq + 1 : 0
-  if (sqlite && initialSeq > 0) {
-    sqlite.setEventSeq(initialSeq)
+  if (persistentBackend && initialSeq > 0) {
+    persistentBackend.setEventSeq(initialSeq)
   }
 
   const realtime = new RealtimeEventHub({
     clock,
     maxHistory: options.maxEventHistory ?? 500,
     initialSeq,
-    onSeqAdvance: sqlite ? (seq) => sqlite.setEventSeq(seq) : undefined,
-    resolveArtifactProject: sqlite ? (id) => sqlite.findProjectIdByArtifactSync(id) : undefined,
+    onSeqAdvance: persistentBackend ? (seq) => persistentBackend.setEventSeq(seq) : undefined,
+    resolveArtifactProject: persistentBackend
+      ? (id) => persistentBackend.findProjectIdByArtifactSync(id)
+      : undefined,
   })
 
-  const projects = sqlite ? sqlite.projects : new InMemoryProjectRepository()
-  const artifacts = sqlite ? sqlite.artifacts : new InMemoryArtifactRepository()
-  const states = sqlite ? sqlite.states : new InMemoryStateRepository()
-  const rounds = sqlite ? sqlite.rounds : new InMemoryRoundRepository()
-  const feedbacks = sqlite ? sqlite.feedbacks : new InMemoryFeedbackRepository()
-  const receipts = sqlite ? sqlite.receipts : new InMemoryReceiptRepository()
+  const projects = persistentBackend ? persistentBackend.projects : new InMemoryProjectRepository()
+  const artifacts = persistentBackend
+    ? persistentBackend.artifacts
+    : new InMemoryArtifactRepository()
+  const states = persistentBackend ? persistentBackend.states : new InMemoryStateRepository()
+  const rounds = persistentBackend ? persistentBackend.rounds : new InMemoryRoundRepository()
+  const feedbacks = persistentBackend
+    ? persistentBackend.feedbacks
+    : new InMemoryFeedbackRepository()
+  const receipts = persistentBackend ? persistentBackend.receipts : new InMemoryReceiptRepository()
 
   const service = new ArtifactService({
     projects,
@@ -89,6 +115,78 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
     clock,
     ids,
   })
+
+  // .artifacts/ 原生文件模式下启用文件监听：外部编辑自动生成新版本并广播到 WS（保态重绘）
+  const fsProjectId = options.fsProjectId ?? 'default'
+  const fsWatcher = fsStorage
+    ? new FsArtifactsWatcher({
+        artifactsRoot: fsStorage.artifactsRoot,
+        debounceMs: options.fsWatchDebounceMs ?? 120,
+        isOwnWrite: (filePath, content) => fsStorage.artifacts.isOwnWrite(filePath, content),
+        onError: (err) => {
+          logs.append({
+            level: 'warn',
+            projectId: fsProjectId,
+            message: `.artifacts 文件监听异常：${err instanceof Error ? err.message : String(err)}`,
+          })
+        },
+        onExternalFileChange: async (evt) => {
+          // 1. 优先按 .artifact-id 定位既有 Artifact（支持目录重命名/移动后保持稳定 publicId）
+          let existing = evt.existingPublicId
+            ? await artifacts.findByPublicId(evt.existingPublicId)
+            : undefined
+          if (!existing) {
+            existing = await artifacts.findBySlug(fsProjectId, evt.slug)
+          }
+
+          if (existing) {
+            // 若目录已移动/重命名但保留 .artifact-id，先仅更新索引 slug（绝不以旧源码覆写磁盘新文件），保持 URL publicId 稳定
+            if (existing.slug !== evt.slug) {
+              const conflictBySlug = await artifacts.findBySlug(existing.projectId, evt.slug)
+              if (!conflictBySlug || conflictBySlug.publicId === existing.publicId) {
+                existing = {
+                  ...existing,
+                  slug: evt.slug,
+                  type: evt.type,
+                  updatedAt: clock.now(),
+                }
+                await fsStorage.artifacts.updateIndexOnly(existing)
+              }
+            }
+            const headVer = await artifacts.getVersion(existing.publicId, existing.headVersion)
+            if (headVer && headVer.source === evt.source) {
+              fsStorage.artifacts.recordSyncedContent(evt.entryFile, evt.source)
+              return
+            }
+            fsStorage.artifacts.recordSyncedContent(evt.entryFile, evt.source)
+            await service.publish({
+              projectId: existing.projectId,
+              slug: existing.slug,
+              title: existing.title,
+              type: evt.type,
+              source: evt.source,
+              baseVersion: existing.headVersion,
+              author: 'agent:fs',
+            })
+            return
+          }
+
+          // 2. 外部宿主工具新建的文件：自动建档、写入 .artifact-id 并生成 v1
+          fsStorage.artifacts.recordSyncedContent(evt.entryFile, evt.source)
+          const slugTitle = path.basename(evt.slug) || evt.slug
+          await service.publish({
+            projectId: fsProjectId,
+            slug: evt.slug,
+            title: slugTitle,
+            type: evt.type,
+            source: evt.source,
+            author: 'agent:fs',
+          })
+        },
+      })
+    : undefined
+
+  fsWatcher?.start()
 
   const initialPort = options.port ?? 24321
   const token = options.security?.token ?? generateSecureToken()
@@ -158,8 +256,12 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
     realtime,
     logs,
     daemonState,
+    fsStorage,
+    fsWatcher,
     repositories: { projects, artifacts, states, rounds, feedbacks, receipts },
     close: () => {
+      fsWatcher?.close()
+      fsStorage?.close()
       sqlite?.close()
     },
   }

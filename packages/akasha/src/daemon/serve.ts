@@ -49,6 +49,8 @@ export interface StartDaemonOptions {
   port?: number
   sandboxPort?: number
   dbPath?: string
+  storageMode?: 'sqlite' | 'fs'
+  artifactsDir?: string
   version?: string
   webDir?: string
   sandboxDir?: string
@@ -100,6 +102,8 @@ export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
       port: chosenShellPort,
       sandboxPort: chosenSandboxPort,
       dbPath,
+      storageMode: options.storageMode,
+      artifactsDir: options.artifactsDir,
       version,
       onShutdown: () => {
         void closeAll?.()

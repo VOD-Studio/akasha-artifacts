@@ -122,7 +122,7 @@ flowchart TB
 | **M0**    | Monorepo workspace, `@akasha/ui` shell kit, `@akasha/protocol` (zod + JSON Schema), immutable versions & RFC 6902 StateStream                                | Completed |
 | **M1**    | Machine-wide Local Daemon (Hono + SQLite), WebSocket resync, MCP tools, `check` gate, isolated sandbox with view-state preservation, multi-project web shell | Completed |
 | **M2**    | L1 element picker & overlay, `ReviewRound` draft/submit anti-interruption loop, `receipt/ack`, multi-harness Hooks & Skills, runtime error fix loop          | Completed |
-| **M3**    | `@akasha/kit` schema engine & L2 props panel, `artboard` / `document` / `verify`, L3 split code editor, `.artifacts/` native file storage                    | Planned   |
+| **M3**    | `@akasha/kit` schema engine & L2 props panel, `artboard` / `document` / `verify`, L3 split code editor, `.artifacts/` native file storage                    | Completed |
 | **M4**    | L4 visual direct editing (AST rewrite with undo/redo) & `window.akasha.storage`                                                                              | Planned   |
 | **M5**    | Self-hosted Docker Cloud Hub (OAuth, visibility scopes, offline queue, local-daemon direct fallback)                                                         | Planned   |
 | **M6**    | Cloudflare Workers (D1 + R2 + Durable Objects) & multi-user CRDT collaboration                                                                               | Planned   |
@@ -132,7 +132,7 @@ flowchart TB
 ## Quick Start
 
 > [!NOTE]
-> Local Daemon (`akasha serve`), full MCP server (`akasha mcp`), isolated sandbox runtime, L1 element picker & review-round loop, and multi-harness plugin installer (`akasha install` / `akasha doctor`) are available today (**M2**). Self-hosted Cloud Hub container deployment is scheduled for **M5**.
+> Local Daemon (`akasha serve`, supporting both default SQLite and `--storage fs` project `.artifacts/` native file mode), full MCP server (`akasha mcp`), isolated sandbox runtime, `@akasha/kit` templates (`artboard`, `document`, `verify`, `live-timeline`, `option-compare`), L1/L2/L3 workspace editing, and multi-harness plugin installer (`akasha install` / `akasha doctor`) are available today (**M3**). Self-hosted Cloud Hub container deployment is scheduled for **M5**.
 
 ### 1. Connect to Your Coding Agent (MCP & Hooks — M1/M2)
 
