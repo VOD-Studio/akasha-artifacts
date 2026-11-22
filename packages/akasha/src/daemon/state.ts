@@ -40,6 +40,75 @@ export function daemonStatePath(homeDir: string): string {
   return path.join(homeDir, 'daemon.json')
 }
 
+export function daemonLockPath(homeDir: string): string {
+  return path.join(homeDir, 'daemon.lock')
+}
+
+function isPidAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'EPERM'
+  }
+}
+
+// 基于 O_CREAT | O_EXCL 的整机单例锁：防止并发或重复启动多个 Daemon 争用同一 SQLite。
+export function acquireDaemonLock(homeDir: string): { release: () => void } {
+  fs.mkdirSync(homeDir, { recursive: true, mode: 0o700 })
+  const lockFile = daemonLockPath(homeDir)
+  const ownerId = `${process.pid}:${Date.now()}:${Math.random().toString(16).slice(2)}`
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const fd = fs.openSync(lockFile, 'wx', 0o600)
+      fs.writeFileSync(
+        fd,
+        JSON.stringify({ pid: process.pid, ownerId, acquiredAt: new Date().toISOString() }),
+      )
+      fs.closeSync(fd)
+      let released = false
+      return {
+        release: () => {
+          if (released) return
+          released = true
+          try {
+            const raw = JSON.parse(fs.readFileSync(lockFile, 'utf8')) as { ownerId?: string }
+            if (raw.ownerId === ownerId) {
+              fs.rmSync(lockFile, { force: true })
+            }
+          } catch {
+            // 锁文件可能已被清理
+          }
+        },
+      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') {
+        throw err
+      }
+      // 检测是否为已退出进程残留的过期锁
+      try {
+        const raw = JSON.parse(fs.readFileSync(lockFile, 'utf8')) as { pid?: number }
+        if (typeof raw.pid === 'number' && !isPidAlive(raw.pid)) {
+          fs.rmSync(lockFile, { force: true })
+          continue
+        }
+        throw new Error(
+          `Akasha Daemon 已在运行（pid=${raw.pid ?? 'unknown'}），同一 home 目录仅允许运行一个单例`,
+        )
+      } catch (readErr) {
+        if (readErr instanceof Error && readErr.message.includes('已在运行')) {
+          throw readErr
+        }
+        // 锁文件正在写入或已损坏，抛出冲突错误交由调用方探测复用
+        throw new Error('Akasha Daemon 正在启动或已在运行，请勿重复启动')
+      }
+    }
+  }
+  throw new Error('获取 Akasha Daemon 单例锁失败')
+}
+
 export function projectsRegistryPath(homeDir: string): string {
   return path.join(homeDir, 'projects.json')
 }

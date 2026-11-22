@@ -53,6 +53,11 @@ describe('Local singleton Daemon lifecycle & security', () => {
     expect(first.replaced).toBe(false)
     expect(first.projectId).toBeTruthy()
 
+    // 已有单例运行时，直接再次 startAkashaDaemon 必须被单例锁拒绝，不能退回备用端口另起第二个进程
+    await expect(startAkashaDaemon({ homeDir, port: 0, sandboxPort: 0 })).rejects.toThrow(
+      /已在运行/,
+    )
+
     // 检查 daemon.json 文件权限为 0600
     const mode = fs.statSync(daemonStatePath(homeDir)).mode & 0o777
     expect(mode).toBe(0o600)
@@ -104,10 +109,12 @@ describe('Local singleton Daemon lifecycle & security', () => {
     expect(replayRes.status).toBe(401)
   })
 
-  it('replaces running Daemon smoothly on version upgrade while keeping SQLite artifact URLs intact', async () => {
+  it('replaces running Daemon smoothly on version upgrade while preserving custom dbPath and artifact URLs', async () => {
     const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-upgrade-'))
+    const customDbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-custom-db-'))
+    const customDbPath = path.join(customDbDir, 'custom.db')
     const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-proj-up-'))
-    tempDirs.push(homeDir, proj)
+    tempDirs.push(homeDir, customDbDir, proj)
 
     const launcher = async (opts: {
       homeDir: string
@@ -128,7 +135,14 @@ describe('Local singleton Daemon lifecycle & security', () => {
       closers.push(d.close)
     }
 
-    const v1Daemon = await ensureDaemon({ homeDir, projectDir: proj, version: '0.1.0', launcher })
+    const v1Daemon = await ensureDaemon({
+      homeDir,
+      projectDir: proj,
+      dbPath: customDbPath,
+      version: '0.1.0',
+      launcher,
+    })
+    expect(v1Daemon.state.dbPath).toBe(customDbPath)
     const pubRes = await fetch(`${v1Daemon.baseUrl}/api/v1/artifacts`, {
       method: 'POST',
       headers: {
@@ -145,11 +159,12 @@ describe('Local singleton Daemon lifecycle & security', () => {
     })
     const { artifact } = (await pubRes.json()) as { artifact: { publicId: string } }
 
-    // 升级版本为 0.2.0 → 平滑替换并继承原端口，既有 Artifact 链接仍可访问
+    // 升级版本为 0.2.0（不显式传 dbPath）→ 平滑替换并继承原端口与自定义 dbPath，既有 Artifact 链接仍可访问
     const v2Daemon = await ensureDaemon({ homeDir, projectDir: proj, version: '0.2.0', launcher })
     expect(v2Daemon.replaced).toBe(true)
     expect(v2Daemon.reused).toBe(false)
     expect(v2Daemon.state.port).toBe(v1Daemon.state.port)
+    expect(v2Daemon.state.dbPath).toBe(customDbPath)
     expect(v2Daemon.state.version).toBe('0.2.0')
 
     const readRes = await fetch(`${v2Daemon.baseUrl}/api/v1/artifacts/${artifact.publicId}`)

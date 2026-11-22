@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { buildLoopbackOrigins, startNodeServer } from '@akasha/server'
 import { startSandboxServer } from './sandbox-server.js'
 import {
+  acquireDaemonLock,
   type DaemonStateFile,
   DEFAULT_SANDBOX_PORTS,
   DEFAULT_SHELL_PORTS,
@@ -54,56 +55,65 @@ function defaultAssetDir(relFromWorkspace: string): string | undefined {
   return undefined
 }
 
-// 启动整机单例 Daemon：外壳主服务（固定高端口段）+ 独立 Origin 沙盒静态服务 + ~/.akasha/daemon.json（0600）。
+// 启动整机单例 Daemon：先抢占原子单例锁，再绑定外壳主服务（固定高端口段）与独立 Origin 沙盒服务。
 export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
   const homeDir = resolveAkashaHome(options.homeDir)
   const host = options.host ?? '127.0.0.1'
   const version = options.version ?? AKASHA_VERSION
   const dbPath = options.dbPath ?? path.join(homeDir, 'akasha.db')
 
-  const shellCandidates =
-    options.port !== undefined
-      ? [options.port]
-      : parsePortList(process.env.AKASHA_PORTS, DEFAULT_SHELL_PORTS)
-  const sandboxCandidates =
-    options.sandboxPort !== undefined
-      ? [options.sandboxPort]
-      : parsePortList(process.env.AKASHA_SANDBOX_PORTS, DEFAULT_SANDBOX_PORTS)
+  const lock = acquireDaemonLock(homeDir)
 
-  const chosenShellPort = await findAvailablePort(shellCandidates, host)
-  const chosenSandboxPort = await findAvailablePort(sandboxCandidates, host)
-
+  let nodeSrv: Awaited<ReturnType<typeof startNodeServer>> | undefined
+  let sandboxSrv: Awaited<ReturnType<typeof startSandboxServer>> | undefined
   let closeAll: (() => Promise<void>) | undefined
-  const nodeSrv = await startNodeServer({
-    host,
-    port: chosenShellPort,
-    sandboxPort: chosenSandboxPort,
-    dbPath,
-    version,
-    onShutdown: () => {
-      void closeAll?.()
-    },
-  })
 
-  const sandboxDir = options.sandboxDir ?? defaultAssetDir('apps/sandbox/dist')
-  let sandboxSrv: Awaited<ReturnType<typeof startSandboxServer>>
   try {
+    const shellCandidates =
+      options.port !== undefined
+        ? [options.port]
+        : parsePortList(process.env.AKASHA_PORTS, DEFAULT_SHELL_PORTS)
+    const sandboxCandidates =
+      options.sandboxPort !== undefined
+        ? [options.sandboxPort]
+        : parsePortList(process.env.AKASHA_SANDBOX_PORTS, DEFAULT_SANDBOX_PORTS)
+
+    const chosenShellPort = await findAvailablePort(shellCandidates, host)
+    const chosenSandboxPort = await findAvailablePort(sandboxCandidates, host)
+
+    nodeSrv = await startNodeServer({
+      host,
+      port: chosenShellPort,
+      sandboxPort: chosenSandboxPort,
+      dbPath,
+      version,
+      onShutdown: () => {
+        void closeAll?.()
+      },
+    })
+
+    const sandboxDir = options.sandboxDir ?? defaultAssetDir('apps/sandbox/dist')
     sandboxSrv = await startSandboxServer({
       host,
       port: chosenSandboxPort,
       shellOrigins: buildLoopbackOrigins(nodeSrv.port),
       sandboxDir,
     })
+    nodeSrv.daemonState.sandboxPort = sandboxSrv.port
   } catch (err) {
-    await nodeSrv.close()
+    await sandboxSrv?.close()
+    await nodeSrv?.close()
+    lock.release()
     throw err
   }
-  nodeSrv.daemonState.sandboxPort = sandboxSrv.port
+
+  const activeNodeSrv = nodeSrv
+  const activeSandboxSrv = sandboxSrv
 
   // 挂载外壳 SPA 静态产物（排除 /api/* 与 /auth/*）
   const webDir = options.webDir ?? defaultAssetDir('apps/web/dist')
   const resolvedWebDir = webDir ? path.resolve(webDir) : undefined
-  nodeSrv.app.get('*', (c) => {
+  activeNodeSrv.app.get('*', (c) => {
     const reqPath = c.req.path
     if (reqPath.startsWith('/api/') || reqPath.startsWith('/auth/')) {
       return c.json({ error: { code: 'NOT_FOUND', message: `路径 ${reqPath} 不存在` } }, 404)
@@ -124,24 +134,24 @@ export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
           .readFileSync(indexHtml, 'utf8')
           .replace(
             '</head>',
-            `<script>window.__AKASHA_CONFIG__=${JSON.stringify({ sandboxOrigin: sandboxSrv.origin })};</script></head>`,
+            `<script>window.__AKASHA_CONFIG__=${JSON.stringify({ sandboxOrigin: activeSandboxSrv.origin })};</script></head>`,
           )
         return c.html(html)
       }
     }
     return c.html(
-      `<!doctype html><html><head><meta charset="utf-8"><title>Akasha Terminal</title></head><body><h1>Akasha Terminal v${version}</h1><p>Daemon running on ${nodeSrv.baseUrl} · Sandbox ${sandboxSrv.origin}</p></body></html>`,
+      `<!doctype html><html><head><meta charset="utf-8"><title>Akasha Terminal</title></head><body><h1>Akasha Terminal v${version}</h1><p>Daemon running on ${activeNodeSrv.baseUrl} · Sandbox ${activeSandboxSrv.origin}</p></body></html>`,
     )
   })
 
   const state: DaemonStateFile = {
     pid: process.pid,
     host,
-    port: nodeSrv.port,
-    sandboxPort: sandboxSrv.port,
-    token: nodeSrv.token,
+    port: activeNodeSrv.port,
+    sandboxPort: activeSandboxSrv.port,
+    token: activeNodeSrv.token,
     version,
-    startedAt: nodeSrv.daemonState.startedAt,
+    startedAt: activeNodeSrv.daemonState.startedAt,
     dbPath,
   }
   writeDaemonState(homeDir, state)
@@ -154,7 +164,7 @@ export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
     const idleMs = options.idleTimeoutSec * 1000
     idleTimer = setInterval(
       () => {
-        if (nodeSrv.realtime.getActiveConnections() > 0) {
+        if (activeNodeSrv.realtime.getActiveConnections() > 0) {
           lastActivityMs = Date.now()
           return
         }
@@ -172,17 +182,21 @@ export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
     closed = true
     if (idleTimer) clearInterval(idleTimer)
     removeDaemonState(homeDir, process.pid)
-    await Promise.all([nodeSrv.close(), sandboxSrv.close()])
+    try {
+      await Promise.all([activeNodeSrv.close(), activeSandboxSrv.close()])
+    } finally {
+      lock.release()
+    }
   }
 
   return {
     state,
-    baseUrl: nodeSrv.baseUrl,
-    wsUrl: nodeSrv.wsUrl,
-    sandboxOrigin: sandboxSrv.origin,
-    token: nodeSrv.token,
-    nodeSrv,
-    sandboxSrv,
+    baseUrl: activeNodeSrv.baseUrl,
+    wsUrl: activeNodeSrv.wsUrl,
+    sandboxOrigin: activeSandboxSrv.origin,
+    token: activeNodeSrv.token,
+    nodeSrv: activeNodeSrv,
+    sandboxSrv: activeSandboxSrv,
     close: closeAll,
   }
 }

@@ -2,6 +2,7 @@ import { startNodeServer } from '@akasha/server'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { afterEach, describe, expect, it } from 'vitest'
+import { AkashaHttpClient } from '../src/client.js'
 import { createAkashaMcpServer } from '../src/server.js'
 
 const closers: Array<() => Promise<void>> = []
@@ -197,5 +198,29 @@ describe('@akasha/mcp stdio tools integration', () => {
       arguments: { id: pub1Json.publicId, after: '1', timeoutSec: 1 },
     })
     expect(extractText(pending)).toContain('pending')
+  })
+
+  it('automatically refreshes credentials via resolveConnection when shared Daemon rotates token on replacement', async () => {
+    const srv = await startNodeServer({ dbPath: ':memory:', port: 0 })
+    closers.push(srv.close)
+
+    let refreshedCount = 0
+    const httpClient = new AkashaHttpClient({
+      baseUrl: srv.baseUrl,
+      token: 'stale-old-token',
+      resolveConnection: async () => {
+        refreshedCount += 1
+        return { baseUrl: srv.baseUrl, token: srv.token }
+      },
+    })
+
+    const res = await httpClient.publish({
+      slug: 'html/auto-refresh',
+      title: 'Auto Refresh',
+      type: 'html',
+      source: '<p>ok</p>',
+    })
+    expect(refreshedCount).toBe(1)
+    expect(res.version.version).toBe(1)
   })
 })

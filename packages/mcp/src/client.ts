@@ -60,15 +60,18 @@ export interface AkashaClientOptions {
   defaultProject?: string
   defaultAuthor?: Author
   fetchImpl?: typeof fetch
+  // 共享 Daemon 平滑升级更换 token/端口后，遇 401 或连接断开时回调刷新凭据并自动重试一次
+  resolveConnection?: () => Promise<{ baseUrl: string; token?: string }>
 }
 
 // 无状态 HTTP 客户端：供 MCP Server 与 CLI 复用，对接本地 Daemon 或云端 Hub 的同一套 /api/v1 协议。
 export class AkashaHttpClient {
-  readonly baseUrl: string
-  private readonly token?: string
+  baseUrl: string
+  private token?: string
   private readonly defaultProject?: string
   private readonly defaultAuthor: Author
   private readonly fetchFn: typeof fetch
+  private readonly resolveConnection?: () => Promise<{ baseUrl: string; token?: string }>
 
   constructor(options: AkashaClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '')
@@ -76,9 +79,15 @@ export class AkashaHttpClient {
     this.defaultProject = options.defaultProject
     this.defaultAuthor = options.defaultAuthor ?? 'agent:mcp'
     this.fetchFn = options.fetchImpl ?? fetch
+    this.resolveConnection = options.resolveConnection
   }
 
-  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    retried = false,
+  ): Promise<T> {
     const headers: Record<string, string> = {}
     if (this.token) {
       headers.authorization = `Bearer ${this.token}`
@@ -86,11 +95,29 @@ export class AkashaHttpClient {
     if (body !== undefined) {
       headers['content-type'] = 'application/json'
     }
-    const res = await this.fetchFn(`${this.baseUrl}${path}`, {
-      method,
-      headers,
-      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-    })
+    let res: Response
+    try {
+      res = await this.fetchFn(`${this.baseUrl}${path}`, {
+        method,
+        headers,
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      })
+    } catch (err) {
+      if (!retried && this.resolveConnection) {
+        const refreshed = await this.resolveConnection()
+        this.baseUrl = refreshed.baseUrl.replace(/\/+$/, '')
+        this.token = refreshed.token
+        return this.request<T>(method, path, body, true)
+      }
+      throw err
+    }
+
+    if (res.status === 401 && !retried && this.resolveConnection) {
+      const refreshed = await this.resolveConnection()
+      this.baseUrl = refreshed.baseUrl.replace(/\/+$/, '')
+      this.token = refreshed.token
+      return this.request<T>(method, path, body, true)
+    }
     const text = await res.text()
     let json: unknown = {}
     if (text) {

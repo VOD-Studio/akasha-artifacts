@@ -133,12 +133,13 @@ export async function ensureDaemon(options: EnsureDaemonOptions = {}): Promise<{
         projectId,
       }
     }
-    // 版本或全局配置发生变化：先平滑停止旧 Daemon，再在同端口拉起新版本
+    // 版本或全局配置发生变化：先平滑停止旧 Daemon，并继承原端口与原数据库路径，避免自定义 --db 丢失
     const prevPort = options.port ?? existing.state.port
     const prevSandboxPort = options.sandboxPort ?? existing.state.sandboxPort
+    const prevDbPath = options.dbPath ?? existing.state.dbPath
     await stopDaemon(homeDir)
     replaced = true
-    options = { ...options, port: prevPort, sandboxPort: prevSandboxPort }
+    options = { ...options, port: prevPort, sandboxPort: prevSandboxPort, dbPath: prevDbPath }
     existing = null
   }
 

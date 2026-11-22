@@ -113,11 +113,17 @@ export async function runCli(argv: string[]): Promise<number> {
       let token = process.env.AKASHA_TOKEN
       let projectId: string | undefined
 
+      let resolveConnection: (() => Promise<{ baseUrl: string; token?: string }>) | undefined
+
       if (!hubUrl || /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?/i.test(hubUrl)) {
         const ensured = await ensureDaemon({ projectDir })
         baseUrl = ensured.baseUrl
         token = ensured.state.token
         projectId = ensured.projectId
+        resolveConnection = async () => {
+          const refreshed = await ensureDaemon({ projectDir })
+          return { baseUrl: refreshed.baseUrl, token: refreshed.state.token }
+        }
       } else {
         baseUrl = hubUrl
       }
@@ -127,6 +133,7 @@ export async function runCli(argv: string[]): Promise<number> {
         token,
         defaultProject: projectId,
         version: AKASHA_VERSION,
+        resolveConnection,
       })
       return 0
     }
