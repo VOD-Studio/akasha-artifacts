@@ -11,6 +11,7 @@ export const SANDBOX_DEPENDENCY_WHITELIST = [
   'marked',
   '@violetjs/inkline',
   '@akasha/kit',
+  '@akasha/runtime',
 ] as const
 
 export interface ArtifactSpecDefinition {

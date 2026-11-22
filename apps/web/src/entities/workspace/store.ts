@@ -1,0 +1,79 @@
+import type { AgentActivityState, PreservedViewState } from '@akasha/protocol'
+import { create } from 'zustand'
+import type { WsConnectionStatus } from '../../shared/api/ws'
+
+export type WorkspaceViewMode = 'preview' | 'diff' | 'source'
+
+export interface AgentActivityRecord {
+  state: AgentActivityState
+  summary?: string
+  artifactId?: string
+  updatedAt: string
+}
+
+export interface SandboxErrorRecord {
+  phase: 'compile' | 'runtime'
+  message: string
+  stack?: string
+  loc?: string
+}
+
+export interface WorkspaceStoreState {
+  selectedProjectId: string | null
+  commandPaletteOpen: boolean
+  viewMode: WorkspaceViewMode
+  wsStatus: WsConnectionStatus
+  agentActivityByProject: Record<string, AgentActivityRecord>
+  presenceByArtifact: Record<string, { viewers: number; agentOnline: boolean }>
+  preservedViewByArtifact: Record<string, PreservedViewState>
+  unsentDraftsByArtifact: Record<string, string>
+  sandboxErrorByArtifact: Record<string, SandboxErrorRecord | null>
+
+  setSelectedProjectId: (projectId: string | null) => void
+  setCommandPaletteOpen: (open: boolean) => void
+  setViewMode: (mode: WorkspaceViewMode) => void
+  setWsStatus: (status: WsConnectionStatus) => void
+  setAgentActivity: (projectId: string, record: AgentActivityRecord) => void
+  setPresence: (artifactId: string, presence: { viewers: number; agentOnline: boolean }) => void
+  setPreservedView: (artifactId: string, state: PreservedViewState) => void
+  setUnsentDraft: (artifactId: string, text: string) => void
+  setSandboxError: (artifactId: string, err: SandboxErrorRecord | null) => void
+}
+
+// 客户端工作台状态：管理视角切换、保态快照与未提交草稿，确保 Agent 推送新版本重绘时不丢失用户上下文。
+export const useWorkspaceStore = create<WorkspaceStoreState>((set) => ({
+  selectedProjectId: null,
+  commandPaletteOpen: false,
+  viewMode: 'preview',
+  wsStatus: 'closed',
+  agentActivityByProject: {},
+  presenceByArtifact: {},
+  preservedViewByArtifact: {},
+  unsentDraftsByArtifact: {},
+  sandboxErrorByArtifact: {},
+
+  setSelectedProjectId: (selectedProjectId) => set({ selectedProjectId }),
+  setCommandPaletteOpen: (commandPaletteOpen) => set({ commandPaletteOpen }),
+  setViewMode: (viewMode) => set({ viewMode }),
+  setWsStatus: (wsStatus) => set({ wsStatus }),
+  setAgentActivity: (projectId, record) =>
+    set((s) => ({
+      agentActivityByProject: { ...s.agentActivityByProject, [projectId]: record },
+    })),
+  setPresence: (artifactId, presence) =>
+    set((s) => ({
+      presenceByArtifact: { ...s.presenceByArtifact, [artifactId]: presence },
+    })),
+  setPreservedView: (artifactId, state) =>
+    set((s) => ({
+      preservedViewByArtifact: { ...s.preservedViewByArtifact, [artifactId]: state },
+    })),
+  setUnsentDraft: (artifactId, text) =>
+    set((s) => ({
+      unsentDraftsByArtifact: { ...s.unsentDraftsByArtifact, [artifactId]: text },
+    })),
+  setSandboxError: (artifactId, err) =>
+    set((s) => ({
+      sandboxErrorByArtifact: { ...s.sandboxErrorByArtifact, [artifactId]: err },
+    })),
+}))

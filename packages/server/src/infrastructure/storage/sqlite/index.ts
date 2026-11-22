@@ -249,6 +249,11 @@ export class SqliteProjectRepository implements ProjectRepository {
       lastActiveAt: r.last_active_at,
     }))
   }
+
+  async remove(id: string): Promise<boolean> {
+    const res = this.db.prepare('DELETE FROM projects WHERE id = ?').run(id)
+    return Number(res.changes ?? 0) > 0
+  }
 }
 
 interface ArtifactRow {

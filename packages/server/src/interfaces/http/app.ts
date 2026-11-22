@@ -309,6 +309,15 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
     return c.json({ project }, 201)
   })
 
+  app.delete('/api/v1/projects/:id', async (c) => {
+    const id = c.req.param('id')
+    const removed = await deps.projects.remove(id)
+    if (!removed) {
+      throw new DomainError('NOT_FOUND', `未找到项目 "${id}"`)
+    }
+    return c.json({ ok: true as const, id })
+  })
+
   app.get('/api/v1/artifacts', async (c) => {
     const projectId = c.req.query('projectId')
     const artifacts = await deps.artifacts.listByProject(projectId)

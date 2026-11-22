@@ -80,19 +80,28 @@ export class ArtifactService {
     return this.deps.projects.upsert(project)
   }
 
-  async resolveArtifact(
-    identifier: ArtifactIdentifier,
-    projectId = DEFAULT_PROJECT_ID,
-  ): Promise<Artifact> {
+  async resolveArtifact(identifier: ArtifactIdentifier, projectId?: string): Promise<Artifact> {
     if (PublicIdSchema.safeParse(identifier).success) {
       const byPublic = await this.deps.artifacts.findByPublicId(identifier)
       if (byPublic) return byPublic
     }
-    const bySlug = await this.deps.artifacts.findBySlug(projectId, identifier)
-    if (!bySlug) {
-      throw new NotFoundError(`未找到 Artifact "${identifier}"`, { identifier, projectId })
+    const targetProject = projectId ?? DEFAULT_PROJECT_ID
+    const bySlug = await this.deps.artifacts.findBySlug(targetProject, identifier)
+    if (bySlug) return bySlug
+
+    // 未显式指定项目时，兼容跨项目按旧 slug 解析（仅当唯一命中时放行）
+    if (!projectId) {
+      const all = await this.deps.artifacts.listByProject()
+      const matches = all.filter((a) => a.slug === identifier)
+      if (matches.length === 1 && matches[0]) {
+        return matches[0]
+      }
     }
-    return bySlug
+
+    throw new NotFoundError(`未找到 Artifact "${identifier}"`, {
+      identifier,
+      projectId: targetProject,
+    })
   }
 
   async publish(input: {

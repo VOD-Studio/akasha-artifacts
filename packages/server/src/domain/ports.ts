@@ -17,6 +17,7 @@ export interface ProjectRepository {
   findById(id: string): Promise<Project | undefined>
   findByRootPath(rootPath: string): Promise<Project | undefined>
   list(): Promise<readonly Project[]>
+  remove(id: string): Promise<boolean>
 }
 
 export interface ArtifactRepository {

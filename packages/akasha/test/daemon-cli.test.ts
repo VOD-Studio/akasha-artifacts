@@ -74,6 +74,7 @@ describe('Local singleton Daemon lifecycle & security', () => {
     const csp = sbRes.headers.get('content-security-policy') ?? ''
     expect(csp).toContain("connect-src 'none'")
     expect(csp).toContain(`http://127.0.0.1:${first.state.port}`)
+    expect(sbRes.headers.get('access-control-allow-origin')).toBe('*')
 
     // 验证一次性访问码（OTC）换取 HttpOnly Cookie 且拒绝重放与开放重定向
     const badNext = await fetch(`${first.baseUrl}/api/v1/auth/otc`, {
@@ -107,6 +108,39 @@ describe('Local singleton Daemon lifecycle & security', () => {
     // 重放同一 OTC 必须被拒绝（401）
     const replayRes = await fetch(`${first.baseUrl}${openPath}`, { redirect: 'manual' })
     expect(replayRes.status).toBe(401)
+
+    // 移除项目登记（DELETE /api/v1/projects/:id）
+    const delRes = await fetch(`${first.baseUrl}/api/v1/projects/${second.projectId}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${first.state.token}` },
+    })
+    expect(delRes.status).toBe(200)
+  })
+
+  it('injects window.__AKASHA_CONFIG__ on root "/" as well as SPA fallback routes', async () => {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-web-cfg-'))
+    const fakeWebDir = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fake-web-'))
+    tempDirs.push(homeDir, fakeWebDir)
+    fs.writeFileSync(
+      path.join(fakeWebDir, 'index.html'),
+      '<!doctype html><html><head><title>Shell</title></head><body><div id="root"></div></body></html>',
+    )
+
+    const daemon = await startAkashaDaemon({
+      homeDir,
+      port: 0,
+      sandboxPort: 0,
+      webDir: fakeWebDir,
+    })
+    closers.push(daemon.close)
+
+    const rootHtml = await (await fetch(`${daemon.baseUrl}/`)).text()
+    expect(rootHtml).toContain('window.__AKASHA_CONFIG__=')
+    expect(rootHtml).toContain(daemon.sandboxOrigin)
+
+    const spaHtml = await (await fetch(`${daemon.baseUrl}/a/AbCdEfGhIjKlMnOpQrStU`)).text()
+    expect(spaHtml).toContain('window.__AKASHA_CONFIG__=')
+    expect(spaHtml).toContain(daemon.sandboxOrigin)
   })
 
   it('replaces running Daemon smoothly on version upgrade while preserving custom dbPath and artifact URLs', async () => {

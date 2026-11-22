@@ -41,6 +41,10 @@ export async function startSandboxServer(options: SandboxServerOptions) {
     res.setHeader('Content-Security-Policy', csp)
     res.setHeader('X-Content-Type-Options', 'nosniff')
     res.setHeader('Referrer-Policy', 'no-referrer')
+    // 不带 allow-same-origin 的 iframe 具有不透明源 "null"，其加载同站 ES Module (<script type="module">)
+    // 需放行静态只读资源的 CORS 读取；安全边界仍由 frame-ancestors 与 connect-src 'none' 严格保障。
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
 
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       res.writeHead(405)

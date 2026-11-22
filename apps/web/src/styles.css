@@ -1,0 +1,18 @@
+@import "tailwindcss";
+@import "@akasha/ui/styles.css";
+
+@theme inline {
+  --color-canvas: var(--background);
+  --color-surface: var(--card);
+  --color-surface-subtle: var(--muted);
+  --color-ink: var(--foreground);
+  --color-ink-muted: var(--muted-foreground);
+  --color-accent: var(--primary);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}

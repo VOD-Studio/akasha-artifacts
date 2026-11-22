@@ -120,7 +120,7 @@ flowchart TB
 | Milestone | Scope                                                                                                                                                        | Status    |
 | :-------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------- |
 | **M0**    | Monorepo workspace, `@akasha/ui` shell kit, `@akasha/protocol` (zod + JSON Schema), immutable versions & RFC 6902 StateStream                                | Completed |
-| **M1**    | Machine-wide Local Daemon (Hono + SQLite), WebSocket resync, MCP tools, `check` gate, isolated sandbox with view-state preservation, multi-project web shell | Planned   |
+| **M1**    | Machine-wide Local Daemon (Hono + SQLite), WebSocket resync, MCP tools, `check` gate, isolated sandbox with view-state preservation, multi-project web shell | Completed |
 | **M2**    | L1 element picker & overlay, `ReviewRound` draft/submit anti-interruption loop, `receipt/ack`, multi-harness Hooks & Skills, runtime error fix loop          | Planned   |
 | **M3**    | `@akasha/kit` schema engine & L2 props panel, `artboard` / `document` / `verify`, L3 split code editor, `.artifacts/` native file storage                    | Planned   |
 | **M4**    | L4 visual direct editing (AST rewrite with undo/redo) & `window.akasha.storage`                                                                              | Planned   |
@@ -129,10 +129,10 @@ flowchart TB
 
 ---
 
-## Quick Start _(Planned — M1 / M5)_
+## Quick Start
 
 > [!NOTE]
-> The CLI daemon (`akasha serve`), MCP server (`akasha mcp`), and Cloud Hub container image are scheduled for **M1** and **M5**. The commands below preview the target developer experience; see [Development](#development) to run and test the workspace today.
+> Local Daemon (`akasha serve`), MCP server (`akasha mcp`), isolated sandbox runtime, and the multi-project web shell are available today (**M1**). Self-hosted Cloud Hub container deployment is scheduled for **M5**.
 
 ### 1. Connect to Your Coding Agent (MCP — M1)
 
