@@ -237,7 +237,51 @@ export class FsArtifactRepository implements ArtifactRepository {
     await this.inner.saveArtifact(artifact)
   }
 
-  private syncToDisk(artifact: Artifact, source: string): void {
+  private retireObsoleteLayout(previous: Artifact, nextArtifactDir: string): void {
+    const prevLayout = resolveArtifactFileLayout(this.artifactsRoot, previous.type, previous.slug)
+    const prevDir = path.resolve(prevLayout.artifactDir)
+    if (prevDir === path.resolve(nextArtifactDir)) return
+    if (!fs.existsSync(prevDir)) return
+
+    // 仅清理属于当前 Artifact 的 .artifact-id 与对应类型的规范入口文件，不误删无关用户文件
+    if (fs.existsSync(prevLayout.idFile)) {
+      try {
+        const idOnDisk = fs.readFileSync(prevLayout.idFile, 'utf8').trim()
+        if (idOnDisk && idOnDisk !== previous.publicId) {
+          return
+        }
+        fs.rmSync(prevLayout.idFile, { force: true })
+      } catch {
+        // 忽略清理异常
+      }
+    }
+
+    for (const filename of CANONICAL_ENTRY_FILENAMES[previous.type]) {
+      const candidate = path.join(prevDir, filename)
+      if (fs.existsSync(candidate)) {
+        fs.rmSync(candidate, { force: true })
+        this.lastWrittenContent.delete(path.resolve(candidate))
+      }
+    }
+
+    // 自底向上回收空目录（绝不删除 artifactsRoot 本身）
+    const root = path.resolve(this.artifactsRoot)
+    let cur = prevDir
+    while (cur !== root && cur.startsWith(`${root}${path.sep}`)) {
+      try {
+        if (fs.readdirSync(cur).length === 0) {
+          fs.rmdirSync(cur)
+          cur = path.dirname(cur)
+        } else {
+          break
+        }
+      } catch {
+        break
+      }
+    }
+  }
+
+  private syncToDisk(artifact: Artifact, source: string): ArtifactFileLayout {
     this.assertOwnedProject(artifact.projectId)
     const layout = resolveArtifactFileLayout(
       this.artifactsRoot,
@@ -247,35 +291,56 @@ export class FsArtifactRepository implements ArtifactRepository {
     )
     fs.mkdirSync(layout.artifactDir, { recursive: true })
 
+    let entryFile = layout.entryFile
+
     // document 类型在 HTML 与 JSON 格式间切换时清理另一份过期入口文件，防止监听器误读旧文件
     if (artifact.type === 'document') {
       const sibling =
-        path.basename(layout.entryFile) === 'index.json'
+        path.basename(entryFile) === 'index.json'
           ? path.join(layout.artifactDir, 'index.html')
           : path.join(layout.artifactDir, 'index.json')
       if (fs.existsSync(sibling)) {
         fs.rmSync(sibling, { force: true })
         this.lastWrittenContent.delete(path.resolve(sibling))
       }
+    } else if (artifact.type === 'react') {
+      // react 支持 index.tsx 与 index.jsx：若已有独立 index.jsx 则沿用该入口写回；否则统一写 index.tsx 并清理过期 index.jsx，避免重启时旧 jsx 覆盖新版本
+      const tsxFile = path.join(layout.artifactDir, 'index.tsx')
+      const jsxFile = path.join(layout.artifactDir, 'index.jsx')
+      if (fs.existsSync(jsxFile) && !fs.existsSync(tsxFile)) {
+        entryFile = jsxFile
+      } else {
+        entryFile = tsxFile
+        if (fs.existsSync(jsxFile)) {
+          fs.rmSync(jsxFile, { force: true })
+          this.lastWrittenContent.delete(path.resolve(jsxFile))
+        }
+      }
     }
 
-    this.lastWrittenContent.set(path.resolve(layout.entryFile), source)
-    writeFileAtomic(layout.entryFile, source)
+    this.lastWrittenContent.set(path.resolve(entryFile), source)
+    writeFileAtomic(entryFile, source)
 
     const idBody = `${artifact.publicId}\n`
     if (!fs.existsSync(layout.idFile) || fs.readFileSync(layout.idFile, 'utf8') !== idBody) {
       writeFileAtomic(layout.idFile, idBody)
     }
+
+    return { ...layout, entryFile }
   }
 
   async saveArtifact(artifact: Artifact): Promise<void> {
     this.assertOwnedProject(artifact.projectId)
     const layout = resolveArtifactFileLayout(this.artifactsRoot, artifact.type, artifact.slug)
     await this.assertNoPhysicalDirCollision(artifact, layout)
+    const previous = await this.inner.findByPublicId(artifact.publicId)
     await this.inner.saveArtifact(artifact)
     const headVer = await this.inner.getVersion(artifact.publicId, artifact.headVersion)
     if (!headVer) return
-    this.syncToDisk(artifact, headVer.source)
+    const written = this.syncToDisk(artifact, headVer.source)
+    if (previous) {
+      this.retireObsoleteLayout(previous, written.artifactDir)
+    }
   }
 
   findByPublicId(publicId: PublicId): Promise<Artifact | undefined> {
@@ -297,8 +362,9 @@ export class FsArtifactRepository implements ArtifactRepository {
       resolveArtifactFileLayout(this.artifactsRoot, artifact.type, artifact.slug, version.source)
     }
     await this.inner.appendVersion(version)
-    // 兼容新建 v1 时先 saveArtifact 后 appendVersion 的顺序，确保首次发布同样立即落盘原生文件
-    if (artifact && version.version >= artifact.headVersion) {
+    // 仅在新建 v1（saveArtifact 先于 appendVersion，此时 version === headVersion）时由此处落盘；
+    // v2+ 更新会在随后的 saveArtifact(updated) 使用新元数据落盘并清理旧类型目录，避免把新源码错写入旧类型目录。
+    if (artifact && version.version === artifact.headVersion) {
       this.syncToDisk(artifact, version.source)
     }
   }

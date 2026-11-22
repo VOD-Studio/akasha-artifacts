@@ -351,4 +351,139 @@ describe('.artifacts/ 原生文件存储适配器与外部编辑监听', () => {
     expect(discovered.artifact.type).toBe('markdown')
     expect(discovered.version.source).toContain('Release Notes from Git')
   })
+
+  it('重建 .state 索引时保留 Git 中已签入的 .artifact-id 稳定 publicId', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-import-id-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    const checkedInId = 'CheckedInGitId1234567'
+    const docDir = path.join(artifactsDir, 'html', 'checked-in')
+    fs.mkdirSync(docDir, { recursive: true })
+    fs.writeFileSync(path.join(docDir, 'index.html'), '<p>from git repo</p>', 'utf8')
+    fs.writeFileSync(path.join(docDir, ARTIFACT_ID_FILENAME), `${checkedInId}\n`, 'utf8')
+
+    // 模拟全新克隆后无 .state/state.db 场景下启动服务
+    const srv = await startNodeServer({
+      host: '127.0.0.1',
+      port: 0,
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_git',
+    })
+    closers.push(srv.close)
+
+    expect(fs.readFileSync(path.join(docDir, ARTIFACT_ID_FILENAME), 'utf8').trim()).toBe(
+      checkedInId,
+    )
+    const imported = await srv.service.getArtifact({ id: checkedInId })
+    expect(imported.artifact.publicId).toBe(checkedInId)
+    expect(imported.version.source).toBe('<p>from git repo</p>')
+  })
+
+  it('兼容外部创建的 react index.jsx 并在服务端更新与重启对账后保持一致，不会回滚', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-jsx-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    const reactDir = path.join(artifactsDir, 'react', 'counter')
+    fs.mkdirSync(reactDir, { recursive: true })
+    const jsxFile = path.join(reactDir, 'index.jsx')
+    fs.writeFileSync(jsxFile, 'export default function App() { return <div>v1 jsx</div> }', 'utf8')
+
+    const srv1 = await startNodeServer({
+      host: '127.0.0.1',
+      port: 0,
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_jsx',
+    })
+    const publicId = fs.readFileSync(path.join(reactDir, ARTIFACT_ID_FILENAME), 'utf8').trim()
+
+    // 服务端 API 更新到 v2：应同步写回 index.jsx，不残留过期 jsx 与 tsx 双入口
+    await srv1.service.publish({
+      projectId: 'proj_jsx',
+      slug: 'react/counter',
+      title: 'Counter',
+      type: 'react',
+      source: 'export default function App() { return <div>v2 from api</div> }',
+      baseVersion: 1,
+      author: 'agent:cli',
+    })
+    expect(fs.readFileSync(jsxFile, 'utf8')).toContain('v2 from api')
+    expect(fs.existsSync(path.join(reactDir, 'index.tsx'))).toBe(false)
+    await srv1.close()
+
+    // 重启并执行全量对账后，必须保持 v2，不得被旧 jsx 覆写回 v1
+    const srv2 = await startNodeServer({
+      host: '127.0.0.1',
+      port: 0,
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_jsx',
+    })
+    closers.push(srv2.close)
+
+    const afterRestart = await srv2.service.getArtifact({ id: publicId })
+    expect(afterRestart.artifact.headVersion).toBe(2)
+    expect(afterRestart.version.source).toContain('v2 from api')
+  })
+
+  it('变更 Artifact 类型时清理旧类型目录，避免重启对账把类型回滚回旧目录', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-type-migrate-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    const srv1 = await startNodeServer({
+      host: '127.0.0.1',
+      port: 0,
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_migrate',
+    })
+
+    const pub1 = await srv1.service.publish({
+      projectId: 'proj_migrate',
+      slug: 'card',
+      title: 'Card',
+      type: 'react',
+      source: 'export default function App() { return <div>v1 react</div> }',
+      author: 'agent:cli',
+    })
+    const oldReactDir = path.join(artifactsDir, 'react', 'card')
+    const newHtmlDir = path.join(artifactsDir, 'html', 'card')
+    expect(fs.existsSync(path.join(oldReactDir, 'index.tsx'))).toBe(true)
+
+    // 将同一 slug 从 react 变更为 html
+    await srv1.service.publish({
+      projectId: 'proj_migrate',
+      slug: 'card',
+      title: 'Card HTML',
+      type: 'html',
+      source: '<section>v2 html</section>',
+      baseVersion: 1,
+      author: 'agent:cli',
+    })
+    expect(fs.existsSync(path.join(newHtmlDir, 'index.html'))).toBe(true)
+    expect(fs.readFileSync(path.join(newHtmlDir, 'index.html'), 'utf8')).toBe(
+      '<section>v2 html</section>',
+    )
+    expect(fs.existsSync(oldReactDir)).toBe(false)
+    await srv1.close()
+
+    // 重启对账后必须保持 html 类型与 v2，不得被旧目录回滚成 react
+    const srv2 = await startNodeServer({
+      host: '127.0.0.1',
+      port: 0,
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_migrate',
+    })
+    closers.push(srv2.close)
+
+    const afterRestart = await srv2.service.getArtifact({ id: pub1.artifact.publicId })
+    expect(afterRestart.artifact.type).toBe('html')
+    expect(afterRestart.artifact.headVersion).toBe(2)
+    expect(afterRestart.version.source).toBe('<section>v2 html</section>')
+  })
 })

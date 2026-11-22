@@ -194,7 +194,7 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
             return
           }
 
-          // 2. 外部宿主工具新建的文件：自动建档、写入 .artifact-id 并生成 v1
+          // 2. 外部宿主工具新建或 Git 检出的文件：自动建档；若已带合法 .artifact-id 则保留原 publicId 避免索引重建破坏书签
           fsStorage.artifacts.recordSyncedContent(evt.entryFile, evt.source)
           const slugTitle = path.basename(evt.slug) || evt.slug
           await service.publish({
@@ -204,6 +204,7 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
             type: evt.type,
             source: evt.source,
             author: 'agent:fs',
+            preferredPublicId: evt.existingPublicId,
           })
         },
       })
