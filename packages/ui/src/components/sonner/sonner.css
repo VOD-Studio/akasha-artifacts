@@ -230,7 +230,6 @@
       transition: opacity var(--v-toast-fade) ease-out !important;
     }
 
-    /* biome-ignore lint/style/noDescendingSpecificity: 与前面的退后层规则声明的属性不同，次序无关 */
     .v-toast > * {
       /* biome-ignore lint/complexity/noImportantStyles: 同上 */
       transition: opacity var(--v-toast-fade) ease-out !important;

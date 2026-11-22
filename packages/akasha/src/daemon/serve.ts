@@ -27,7 +27,21 @@ const MIME_TYPES: Record<string, string> = {
   '.woff2': 'font/woff2',
 }
 
-export const AKASHA_VERSION = '0.1.0'
+// 从同级 package.json 动态读取当前发布版本，保证发版升级后 Daemon 与 CLI 版本号自动同步。
+function readPackageVersion(): string {
+  try {
+    const pkgPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../package.json')
+    const raw = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as { version?: unknown }
+    if (typeof raw.version === 'string' && raw.version.length > 0) {
+      return raw.version
+    }
+  } catch {
+    // 读取失败时回退默认版本号
+  }
+  return '0.1.0'
+}
+
+export const AKASHA_VERSION = readPackageVersion()
 
 export interface StartDaemonOptions {
   homeDir?: string
