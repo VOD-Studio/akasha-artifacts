@@ -20,6 +20,11 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@akasha/protocol": "workspace:*"
+    "@akasha/protocol": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.32.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@akasha/server": "workspace:*"
   }
 }
