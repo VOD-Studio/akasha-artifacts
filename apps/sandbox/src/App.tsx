@@ -42,6 +42,7 @@ export function SandboxApp({
 }: SandboxAppProps) {
   const [payload, setPayload] = useState<RenderPayload | null>(initialRender)
   const rootRef = useRef<HTMLDivElement>(null)
+  const inspectorRef = useRef<SandboxInspector | null>(null)
   const versionRef = useRef<number>(initialRender?.version ?? 0)
   versionRef.current = payload?.version ?? 0
 
@@ -61,6 +62,7 @@ export function SandboxApp({
     })
 
     const inspector = new SandboxInspector(() => rootRef.current, bridge)
+    inspectorRef.current = inspector
 
     const off = bridge.onMessage((msg) => {
       if (msg.type === 'render') {
@@ -87,6 +89,8 @@ export function SandboxApp({
         inspector.stopInspecting()
       } else if (msg.type === 'highlight') {
         inspector.highlight(msg.element)
+      } else if (msg.type === 'pins.track') {
+        inspector.trackPins(msg.pins)
       }
     })
 
@@ -118,6 +122,7 @@ export function SandboxApp({
 
     return () => {
       inspector.dispose()
+      inspectorRef.current = null
       off()
       preserved.setSnapshotReporter(undefined)
       window.removeEventListener('error', handleWindowError)
@@ -138,6 +143,8 @@ export function SandboxApp({
         width: Math.max(0, Math.round(entry.contentRect.width)),
         height: Math.max(0, Math.round(entry.contentRect.height)),
       })
+      // 容器回流（例如外壳侧边面板展开/收起导致宽度变化）时同步刷新选中框与图钉坐标
+      inspectorRef.current?.syncRects()
     })
     observer.observe(el)
     return () => observer.disconnect()

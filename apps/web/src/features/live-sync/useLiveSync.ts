@@ -2,6 +2,7 @@ import type { JsonPatchOp, RealtimeServerEvent } from '@akasha/protocol'
 import { type QueryClient, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import { artifactKeys } from '../../entities/artifact/queries'
+import { feedbackKeys } from '../../entities/feedback/queries'
 import { projectKeys } from '../../entities/project/queries'
 import { useWorkspaceStore } from '../../entities/workspace/store'
 import type { ArtifactDetailResponse } from '../../shared/api/client'
@@ -64,8 +65,9 @@ export function applyRealtimeEventToCache(
     }
 
     case 'round.updated': {
-      queryClient.setQueryData<ArtifactDetailResponse | undefined>(
-        artifactKeys.detail(event.artifactId, undefined),
+      // 同时刷新 head 与所有历史版本详情缓存中的 rounds，确保查看 /v/$version 时同样实时同步
+      queryClient.setQueriesData<ArtifactDetailResponse | undefined>(
+        { queryKey: artifactKeys.detailPrefix(event.artifactId) },
         (prev) => {
           if (!prev) return prev
           const idx = prev.rounds.findIndex((r) => r.id === event.round.id)
@@ -76,13 +78,15 @@ export function applyRealtimeEventToCache(
           return { ...prev, rounds: nextRounds }
         },
       )
+      void queryClient.invalidateQueries({ queryKey: feedbackKeys.list(event.artifactId) })
       return
     }
 
     case 'feedback.created':
     case 'feedback.updated': {
+      void queryClient.invalidateQueries({ queryKey: feedbackKeys.list(event.artifactId) })
       void queryClient.invalidateQueries({
-        queryKey: artifactKeys.detail(event.artifactId, undefined),
+        queryKey: artifactKeys.detailPrefix(event.artifactId),
       })
       return
     }
@@ -108,6 +112,7 @@ export function applyRealtimeEventToCache(
     case 'resync': {
       void queryClient.invalidateQueries({ queryKey: projectKeys.all })
       void queryClient.invalidateQueries({ queryKey: artifactKeys.all })
+      void queryClient.invalidateQueries({ queryKey: feedbackKeys.all })
       return
     }
   }

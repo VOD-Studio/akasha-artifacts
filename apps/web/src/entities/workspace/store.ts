@@ -22,6 +22,7 @@ export interface SandboxErrorRecord {
 export interface WorkspaceStoreState {
   selectedProjectId: string | null
   commandPaletteOpen: boolean
+  inspectorOpen: boolean
   viewMode: WorkspaceViewMode
   wsStatus: WsConnectionStatus
   agentActivityByProject: Record<string, AgentActivityRecord>
@@ -33,6 +34,7 @@ export interface WorkspaceStoreState {
 
   setSelectedProjectId: (projectId: string | null) => void
   setCommandPaletteOpen: (open: boolean) => void
+  setInspectorOpen: (open: boolean) => void
   setViewMode: (mode: WorkspaceViewMode) => void
   setWsStatus: (status: WsConnectionStatus) => void
   setAgentActivity: (projectId: string, record: AgentActivityRecord) => void
@@ -47,6 +49,7 @@ export interface WorkspaceStoreState {
 export const useWorkspaceStore = create<WorkspaceStoreState>((set) => ({
   selectedProjectId: null,
   commandPaletteOpen: false,
+  inspectorOpen: true,
   viewMode: 'preview',
   wsStatus: 'closed',
   agentActivityByProject: {},
@@ -58,6 +61,7 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set) => ({
 
   setSelectedProjectId: (selectedProjectId) => set({ selectedProjectId }),
   setCommandPaletteOpen: (commandPaletteOpen) => set({ commandPaletteOpen }),
+  setInspectorOpen: (inspectorOpen) => set({ inspectorOpen }),
   setViewMode: (viewMode) => set({ viewMode }),
   setWsStatus: (wsStatus) => set({ wsStatus }),
   setAgentActivity: (projectId, record) =>

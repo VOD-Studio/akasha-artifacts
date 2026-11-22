@@ -1,7 +1,9 @@
-import type { JsonPatchOp } from '@akasha/protocol'
-import { useEffect, useMemo, useRef } from 'react'
+import type { ElementRect, ElementRef, Feedback, JsonPatchOp, ReviewRound } from '@akasha/protocol'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSelectionStore } from '../../entities/selection/store'
 import { useWorkspaceStore } from '../../entities/workspace/store'
 import { RuntimeErrorPanel } from '../../features/error-recovery/RuntimeErrorPanel'
+import { selectActiveRound } from '../../features/review-rounds/round-utils'
 import { VersionDiffView } from '../../features/version-diff/VersionDiffView'
 import type { ArtifactDetailResponse } from '../../shared/api/client'
 import {
@@ -10,32 +12,75 @@ import {
   SANDBOX_IFRAME_SANDBOX_ATTR,
   SandboxBridgeHost,
 } from '../../shared/bridge/host'
+import { ElementOverlay } from '../../shared/overlay/ElementOverlay'
+import { InspectorPanel } from '../InspectorPanel/InspectorPanel'
+import { RoundSubmitBar } from '../RoundSubmitBar/RoundSubmitBar'
+
+const EMPTY_FEEDBACKS: readonly Feedback[] = []
 
 export interface ArtifactWorkspaceProps {
   detail: ArtifactDetailResponse
   versions: readonly ArtifactDetailResponse['version'][]
+  feedbacks?: readonly Feedback[]
+  rounds?: readonly ReviewRound[]
   sandboxOrigin: string
   onRegisterStateForwarder?: (forwarder: ((seq: number, ops: JsonPatchOp[]) => void) | null) => void
 }
 
 // Artifact 主画布工作区：通过独立 Origin + sandbox="allow-scripts"（严禁 allow-same-origin）隔离沙盒，
-// 并在 Agent 推送新版本重绘时自动回填视图与控件快照、完整保留未提交批注草稿。
+// 外壳叠层负责元素选中框与图钉绘制，右侧 InspectorPanel 与底部 RoundSubmitBar 组成完整的 L1 双向评审闭环。
 export function ArtifactWorkspace({
   detail,
   versions,
+  feedbacks = EMPTY_FEEDBACKS,
+  rounds: roundsOverride,
   sandboxOrigin,
   onRegisterStateForwarder,
 }: ArtifactWorkspaceProps) {
   const { artifact, version, state } = detail
+  const rounds = roundsOverride ?? detail.rounds
+  const [livePinRects, setLivePinRects] = useState<Record<string, ElementRect | null>>({})
   const viewMode = useWorkspaceStore((s) => s.viewMode)
+  const inspectorOpen = useWorkspaceStore((s) => s.inspectorOpen)
+  const setInspectorOpen = useWorkspaceStore((s) => s.setInspectorOpen)
   const sandboxError = useWorkspaceStore((s) => s.sandboxErrorByArtifact[artifact.publicId] ?? null)
   const setSandboxError = useWorkspaceStore((s) => s.setSandboxError)
   const setPreservedView = useWorkspaceStore((s) => s.setPreservedView)
-  const unsentDraft = useWorkspaceStore((s) => s.unsentDraftsByArtifact[artifact.publicId] ?? '')
-  const setUnsentDraft = useWorkspaceStore((s) => s.setUnsentDraft)
+
+  const pickerActive = useSelectionStore((s) => s.pickerActive)
+  const setPickerActive = useSelectionStore((s) => s.setPickerActive)
+  const hoveredElement = useSelectionStore((s) => s.hoveredElement)
+  const setHoveredElement = useSelectionStore((s) => s.setHoveredElement)
+  const selectedElement = useSelectionStore((s) => s.selectedByArtifact[artifact.publicId] ?? null)
+  const setSelectedElement = useSelectionStore((s) => s.setSelectedElement)
+  const focusedFeedbackId = useSelectionStore((s) => s.focusedFeedbackId)
+  const setFocusedFeedbackId = useSelectionStore((s) => s.setFocusedFeedbackId)
+
+  const activeRound = useMemo(() => selectActiveRound(rounds), [rounds])
+  const versionPins = useMemo(
+    () => feedbacks.filter((fb) => fb.version === version.version && Boolean(fb.element)),
+    [feedbacks, version.version],
+  )
+  const pinTrackSignature = useMemo(
+    () =>
+      JSON.stringify(
+        versionPins.map((fb) => ({
+          id: fb.id,
+          blockId: fb.element?.blockId,
+          loc: fb.element?.loc,
+          selector: fb.element?.selector,
+          textPreview: fb.element?.textPreview,
+        })),
+      ),
+    [versionPins],
+  )
+  const versionPinsRef = useRef(versionPins)
+  versionPinsRef.current = versionPins
+  const hadSelectionRef = useRef(false)
 
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const hostRef = useRef<SandboxBridgeHost | null>(null)
+  const inspectingSentRef = useRef(false)
   const stateRef = useRef(state.snapshot)
   stateRef.current = state.snapshot
   const stateSeqRef = useRef(state.seq)
@@ -82,6 +127,32 @@ export function ArtifactWorkspace({
         })
       } else if (msg.type === 'rendered') {
         setSandboxError(artifact.publicId, null)
+        // 热更新重绘完成后同步已有选中元素与当前版本图钉到沙盒重算最新视口坐标
+        const prevSelected = useSelectionStore.getState().selectedByArtifact[artifact.publicId]
+        if (prevSelected) {
+          host.send({ type: 'highlight', element: prevSelected })
+        }
+        const pinPayload = versionPinsRef.current.flatMap((fb) =>
+          fb.element ? [{ id: fb.id, element: fb.element }] : [],
+        )
+        host.send({ type: 'pins.track', pins: pinPayload })
+      } else if (msg.type === 'inspect.hover') {
+        setHoveredElement(msg.element)
+      } else if (msg.type === 'inspect.select') {
+        if (msg.reason === 'sync') {
+          // 几何同步事件仅更新仍处于选中态的元素坐标，既不复活已清除的选区，也不意外退出指认模式
+          if (useSelectionStore.getState().selectedByArtifact[artifact.publicId]) {
+            setSelectedElement(artifact.publicId, msg.element)
+          }
+        } else {
+          setSelectedElement(artifact.publicId, msg.element)
+          if (useSelectionStore.getState().pickerActive) {
+            setPickerActive(false)
+            setInspectorOpen(true)
+          }
+        }
+      } else if (msg.type === 'pins.rects') {
+        setLivePinRects(msg.rects)
       }
     })
 
@@ -98,6 +169,9 @@ export function ArtifactWorkspace({
       off()
       host.stop()
       hostRef.current = null
+      inspectingSentRef.current = false
+      setHoveredElement(null)
+      setPickerActive(false)
     }
   }, [
     artifact.publicId,
@@ -105,8 +179,38 @@ export function ArtifactWorkspace({
     nonce,
     setPreservedView,
     setSandboxError,
+    setHoveredElement,
+    setSelectedElement,
+    setPickerActive,
+    setInspectorOpen,
     onRegisterStateForwarder,
   ])
+
+  // 同步指认模式开关到沙盒无 UI 命中探测器（仅在状态变化时下发，避免首屏无意义的 inspect.stop）
+  useEffect(() => {
+    const host = hostRef.current
+    if (!host) return
+    const shouldInspect = pickerActive && viewMode === 'preview'
+    if (shouldInspect) {
+      inspectingSentRef.current = true
+      host.send({ type: 'inspect.start' })
+    } else if (inspectingSentRef.current) {
+      inspectingSentRef.current = false
+      host.send({ type: 'inspect.stop' })
+    }
+  }, [pickerActive, viewMode])
+
+  // 当用户在批注撰写器中清除选中元素时，同步下发 highlight(null) 清理沙盒内旧 selectedEl，防止滚动后复活
+  useEffect(() => {
+    if (selectedElement) {
+      hadSelectionRef.current = true
+      return
+    }
+    if (hadSelectionRef.current) {
+      hadSelectionRef.current = false
+      hostRef.current?.send({ type: 'highlight', element: null })
+    }
+  }, [selectedElement])
 
   // 当 Artifact 版本或源码更新时下发 render，并清除旧版本遗留的错误面板，携带保态快照。
   useEffect(() => {
@@ -129,8 +233,29 @@ export function ArtifactWorkspace({
     lastRenderedKeyRef.current = `${artifact.publicId}:${version.version}`
   }, [artifact.publicId, artifact.type, version.version, version.source, setSandboxError])
 
-  // 当 WS 断线 resync 刷新了服务端状态快照但源码版本未变时，仅以根路径 RFC 6902 replace 同步最新状态，
-  // 确保不重挂载组件且后续增量补丁的父路径保持一致。
+  // 置于 render effect 之后：确保首屏队列先发 render 再发 pins.track，避免被 render 清空预热队列。
+  useEffect(() => {
+    void pinTrackSignature
+    const host = hostRef.current
+    if (!host) return
+    const currentPins = versionPinsRef.current
+    const pinPayload = currentPins.flatMap((fb) =>
+      fb.element ? [{ id: fb.id, element: fb.element }] : [],
+    )
+    const activeIds = new Set(pinPayload.map((p) => p.id))
+    setLivePinRects((prev) => {
+      const keys = Object.keys(prev)
+      if (keys.every((k) => activeIds.has(k))) return prev
+      const next: Record<string, ElementRect | null> = {}
+      for (const k of keys) {
+        if (activeIds.has(k)) next[k] = prev[k] ?? null
+      }
+      return next
+    })
+    host.send({ type: 'pins.track', pins: pinPayload })
+  }, [pinTrackSignature])
+
+  // 当 WS 断线 resync 刷新了服务端状态快照但源码版本未变时，仅以根路径 RFC 6902 replace 同步最新状态。
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
@@ -143,6 +268,14 @@ export function ArtifactWorkspace({
       ops: [{ op: 'replace', path: '', value: state.snapshot }],
     })
   }, [artifact.publicId, version.version, state.seq, state.snapshot])
+
+  const handleHighlightElement = useCallback(
+    (element: ElementRef) => {
+      setSelectedElement(artifact.publicId, element)
+      hostRef.current?.send({ type: 'highlight', element })
+    },
+    [artifact.publicId, setSelectedElement],
+  )
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-canvas">
@@ -159,47 +292,67 @@ export function ArtifactWorkspace({
         </div>
       ) : null}
 
-      <div className="relative min-h-0 flex-1">
-        {/* 保持沙盒 iframe 挂载，切到 Diff/源码 再切回预览时不丢失运行时状态 */}
-        <iframe
-          ref={iframeRef}
-          title={`${artifact.title} 隔离沙盒`}
-          src={iframeSrc}
-          sandbox={SANDBOX_IFRAME_SANDBOX_ATTR}
-          referrerPolicy="no-referrer"
-          className={viewMode === 'preview' ? 'block h-full w-full border-0 bg-white' : 'hidden'}
-        />
+      <div className="flex min-h-0 flex-1">
+        <div className="relative min-w-0 flex-1">
+          {/* 保持沙盒 iframe 挂载，切到 Diff/源码 再切回预览时不丢失运行时状态 */}
+          <iframe
+            ref={iframeRef}
+            title={`${artifact.title} 隔离沙盒`}
+            src={iframeSrc}
+            sandbox={SANDBOX_IFRAME_SANDBOX_ATTR}
+            referrerPolicy="no-referrer"
+            className={viewMode === 'preview' ? 'block h-full w-full border-0 bg-white' : 'hidden'}
+          />
 
-        {viewMode === 'diff' ? (
-          <div className="h-full w-full">
-            <VersionDiffView versions={versions} activeVersion={version.version} />
-          </div>
-        ) : null}
+          {viewMode === 'preview' ? (
+            <ElementOverlay
+              hovered={hoveredElement}
+              selected={selectedElement}
+              pins={versionPins}
+              livePinRects={livePinRects}
+              focusedFeedbackId={focusedFeedbackId}
+              onSelectPin={(fb) => {
+                setFocusedFeedbackId(fb.id)
+                setInspectorOpen(true)
+                if (fb.element) handleHighlightElement(fb.element)
+              }}
+            />
+          ) : null}
 
-        {viewMode === 'source' ? (
-          <div className="h-full w-full overflow-auto bg-surface p-4">
-            <pre className="rounded-xl border border-border bg-surface-subtle p-4 font-mono text-xs leading-6 text-ink">
-              <code>{version.source}</code>
-            </pre>
-          </div>
+          {viewMode === 'diff' ? (
+            <div className="h-full w-full">
+              <VersionDiffView versions={versions} activeVersion={version.version} />
+            </div>
+          ) : null}
+
+          {viewMode === 'source' ? (
+            <div className="h-full w-full overflow-auto bg-surface p-4">
+              <pre className="rounded-xl border border-border bg-surface-subtle p-4 font-mono text-xs leading-6 text-ink">
+                <code>{version.source}</code>
+              </pre>
+            </div>
+          ) : null}
+        </div>
+
+        {inspectorOpen ? (
+          <InspectorPanel
+            artifactId={artifact.publicId}
+            projectId={artifact.projectId}
+            activeVersion={version.version}
+            activeRound={activeRound}
+            feedbacks={feedbacks}
+            onHighlightElement={handleHighlightElement}
+            onClose={() => setInspectorOpen(false)}
+          />
         ) : null}
       </div>
 
-      {/* 草稿保态栏：热更新重绘期间保留用户未提交的批注草稿，M2 升级为完整 ReviewRound 提交栏 */}
-      <div className="flex shrink-0 items-center gap-2 border-t border-border bg-surface px-4 py-2">
-        <span className="shrink-0 text-xs font-medium text-ink-muted">批注草稿</span>
-        <input
-          type="text"
-          aria-label="未提交批注草稿"
-          value={unsentDraft}
-          onChange={(e) => setUnsentDraft(artifact.publicId, e.target.value)}
-          placeholder="记录批注草稿（Agent 推送新版本重绘时草稿自动保留，M2 支持整轮提交回传）…"
-          className="flex-1 rounded-lg border border-border bg-surface px-3 py-1 text-xs text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none"
-        />
-        {unsentDraft ? (
-          <span className="shrink-0 text-[11px] text-ink-muted">已本地暂存（未发送）</span>
-        ) : null}
-      </div>
+      <RoundSubmitBar
+        artifactId={artifact.publicId}
+        projectId={artifact.projectId}
+        activeRound={activeRound}
+        feedbacks={feedbacks}
+      />
     </div>
   )
 }

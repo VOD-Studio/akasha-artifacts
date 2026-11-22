@@ -16,6 +16,7 @@ import {
 import { useCallback, useEffect, useRef } from 'react'
 import { useArtifactDetailQuery, useArtifactVersionsQuery } from '../entities/artifact/queries'
 import { useDaemonStatusQuery } from '../entities/daemon/queries'
+import { useArtifactFeedbackQuery } from '../entities/feedback/queries'
 import { ArtifactCommandPalette } from '../features/command-palette/ArtifactCommandPalette'
 import { useLiveSync } from '../features/live-sync/useLiveSync'
 import { resolveSandboxOrigin } from '../shared/config/runtime'
@@ -56,6 +57,7 @@ function ArtifactRouteView({
   const detailQuery = useArtifactDetailQuery(identifier, requestedVersion)
   const resolvedPublicId = detailQuery.data?.artifact.publicId ?? identifier
   const versionsQuery = useArtifactVersionsQuery(resolvedPublicId)
+  const feedbackQuery = useArtifactFeedbackQuery(resolvedPublicId)
 
   const stateForwarderRef = useRef<((seq: number, ops: JsonPatchOp[]) => void) | null>(null)
   const registerStateForwarder = useCallback(
@@ -130,6 +132,8 @@ function ArtifactRouteView({
 
   const detail = detailQuery.data
   const versions = versionsQuery.data ?? [detail.version]
+  const feedbacks = feedbackQuery.data?.items ?? []
+  const rounds = feedbackQuery.data?.rounds ?? detail.rounds
   const sandboxOrigin = resolveSandboxOrigin(daemonStatus?.sandboxPort)
 
   return (
@@ -138,6 +142,7 @@ function ArtifactRouteView({
         artifact={detail.artifact}
         version={detail.version}
         versions={versions}
+        feedbackCount={feedbacks.length}
         onBackToLibrary={() => void navigate({ to: '/' })}
         onSelectVersion={(ver) => {
           if (ver === undefined) {
@@ -156,6 +161,8 @@ function ArtifactRouteView({
       <ArtifactWorkspace
         detail={detail}
         versions={versions}
+        feedbacks={feedbacks}
+        rounds={rounds}
         sandboxOrigin={sandboxOrigin}
         onRegisterStateForwarder={registerStateForwarder}
       />

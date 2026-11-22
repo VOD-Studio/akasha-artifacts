@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { EditOpSchema, ElementRefSchema, JsonPatchOpSchema } from './domain.js'
+import { EditOpSchema, ElementRectSchema, ElementRefSchema, JsonPatchOpSchema } from './domain.js'
 import { ArtifactTypeSchema, PROTOCOL_VERSION } from './primitives.js'
 
 // 外壳与沙盒热更新时共享的视图与控件保态快照
@@ -49,6 +49,16 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
     ...BridgeEnvelopeBase,
     type: z.literal('highlight'),
     element: ElementRefSchema.nullable(),
+  }),
+  z.object({
+    ...BridgeEnvelopeBase,
+    type: z.literal('pins.track'),
+    pins: z.array(
+      z.object({
+        id: z.string().min(1),
+        element: ElementRefSchema,
+      }),
+    ),
   }),
   z.object({
     ...BridgeEnvelopeBase,
@@ -106,6 +116,13 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
     ...BridgeEnvelopeBase,
     type: z.literal('inspect.select'),
     element: ElementRefSchema,
+    // 区分用户真实点击选中（click）与滚动/缩放/高亮触发的几何坐标同步（sync）
+    reason: z.enum(['click', 'sync']).optional(),
+  }),
+  z.object({
+    ...BridgeEnvelopeBase,
+    type: z.literal('pins.rects'),
+    rects: z.record(z.string(), ElementRectSchema.nullable()),
   }),
   z.object({
     ...BridgeEnvelopeBase,

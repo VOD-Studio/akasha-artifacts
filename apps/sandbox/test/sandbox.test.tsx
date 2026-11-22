@@ -495,11 +495,25 @@ describe('apps/sandbox 运行时与安全边界', () => {
       })
     })
     const highlightHit = posted.slice(prevCount).find((m) => m.data.type === 'inspect.select')
-    expect(highlightHit?.data.type === 'inspect.select' && highlightHit.data.element).toMatchObject(
-      {
+    expect(highlightHit?.data.type === 'inspect.select' && highlightHit.data).toMatchObject({
+      reason: 'sync',
+      element: {
         loc: '2:3',
         textPreview: '纯 HTML 段落',
       },
-    )
+    })
+
+    // pins.track 应立即解析并回传 pins.rects 供外壳叠层渲染实时图钉坐标
+    const beforePins = posted.length
+    act(() => {
+      dispatchFromHost({
+        v: PROTOCOL_VERSION,
+        nonce,
+        type: 'pins.track',
+        pins: [{ id: 'pin_1', element: { loc: '2:3' } }],
+      })
+    })
+    const pinRectsMsg = posted.slice(beforePins).find((m) => m.data.type === 'pins.rects')
+    expect(pinRectsMsg?.data.type === 'pins.rects' && pinRectsMsg.data.rects.pin_1).toBeTruthy()
   })
 })

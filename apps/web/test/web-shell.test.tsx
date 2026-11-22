@@ -5,7 +5,9 @@ import os from 'node:os'
 import path from 'node:path'
 import {
   type Artifact,
+  type Feedback,
   PROTOCOL_VERSION,
+  type ReviewRound,
   type ShellToSandboxMessage,
   type Version,
 } from '@akasha/protocol'
@@ -25,7 +27,10 @@ beforeAll(() => {
 
 import { artifactKeys } from '../src/entities/artifact/queries'
 import { projectKeys } from '../src/entities/project/queries'
+import { useSelectionStore } from '../src/entities/selection/store'
 import { useWorkspaceStore } from '../src/entities/workspace/store'
+import { AnnotationComposer } from '../src/features/annotations/AnnotationComposer'
+import { ElementPickerButton } from '../src/features/element-picker/ElementPickerButton'
 import { RuntimeErrorPanel } from '../src/features/error-recovery/RuntimeErrorPanel'
 import { applyRealtimeEventToCache } from '../src/features/live-sync/useLiveSync'
 import { VersionDiffView } from '../src/features/version-diff/VersionDiffView'
@@ -33,7 +38,9 @@ import type { ArtifactDetailResponse } from '../src/shared/api/client'
 import { AkashaWsClient } from '../src/shared/api/ws'
 import { SANDBOX_IFRAME_SANDBOX_ATTR, SandboxBridgeHost } from '../src/shared/bridge/host'
 import { ArtifactWorkspace } from '../src/widgets/ArtifactWorkspace/ArtifactWorkspace'
+import { InspectorPanel } from '../src/widgets/InspectorPanel/InspectorPanel'
 import { LibraryShell } from '../src/widgets/LibraryShell/LibraryShell'
+import { RoundSubmitBar } from '../src/widgets/RoundSubmitBar/RoundSubmitBar'
 
 const SAMPLE_ARTIFACT: Artifact = {
   publicId: 'AbCdEfGhIjKlMnOpQrStU',
@@ -74,6 +81,7 @@ afterEach(() => {
   useWorkspaceStore.setState({
     selectedProjectId: null,
     commandPaletteOpen: false,
+    inspectorOpen: false,
     viewMode: 'preview',
     wsStatus: 'closed',
     agentActivityByProject: {},
@@ -82,6 +90,12 @@ afterEach(() => {
     unsentDraftsByArtifact: {},
     sandboxErrorByArtifact: {},
     sentErrorFingerprints: {},
+  })
+  useSelectionStore.setState({
+    pickerActive: false,
+    hoveredElement: null,
+    selectedByArtifact: {},
+    focusedFeedbackId: null,
   })
 })
 
@@ -259,12 +273,18 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       rounds: [],
     }
 
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
     const { container, rerender } = render(
-      <ArtifactWorkspace
-        detail={detailV1}
-        versions={[SAMPLE_V1]}
-        sandboxOrigin="http://127.0.0.1:24331"
-      />,
+      <QueryClientProvider client={queryClient}>
+        <ArtifactWorkspace
+          detail={detailV1}
+          versions={[SAMPLE_V1]}
+          sandboxOrigin="http://127.0.0.1:24331"
+        />
+      </QueryClientProvider>,
     )
 
     const iframe = container.querySelector('iframe')
@@ -311,7 +331,6 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     expect(draftInput.value).toBe('请把按钮改成次要描边样式')
 
     // 模拟 WS 推送 version.created 写入 Query 缓存并触发工作区重绘 v2
-    const queryClient = new QueryClient()
     queryClient.setQueryData(artifactKeys.detail(SAMPLE_ARTIFACT.publicId, undefined), detailV1)
     applyRealtimeEventToCache(queryClient, {
       v: PROTOCOL_VERSION,
@@ -327,11 +346,13 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     expect(updatedDetail?.version.version).toBe(2)
 
     rerender(
-      <ArtifactWorkspace
-        detail={updatedDetail as ArtifactDetailResponse}
-        versions={[SAMPLE_V1, SAMPLE_V2]}
-        sandboxOrigin="http://127.0.0.1:24331"
-      />,
+      <QueryClientProvider client={queryClient}>
+        <ArtifactWorkspace
+          detail={updatedDetail as ArtifactDetailResponse}
+          versions={[SAMPLE_V1, SAMPLE_V2]}
+          sandboxOrigin="http://127.0.0.1:24331"
+        />
+      </QueryClientProvider>,
     )
 
     const v2Render = posted.find((m) => m.type === 'render' && m.version === 2)
@@ -357,11 +378,13 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       },
     }
     rerender(
-      <ArtifactWorkspace
-        detail={resyncedDetail}
-        versions={[SAMPLE_V1, SAMPLE_V2]}
-        sandboxOrigin="http://127.0.0.1:24331"
-      />,
+      <QueryClientProvider client={queryClient}>
+        <ArtifactWorkspace
+          detail={resyncedDetail}
+          versions={[SAMPLE_V1, SAMPLE_V2]}
+          sandboxOrigin="http://127.0.0.1:24331"
+        />
+      </QueryClientProvider>,
     )
     // 不应重发 render 触发重挂载，而应以 state 根路径 replace 同步最新快照
     expect(posted.filter((m) => m.type === 'render')).toHaveLength(renderCountBeforeResync)
@@ -564,5 +587,316 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       />,
     )
     expect(container.querySelector('[data-error-line="true"]')).toBeNull()
+  })
+
+  it('L1 元素指认、外壳叠层选中框与 ReviewRound 草稿/提交/撤回防打断闭环', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    // 1. 指认按钮与 Esc 快捷键退出
+    render(<ElementPickerButton />)
+    const pickerBtn = screen.getByRole('button', { name: '指认元素' })
+    fireEvent.click(pickerBtn)
+    expect(useSelectionStore.getState().pickerActive).toBe(true)
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(useSelectionStore.getState().pickerActive).toBe(false)
+    cleanup()
+
+    // 2. 在外壳叠层中渲染悬停框、选中框与批注图钉（iframe 内零外壳 DOM）
+    const posted: ShellToSandboxMessage[] = []
+    const draftingRound: ReviewRound = {
+      id: 'round_1',
+      artifactId: SAMPLE_ARTIFACT.publicId,
+      status: 'drafting',
+      groups: [
+        {
+          id: 'g1',
+          title: '选择配色方案',
+          kind: 'choose',
+          options: ['方案 A', '方案 B'],
+          recommended: '方案 B',
+          choice: '方案 A',
+        },
+        {
+          id: 'g2',
+          title: '核对交互响应',
+          kind: 'verify',
+          recommended: 'pass',
+          verdict: null,
+        },
+      ],
+      submittedAt: null,
+      createdAt: '2026-11-22T09:00:00.000Z',
+    }
+
+    const oldVersionPin: Feedback = {
+      id: 'fb_old',
+      artifactId: SAMPLE_ARTIFACT.publicId,
+      version: 1,
+      roundId: 'round_1',
+      groupId: null,
+      kind: 'comment',
+      element: {
+        blockId: 'hero',
+        loc: '2:3',
+        rect: { x: 24, y: 40, width: 180, height: 48 },
+        textPreview: '旧版标题',
+      },
+      body: '第一版留下的草稿批注',
+      author: 'human:local',
+      draft: true,
+      status: 'pending',
+      createdAt: '2026-11-22T09:01:00.000Z',
+      updatedAt: '2026-11-22T09:01:00.000Z',
+    }
+
+    const currentVersionPin: Feedback = {
+      ...oldVersionPin,
+      id: 'fb_cur',
+      version: 2,
+      body: '当前版本草稿批注',
+    }
+
+    const detailV2: ArtifactDetailResponse = {
+      artifact: { ...SAMPLE_ARTIFACT, headVersion: 2 },
+      version: SAMPLE_V2,
+      state: {
+        artifactId: SAMPLE_ARTIFACT.publicId,
+        seq: 0,
+        snapshot: {},
+        updatedAt: SAMPLE_V2.createdAt,
+      },
+      rounds: [draftingRound],
+    }
+
+    useWorkspaceStore.setState({ inspectorOpen: true })
+    const { container } = render(
+      <QueryClientProvider client={queryClient}>
+        <ArtifactWorkspace
+          detail={detailV2}
+          versions={[SAMPLE_V1, SAMPLE_V2]}
+          feedbacks={[oldVersionPin, currentVersionPin]}
+          sandboxOrigin="http://127.0.0.1:24331"
+        />
+      </QueryClientProvider>,
+    )
+
+    const iframe = container.querySelector('iframe')
+    const iframeWin = iframe?.contentWindow as Window
+    vi.spyOn(iframeWin, 'postMessage').mockImplementation((msg) => {
+      posted.push(msg as ShellToSandboxMessage)
+    })
+    const hashParams = new URLSearchParams((iframe?.getAttribute('src') ?? '').split('#')[1] ?? '')
+    const nonce = hashParams.get('nonce') ?? ''
+
+    // 开启指认 → 发送 inspect.start → 沙盒回传 hover & select → 外壳渲染叠层高亮框
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { v: PROTOCOL_VERSION, nonce, type: 'ready' },
+          origin: 'null',
+          source: iframeWin,
+        }),
+      )
+      useSelectionStore.getState().setPickerActive(true)
+    })
+    expect(posted.some((m) => m.type === 'inspect.start')).toBe(true)
+    // 同步向沙盒注册当前版本图钉跟踪
+    expect(posted.some((m) => m.type === 'pins.track')).toBe(true)
+
+    // 滚动/重绘发回的 reason='sync' 坐标同步不得意外退出指认模式
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: {
+            v: PROTOCOL_VERSION,
+            nonce,
+            type: 'inspect.select',
+            reason: 'sync',
+            element: {
+              blockId: 'hero',
+              loc: '4:5',
+              rect: { x: 10, y: 20, width: 120, height: 32 },
+            },
+          },
+          origin: 'null',
+          source: iframeWin,
+        }),
+      )
+    })
+    expect(useSelectionStore.getState().pickerActive).toBe(true)
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: {
+            v: PROTOCOL_VERSION,
+            nonce,
+            type: 'inspect.hover',
+            element: { loc: '4:5', rect: { x: 10, y: 20, width: 120, height: 32 } },
+          },
+          origin: 'null',
+          source: iframeWin,
+        }),
+      )
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: {
+            v: PROTOCOL_VERSION,
+            nonce,
+            type: 'inspect.select',
+            reason: 'click',
+            element: {
+              blockId: 'hero',
+              loc: '4:5',
+              rect: { x: 10, y: 20, width: 120, height: 32 },
+              textPreview: '主按钮',
+            },
+          },
+          origin: 'null',
+          source: iframeWin,
+        }),
+      )
+      // 沙盒实时上报更新后的图钉坐标（例如滚动/侧栏开合后）
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: {
+            v: PROTOCOL_VERSION,
+            nonce,
+            type: 'pins.rects',
+            rects: {
+              fb_cur: { x: 88, y: 140, width: 160, height: 40 },
+            },
+          },
+          origin: 'null',
+          source: iframeWin,
+        }),
+      )
+    })
+
+    expect(useSelectionStore.getState().pickerActive).toBe(false)
+    expect(screen.getByTestId('overlay-select-box')).toBeTruthy()
+    const livePin = screen.getByTestId('annotation-pin-fb_cur')
+    expect(livePin.getAttribute('style')).toContain('translate3d(238px, 130px, 0)')
+    // 旧版本图钉不叠加在新版本画布上，但在右侧面板中清晰标注「针对 v1」
+    expect(screen.queryByTestId('annotation-pin-fb_old')).toBeNull()
+    expect(screen.getByTestId('old-version-badge-fb_old').textContent).toBe('针对 v1')
+
+    // 清除选中元素应同步向沙盒发送 highlight(null)，避免滚动后复活旧选区
+    fireEvent.click(screen.getByRole('button', { name: '清除选中元素' }))
+    expect(posted.some((m) => m.type === 'highlight' && m.element === null)).toBe(true)
+
+    // round.updated 事件须同时刷新历史版本详情缓存（例如 /a/$id/v/1）
+    const versionDetailKey = artifactKeys.detail(SAMPLE_ARTIFACT.publicId, 1)
+    queryClient.setQueryData(versionDetailKey, { ...detailV2, rounds: [draftingRound] })
+    const submittedRound: ReviewRound = {
+      ...draftingRound,
+      status: 'submitted',
+      submittedAt: '2026-11-22T09:08:00.000Z',
+    }
+    applyRealtimeEventToCache(queryClient, {
+      v: PROTOCOL_VERSION,
+      seq: 99,
+      timestamp: '2026-11-22T09:08:00.000Z',
+      type: 'round.updated',
+      artifactId: SAMPLE_ARTIFACT.publicId,
+      round: submittedRound,
+    })
+    const refreshedVersionDetail =
+      queryClient.getQueryData<ArtifactDetailResponse>(versionDetailKey)
+    expect(refreshedVersionDetail?.rounds[0]?.status).toBe('submitted')
+
+    // 底部提交栏展示本轮进度：已决策 1 / 2、草稿评论 2 条
+    const roundBar = screen.getByTestId('round-submit-bar')
+    expect(roundBar.textContent).toContain('已决策 1 / 2')
+    expect(roundBar.textContent).toContain('草稿评论 2 条')
+    expect(screen.getByRole('button', { name: '提交本轮' })).toBeTruthy()
+
+    cleanup()
+
+    // 3. 验证在草稿轮次中撰写批注带 roundId、version 与 ElementRef，点击提交本轮与撤回回调准确触发
+    const submittedPayloads: unknown[] = []
+    const submittedRounds: string[] = []
+    const withdrawnRounds: string[] = []
+    const selectedEl = { blockId: 'hero', loc: '4:5', textPreview: '主按钮' }
+
+    const { rerender } = render(
+      <QueryClientProvider client={queryClient}>
+        <AnnotationComposer
+          artifactId={SAMPLE_ARTIFACT.publicId}
+          projectId={SAMPLE_ARTIFACT.projectId}
+          version={2}
+          activeDraftingRound={draftingRound}
+          selectedElement={selectedEl}
+          onSubmitFeedback={async (payload) => {
+            submittedPayloads.push(payload)
+          }}
+        />
+        <RoundSubmitBar
+          artifactId={SAMPLE_ARTIFACT.publicId}
+          projectId={SAMPLE_ARTIFACT.projectId}
+          activeRound={draftingRound}
+          feedbacks={[currentVersionPin]}
+          onSubmitRound={async (rid) => {
+            submittedRounds.push(rid)
+          }}
+          onWithdrawRound={async (rid) => {
+            withdrawnRounds.push(rid)
+          }}
+        />
+      </QueryClientProvider>,
+    )
+
+    fireEvent.change(screen.getByLabelText('批注内容'), {
+      target: { value: '圆角稍微加大一点' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '存为本轮草稿' }))
+    await vi.waitFor(() => expect(submittedPayloads).toHaveLength(1))
+    expect(submittedPayloads[0]).toMatchObject({
+      version: 2,
+      roundId: 'round_1',
+      kind: 'comment',
+      element: selectedEl,
+      body: '圆角稍微加大一点',
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '提交本轮' }))
+    await vi.waitFor(() => expect(submittedRounds).toEqual(['round_1']))
+
+    // 切换为已提交态后应展示「撤回修改」按钮
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <InspectorPanel
+          artifactId={SAMPLE_ARTIFACT.publicId}
+          projectId={SAMPLE_ARTIFACT.projectId}
+          activeVersion={2}
+          activeRound={{
+            ...draftingRound,
+            status: 'submitted',
+            submittedAt: '2026-11-22T09:05:00.000Z',
+          }}
+          feedbacks={[{ ...currentVersionPin, draft: false, status: 'resolved' }]}
+          onClose={() => {}}
+        />
+        <RoundSubmitBar
+          artifactId={SAMPLE_ARTIFACT.publicId}
+          projectId={SAMPLE_ARTIFACT.projectId}
+          activeRound={{
+            ...draftingRound,
+            status: 'submitted',
+            submittedAt: '2026-11-22T09:05:00.000Z',
+          }}
+          feedbacks={[{ ...currentVersionPin, draft: false, status: 'resolved' }]}
+          onWithdrawRound={async (rid) => {
+            withdrawnRounds.push(rid)
+          }}
+        />
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByText('已解决')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '撤回修改' }))
+    await vi.waitFor(() => expect(withdrawnRounds).toEqual(['round_1']))
   })
 })
