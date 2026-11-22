@@ -99,14 +99,33 @@ const BUILTIN_SPECS: ArtifactSpecDefinition[] = [
   {
     type: 'artboard',
     guide:
-      'JSON 格式并排多画板定义：包含 pages、boards 与 groups（可选 choose/recommended/verify）。用于同时对比多个 UI 或架构方案并分轮选择。',
+      'JSON 格式并排多画板定义：包含 pages、boards、flows 与 groups（可选 choose/recommended/verify）。用于同时对比多个 UI 或架构方案并分轮选择。',
     schema: {
       type: 'object',
       required: ['boards'],
       properties: {
         boards: { type: 'array' },
+        flows: { type: 'array' },
         groups: { type: 'array' },
       },
+      'x-akasha-props': [
+        {
+          key: 'columns',
+          label: '每行画板列数',
+          type: 'number',
+          defaultValue: 2,
+          min: 1,
+          max: 4,
+          step: 1,
+        },
+        { key: 'showFlows', label: '显示页面流程连线', type: 'boolean', defaultValue: true },
+        {
+          key: 'handDrawnFlows',
+          label: '手绘风格连线（Inkline）',
+          type: 'boolean',
+          defaultValue: true,
+        },
+      ],
     },
     example: JSON.stringify(
       {
@@ -131,7 +150,26 @@ const BUILTIN_SPECS: ArtifactSpecDefinition[] = [
   {
     type: 'document',
     guide:
-      '结构化设计文档：段落、标题、列表须携带唯一稳定块标识（id 或 data-ak-block），以便在增删行后仍能稳定锚定句级批注与行内提问。',
+      '结构化设计文档：支持带唯一稳定块标识（id / data-ak-block）的 HTML 或 JSON（sections/paragraphs/questions），以便在增删行后仍能稳定锚定句级批注与行内提问。',
+    schema: {
+      type: 'object',
+      properties: {
+        sections: { type: 'array' },
+      },
+      'x-akasha-props': [
+        {
+          key: 'density',
+          label: '排版密度',
+          type: 'select',
+          defaultValue: 'comfortable',
+          options: [
+            { value: 'comfortable', label: '舒适阅读' },
+            { value: 'compact', label: '紧凑评审' },
+          ],
+        },
+        { key: 'showQuestions', label: '显示行内 Agent 提问', type: 'boolean', defaultValue: true },
+      ],
+    },
     example:
       '<article>\n  <h1 id="title">架构方案</h1>\n  <p id="p1">核心目标与边界说明。</p>\n</article>',
   },
@@ -147,6 +185,22 @@ const BUILTIN_SPECS: ArtifactSpecDefinition[] = [
         unverified: { type: 'array' },
         screens: { type: 'array' },
       },
+      'x-akasha-props': [
+        {
+          key: 'filterStatus',
+          label: '声明状态筛选',
+          type: 'select',
+          defaultValue: 'all',
+          options: [
+            { value: 'all', label: '全部声明' },
+            { value: 'checked', label: '已验证' },
+            { value: 'updated', label: '修复待重验' },
+            { value: 'failed', label: '验证失败' },
+            { value: 'pending', label: '待验证' },
+          ],
+        },
+        { key: 'showUnverified', label: '展示未验证项清单', type: 'boolean', defaultValue: true },
+      ],
     },
     example: JSON.stringify(
       {
@@ -169,13 +223,43 @@ const BUILTIN_SPECS: ArtifactSpecDefinition[] = [
     type: 'live-timeline',
     guide:
       'JSON 格式实时任务/排障时间线：包含 title 与 steps，运行期间优先用 artifact_push_state 增量推进步骤状态。',
-    schema: { type: 'object', required: ['steps'], properties: { steps: { type: 'array' } } },
+    schema: {
+      type: 'object',
+      required: ['steps'],
+      properties: { steps: { type: 'array' } },
+      'x-akasha-props': [
+        { key: 'title', label: '看板标题', type: 'string', defaultValue: '任务执行时间线' },
+        {
+          key: 'filterStatus',
+          label: '状态筛选',
+          type: 'select',
+          defaultValue: 'all',
+          options: [
+            { value: 'all', label: '全部步骤' },
+            { value: 'running', label: '进行中' },
+            { value: 'failed', label: '失败项' },
+            { value: 'done', label: '已完成' },
+            { value: 'pending', label: '待执行' },
+          ],
+        },
+        { key: 'showOutputs', label: '展开原始输出日志', type: 'boolean', defaultValue: true },
+      ],
+    },
   },
   {
     type: 'option-compare',
     guide:
       'JSON 格式多方案对比矩阵：包含 dimensions 与 options（可选 recommended），支持一键选择并通知 Agent。',
-    schema: { type: 'object', required: ['options'], properties: { options: { type: 'array' } } },
+    schema: {
+      type: 'object',
+      required: ['options'],
+      properties: { options: { type: 'array' }, dimensions: { type: 'array' } },
+      'x-akasha-props': [
+        { key: 'title', label: '对比标题', type: 'string', defaultValue: '架构方案对比' },
+        { key: 'highlightDiffs', label: '高亮差异维度', type: 'boolean', defaultValue: true },
+        { key: 'compact', label: '紧凑视图', type: 'boolean', defaultValue: false },
+      ],
+    },
   },
   {
     type: 'data-story',

@@ -1,10 +1,13 @@
 import {
   type Artifact,
+  type ArtifactSpecOutput,
+  type ArtifactType,
   type DaemonStatus,
   type ElementRef,
   ErrorEnvelopeSchema,
   type Feedback,
   type FeedbackKind,
+  type JsonPatchOp,
   type Project,
   type ReviewGroup,
   type ReviewRound,
@@ -251,4 +254,21 @@ export async function syncProjectSelection(
   } catch {
     // 选区同步失败不阻断浏览器交互
   }
+}
+
+export async function fetchArtifactSpec(type: ArtifactType): Promise<ArtifactSpecOutput> {
+  return requestJson<ArtifactSpecOutput>(`/api/v1/specs/${encodeURIComponent(type)}`)
+}
+
+export async function pushArtifactState(
+  id: string,
+  input: { project?: string; patch: JsonPatchOp[] },
+): Promise<{ publicId: string; seq: number; snapshot: Record<string, unknown> }> {
+  return requestJson<{ publicId: string; seq: number; snapshot: Record<string, unknown> }>(
+    `/api/v1/artifacts/${encodeURIComponent(id)}/state`,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  )
 }
