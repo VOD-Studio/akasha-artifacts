@@ -1,0 +1,30 @@
+name: 问题反馈
+description: Artifact 编译失败、MCP 连接异常、云端同步或沙盒渲染问题
+title: "[scope] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: input
+    id: environment
+    attributes:
+      label: 宿主 Agent 与运行模式
+      placeholder: Antigravity / Claude Code / Codex CLI，Local Daemon 或 Cloud Hub
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Akasha 版本
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤与现象
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志或 Artifact 片段
+      render: text

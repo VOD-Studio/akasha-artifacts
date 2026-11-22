@@ -1,0 +1,52 @@
+{
+  "name": "akasha-artifacts",
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.34.0",
+  "description": "Open-source live web artifacts for CLI coding agents (Claude Code, Codex CLI, Antigravity) — local & cloud self-hosted.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "akasha": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "biome check",
+    "format": "biome check --write"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VOD-Studio/akasha-artifacts.git"
+  },
+  "keywords": [
+    "akasha",
+    "artifacts",
+    "claude-code",
+    "claude-artifacts",
+    "codex",
+    "antigravity",
+    "mcp",
+    "model-context-protocol",
+    "ai-agent",
+    "live-preview"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.9",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.4"
+  }
+}

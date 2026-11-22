@@ -1,0 +1,22 @@
+name: PR 标题
+
+# squash 合并时，PR 标题就是 main 上的提交信息，也是发版说明里的一条，需符合 Conventional Commits。
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  title:
+    name: PR 标题
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: python3 scripts/ci/check-commits.py --message "$TITLE"
