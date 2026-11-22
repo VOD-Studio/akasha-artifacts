@@ -24,6 +24,7 @@ export interface SplitCodeEditorProps {
   // 测试或外层可注入自定义保存实现，默认调用 useSaveHumanVersionMutation（落盘 author=human + kind=edit 反馈）
   onSaveOverride?: (input: { source: string; baseVersion: number }) => Promise<{ version: Version }>
   onVersionSaved?: (version: Version) => void
+  onVersionAdopted?: (version: Version) => void
 }
 
 function languageExtensionFor(type: ArtifactType, source: string): Extension {
@@ -52,6 +53,7 @@ export function SplitCodeEditor({
   onLivePreviewChange,
   onSaveOverride,
   onVersionSaved,
+  onVersionAdopted,
 }: SplitCodeEditorProps) {
   const hostRef = useRef<HTMLElement>(null)
   const viewRef = useRef<EditorView | null>(null)
@@ -66,6 +68,8 @@ export function SplitCodeEditor({
   const isDirty = draftSource !== baseSource
   const isDirtyRef = useRef(isDirty)
   isDirtyRef.current = isDirty
+  const savingRef = useRef(saving)
+  savingRef.current = saving
   const draftSourceRef = useRef(draftSource)
   draftSourceRef.current = draftSource
   const baseVersionRef = useRef(baseVersion)
@@ -131,12 +135,12 @@ export function SplitCodeEditor({
     onLivePreviewChange,
   ])
 
-  // 当用户编辑中且打开的是历史版本时，也感知 headVersion 推进
+  // 当用户编辑历史版本（落后于 headVersion）或编辑中远端推进时，立即提示并发版本差异
   useEffect(() => {
     if (
       latestVersion &&
       latestVersion.version > baseVersionRef.current &&
-      isDirtyRef.current &&
+      isDirty &&
       (!conflict || conflict.headVersion < latestVersion.version)
     ) {
       setConflict({
@@ -148,12 +152,12 @@ export function SplitCodeEditor({
         localSource: draftSourceRef.current,
       })
     }
-  }, [latestVersion, conflict])
+  }, [latestVersion, isDirty, conflict])
 
-  // 防抖通知父级更新右侧沙盒实时预览；卸载时恢复已提交源码
+  // 防抖通知父级更新右侧沙盒实时预览：只要编辑区内容与当前路由 version.source 不一致（含未保存草稿或历史路由下已加载 HEAD），均保持预览一致。
   useEffect(() => {
     if (!onLivePreviewChange) return
-    if (!isDirty) {
+    if (draftSource === version.source) {
       onLivePreviewChange(null)
       return
     }
@@ -161,7 +165,7 @@ export function SplitCodeEditor({
       onLivePreviewChange(draftSource)
     }, 180)
     return () => clearTimeout(timer)
-  }, [draftSource, isDirty, onLivePreviewChange])
+  }, [draftSource, version.source, onLivePreviewChange])
 
   useEffect(() => {
     return () => {
@@ -171,8 +175,10 @@ export function SplitCodeEditor({
 
   const performSave = useCallback(
     async (explicitBaseVersion?: number) => {
+      if (savingRef.current) return
       const targetBase = explicitBaseVersion ?? baseVersionRef.current
       const nextSource = draftSourceRef.current
+      savingRef.current = true
       setSaving(true)
       try {
         const res = onSaveOverride
@@ -186,11 +192,20 @@ export function SplitCodeEditor({
 
         setBaseVersion(res.version.version)
         setBaseSource(res.version.source)
-        setDraftSource(res.version.source)
         setConflict(null)
-        replaceEditorDoc(res.version.source)
-        onLivePreviewChange?.(null)
-        toast.success(`已保存为 v${res.version.version}（已同步 kind=edit 反馈给 Agent）`)
+
+        // 若保存请求在途期间用户继续编辑，只推进基线版本而不覆盖其新键入内容
+        const editedWhileSaving = draftSourceRef.current !== nextSource
+        if (!editedWhileSaving) {
+          setDraftSource(res.version.source)
+          replaceEditorDoc(res.version.source)
+          onLivePreviewChange?.(res.version.source === version.source ? null : res.version.source)
+        }
+        toast.success(
+          editedWhileSaving
+            ? `已保存为 v${res.version.version}，已保留你在保存期间的新修改`
+            : `已保存为 v${res.version.version}（已同步 kind=edit 反馈给 Agent）`,
+        )
         onVersionSaved?.(res.version)
       } catch (err) {
         const details = parseVersionConflictDetails(err)
@@ -203,13 +218,14 @@ export function SplitCodeEditor({
             serverDiff: details.diff,
             remoteSource:
               effectiveLatest.version === details.headVersion ? effectiveLatest.source : undefined,
-            localSource: nextSource,
+            localSource: draftSourceRef.current,
           })
           toast.error(`版本冲突（409）：远端已更新至 v${details.headVersion}，请先确认差异`)
         } else {
           toast.error(err instanceof Error ? err.message : '保存代码失败')
         }
       } finally {
+        savingRef.current = false
         setSaving(false)
       }
     },
@@ -222,6 +238,7 @@ export function SplitCodeEditor({
       onVersionSaved,
       replaceEditorDoc,
       saveMutation,
+      version.source,
     ],
   )
 
@@ -307,7 +324,9 @@ export function SplitCodeEditor({
     setDraftSource(target.source)
     setConflict(null)
     replaceEditorDoc(target.source)
-    onLivePreviewChange?.(null)
+    // 立即将最新源码同步到相邻预览，并通知外层路由从历史版本切换回 HEAD
+    onLivePreviewChange?.(target.source === version.source ? null : target.source)
+    onVersionAdopted?.(target)
     toast.success(`已加载最新 v${target.version}`)
   }
 

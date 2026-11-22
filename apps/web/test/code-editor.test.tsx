@@ -237,7 +237,7 @@ describe('apps/web L3 CodeMirror 6 分栏代码编辑与冲突处理', () => {
     expect(screen.getByText('已同步')).toBeTruthy()
   })
 
-  it('ArtifactWorkspace 在 edit 分栏模式下并排展示 CodeMirror 编辑器与实时隔离沙盒 iframe', () => {
+  it('ArtifactWorkspace 在 edit 分栏模式下并排展示 CodeMirror 编辑器与实时隔离沙盒 iframe，切图保留草稿', async () => {
     useWorkspaceStore.setState({ viewMode: 'edit', inspectorOpen: false })
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const { container } = render(
@@ -264,5 +264,96 @@ describe('apps/web L3 CodeMirror 6 分栏代码编辑与冲突处理', () => {
     const iframe = container.querySelector('iframe')
     expect(iframe).toBeTruthy()
     expect(iframe?.className).toContain('block')
+
+    // 切换视图（edit -> preview -> diff -> edit）必须保留未保存草稿而不重建编辑器
+    act(() => {
+      editCodeMirrorText(container, '<h1>Draft survives view switch</h1>')
+    })
+    await waitFor(() => expect(screen.getByText('未保存')).toBeTruthy())
+
+    act(() => useWorkspaceStore.setState({ viewMode: 'preview' }))
+    act(() => useWorkspaceStore.setState({ viewMode: 'diff' }))
+    act(() => useWorkspaceStore.setState({ viewMode: 'edit' }))
+    expect(container.querySelector('.cm-content')?.textContent).toContain(
+      'Draft survives view switch',
+    )
+    expect(screen.getByText('未保存')).toBeTruthy()
+  })
+
+  it('保存请求在途期间继续键入的修改不会被旧响应覆盖，且历史版本加载最新时同步预览并通知切换', async () => {
+    let resolveSave!: (val: { version: Version }) => void
+    const savePromise = new Promise<{ version: Version }>((resolve) => {
+      resolveSave = resolve
+    })
+
+    const previewsWhileSaving: Array<string | null> = []
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { container } = render(
+      <QueryClientProvider client={qc}>
+        <SplitCodeEditor
+          artifact={SAMPLE_ARTIFACT}
+          version={V1}
+          onLivePreviewChange={(src) => previewsWhileSaving.push(src)}
+          onSaveOverride={() => savePromise}
+        />
+      </QueryClientProvider>,
+    )
+
+    act(() => {
+      editCodeMirrorText(container, '<h1>First edit</h1>')
+    })
+    await waitFor(() => expect(screen.getByText('未保存')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: /保存为新版本/ }))
+
+    // 保存尚未返回时用户继续编辑，并等待 CodeMirror 异步观察器将改动写入编辑器状态
+    act(() => {
+      editCodeMirrorText(container, '<h1>First edit + typed while saving</h1>')
+    })
+    await waitFor(() =>
+      expect(previewsWhileSaving).toContain('<h1>First edit + typed while saving</h1>'),
+    )
+
+    await act(async () => {
+      resolveSave({
+        version: {
+          ...V1,
+          version: 2,
+          parentVersion: 1,
+          author: 'human:web',
+          source: '<h1>First edit</h1>',
+        },
+      })
+      await savePromise
+    })
+
+    // 基线推进到 v2，但在途期间新增的修改完整保留且保持未保存态
+    expect(screen.getByText('基线 v2')).toBeTruthy()
+    expect(screen.getByText('未保存')).toBeTruthy()
+    expect(container.querySelector('.cm-content')?.textContent).toContain('typed while saving')
+
+    // 历史版本（v1）下采用最新 HEAD（v2）时，必须同步预览为 v2 源码并回调 onVersionAdopted
+    cleanup()
+    const previews: Array<string | null> = []
+    const adopted: Version[] = []
+    const { container: histContainer } = render(
+      <QueryClientProvider client={qc}>
+        <SplitCodeEditor
+          artifact={{ ...SAMPLE_ARTIFACT, headVersion: 2 }}
+          version={V1}
+          latestVersion={V2_AGENT}
+          onLivePreviewChange={(src) => previews.push(src)}
+          onVersionAdopted={(v) => adopted.push(v)}
+        />
+      </QueryClientProvider>,
+    )
+    act(() => {
+      editCodeMirrorText(histContainer, '<h1>Stale edit on v1</h1>')
+    })
+    await waitFor(() => expect(screen.getByTestId('version-conflict-banner')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: /加载最新 v2/ }))
+    await waitFor(() => expect(adopted).toHaveLength(1))
+    expect(adopted[0]?.version).toBe(2)
+    expect(previews.at(-1)).toBe(V2_AGENT.source)
   })
 })

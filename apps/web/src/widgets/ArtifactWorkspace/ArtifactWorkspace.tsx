@@ -28,6 +28,7 @@ export interface ArtifactWorkspaceProps {
   sandboxOrigin: string
   onRegisterStateForwarder?: (forwarder: ((seq: number, ops: JsonPatchOp[]) => void) | null) => void
   onVersionSaved?: (version: ArtifactDetailResponse['version']) => void
+  onVersionAdopted?: (version: ArtifactDetailResponse['version']) => void
 }
 
 // Artifact 主画布工作区：通过独立 Origin + sandbox="allow-scripts"（严禁 allow-same-origin）隔离沙盒，
@@ -40,6 +41,7 @@ export function ArtifactWorkspace({
   sandboxOrigin,
   onRegisterStateForwarder,
   onVersionSaved,
+  onVersionAdopted,
 }: ArtifactWorkspaceProps) {
   const { artifact, version, state } = detail
   const rounds = roundsOverride ?? detail.rounds
@@ -53,6 +55,13 @@ export function ArtifactWorkspace({
     )
   }, [versions, version])
   const viewMode = useWorkspaceStore((s) => s.viewMode)
+  // 首次进入编辑态后保持编辑器挂载（切换回预览/Diff/源码时仅隐藏），防止丢失未保存草稿与撤销栈
+  const [editorMounted, setEditorMounted] = useState(viewMode === 'edit')
+  useEffect(() => {
+    if (viewMode === 'edit') {
+      setEditorMounted(true)
+    }
+  }, [viewMode])
   const inspectorOpen = useWorkspaceStore((s) => s.inspectorOpen)
   const setInspectorOpen = useWorkspaceStore((s) => s.setInspectorOpen)
   const sandboxError = useWorkspaceStore((s) => s.sandboxErrorByArtifact[artifact.publicId] ?? null)
@@ -332,14 +341,15 @@ export function ArtifactWorkspace({
       ) : null}
 
       <div className="flex min-h-0 flex-1">
-        {viewMode === 'edit' ? (
-          <div className="w-1/2 min-w-[320px] shrink-0">
+        {editorMounted ? (
+          <div className={viewMode === 'edit' ? 'w-1/2 min-w-[320px] shrink-0' : 'hidden'}>
             <SplitCodeEditor
               artifact={artifact}
               version={version}
               latestVersion={latestVersion}
               onLivePreviewChange={setLiveEditSource}
               onVersionSaved={onVersionSaved}
+              onVersionAdopted={onVersionAdopted}
             />
           </div>
         ) : null}

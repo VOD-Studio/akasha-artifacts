@@ -173,6 +173,14 @@ function ArtifactRouteView({
             })
           }
         }}
+        onVersionAdopted={() => {
+          if (requestedVersion !== undefined) {
+            void navigate({
+              to: '/a/$publicId',
+              params: { publicId: detail.artifact.publicId },
+            })
+          }
+        }}
       />
     </div>
   )
