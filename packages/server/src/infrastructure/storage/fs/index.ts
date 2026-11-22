@@ -101,18 +101,10 @@ export function assertRealPathInsideRoot(artifactsRoot: string, targetPath: stri
       break
     }
     if (lstat.isSymbolicLink()) {
-      let realCur: string
-      try {
-        realCur = fs.realpathSync(cur)
-      } catch {
-        throw new DomainError('BAD_REQUEST', `检测到悬空符号链接路径 "${rel}"，拒绝越界访问`)
-      }
-      if (realCur !== realRoot && !realCur.startsWith(`${realRoot}${path.sep}`)) {
-        throw new DomainError(
-          'BAD_REQUEST',
-          `符号链接路径 "${rel}" 指向 .artifacts 目录之外，已拒绝`,
-        )
-      }
+      throw new DomainError(
+        'BAD_REQUEST',
+        `符号链接路径 "${rel}" 不受支持，.artifacts 目录内禁止符号链接以防越界或别名覆写`,
+      )
     }
   }
 
@@ -268,15 +260,15 @@ export class FsArtifactRepository implements ArtifactRepository {
     }
   }
 
-  // 全同步完成物理目录占用与并发占位校验（中间无 await 间隙），彻底消除别名 slug 并发首次发布竞态。
+  // 全同步完成物理目录占用与并发占位校验（中间无 await 间隙），并统一按真实规范路径比对，彻底消除别名 slug 并发或符号链接覆写。
   private assertNoPhysicalDirCollisionSync(artifact: Artifact, layout: ArtifactFileLayout): void {
-    const targetDir = path.resolve(layout.artifactDir)
+    const targetDir = resolveRealPathAllowMissing(layout.artifactDir)
     const reservedOwner = this.reservedDirs.get(targetDir)
     if (reservedOwner && reservedOwner !== artifact.publicId) {
       const existingReserved = this.inner.findByPublicIdSync(reservedOwner)
       if (
         !existingReserved ||
-        path.resolve(
+        resolveRealPathAllowMissing(
           resolveArtifactFileLayout(
             this.artifactsRoot,
             existingReserved.type,
@@ -300,7 +292,7 @@ export class FsArtifactRepository implements ArtifactRepository {
         existing.type,
         existing.slug,
       )
-      if (path.resolve(existingLayout.artifactDir) === targetDir) {
+      if (resolveRealPathAllowMissing(existingLayout.artifactDir) === targetDir) {
         throw new DomainError(
           'BAD_REQUEST',
           `物理目录 "${layout.normalizedRelativeDir}" 已被 Artifact "${existing.publicId}"（slug: "${existing.slug}"）占用，请使用不同的 slug`,
@@ -322,7 +314,7 @@ export class FsArtifactRepository implements ArtifactRepository {
     const owner = this.inner.findByPublicIdSync(parsedId.data)
     if (!owner) return
     const ownerLayout = resolveArtifactFileLayout(this.artifactsRoot, owner.type, owner.slug)
-    if (path.resolve(ownerLayout.artifactDir) === targetDir) {
+    if (resolveRealPathAllowMissing(ownerLayout.artifactDir) === targetDir) {
       throw new DomainError(
         'BAD_REQUEST',
         `物理目录 "${layout.normalizedRelativeDir}" 已被 Artifact "${owner.publicId}"（slug: "${owner.slug}"）占用，请使用不同的 slug`,
@@ -349,13 +341,13 @@ export class FsArtifactRepository implements ArtifactRepository {
 
   private retireObsoleteLayout(previous: Artifact, nextArtifactDir: string): void {
     const prevLayout = resolveArtifactFileLayout(this.artifactsRoot, previous.type, previous.slug)
-    const prevDir = path.resolve(prevLayout.artifactDir)
-    if (prevDir === path.resolve(nextArtifactDir)) return
+    const prevDir = resolveRealPathAllowMissing(prevLayout.artifactDir)
+    if (prevDir === resolveRealPathAllowMissing(nextArtifactDir)) return
     if (this.reservedDirs.get(prevDir) === previous.publicId) {
       this.reservedDirs.delete(prevDir)
     }
     if (!fs.existsSync(prevDir)) return
-    assertRealPathInsideRoot(this.artifactsRoot, prevDir)
+    assertRealPathInsideRoot(this.artifactsRoot, prevLayout.artifactDir)
 
     // 仅清理属于当前 Artifact 的 .artifact-id 与对应类型的规范入口文件，不误删无关用户文件
     if (fs.existsSync(prevLayout.idFile)) {
@@ -378,8 +370,8 @@ export class FsArtifactRepository implements ArtifactRepository {
       }
     }
 
-    // 自底向上回收空目录（绝不删除 artifactsRoot 本身）
-    const root = path.resolve(this.artifactsRoot)
+    // 自底向上回收空目录（绝不删除 artifactsRoot 本身；统一按真实规范路径比对以兼容 macOS /var -> /private/var）
+    const root = resolveRealPathAllowMissing(this.artifactsRoot)
     let cur = prevDir
     while (cur !== root && cur.startsWith(`${root}${path.sep}`)) {
       try {
@@ -462,7 +454,7 @@ export class FsArtifactRepository implements ArtifactRepository {
     // 以下校验、占位与 SQLite 原子提交全同步执行，避免并发别名 slug 同时通过检查后互相覆盖
     this.assertNoPhysicalDirCollisionSync(artifact, layout)
     const previous = this.inner.findByPublicIdSync(artifact.publicId)
-    const targetDir = path.resolve(layout.artifactDir)
+    const targetDir = resolveRealPathAllowMissing(layout.artifactDir)
     this.reservedDirs.set(targetDir, artifact.publicId)
 
     try {

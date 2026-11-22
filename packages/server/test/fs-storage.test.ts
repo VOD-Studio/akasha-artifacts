@@ -667,4 +667,120 @@ describe('.artifacts/ 原生文件存储适配器与外部编辑监听', () => {
     expect(fs.readdirSync(outsideDir)).toEqual([])
     expect(await container.repositories.artifacts.listByProject('proj_sym')).toHaveLength(0)
   })
+
+  it('拒绝 .artifacts 内部目录别名符号链接，防止两个 Artifact 共用同一源码与 .artifact-id', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-inside-sym-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    const container = createLocalContainer({
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_alias',
+    })
+    closers.push(container.close)
+    await container.ready
+
+    const card = await container.service.publish({
+      projectId: 'proj_alias',
+      slug: 'card',
+      title: 'Original Card',
+      type: 'html',
+      source: '<div>original card</div>',
+      author: 'agent:cli',
+    })
+
+    // 在 .artifacts 内部创建指向 html/card 的符号链接别名 html/alias
+    fs.symlinkSync(
+      path.join(artifactsDir, 'html', 'card'),
+      path.join(artifactsDir, 'html', 'alias'),
+      'dir',
+    )
+
+    await expect(
+      container.service.publish({
+        projectId: 'proj_alias',
+        slug: 'alias',
+        title: 'Alias Overwrite',
+        type: 'html',
+        source: '<div>overwritten via alias</div>',
+        author: 'agent:cli',
+      }),
+    ).rejects.toThrow(/符号链接/)
+
+    // 原 card 的源码与 .artifact-id 必须保持完好
+    expect(fs.readFileSync(path.join(artifactsDir, 'html', 'card', 'index.html'), 'utf8')).toBe(
+      '<div>original card</div>',
+    )
+    expect(
+      fs.readFileSync(path.join(artifactsDir, 'html', 'card', ARTIFACT_ID_FILENAME), 'utf8').trim(),
+    ).toBe(card.artifact.publicId)
+  })
+
+  it('用户清空已有源文件时在实时同步与重启对账中均能如实记录空版本', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-empty-file-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    const srv1 = await startNodeServer({
+      host: '127.0.0.1',
+      port: 0,
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_empty',
+      fsWatchDebounceMs: 20,
+    })
+
+    const pub = await srv1.service.publish({
+      projectId: 'proj_empty',
+      slug: 'markdown/notes',
+      title: 'Notes',
+      type: 'markdown',
+      source: '# Initial notes',
+      author: 'agent:cli',
+    })
+    const notesFile = path.join(artifactsDir, 'markdown', 'notes', 'index.md')
+
+    // 1. 实时清空文件并通过监听器同步
+    fs.writeFileSync(notesFile, '', 'utf8')
+    await srv1.fsWatcher?.syncFile(notesFile, { fromWatch: true })
+    const afterLiveClear = await srv1.service.getArtifact({ id: pub.artifact.publicId })
+    expect(afterLiveClear.artifact.headVersion).toBe(2)
+    expect(afterLiveClear.version.source).toBe('')
+    await srv1.close()
+
+    // 2. 停机期间先恢复内容再清空：模拟离线清空并验证重启全量对账记录新空版本
+    const srv2 = await startNodeServer({
+      host: '127.0.0.1',
+      port: 0,
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_empty',
+    })
+    await srv2.service.publish({
+      projectId: 'proj_empty',
+      slug: 'markdown/notes',
+      title: 'Notes',
+      type: 'markdown',
+      source: '# Restored before offline clear',
+      baseVersion: 2,
+      author: 'agent:cli',
+    })
+    await srv2.close()
+
+    fs.writeFileSync(notesFile, '', 'utf8')
+    const srv3 = await startNodeServer({
+      host: '127.0.0.1',
+      port: 0,
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_empty',
+    })
+    closers.push(srv3.close)
+
+    const afterOfflineClear = await srv3.service.getArtifact({ id: pub.artifact.publicId })
+    expect(afterOfflineClear.artifact.headVersion).toBe(4)
+    expect(afterOfflineClear.version.source).toBe('')
+    expect(afterOfflineClear.version.author).toBe('agent:fs')
+  })
 })

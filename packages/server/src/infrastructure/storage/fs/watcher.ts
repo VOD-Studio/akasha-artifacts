@@ -76,12 +76,12 @@ export class FsArtifactsWatcher {
 
     const timer = setTimeout(() => {
       this.timers.delete(resolved)
-      void this.syncFile(resolved).catch((err) => this.onError?.(err))
+      void this.syncFile(resolved, { fromWatch: true }).catch((err) => this.onError?.(err))
     }, this.debounceMs)
     this.timers.set(resolved, timer)
   }
 
-  async syncFile(filePath: string): Promise<boolean> {
+  async syncFile(filePath: string, options: { fromWatch?: boolean } = {}): Promise<boolean> {
     let result = false
     const run = async () => {
       if (this.closed) return
@@ -90,16 +90,28 @@ export class FsArtifactsWatcher {
       if (!parsed) return
       if (!fs.existsSync(resolved)) return
 
-      let source: string
-      try {
-        const stat = fs.statSync(resolved)
-        if (!stat.isFile()) return
-        source = fs.readFileSync(resolved, 'utf8')
-      } catch {
-        return
+      const readCurrent = (): string | null => {
+        try {
+          const stat = fs.statSync(resolved)
+          if (!stat.isFile()) return null
+          return fs.readFileSync(resolved, 'utf8')
+        } catch {
+          return null
+        }
       }
 
-      if (source.trim().length === 0) return
+      let source = readCurrent()
+      if (source === null) return
+
+      // 实时监听偶遇编辑器非原子截断窗口时，额外等待短稳定窗口复读一次；
+      // 若文件持续为空（如用户主动清空源码或停机后对账），则如实同步空内容，防止历史非空版本反写覆盖。
+      if (options.fromWatch && source.length === 0) {
+        await new Promise((r) => setTimeout(r, Math.min(this.debounceMs, 50)))
+        if (this.closed || !fs.existsSync(resolved)) return
+        source = readCurrent()
+        if (source === null) return
+      }
+
       if (this.isOwnWrite?.(resolved, source)) return
 
       await this.onExternalFileChange({ ...parsed, source })
