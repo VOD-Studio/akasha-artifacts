@@ -1,5 +1,5 @@
-import type { ElementRef, Feedback, JsonPatchOp } from '@akasha/protocol'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import type { ElementRect, ElementRef, Feedback, JsonPatchOp, ReviewRound } from '@akasha/protocol'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSelectionStore } from '../../entities/selection/store'
 import { useWorkspaceStore } from '../../entities/workspace/store'
 import { RuntimeErrorPanel } from '../../features/error-recovery/RuntimeErrorPanel'
@@ -16,10 +16,13 @@ import { ElementOverlay } from '../../shared/overlay/ElementOverlay'
 import { InspectorPanel } from '../InspectorPanel/InspectorPanel'
 import { RoundSubmitBar } from '../RoundSubmitBar/RoundSubmitBar'
 
+const EMPTY_FEEDBACKS: readonly Feedback[] = []
+
 export interface ArtifactWorkspaceProps {
   detail: ArtifactDetailResponse
   versions: readonly ArtifactDetailResponse['version'][]
   feedbacks?: readonly Feedback[]
+  rounds?: readonly ReviewRound[]
   sandboxOrigin: string
   onRegisterStateForwarder?: (forwarder: ((seq: number, ops: JsonPatchOp[]) => void) | null) => void
 }
@@ -29,11 +32,14 @@ export interface ArtifactWorkspaceProps {
 export function ArtifactWorkspace({
   detail,
   versions,
-  feedbacks = [],
+  feedbacks = EMPTY_FEEDBACKS,
+  rounds: roundsOverride,
   sandboxOrigin,
   onRegisterStateForwarder,
 }: ArtifactWorkspaceProps) {
-  const { artifact, version, state, rounds } = detail
+  const { artifact, version, state } = detail
+  const rounds = roundsOverride ?? detail.rounds
+  const [livePinRects, setLivePinRects] = useState<Record<string, ElementRect | null>>({})
   const viewMode = useWorkspaceStore((s) => s.viewMode)
   const inspectorOpen = useWorkspaceStore((s) => s.inspectorOpen)
   const setInspectorOpen = useWorkspaceStore((s) => s.setInspectorOpen)
@@ -52,9 +58,25 @@ export function ArtifactWorkspace({
 
   const activeRound = useMemo(() => selectActiveRound(rounds), [rounds])
   const versionPins = useMemo(
-    () => feedbacks.filter((fb) => fb.version === version.version && Boolean(fb.element?.rect)),
+    () => feedbacks.filter((fb) => fb.version === version.version && Boolean(fb.element)),
     [feedbacks, version.version],
   )
+  const pinTrackSignature = useMemo(
+    () =>
+      JSON.stringify(
+        versionPins.map((fb) => ({
+          id: fb.id,
+          blockId: fb.element?.blockId,
+          loc: fb.element?.loc,
+          selector: fb.element?.selector,
+          textPreview: fb.element?.textPreview,
+        })),
+      ),
+    [versionPins],
+  )
+  const versionPinsRef = useRef(versionPins)
+  versionPinsRef.current = versionPins
+  const hadSelectionRef = useRef(false)
 
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const hostRef = useRef<SandboxBridgeHost | null>(null)
@@ -105,19 +127,32 @@ export function ArtifactWorkspace({
         })
       } else if (msg.type === 'rendered') {
         setSandboxError(artifact.publicId, null)
-        // 热更新重绘完成后若已有选中元素，通知沙盒重新计算该元素 rect，保持选中框不漂移
+        // 热更新重绘完成后同步已有选中元素与当前版本图钉到沙盒重算最新视口坐标
         const prevSelected = useSelectionStore.getState().selectedByArtifact[artifact.publicId]
         if (prevSelected) {
           host.send({ type: 'highlight', element: prevSelected })
         }
+        const pinPayload = versionPinsRef.current.flatMap((fb) =>
+          fb.element ? [{ id: fb.id, element: fb.element }] : [],
+        )
+        host.send({ type: 'pins.track', pins: pinPayload })
       } else if (msg.type === 'inspect.hover') {
         setHoveredElement(msg.element)
       } else if (msg.type === 'inspect.select') {
-        setSelectedElement(artifact.publicId, msg.element)
-        if (useSelectionStore.getState().pickerActive) {
-          setPickerActive(false)
-          setInspectorOpen(true)
+        if (msg.reason === 'sync') {
+          // 几何同步事件仅更新仍处于选中态的元素坐标，既不复活已清除的选区，也不意外退出指认模式
+          if (useSelectionStore.getState().selectedByArtifact[artifact.publicId]) {
+            setSelectedElement(artifact.publicId, msg.element)
+          }
+        } else {
+          setSelectedElement(artifact.publicId, msg.element)
+          if (useSelectionStore.getState().pickerActive) {
+            setPickerActive(false)
+            setInspectorOpen(true)
+          }
         }
+      } else if (msg.type === 'pins.rects') {
+        setLivePinRects(msg.rects)
       }
     })
 
@@ -165,6 +200,18 @@ export function ArtifactWorkspace({
     }
   }, [pickerActive, viewMode])
 
+  // 当用户在批注撰写器中清除选中元素时，同步下发 highlight(null) 清理沙盒内旧 selectedEl，防止滚动后复活
+  useEffect(() => {
+    if (selectedElement) {
+      hadSelectionRef.current = true
+      return
+    }
+    if (hadSelectionRef.current) {
+      hadSelectionRef.current = false
+      hostRef.current?.send({ type: 'highlight', element: null })
+    }
+  }, [selectedElement])
+
   // 当 Artifact 版本或源码更新时下发 render，并清除旧版本遗留的错误面板，携带保态快照。
   useEffect(() => {
     const host = hostRef.current
@@ -185,6 +232,28 @@ export function ArtifactWorkspace({
     lastSyncedStateSeqRef.current = stateSeqRef.current
     lastRenderedKeyRef.current = `${artifact.publicId}:${version.version}`
   }, [artifact.publicId, artifact.type, version.version, version.source, setSandboxError])
+
+  // 置于 render effect 之后：确保首屏队列先发 render 再发 pins.track，避免被 render 清空预热队列。
+  useEffect(() => {
+    void pinTrackSignature
+    const host = hostRef.current
+    if (!host) return
+    const currentPins = versionPinsRef.current
+    const pinPayload = currentPins.flatMap((fb) =>
+      fb.element ? [{ id: fb.id, element: fb.element }] : [],
+    )
+    const activeIds = new Set(pinPayload.map((p) => p.id))
+    setLivePinRects((prev) => {
+      const keys = Object.keys(prev)
+      if (keys.every((k) => activeIds.has(k))) return prev
+      const next: Record<string, ElementRect | null> = {}
+      for (const k of keys) {
+        if (activeIds.has(k)) next[k] = prev[k] ?? null
+      }
+      return next
+    })
+    host.send({ type: 'pins.track', pins: pinPayload })
+  }, [pinTrackSignature])
 
   // 当 WS 断线 resync 刷新了服务端状态快照但源码版本未变时，仅以根路径 RFC 6902 replace 同步最新状态。
   useEffect(() => {
@@ -240,6 +309,7 @@ export function ArtifactWorkspace({
               hovered={hoveredElement}
               selected={selectedElement}
               pins={versionPins}
+              livePinRects={livePinRects}
               focusedFeedbackId={focusedFeedbackId}
               onSelectPin={(fb) => {
                 setFocusedFeedbackId(fb.id)

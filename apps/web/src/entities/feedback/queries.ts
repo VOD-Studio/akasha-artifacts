@@ -32,7 +32,7 @@ export function useSubmitFeedbackMutation(artifactId: string) {
     mutationFn: (input: SubmitFeedbackInput) => submitArtifactFeedback(artifactId, input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: feedbackKeys.list(artifactId) })
-      void queryClient.invalidateQueries({ queryKey: artifactKeys.detail(artifactId, undefined) })
+      void queryClient.invalidateQueries({ queryKey: artifactKeys.detailPrefix(artifactId) })
     },
   })
 }
@@ -44,7 +44,7 @@ export function useOpenRoundMutation(artifactId: string) {
       openReviewRound(artifactId, input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: feedbackKeys.list(artifactId) })
-      void queryClient.invalidateQueries({ queryKey: artifactKeys.detail(artifactId, undefined) })
+      void queryClient.invalidateQueries({ queryKey: artifactKeys.detailPrefix(artifactId) })
     },
   })
 }
@@ -55,7 +55,7 @@ export function useSubmitRoundMutation(artifactId: string, projectId?: string) {
     mutationFn: (roundId: string) => submitReviewRound(artifactId, roundId, projectId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: feedbackKeys.list(artifactId) })
-      void queryClient.invalidateQueries({ queryKey: artifactKeys.detail(artifactId, undefined) })
+      void queryClient.invalidateQueries({ queryKey: artifactKeys.detailPrefix(artifactId) })
     },
   })
 }
@@ -66,7 +66,7 @@ export function useWithdrawRoundMutation(artifactId: string, projectId?: string)
     mutationFn: (roundId: string) => withdrawReviewRound(artifactId, roundId, projectId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: feedbackKeys.list(artifactId) })
-      void queryClient.invalidateQueries({ queryKey: artifactKeys.detail(artifactId, undefined) })
+      void queryClient.invalidateQueries({ queryKey: artifactKeys.detailPrefix(artifactId) })
     },
   })
 }
@@ -77,7 +77,7 @@ export function useRecordDecisionMutation(artifactId: string) {
     mutationFn: (input: RecordHumanDecisionInput) => recordHumanDecision(artifactId, input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: feedbackKeys.list(artifactId) })
-      void queryClient.invalidateQueries({ queryKey: artifactKeys.detail(artifactId, undefined) })
+      void queryClient.invalidateQueries({ queryKey: artifactKeys.detailPrefix(artifactId) })
     },
   })
 }

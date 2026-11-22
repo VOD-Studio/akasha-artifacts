@@ -1,10 +1,12 @@
-import type { ElementRef, Feedback } from '@akasha/protocol'
+import type { ElementRect, ElementRef, Feedback } from '@akasha/protocol'
 import { MessageSquare } from 'lucide-react'
 
 export interface ElementOverlayProps {
   hovered: ElementRef | null
   selected: ElementRef | null
   pins: readonly Feedback[]
+  // 由沙盒根据当前视口实时重算的图钉坐标；滚动、缩放或侧栏回流后优先采用实时坐标
+  livePinRects?: Record<string, ElementRect | null>
   focusedFeedbackId: string | null
   onSelectPin?: (feedback: Feedback) => void
 }
@@ -21,6 +23,7 @@ export function ElementOverlay({
   hovered,
   selected,
   pins,
+  livePinRects,
   focusedFeedbackId,
   onSelectPin,
 }: ElementOverlayProps) {
@@ -68,7 +71,8 @@ export function ElementOverlay({
       ) : null}
 
       {pins.map((fb, idx) => {
-        const rect = fb.element?.rect
+        const hasLive = livePinRects !== undefined && Object.hasOwn(livePinRects, fb.id)
+        const rect = hasLive ? livePinRects[fb.id] : fb.element?.rect
         if (!rect || (rect.width <= 0 && rect.height <= 0)) return null
         const isFocused = fb.id === focusedFeedbackId
         const pinX = Math.max(4, rect.x + rect.width - 10)

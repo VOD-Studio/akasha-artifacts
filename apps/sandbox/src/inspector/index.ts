@@ -1,4 +1,4 @@
-import type { ElementRef } from '@akasha/protocol'
+import type { ElementRect, ElementRef } from '@akasha/protocol'
 import type { SandboxBridgeClient } from '../bridge/client'
 
 function escapeCssIdent(value: string): string {
@@ -143,12 +143,38 @@ export class SandboxInspector {
   private active = false
   private hoveredEl: Element | null = null
   private selectedEl: Element | null = null
+  private trackedPins: Array<{ id: string; element: ElementRef }> = []
+  private viewportListening = false
   private syncScheduled = false
 
   constructor(
     private readonly getRootEl: () => HTMLElement | null,
     private readonly bridge: Pick<SandboxBridgeClient, 'send'>,
   ) {}
+
+  private ensureViewportListeners(): void {
+    const needed = this.active || Boolean(this.selectedEl) || this.trackedPins.length > 0
+    if (needed && !this.viewportListening) {
+      this.viewportListening = true
+      window.addEventListener('scroll', this.handleViewportChange, { passive: true, capture: true })
+      window.addEventListener('resize', this.handleViewportChange, { passive: true })
+    } else if (!needed && this.viewportListening) {
+      this.viewportListening = false
+      window.removeEventListener('scroll', this.handleViewportChange, true)
+      window.removeEventListener('resize', this.handleViewportChange)
+    }
+  }
+
+  private emitPinRects(): void {
+    if (this.trackedPins.length === 0) return
+    const root = this.getRootEl()
+    const rects: Record<string, ElementRect | null> = {}
+    for (const pin of this.trackedPins) {
+      const el = root ? findElementByRef(root, pin.element) : null
+      rects[pin.id] = el?.isConnected ? readRect(el) : null
+    }
+    this.bridge.send({ type: 'pins.rects', rects })
+  }
 
   private resolveTarget(rawTarget: EventTarget | null): Element | null {
     if (!(rawTarget instanceof Element)) return null
@@ -182,14 +208,16 @@ export class SandboxInspector {
     event.preventDefault()
     event.stopPropagation()
     this.selectedEl = target
+    this.ensureViewportListeners()
     this.bridge.send({
       type: 'inspect.select',
       element: buildElementRef(target, this.getRootEl()),
+      reason: 'click',
     })
   }
 
   private readonly handleViewportChange = () => {
-    if (!this.hoveredEl && !this.selectedEl) return
+    if (!this.hoveredEl && !this.selectedEl && this.trackedPins.length === 0) return
     if (this.syncScheduled) return
     this.syncScheduled = true
 
@@ -206,8 +234,10 @@ export class SandboxInspector {
         this.bridge.send({
           type: 'inspect.select',
           element: buildElementRef(this.selectedEl, root),
+          reason: 'sync',
         })
       }
+      this.emitPinRects()
     }
 
     if (typeof requestAnimationFrame === 'function') {
@@ -223,8 +253,7 @@ export class SandboxInspector {
     document.addEventListener('pointermove', this.handlePointerMove, true)
     document.addEventListener('pointerleave', this.handlePointerLeave, true)
     document.addEventListener('click', this.handleClick, true)
-    window.addEventListener('scroll', this.handleViewportChange, { passive: true, capture: true })
-    window.addEventListener('resize', this.handleViewportChange, { passive: true })
+    this.ensureViewportListeners()
   }
 
   stopInspecting(): void {
@@ -235,35 +264,35 @@ export class SandboxInspector {
     document.removeEventListener('pointerleave', this.handlePointerLeave, true)
     document.removeEventListener('click', this.handleClick, true)
     this.bridge.send({ type: 'inspect.hover', element: null })
-    if (!this.selectedEl) {
-      window.removeEventListener('scroll', this.handleViewportChange, true)
-      window.removeEventListener('resize', this.handleViewportChange)
-    }
+    this.ensureViewportListeners()
   }
 
   highlight(ref: ElementRef | null): void {
     const root = this.getRootEl()
     if (!ref || !root) {
       this.selectedEl = null
-      if (!this.active) {
-        window.removeEventListener('scroll', this.handleViewportChange, true)
-        window.removeEventListener('resize', this.handleViewportChange)
-      }
+      this.ensureViewportListeners()
       return
     }
     const found = findElementByRef(root, ref)
     this.selectedEl = found
+    this.ensureViewportListeners()
     if (found) {
-      window.addEventListener('scroll', this.handleViewportChange, { passive: true, capture: true })
-      window.addEventListener('resize', this.handleViewportChange, { passive: true })
       this.bridge.send({
         type: 'inspect.select',
         element: buildElementRef(found, root),
+        reason: 'sync',
       })
     }
   }
 
-  // 触发一次同步重算（供无 rAF 的测试或强制刷新调用）
+  trackPins(pins: ReadonlyArray<{ id: string; element: ElementRef }>): void {
+    this.trackedPins = [...pins]
+    this.ensureViewportListeners()
+    this.emitPinRects()
+  }
+
+  // 触发一次同步重算（供无 rAF 的测试、容器尺寸变化或强制刷新调用）
   syncRects(): void {
     const root = this.getRootEl()
     if (this.hoveredEl?.isConnected) {
@@ -276,18 +305,20 @@ export class SandboxInspector {
       this.bridge.send({
         type: 'inspect.select',
         element: buildElementRef(this.selectedEl, root),
+        reason: 'sync',
       })
     }
+    this.emitPinRects()
   }
 
   dispose(): void {
     this.active = false
     this.hoveredEl = null
     this.selectedEl = null
+    this.trackedPins = []
     document.removeEventListener('pointermove', this.handlePointerMove, true)
     document.removeEventListener('pointerleave', this.handlePointerLeave, true)
     document.removeEventListener('click', this.handleClick, true)
-    window.removeEventListener('scroll', this.handleViewportChange, true)
-    window.removeEventListener('resize', this.handleViewportChange)
+    this.ensureViewportListeners()
   }
 }

@@ -50,7 +50,7 @@ export function ReviewActionsBar({
   }
 
   const handleGroupChoice = async (group: ReviewGroup, choice: string) => {
-    if (!activeRound || activeRound.status !== 'drafting') return
+    if (activeRound?.status !== 'drafting') return
     try {
       await recordDecision.mutateAsync({
         project: projectId,
@@ -65,7 +65,7 @@ export function ReviewActionsBar({
   }
 
   const handleGroupVerdict = async (group: ReviewGroup, verdict: Verdict) => {
-    if (!activeRound || activeRound.status !== 'drafting') return
+    if (activeRound?.status !== 'drafting') return
     try {
       await recordDecision.mutateAsync({
         project: projectId,

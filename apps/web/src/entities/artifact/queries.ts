@@ -9,6 +9,7 @@ import {
 export const artifactKeys = {
   all: ['artifacts'] as const,
   list: (projectId?: string) => ['artifacts', 'list', projectId ?? 'all'] as const,
+  detailPrefix: (id: string) => ['artifacts', 'detail', id] as const,
   detail: (id: string, version?: number) => ['artifacts', 'detail', id, version ?? 'head'] as const,
   versions: (id: string) => ['artifacts', 'versions', id] as const,
 }

@@ -702,6 +702,30 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       useSelectionStore.getState().setPickerActive(true)
     })
     expect(posted.some((m) => m.type === 'inspect.start')).toBe(true)
+    // 同步向沙盒注册当前版本图钉跟踪
+    expect(posted.some((m) => m.type === 'pins.track')).toBe(true)
+
+    // 滚动/重绘发回的 reason='sync' 坐标同步不得意外退出指认模式
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: {
+            v: PROTOCOL_VERSION,
+            nonce,
+            type: 'inspect.select',
+            reason: 'sync',
+            element: {
+              blockId: 'hero',
+              loc: '4:5',
+              rect: { x: 10, y: 20, width: 120, height: 32 },
+            },
+          },
+          origin: 'null',
+          source: iframeWin,
+        }),
+      )
+    })
+    expect(useSelectionStore.getState().pickerActive).toBe(true)
 
     act(() => {
       window.dispatchEvent(
@@ -722,6 +746,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
             v: PROTOCOL_VERSION,
             nonce,
             type: 'inspect.select',
+            reason: 'click',
             element: {
               blockId: 'hero',
               loc: '4:5',
@@ -733,13 +758,54 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
           source: iframeWin,
         }),
       )
+      // 沙盒实时上报更新后的图钉坐标（例如滚动/侧栏开合后）
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: {
+            v: PROTOCOL_VERSION,
+            nonce,
+            type: 'pins.rects',
+            rects: {
+              fb_cur: { x: 88, y: 140, width: 160, height: 40 },
+            },
+          },
+          origin: 'null',
+          source: iframeWin,
+        }),
+      )
     })
 
+    expect(useSelectionStore.getState().pickerActive).toBe(false)
     expect(screen.getByTestId('overlay-select-box')).toBeTruthy()
-    expect(screen.getByTestId('annotation-pin-fb_cur')).toBeTruthy()
+    const livePin = screen.getByTestId('annotation-pin-fb_cur')
+    expect(livePin.getAttribute('style')).toContain('translate3d(238px, 130px, 0)')
     // 旧版本图钉不叠加在新版本画布上，但在右侧面板中清晰标注「针对 v1」
     expect(screen.queryByTestId('annotation-pin-fb_old')).toBeNull()
     expect(screen.getByTestId('old-version-badge-fb_old').textContent).toBe('针对 v1')
+
+    // 清除选中元素应同步向沙盒发送 highlight(null)，避免滚动后复活旧选区
+    fireEvent.click(screen.getByRole('button', { name: '清除选中元素' }))
+    expect(posted.some((m) => m.type === 'highlight' && m.element === null)).toBe(true)
+
+    // round.updated 事件须同时刷新历史版本详情缓存（例如 /a/$id/v/1）
+    const versionDetailKey = artifactKeys.detail(SAMPLE_ARTIFACT.publicId, 1)
+    queryClient.setQueryData(versionDetailKey, { ...detailV2, rounds: [draftingRound] })
+    const submittedRound: ReviewRound = {
+      ...draftingRound,
+      status: 'submitted',
+      submittedAt: '2026-11-22T09:08:00.000Z',
+    }
+    applyRealtimeEventToCache(queryClient, {
+      v: PROTOCOL_VERSION,
+      seq: 99,
+      timestamp: '2026-11-22T09:08:00.000Z',
+      type: 'round.updated',
+      artifactId: SAMPLE_ARTIFACT.publicId,
+      round: submittedRound,
+    })
+    const refreshedVersionDetail =
+      queryClient.getQueryData<ArtifactDetailResponse>(versionDetailKey)
+    expect(refreshedVersionDetail?.rounds[0]?.status).toBe('submitted')
 
     // 底部提交栏展示本轮进度：已决策 1 / 2、草稿评论 2 条
     const roundBar = screen.getByTestId('round-submit-bar')

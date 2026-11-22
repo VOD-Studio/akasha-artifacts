@@ -133,6 +133,7 @@ function ArtifactRouteView({
   const detail = detailQuery.data
   const versions = versionsQuery.data ?? [detail.version]
   const feedbacks = feedbackQuery.data?.items ?? []
+  const rounds = feedbackQuery.data?.rounds ?? detail.rounds
   const sandboxOrigin = resolveSandboxOrigin(daemonStatus?.sandboxPort)
 
   return (
@@ -161,6 +162,7 @@ function ArtifactRouteView({
         detail={detail}
         versions={versions}
         feedbacks={feedbacks}
+        rounds={rounds}
         sandboxOrigin={sandboxOrigin}
         onRegisterStateForwarder={registerStateForwarder}
       />
