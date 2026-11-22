@@ -142,11 +142,14 @@ export class ArtifactService {
           snapshot: {},
           updatedAt: now,
         })
-        await this.deps.realtime.publish({
-          type: 'version.created',
-          artifactId: publicId,
-          version,
-        })
+        await this.deps.realtime.publish(
+          {
+            type: 'version.created',
+            artifactId: publicId,
+            version,
+          },
+          { projectId },
+        )
         return { artifact, version }
       }
 
@@ -179,11 +182,14 @@ export class ArtifactService {
         }
         await this.deps.artifacts.appendVersion(version)
         await this.deps.artifacts.saveArtifact(updated)
-        await this.deps.realtime.publish({
-          type: 'version.created',
-          artifactId: updated.publicId,
-          version,
-        })
+        await this.deps.realtime.publish(
+          {
+            type: 'version.created',
+            artifactId: updated.publicId,
+            version,
+          },
+          { projectId: updated.projectId },
+        )
         return { artifact: updated, version }
       })
     })
@@ -230,11 +236,14 @@ export class ArtifactService {
       }
       await this.deps.artifacts.appendVersion(version)
       await this.deps.artifacts.saveArtifact(updated)
-      await this.deps.realtime.publish({
-        type: 'version.created',
-        artifactId: updated.publicId,
-        version,
-      })
+      await this.deps.realtime.publish(
+        {
+          type: 'version.created',
+          artifactId: updated.publicId,
+          version,
+        },
+        { projectId: updated.projectId },
+      )
       return { artifact: updated, version }
     })
   }
@@ -279,11 +288,14 @@ export class ArtifactService {
       }
       await this.deps.artifacts.appendVersion(version)
       await this.deps.artifacts.saveArtifact(updated)
-      await this.deps.realtime.publish({
-        type: 'version.created',
-        artifactId: updated.publicId,
-        version,
-      })
+      await this.deps.realtime.publish(
+        {
+          type: 'version.created',
+          artifactId: updated.publicId,
+          version,
+        },
+        { projectId: updated.projectId },
+      )
       return { artifact: updated, version }
     })
   }
@@ -319,12 +331,15 @@ export class ArtifactService {
         createdAt: now,
       })
       await this.deps.states.saveSnapshot(nextSnapshot)
-      await this.deps.realtime.publish({
-        type: 'state.patched',
-        artifactId: artifact.publicId,
-        stateSeq: nextSeq,
-        ops: structuredClone(input.ops) as JsonPatchOp[],
-      })
+      await this.deps.realtime.publish(
+        {
+          type: 'state.patched',
+          artifactId: artifact.publicId,
+          stateSeq: nextSeq,
+          ops: structuredClone(input.ops) as JsonPatchOp[],
+        },
+        { projectId: artifact.projectId },
+      )
       return nextSnapshot
     })
   }
@@ -389,11 +404,14 @@ export class ArtifactService {
       createdAt: this.deps.clock.now(),
     })
     await this.deps.rounds.replaceRounds(artifact.publicId, [...closed, round])
-    await this.deps.realtime.publish({
-      type: 'round.updated',
-      artifactId: artifact.publicId,
-      round,
-    })
+    await this.deps.realtime.publish(
+      {
+        type: 'round.updated',
+        artifactId: artifact.publicId,
+        round,
+      },
+      { projectId: artifact.projectId },
+    )
     return round
   }
 
@@ -430,11 +448,14 @@ export class ArtifactService {
       await this.deps.feedbacks.promoteRoundDrafts(artifact.publicId, next.id, now)
     }
     await this.deps.rounds.saveRound(next)
-    await this.deps.realtime.publish({
-      type: 'round.updated',
-      artifactId: artifact.publicId,
-      round: next,
-    })
+    await this.deps.realtime.publish(
+      {
+        type: 'round.updated',
+        artifactId: artifact.publicId,
+        round: next,
+      },
+      { projectId: artifact.projectId },
+    )
     return next
   }
 
@@ -452,11 +473,14 @@ export class ArtifactService {
     const submitted = submitReviewRound(round, now)
     await this.deps.feedbacks.promoteRoundDrafts(artifact.publicId, submitted.id, now)
     await this.deps.rounds.saveRound(submitted)
-    await this.deps.realtime.publish({
-      type: 'round.updated',
-      artifactId: artifact.publicId,
-      round: submitted,
-    })
+    await this.deps.realtime.publish(
+      {
+        type: 'round.updated',
+        artifactId: artifact.publicId,
+        round: submitted,
+      },
+      { projectId: artifact.projectId },
+    )
     return submitted
   }
 
@@ -472,11 +496,14 @@ export class ArtifactService {
     }
     const withdrawn = withdrawReviewRound(round)
     await this.deps.rounds.saveRound(withdrawn)
-    await this.deps.realtime.publish({
-      type: 'round.updated',
-      artifactId: artifact.publicId,
-      round: withdrawn,
-    })
+    await this.deps.realtime.publish(
+      {
+        type: 'round.updated',
+        artifactId: artifact.publicId,
+        round: withdrawn,
+      },
+      { projectId: artifact.projectId },
+    )
     return withdrawn
   }
 
@@ -517,11 +544,14 @@ export class ArtifactService {
     }
     await this.deps.feedbacks.save(feedback)
     if (shouldNotifyImmediately(feedback)) {
-      await this.deps.realtime.publish({
-        type: 'feedback.created',
-        artifactId: artifact.publicId,
-        feedback,
-      })
+      await this.deps.realtime.publish(
+        {
+          type: 'feedback.created',
+          artifactId: artifact.publicId,
+          feedback,
+        },
+        { projectId: artifact.projectId },
+      )
     }
     return feedback
   }
@@ -600,11 +630,15 @@ export class ArtifactService {
       await this.deps.feedbacks.save(updated)
       acknowledged++
       if (resolveSet.has(id)) resolved++
-      await this.deps.realtime.publish({
-        type: 'feedback.updated',
-        artifactId: updated.artifactId,
-        feedback: updated,
-      })
+      const owner = await this.deps.artifacts.findByPublicId(updated.artifactId)
+      await this.deps.realtime.publish(
+        {
+          type: 'feedback.updated',
+          artifactId: updated.artifactId,
+          feedback: updated,
+        },
+        owner ? { projectId: owner.projectId } : undefined,
+      )
     }
 
     return { acknowledged, resolved }

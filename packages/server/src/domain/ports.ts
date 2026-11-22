@@ -64,8 +64,24 @@ export type RealtimeEventPayload<T = RealtimeServerEvent> = T extends unknown
   ? Omit<T, 'v' | 'seq' | 'timestamp'>
   : never
 
+export interface RealtimePublishMeta {
+  projectId?: string
+}
+
 export interface RealtimePublisher {
-  publish(event: RealtimeEventPayload): Promise<void>
+  publish(event: RealtimeEventPayload, meta?: RealtimePublishMeta): Promise<void>
+}
+
+export interface RealtimeSubscriptionOptions {
+  artifactId?: PublicId
+  projectId?: string
+  lastSeq?: number
+  onEvent: (event: RealtimeServerEvent) => void
+}
+
+export interface RealtimeSubscriber {
+  subscribe(options: RealtimeSubscriptionOptions): () => void
+  getActiveConnections(): number
 }
 
 export interface Clock {
