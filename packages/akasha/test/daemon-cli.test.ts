@@ -1,10 +1,13 @@
 import fs from 'node:fs'
+import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { runCli } from '../src/cli.js'
 import { ensureDaemon, probeDaemon, stopDaemon } from '../src/daemon/lifecycle.js'
 import { startAkashaDaemon } from '../src/daemon/serve.js'
 import { daemonStatePath } from '../src/daemon/state.js'
+import { installHarnessPlugin, runDoctor, SUPPORTED_HARNESSES } from '../src/install/index.js'
 
 const closers: Array<() => Promise<void>> = []
 const tempDirs: string[] = []
@@ -210,5 +213,177 @@ describe('Local singleton Daemon lifecycle & security', () => {
     const stopped = await stopDaemon(homeDir)
     expect(stopped.stopped).toBe(true)
     expect(await probeDaemon(homeDir)).toBeNull()
+  })
+
+  it('installHarnessPlugin supports all 4 harnesses idempotently without clobbering existing user configs', () => {
+    for (const harness of SUPPORTED_HARNESSES) {
+      const targetDir = fs.mkdtempSync(path.join(os.tmpdir(), `akasha-install-${harness}-`))
+      tempDirs.push(targetDir)
+
+      // 预置用户已有 MCP 与 Hooks 配置
+      const mcpFile = path.join(
+        targetDir,
+        harness === 'antigravity' ? 'mcp_config.json' : 'mcp.json',
+      )
+      fs.writeFileSync(
+        mcpFile,
+        JSON.stringify({ mcpServers: { existingTool: { command: 'echo', args: ['hi'] } } }),
+      )
+      const hooksFile = path.join(
+        targetDir,
+        harness === 'claude-code' ? 'settings.json' : 'hooks.json',
+      )
+      fs.writeFileSync(
+        hooksFile,
+        harness === 'claude-code'
+          ? JSON.stringify({
+              theme: 'dark',
+              hooks: {
+                UserPromptSubmit: [
+                  { matcher: '*', hooks: [{ type: 'command', command: 'echo user' }] },
+                ],
+              },
+            })
+          : JSON.stringify({ customHook: 'echo keep-me' }),
+      )
+
+      const first = installHarnessPlugin({ harness, targetDir })
+      expect(first.skillsInstalled).toEqual(['akasha-artifacts', 'akasha-review-loop'])
+      expect(fs.existsSync(path.join(targetDir, 'skills', 'akasha-artifacts', 'SKILL.md'))).toBe(
+        true,
+      )
+
+      // 幂等重复安装不得重复追加相同 Hook，且保留用户已有配置
+      installHarnessPlugin({ harness, targetDir })
+      const mcp = JSON.parse(fs.readFileSync(mcpFile, 'utf8')) as {
+        mcpServers: Record<string, unknown>
+      }
+      expect(mcp.mcpServers.existingTool).toBeDefined()
+      expect(mcp.mcpServers.akasha).toBeDefined()
+
+      const hooks = JSON.parse(fs.readFileSync(hooksFile, 'utf8')) as Record<string, unknown>
+      if (harness === 'claude-code') {
+        expect(hooks.theme).toBe('dark')
+        const submitList = (hooks.hooks as Record<string, unknown[]>).UserPromptSubmit
+        expect(submitList).toHaveLength(2)
+      } else {
+        expect(hooks.customHook).toBe('echo keep-me')
+      }
+    }
+  })
+
+  it('runDoctor verifies Daemon health, harness install completeness, and port conflicts', async () => {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-doc-home-'))
+    const installDir = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-doc-claude-'))
+    tempDirs.push(homeDir, installDir)
+
+    // 未安装插件时 doctor 明确报 error
+    const missingReport = await runDoctor({
+      akashaHome: homeDir,
+      harness: 'claude-code',
+      targetDir: installDir,
+    })
+    expect(missingReport.ok).toBe(false)
+    expect(missingReport.checks.find((c) => c.id === 'harness:claude-code')?.status).toBe('error')
+
+    // 安装插件并启动 Daemon 后全部通过
+    installHarnessPlugin({ harness: 'claude-code', targetDir: installDir })
+    const daemon = await startAkashaDaemon({ homeDir, port: 0, sandboxPort: 0 })
+    closers.push(daemon.close)
+
+    const okReport = await runDoctor({
+      akashaHome: homeDir,
+      harness: 'claude-code',
+      targetDir: installDir,
+    })
+    expect(okReport.ok).toBe(true)
+    expect(okReport.checks.find((c) => c.id === 'daemon')?.status).toBe('ok')
+    expect(okReport.checks.find((c) => c.id === 'harness:claude-code')?.status).toBe('ok')
+
+    // 占满全部候选端口时，doctor 能检测到端口冲突
+    const blocker = net.createServer()
+    await new Promise<void>((resolve) => blocker.listen(0, '127.0.0.1', () => resolve()))
+    closers.push(() => new Promise<void>((resolve) => blocker.close(() => resolve())))
+    const blockedPort = (blocker.address() as net.AddressInfo).port
+    const emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-doc-empty-'))
+    tempDirs.push(emptyHome)
+
+    const conflictReport = await runDoctor({
+      akashaHome: emptyHome,
+      shellPorts: [blockedPort],
+      sandboxPorts: [blockedPort],
+    })
+    expect(conflictReport.ok).toBe(false)
+    expect(conflictReport.checks.find((c) => c.id === 'ports')?.status).toBe('error')
+  })
+
+  it('CLI hook prompt & activity resolve project by rootPath and emit harness-formatted context', async () => {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-hook-cli-home-'))
+    const projDir = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-hook-cli-proj-'))
+    tempDirs.push(homeDir, projDir)
+
+    const daemon = await startAkashaDaemon({ homeDir, port: 0, sandboxPort: 0 })
+    closers.push(daemon.close)
+
+    // 登记项目并写入浏览器选区
+    const regRes = await fetch(`${daemon.baseUrl}/api/v1/projects`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${daemon.token}`,
+      },
+      body: JSON.stringify({ rootPath: projDir, name: 'hook-cli-proj' }),
+    })
+    const { project } = (await regRes.json()) as { project: { id: string } }
+
+    await fetch(`${daemon.baseUrl}/api/v1/projects/${project.id}/selection`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${daemon.token}`,
+      },
+      body: JSON.stringify({
+        artifactId: 'AbCdEfGhIjKlMnOpQrStU',
+        element: { blockId: 'hero-title', textPreview: '欢迎使用 Akasha' },
+        draftText: '标题改短一些',
+      }),
+    })
+
+    const logs: string[] = []
+    const logSpy = vi.spyOn(console, 'log').mockImplementation((msg) => {
+      logs.push(String(msg))
+    })
+    try {
+      const code = await runCli([
+        'hook',
+        'prompt',
+        '--harness',
+        'claude-code',
+        '--home',
+        homeDir,
+        '--project',
+        projDir,
+      ])
+      expect(code).toBe(0)
+      const parsed = JSON.parse(logs.at(-1) ?? '{}') as {
+        hookSpecificOutput?: { additionalContext?: string }
+      }
+      expect(parsed.hookSpecificOutput?.additionalContext).toContain('blockId=hero-title')
+      expect(parsed.hookSpecificOutput?.additionalContext).toContain('标题改短一些')
+
+      const actCode = await runCli([
+        'hook',
+        'activity',
+        '--event',
+        'PreToolUse',
+        '--home',
+        homeDir,
+        '--project',
+        projDir,
+      ])
+      expect(actCode).toBe(0)
+    } finally {
+      logSpy.mockRestore()
+    }
   })
 })

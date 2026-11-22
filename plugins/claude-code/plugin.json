@@ -1,0 +1,13 @@
+{
+  "name": "akasha",
+  "version": "0.2.0",
+  "description": "Live interactive Web Artifacts and two-way HITL review loop for Claude Code",
+  "mcpServers": {
+    "akasha": {
+      "command": "npx",
+      "args": ["-y", "akasha-artifacts", "mcp"]
+    }
+  },
+  "hooks": "./hooks.json",
+  "skills": ["akasha-artifacts", "akasha-review-loop"]
+}

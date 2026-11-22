@@ -237,3 +237,18 @@ export async function recordHumanDecision(
     },
   )
 }
+
+// 同步当前浏览器选区与未提交草稿到本机 Daemon，供终端 Hook 在用户发消息时无感注入上下文。
+export async function syncProjectSelection(
+  projectId: string,
+  input: { artifactId?: string; element: ElementRef | null; draftText?: string },
+): Promise<void> {
+  try {
+    await requestJson(`/api/v1/projects/${encodeURIComponent(projectId)}/selection`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+  } catch {
+    // 选区同步失败不阻断浏览器交互
+  }
+}

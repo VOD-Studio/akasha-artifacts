@@ -121,7 +121,7 @@ flowchart TB
 | :----- | :----------------------------------------------------------------------------------------------------------------------- | :----- |
 | **M0** | Monorepo 骨架、`@akasha/ui` 外壳组件库、`@akasha/protocol`（zod + JSON Schema）、不可变版本模型与 RFC 6902 状态流        | 已完成 |
 | **M1** | 整机单例 Local Daemon（Hono + SQLite）、WS 断线补齐、MCP 工具、`check` 校验门禁、热更新保态沙盒、多项目外壳工作台        | 已完成 |
-| **M2** | L1 元素指认与选中框、`ReviewRound` 草稿/整轮提交防打断回路、`receipt/ack`、多 Harness Hooks 与 Skills、运行报错修复回路  | 计划中 |
+| **M2** | L1 元素指认与选中框、`ReviewRound` 草稿/整轮提交防打断回路、`receipt/ack`、多 Harness Hooks 与 Skills、运行报错修复回路  | 已完成 |
 | **M3** | `@akasha/kit` schema 引擎与 L2 属性面板、`artboard` / `document` / `verify`、L3 分栏代码编辑、`.artifacts/` 原生文件模式 | 计划中 |
 | **M4** | L4 可视化直改（AST 回写与撤销）与 `window.akasha.storage` 作用域存储                                                     | 计划中 |
 | **M5** | Docker 单容器 Cloud Hub 自托管（OAuth、可见性权限、离线反馈队列、本机访问优先直连 Daemon）                               | 计划中 |
@@ -132,11 +132,20 @@ flowchart TB
 ## 快速开始
 
 > [!NOTE]
-> 本地守护进程（`akasha serve`）、MCP 服务（`akasha mcp`）、隔离沙盒运行时与多项目外壳工作台现已可用（**M1**）；团队 Cloud Hub 容器部署计划在 **M5** 交付。
+> 本地守护进程（`akasha serve`）、完整 MCP 服务（`akasha mcp`）、隔离沙盒运行时、L1 元素指认与评审轮次闭环以及多端插件安装器（`akasha install` / `akasha doctor`）现已可用（**M2**）；团队 Cloud Hub 容器部署计划在 **M5** 交付。
 
-### 1. 接入你的编程 Agent（MCP 模式 — M1）
+### 1. 接入你的编程 Agent（MCP 与 Hooks — M1/M2）
 
-#### Antigravity (AGY) / Claude Code / Codex CLI
+#### 一键安装多端插件（Claude Code / Antigravity / Codex CLI / Cursor）
+
+```bash
+# 幂等安装 MCP 配置、对应客户端 Hooks 与轻量化 Skills
+npx -y akasha-artifacts install --harness claude-code
+# 自检 Node.js 版本、Daemon 连通性、端口冲突与插件安装完整性
+npx -y akasha-artifacts doctor --harness claude-code
+```
+
+#### 手动配置 MCP（Antigravity / Claude Code / Codex CLI）
 
 在 Agent 的 MCP 配置文件中添加 Akasha：
 
@@ -181,7 +190,7 @@ npx akasha-artifacts login --hub https://akasha.your-team.dev
 
 ## MCP 工具清单
 
-> 契约已在 `@akasha/protocol`（M0）定义，MCP 运行时服务将在 M1 / M2 交付。
+> `@akasha/protocol` 定义的全部 10 个 MCP 工具均已在本地 Daemon 与 stdio MCP 服务落地（**M1 + M2**）。
 
 | 工具名称                  | 里程碑 | 功能说明                                                                                 |
 | :------------------------ | :----- | :--------------------------------------------------------------------------------------- |

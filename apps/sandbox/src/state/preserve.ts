@@ -3,6 +3,13 @@ import { createContext, useCallback, useContext, useSyncExternalStore } from 're
 
 type PersistableElement = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
 
+function isWindowScroller(target: HTMLElement | Window): target is Window {
+  return (
+    (typeof window !== 'undefined' && target === window) ||
+    (typeof Window !== 'undefined' && target instanceof Window)
+  )
+}
+
 function isPersistableElement(el: Element): el is PersistableElement {
   return (
     el instanceof HTMLInputElement ||
@@ -154,7 +161,7 @@ export class PreservedStateManager {
     if (typeof this.state.scrollX === 'number' || typeof this.state.scrollY === 'number') {
       const x = this.state.scrollX ?? 0
       const y = this.state.scrollY ?? 0
-      if (scroller instanceof Window) {
+      if (isWindowScroller(scroller)) {
         scroller.scrollTo?.(x, y)
       } else {
         scroller.scrollLeft = x
@@ -174,7 +181,7 @@ export class PreservedStateManager {
     }
 
     const handleScroll = () => {
-      if (scroller instanceof Window) {
+      if (isWindowScroller(scroller)) {
         this.setScroll(scroller.scrollX, scroller.scrollY)
       } else {
         this.setScroll(scroller.scrollLeft, scroller.scrollTop)

@@ -1,0 +1,19 @@
+{
+  "name": "akasha",
+  "version": "0.2.0",
+  "harness": "antigravity",
+  "description": "Live interactive Web Artifacts and two-way HITL review loop for Antigravity (AGY)",
+  "mcpServers": {
+    "akasha": {
+      "command": "npx",
+      "args": ["-y", "akasha-artifacts", "mcp"]
+    }
+  },
+  "hooks": {
+    "PreInvocation": "npx -y akasha-artifacts hook prompt --harness antigravity",
+    "PreToolUse": "npx -y akasha-artifacts hook activity --event PreToolUse",
+    "PostToolUse": "npx -y akasha-artifacts hook activity --event PostToolUse",
+    "SessionEnd": "npx -y akasha-artifacts hook activity --event SessionEnd"
+  },
+  "skills": ["akasha-artifacts", "akasha-review-loop"]
+}

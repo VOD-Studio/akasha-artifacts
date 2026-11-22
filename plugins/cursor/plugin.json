@@ -1,0 +1,19 @@
+{
+  "name": "akasha",
+  "version": "0.2.0",
+  "harness": "cursor",
+  "description": "Live interactive Web Artifacts and two-way HITL review loop for Cursor",
+  "mcpServers": {
+    "akasha": {
+      "command": "npx",
+      "args": ["-y", "akasha-artifacts", "mcp"]
+    }
+  },
+  "hooks": {
+    "UserPromptSubmit": "npx -y akasha-artifacts hook prompt --harness cursor",
+    "PreToolUse": "npx -y akasha-artifacts hook activity --event PreToolUse",
+    "PostToolUse": "npx -y akasha-artifacts hook activity --event PostToolUse",
+    "SessionEnd": "npx -y akasha-artifacts hook activity --event SessionEnd"
+  },
+  "skills": ["akasha-artifacts", "akasha-review-loop"]
+}
