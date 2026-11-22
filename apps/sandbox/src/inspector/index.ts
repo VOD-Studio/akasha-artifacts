@@ -116,6 +116,25 @@ export function findElementByRef(rootEl: Element, ref: ElementRef): Element | nu
       // 非法选择器忽略
     }
   }
+  // 最终降级：按 textPreview 查找最具体的文本命中节点（遵循 blockId > loc > selector > textPreview 契约）
+  const needle = ref.textPreview?.replace(/\s+/g, ' ').trim()
+  if (needle) {
+    let exactMatch: Element | null = null
+    let partialMatch: Element | null = null
+    const all = rootEl.querySelectorAll('*')
+    for (const el of all) {
+      if (el.hasAttribute('data-ak-renderer')) continue
+      const text = (el.textContent ?? '').replace(/\s+/g, ' ').trim()
+      if (!text) continue
+      if (text === needle) {
+        exactMatch = el
+      } else if (text.includes(needle)) {
+        partialMatch = el
+      }
+    }
+    if (exactMatch) return exactMatch
+    if (partialMatch) return partialMatch
+  }
   return null
 }
 

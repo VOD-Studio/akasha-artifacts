@@ -40,6 +40,8 @@ export function ArtifactWorkspace({
   stateRef.current = state.snapshot
   const stateSeqRef = useRef(state.seq)
   stateSeqRef.current = state.seq
+  const activeVersionRef = useRef(version.version)
+  activeVersionRef.current = version.version
   const lastSyncedStateSeqRef = useRef<number>(-1)
   const lastRenderedKeyRef = useRef<string>('')
 
@@ -72,6 +74,7 @@ export function ArtifactWorkspace({
         setPreservedView(artifact.publicId, msg.state)
       } else if (msg.type === 'error') {
         setSandboxError(artifact.publicId, {
+          version: activeVersionRef.current,
           phase: msg.phase,
           message: msg.message,
           stack: msg.stack,
@@ -105,10 +108,14 @@ export function ArtifactWorkspace({
     onRegisterStateForwarder,
   ])
 
-  // 当 Artifact 版本或源码更新时下发 render，并携带最近一次记录的视图与控件保态快照。
+  // 当 Artifact 版本或源码更新时下发 render，并清除旧版本遗留的错误面板，携带保态快照。
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
+    const existingErr = useWorkspaceStore.getState().sandboxErrorByArtifact[artifact.publicId]
+    if (existingErr && existingErr.version !== version.version) {
+      setSandboxError(artifact.publicId, null)
+    }
     const preservedState = useWorkspaceStore.getState().preservedViewByArtifact[artifact.publicId]
     host.send({
       type: 'render',
@@ -120,7 +127,7 @@ export function ArtifactWorkspace({
     })
     lastSyncedStateSeqRef.current = stateSeqRef.current
     lastRenderedKeyRef.current = `${artifact.publicId}:${version.version}`
-  }, [artifact.publicId, artifact.type, version.version, version.source])
+  }, [artifact.publicId, artifact.type, version.version, version.source, setSandboxError])
 
   // 当 WS 断线 resync 刷新了服务端状态快照但源码版本未变时，仅以根路径 RFC 6902 replace 同步最新状态，
   // 确保不重挂载组件且后续增量补丁的父路径保持一致。
@@ -139,12 +146,12 @@ export function ArtifactWorkspace({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-canvas">
-      {sandboxError ? (
+      {sandboxError && sandboxError.version === version.version ? (
         <div className="shrink-0 border-b border-border bg-surface px-4 py-2">
           <RuntimeErrorPanel
             artifactId={artifact.publicId}
             projectId={artifact.projectId}
-            version={version.version}
+            version={sandboxError.version}
             source={version.source}
             error={sandboxError}
             onDismiss={() => setSandboxError(artifact.publicId, null)}

@@ -483,5 +483,23 @@ describe('apps/sandbox 运行时与安全边界', () => {
       loc: '2:3',
       textPreview: '纯 HTML 段落',
     })
+
+    // 仅含 textPreview 的 highlight 指令也能通过最终降级定位命中目标节点
+    const prevCount = posted.length
+    act(() => {
+      dispatchFromHost({
+        v: PROTOCOL_VERSION,
+        nonce,
+        type: 'highlight',
+        element: { textPreview: '纯 HTML 段落' },
+      })
+    })
+    const highlightHit = posted.slice(prevCount).find((m) => m.data.type === 'inspect.select')
+    expect(highlightHit?.data.type === 'inspect.select' && highlightHit.data.element).toMatchObject(
+      {
+        loc: '2:3',
+        textPreview: '纯 HTML 段落',
+      },
+    )
   })
 })

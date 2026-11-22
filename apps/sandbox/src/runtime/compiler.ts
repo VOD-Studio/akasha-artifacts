@@ -67,58 +67,62 @@ export function rewriteWhitelistedImports(code: string): string {
   let modIndex = 0
   return code.replace(
     STATIC_IMPORT_RE,
-    (_full, rawClause: string | undefined, spec: string, offset: number) => {
+    (full, rawClause: string | undefined, spec: string, offset: number) => {
       if (!isWhitelistedModule(spec)) {
         const line = lineNumberAt(code, offset)
         throw new ArtifactCompileError(`依赖 "${spec}" 不在沙盒预置白名单内`, `${line}:1`)
       }
 
+      // 保持与原 import 声明完全一致的换行数，避免编译后代码行号漂移
+      const originalNewlines = (full.match(/\n/g) ?? []).length
+      const padNewlines = '\n'.repeat(originalNewlines)
+
       const clause = rawClause?.trim()
       if (!clause) {
-        return `/* whitelisted side-effect import: ${spec} */`
+        return `/* whitelisted side-effect import: ${spec} */${padNewlines}`
       }
 
       const modVar = `__ak_mod_${modIndex++}`
-      const lines = [`const ${modVar} = globalThis.__AKASHA_MODULES__[${JSON.stringify(spec)}];`]
+      const stmts = [`const ${modVar} = globalThis.__AKASHA_MODULES__[${JSON.stringify(spec)}];`]
 
       // import * as Foo from 'pkg'
       const nsMatch = /^\*\s+as\s+(\w+)$/.exec(clause)
       if (nsMatch?.[1]) {
-        lines.push(`const ${nsMatch[1]} = ${modVar};`)
-        return lines.join('\n')
+        stmts.push(`const ${nsMatch[1]} = ${modVar};`)
+        return `${stmts.join(' ')}${padNewlines}`
       }
 
       // import Default, * as Ns from 'pkg'
       const defNsMatch = /^(\w+)\s*,\s*\*\s+as\s+(\w+)$/.exec(clause)
       if (defNsMatch?.[1] && defNsMatch[2]) {
-        lines.push(`const ${defNsMatch[1]} = ${modVar}.default ?? ${modVar};`)
-        lines.push(`const ${defNsMatch[2]} = ${modVar};`)
-        return lines.join('\n')
+        stmts.push(`const ${defNsMatch[1]} = ${modVar}.default ?? ${modVar};`)
+        stmts.push(`const ${defNsMatch[2]} = ${modVar};`)
+        return `${stmts.join(' ')}${padNewlines}`
       }
 
       // import Default, { a, b as c } from 'pkg'
       const defNamedMatch = /^(\w+)\s*,\s*\{([\s\S]*)\}$/.exec(clause)
       if (defNamedMatch?.[1] && defNamedMatch[2] !== undefined) {
-        lines.push(`const ${defNamedMatch[1]} = ${modVar}.default ?? ${modVar};`)
+        stmts.push(`const ${defNamedMatch[1]} = ${modVar}.default ?? ${modVar};`)
         for (const { imported, local } of parseNamedBindings(defNamedMatch[2])) {
-          lines.push(`const ${local} = ${modVar}[${JSON.stringify(imported)}];`)
+          stmts.push(`const ${local} = ${modVar}[${JSON.stringify(imported)}];`)
         }
-        return lines.join('\n')
+        return `${stmts.join(' ')}${padNewlines}`
       }
 
       // import { a, b as c } from 'pkg'
       const namedMatch = /^\{([\s\S]*)\}$/.exec(clause)
       if (namedMatch?.[1] !== undefined) {
         for (const { imported, local } of parseNamedBindings(namedMatch[1])) {
-          lines.push(`const ${local} = ${modVar}[${JSON.stringify(imported)}];`)
+          stmts.push(`const ${local} = ${modVar}[${JSON.stringify(imported)}];`)
         }
-        return lines.join('\n')
+        return `${stmts.join(' ')}${padNewlines}`
       }
 
       // import Default from 'pkg'
       if (/^\w+$/.test(clause)) {
-        lines.push(`const ${clause} = ${modVar}.default ?? ${modVar};`)
-        return lines.join('\n')
+        stmts.push(`const ${clause} = ${modVar}.default ?? ${modVar};`)
+        return `${stmts.join(' ')}${padNewlines}`
       }
 
       const line = lineNumberAt(code, offset)

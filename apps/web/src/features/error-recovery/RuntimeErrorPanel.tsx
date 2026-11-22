@@ -81,7 +81,16 @@ export function RuntimeErrorPanel({
   const alreadySent = useWorkspaceStore((s) => Boolean(s.sentErrorFingerprints[fingerprint]))
   const markErrorSent = useWorkspaceStore((s) => s.markErrorSent)
 
-  const snippet = useMemo(() => extractSourceSnippet(source, error.loc, 3), [source, error.loc])
+  // 仅当错误阶段为 compile（由原始源码解析器产出准确行列号）时才按 loc 截取并归因原始源码片段；
+  // 未经 sourcemap 映射的运行时异常省略原始行高亮，避免把编译后坐标误标到无关 TSX 行。
+  const attributedLoc =
+    error.phase === 'compile' && error.loc && /^\d+:\d+(?:-\d+:\d+)?$/.test(error.loc)
+      ? error.loc
+      : undefined
+  const snippet = useMemo(
+    () => (attributedLoc ? extractSourceSnippet(source, attributedLoc, 3) : []),
+    [source, attributedLoc],
+  )
 
   const handleSendToAgent = async () => {
     if (alreadySent || submitting) return
@@ -94,15 +103,14 @@ export function RuntimeErrorPanel({
               .join('\n')}`
           : ''
       const stackText = error.stack ? `\n\n调用栈：\n${error.stack.slice(0, 1200)}` : ''
-      const body = `[${error.phase}] ${error.message}${error.loc ? ` (at ${error.loc})` : ''}${snippetText}${stackText}`
+      const body = `[${error.phase}] ${error.message}${attributedLoc ? ` (at ${attributedLoc})` : ''}${snippetText}${stackText}`
 
-      const validLoc = error.loc && /^\d+:\d+(?:-\d+:\d+)?$/.test(error.loc) ? error.loc : undefined
       await onSubmitFeedback(artifactId, {
         project: projectId,
         version,
         kind: 'runtime_error',
-        element: validLoc
-          ? { loc: validLoc, textPreview: error.message.slice(0, 200) }
+        element: attributedLoc
+          ? { loc: attributedLoc, textPreview: error.message.slice(0, 200) }
           : { textPreview: error.message.slice(0, 200) },
         body,
       })
@@ -129,7 +137,7 @@ export function RuntimeErrorPanel({
               <span className="font-semibold">
                 沙盒{error.phase === 'compile' ? '编译' : '运行时'}异常
               </span>
-              {error.loc ? <Badge tone="danger">行:列 {error.loc}</Badge> : null}
+              {attributedLoc ? <Badge tone="danger">行:列 {attributedLoc}</Badge> : null}
               <Badge tone="neutral">v{version}</Badge>
             </div>
             <p className="mt-1 break-words font-mono text-xs text-red-900">{error.message}</p>

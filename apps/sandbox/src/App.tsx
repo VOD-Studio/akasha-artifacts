@@ -93,12 +93,13 @@ export function SandboxApp({
     bridge.start()
 
     const handleWindowError = (event: ErrorEvent) => {
+      // 浏览器 window.error 的 lineno/colno 指向编译后的 blob JS，而非原始 TSX 源码，
+      // 因此运行时未映射异常不伪造原始源码 loc，避免外壳高亮错误行。
       bridge.send({
         type: 'error',
         phase: 'runtime',
         message: event.message || '未知运行时异常',
         stack: event.error instanceof Error ? event.error.stack : undefined,
-        loc: event.lineno ? `${event.lineno}:${event.colno || 1}` : undefined,
       })
     }
 

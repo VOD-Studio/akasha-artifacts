@@ -491,10 +491,10 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
         version={1}
         source={brokenSource}
         error={{
-          phase: 'runtime',
-          message: 'ReferenceError: undefinedVar is not defined',
+          version: 1,
+          phase: 'compile',
+          message: 'SyntaxError: Unexpected token',
           loc: '3:16',
-          stack: 'ReferenceError: undefinedVar is not defined\n  at App (Artifact.tsx:3:16)',
         }}
         onDismiss={() => {}}
         onSubmitFeedback={
@@ -503,7 +503,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       />,
     )
 
-    // 第 3 行源码应被高亮展示
+    // 编译阶段异常的第 3 行原始源码应被高亮展示
     const errorLineEl = container.querySelector('[data-error-line="true"]')
     expect(errorLineEl?.textContent).toContain('undefinedVar.foo')
 
@@ -529,8 +529,9 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
         version={1}
         source={brokenSource}
         error={{
-          phase: 'runtime',
-          message: 'ReferenceError: undefinedVar is not defined',
+          version: 1,
+          phase: 'compile',
+          message: 'SyntaxError: Unexpected token',
           loc: '3:16',
         }}
         onDismiss={() => {}}
@@ -541,5 +542,27 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     )
     expect(screen.getByText('已交给 Agent 修复')).toBeTruthy()
     expect(screen.queryByRole('button', { name: '交给 Agent 修复' })).toBeNull()
+
+    // 未映射源码坐标的运行时异常不应高亮误导性的原始源码行
+    rerender(
+      <RuntimeErrorPanel
+        artifactId={SAMPLE_ARTIFACT.publicId}
+        projectId={SAMPLE_ARTIFACT.projectId}
+        version={1}
+        source={brokenSource}
+        error={{
+          version: 1,
+          phase: 'runtime',
+          message: 'ReferenceError: undefinedVar is not defined',
+          loc: '3:16',
+          stack: 'ReferenceError: undefinedVar is not defined',
+        }}
+        onDismiss={() => {}}
+        onSubmitFeedback={
+          mockSubmit as unknown as typeof import('../src/shared/api/client').submitArtifactFeedback
+        }
+      />,
+    )
+    expect(container.querySelector('[data-error-line="true"]')).toBeNull()
   })
 })

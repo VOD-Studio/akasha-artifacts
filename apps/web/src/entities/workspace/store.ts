@@ -12,6 +12,7 @@ export interface AgentActivityRecord {
 }
 
 export interface SandboxErrorRecord {
+  version: number
   phase: 'compile' | 'runtime'
   message: string
   stack?: string
