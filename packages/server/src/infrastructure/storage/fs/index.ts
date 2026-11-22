@@ -197,8 +197,8 @@ export function parseArtifactPathFromFs(
   if (!typeParsed.success) return null
 
   const type = typeParsed.data
-  // 仅识别对应 Artifact 类型的标准入口文件名，避免同目录辅助说明文件误触发版本覆盖
-  if (!CANONICAL_ENTRY_FILENAMES[type].includes(filename.toLowerCase())) {
+  // 仅严格匹配对应 Artifact 类型的规范小写入口文件名，避免辅助文件或大小写变体（如 INDEX.HTML）造成双入口并存
+  if (!CANONICAL_ENTRY_FILENAMES[type].includes(filename)) {
     return null
   }
   const dirSegments = segments.slice(0, -1)

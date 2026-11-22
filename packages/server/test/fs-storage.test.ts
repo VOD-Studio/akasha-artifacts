@@ -94,9 +94,12 @@ describe('.artifacts/ 原生文件存储适配器与外部编辑监听', () => {
     expect(fs.existsSync(path.join(artifactsDir, STATE_DIR_NAME, 'state.db'))).toBe(true)
     expect(fs.readdirSync(docDir).sort()).toEqual([ARTIFACT_ID_FILENAME, 'index.json'])
 
-    // parseArtifactPathFromFs 必须忽略 .state/ 内部文件
+    // parseArtifactPathFromFs 必须忽略 .state/ 内部文件及非规范大小写入口文件名
     expect(
       parseArtifactPathFromFs(artifactsDir, path.join(artifactsDir, STATE_DIR_NAME, 'state.db')),
+    ).toBeNull()
+    expect(
+      parseArtifactPathFromFs(artifactsDir, path.join(artifactsDir, 'html', 'card', 'INDEX.HTML')),
     ).toBeNull()
   })
 
