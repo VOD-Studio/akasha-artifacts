@@ -537,7 +537,8 @@ export function ArtboardRenderer({ source, preserved, onRendered }: RendererProp
 // ============================================================================
 
 export function DocumentRenderer({ source, preserved, onRendered }: RendererProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
+  const htmlContainerRef = useRef<HTMLDivElement>(null)
+  const jsonContainerRef = useRef<HTMLElement>(null)
   const onRenderedRef = useRef(onRendered)
   onRenderedRef.current = onRendered
   const liveState = useArtifactState<Record<string, unknown>>()
@@ -552,12 +553,21 @@ export function DocumentRenderer({ source, preserved, onRendered }: RendererProp
 
   useEffect(() => {
     void source
-    const el = containerRef.current
-    if (!el) return
-    if (parsed.ok && parsed.data.format === 'html') {
+    if (!parsed.ok) return
+    if (parsed.data.format === 'html') {
+      const el = htmlContainerRef.current
+      if (!el) return
       const instrumented = injectHtmlLocations(parsed.data.html).code
       el.innerHTML = sanitizeMarkup(instrumented, 'html')
+      const cleanup = preserved.bindDomPersistence(el, window)
+      onRenderedRef.current()
+      return () => {
+        cleanup()
+        el.innerHTML = ''
+      }
     }
+    const el = jsonContainerRef.current
+    if (!el) return
     const cleanup = preserved.bindDomPersistence(el, window)
     onRenderedRef.current()
     return cleanup
@@ -567,13 +577,16 @@ export function DocumentRenderer({ source, preserved, onRendered }: RendererProp
     return <ParseErrorCard typeLabel="document" error={parsed.error} />
   }
 
+  // 使用独立 key 隔离命令式 innerHTML 节点与声明式 JSON 文档节点，避免格式切换时残留旧 DOM 与旧批注锚点。
   if (parsed.data.format === 'html') {
     return (
       <article
-        ref={containerRef}
+        key="document-html"
         data-ak-renderer="document"
         className="prose prose-slate mx-auto max-w-3xl p-6"
-      />
+      >
+        <div ref={htmlContainerRef} />
+      </article>
     )
   }
 
@@ -585,7 +598,8 @@ export function DocumentRenderer({ source, preserved, onRendered }: RendererProp
 
   return (
     <article
-      ref={containerRef}
+      key="document-json"
+      ref={jsonContainerRef}
       data-ak-renderer="document"
       className={`mx-auto max-w-3xl p-6 text-slate-900 ${isCompact ? 'space-y-4' : 'space-y-6'}`}
     >

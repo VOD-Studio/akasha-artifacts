@@ -64,6 +64,52 @@ export class SpecRegistry {
   }
 }
 
+function validateArrayItemsHaveTitle(
+  source: string,
+  field: string,
+  typeLabel: string,
+): CheckDiagnostic[] {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(source)
+  } catch {
+    return []
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return []
+  const items = (parsed as Record<string, unknown>)[field]
+  if (!Array.isArray(items)) {
+    return [
+      {
+        severity: 'error',
+        code: 'INVALID_KIT_FIELD_TYPE',
+        message: `${typeLabel} 的 "${field}" 必须为数组`,
+      },
+    ]
+  }
+  const diagnostics: CheckDiagnostic[] = []
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      diagnostics.push({
+        severity: 'error',
+        code: 'INVALID_KIT_ITEM',
+        message: `${typeLabel}.${field}[${i}] 必须为对象`,
+      })
+      continue
+    }
+    const title = (item as { title?: unknown }).title
+    if (typeof title !== 'string' || title.trim().length === 0) {
+      diagnostics.push({
+        severity: 'error',
+        code: 'MISSING_ITEM_TITLE',
+        message: `${typeLabel}.${field}[${i}] 缺少非空字符串字段 "title"`,
+        suggestion: `请为 ${field}[${i}] 补充 title 字段`,
+      })
+    }
+  }
+  return diagnostics
+}
+
 const BUILTIN_SPECS: ArtifactSpecDefinition[] = [
   {
     type: 'react',
@@ -146,6 +192,7 @@ const BUILTIN_SPECS: ArtifactSpecDefinition[] = [
       null,
       2,
     ),
+    validate: (source) => validateArrayItemsHaveTitle(source, 'boards', 'artboard'),
   },
   {
     type: 'document',
@@ -212,6 +259,7 @@ const BUILTIN_SPECS: ArtifactSpecDefinition[] = [
       null,
       2,
     ),
+    validate: (source) => validateArrayItemsHaveTitle(source, 'claims', 'verify'),
   },
   {
     type: 'pr-walkthrough',
@@ -245,6 +293,7 @@ const BUILTIN_SPECS: ArtifactSpecDefinition[] = [
         { key: 'showOutputs', label: '展开原始输出日志', type: 'boolean', defaultValue: true },
       ],
     },
+    validate: (source) => validateArrayItemsHaveTitle(source, 'steps', 'live-timeline'),
   },
   {
     type: 'option-compare',
@@ -260,6 +309,7 @@ const BUILTIN_SPECS: ArtifactSpecDefinition[] = [
         { key: 'compact', label: '紧凑视图', type: 'boolean', defaultValue: false },
       ],
     },
+    validate: (source) => validateArrayItemsHaveTitle(source, 'options', 'option-compare'),
   },
   {
     type: 'data-story',

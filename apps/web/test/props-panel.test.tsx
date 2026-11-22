@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
-import type { ArtifactSpecOutput, JsonPatchOp } from '@akasha/protocol'
+import { type ArtifactSpecOutput, type JsonPatchOp, PROTOCOL_VERSION } from '@akasha/protocol'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { artifactKeys } from '../src/entities/artifact/queries'
+import { applyRealtimeEventToCache } from '../src/features/live-sync/useLiveSync'
 import { buildPropPatch, PropsPanel } from '../src/features/props-panel/PropsPanel'
+import type { ArtifactDetailResponse } from '../src/shared/api/client'
 
 afterEach(() => {
   cleanup()
@@ -74,13 +77,63 @@ describe('apps/web L2 PropsPanel 结构化属性面板', () => {
     expect(toggle.checked).toBe(true)
     fireEvent.click(toggle)
 
-    await waitFor(() => expect(pushed).toHaveLength(1))
-    expect(pushed[0]).toEqual([{ op: 'add', path: '/props', value: { showFlows: false } }])
-
+    // 紧接着在首条请求返回前连续修改第二个控件：必须串行化并在第二条使用 /props/density，不得覆盖首条修改
     const select = screen.getByLabelText('视图密度') as HTMLSelectElement
     fireEvent.change(select, { target: { value: 'compact' } })
+
     await waitFor(() => expect(pushed).toHaveLength(2))
-    expect(pushed[1]).toEqual([{ op: 'add', path: '/props', value: { density: 'compact' } }])
+    expect(pushed[0]).toEqual([{ op: 'add', path: '/props', value: { showFlows: false } }])
+    expect(pushed[1]).toEqual([{ op: 'add', path: '/props/density', value: 'compact' }])
+  })
+
+  it('applyRealtimeEventToCache 将 WS state.patched 增量合入详情状态快照，保持 L2 面板与 Agent 推送同步', () => {
+    const qc = new QueryClient()
+    const detail: ArtifactDetailResponse = {
+      artifact: {
+        publicId: 'AbCdEfGhIjKlMnOpQrStU',
+        slug: 'artboard/demo',
+        projectId: 'proj_1',
+        title: 'Demo',
+        type: 'artboard',
+        visibility: 'private',
+        headVersion: 1,
+        createdAt: '2026-11-22T10:00:00.000Z',
+        updatedAt: '2026-11-22T10:00:00.000Z',
+      },
+      version: {
+        artifactId: 'AbCdEfGhIjKlMnOpQrStU',
+        version: 1,
+        parentVersion: null,
+        author: 'agent:cli',
+        title: 'Demo',
+        source: '{"boards":[]}',
+        createdAt: '2026-11-22T10:00:00.000Z',
+      },
+      state: {
+        artifactId: 'AbCdEfGhIjKlMnOpQrStU',
+        seq: 0,
+        snapshot: {},
+        updatedAt: '2026-11-22T10:00:00.000Z',
+      },
+      rounds: [],
+    }
+    qc.setQueryData(artifactKeys.detail('AbCdEfGhIjKlMnOpQrStU', undefined), detail)
+
+    applyRealtimeEventToCache(qc, {
+      v: PROTOCOL_VERSION,
+      seq: 10,
+      timestamp: '2026-11-22T10:05:00.000Z',
+      type: 'state.patched',
+      artifactId: 'AbCdEfGhIjKlMnOpQrStU',
+      stateSeq: 1,
+      ops: [{ op: 'add', path: '/props', value: { columns: 3 } }],
+    })
+
+    const updated = qc.getQueryData<ArtifactDetailResponse>(
+      artifactKeys.detail('AbCdEfGhIjKlMnOpQrStU', undefined),
+    )
+    expect(updated?.state.seq).toBe(1)
+    expect(updated?.state.snapshot).toEqual({ props: { columns: 3 } })
   })
 
   it('不含属性 Schema 的自由类型自动降级为 L1 并支持一键切回批注', () => {

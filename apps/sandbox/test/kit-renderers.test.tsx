@@ -173,7 +173,7 @@ describe('apps/sandbox Kit 工程与决策模板渲染器', () => {
     fireEvent.click(screen.getByRole('tab', { name: '移动端' }))
     await waitFor(() => expect(screen.getByText('移动布局')).toBeTruthy())
 
-    // 2. document 结构化块文档 + 行内 Agent 提问 + 人工改稿差异追踪
+    // 2. document 先渲染 HTML 再切换为 JSON 结构化文档：必须彻底销毁旧 HTML 节点，不得残留旧 DOM 与旧锚点
     act(() => {
       dispatch({
         v: PROTOCOL_VERSION,
@@ -181,6 +181,19 @@ describe('apps/sandbox Kit 工程与决策模板渲染器', () => {
         type: 'render',
         artifactType: 'document',
         version: 2,
+        source: '<p id="legacy-html-block">旧版 HTML 段落残留检测</p>',
+        state: {},
+      })
+    })
+    await waitFor(() => expect(screen.getByText('旧版 HTML 段落残留检测')).toBeTruthy())
+
+    act(() => {
+      dispatch({
+        v: PROTOCOL_VERSION,
+        nonce,
+        type: 'render',
+        artifactType: 'document',
+        version: 3,
         source: JSON.stringify({
           title: '限流策略设计稿',
           sections: [
@@ -198,6 +211,8 @@ describe('apps/sandbox Kit 工程与决策模板渲染器', () => {
       })
     })
     await waitFor(() => expect(screen.getByText('限流策略设计稿')).toBeTruthy())
+    expect(screen.queryByText('旧版 HTML 段落残留检测')).toBeNull()
+    expect(container.querySelector('#legacy-html-block')).toBeNull()
     expect(screen.getByText('人工已改稿')).toBeTruthy()
     expect(screen.getByText('单用户每秒 20 次请求（含突发桶）。')).toBeTruthy()
     expect(screen.getByText('是否需要突发令牌桶？')).toBeTruthy()
@@ -210,7 +225,7 @@ describe('apps/sandbox Kit 工程与决策模板渲染器', () => {
         nonce,
         type: 'render',
         artifactType: 'verify',
-        version: 3,
+        version: 4,
         source: JSON.stringify({
           title: 'M3 交付验收',
           screens: [

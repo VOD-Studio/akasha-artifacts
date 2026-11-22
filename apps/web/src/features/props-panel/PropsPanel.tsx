@@ -3,9 +3,10 @@ import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
 import { Empty } from '@akasha/ui/empty'
 import { RotateCcw, SlidersHorizontal } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useArtifactSpecQuery, usePushArtifactStateMutation } from '../../entities/artifact/queries'
+import { applyJsonPatchClient } from '../../shared/lib/json-patch'
 
 export interface PropsPanelField {
   key: string
@@ -109,10 +110,16 @@ export function PropsPanel({
   const pushMutation = usePushArtifactStateMutation(artifactId)
   // 本地乐观草稿：避免文本输入或滑块拖动期间等待请求往返导致光标跳回
   const [optimisticValues, setOptimisticValues] = useState<Record<string, unknown>>({})
+  // 串行化提交队列与最新快照引用：连续修改多个属性时，前一条 /props 初始化完成后下一条再构造子路径补丁，避免覆盖先前编辑。
+  const latestSnapshotRef = useRef<Record<string, unknown>>(stateSnapshot)
+  const pendingQueueRef = useRef<Promise<void>>(Promise.resolve())
+  const inFlightCountRef = useRef(0)
 
   useEffect(() => {
-    void stateSnapshot
-    setOptimisticValues({})
+    latestSnapshotRef.current = stateSnapshot
+    if (inFlightCountRef.current === 0) {
+      setOptimisticValues({})
+    }
   }, [stateSnapshot])
 
   const spec = specOverride !== undefined ? specOverride : specQuery.data
@@ -137,30 +144,39 @@ export function PropsPanel({
       : {}
   }, [stateSnapshot])
 
-  const applyPatch = async (
-    patch: JsonPatchOp[],
+  const enqueuePropUpdate = (
+    buildOps: (snapshot: Record<string, unknown>) => JsonPatchOp[],
     optimisticKey?: string,
     optimisticVal?: unknown,
   ) => {
     if (optimisticKey !== undefined) {
       setOptimisticValues((prev) => ({ ...prev, [optimisticKey]: optimisticVal }))
     }
-    try {
-      if (onPushPatch) {
-        await onPushPatch(patch)
-      } else {
-        await pushMutation.mutateAsync({ project: projectId, patch })
-      }
-    } catch (err) {
-      if (optimisticKey !== undefined) {
-        setOptimisticValues((prev) => {
-          const next = { ...prev }
-          delete next[optimisticKey]
-          return next
-        })
-      }
-      toast.error(err instanceof Error ? err.message : '推送属性补丁失败')
-    }
+    inFlightCountRef.current += 1
+    pendingQueueRef.current = pendingQueueRef.current
+      .catch(() => {})
+      .then(async () => {
+        const patch = buildOps(latestSnapshotRef.current)
+        try {
+          if (onPushPatch) {
+            await onPushPatch(patch)
+          } else {
+            await pushMutation.mutateAsync({ project: projectId, patch })
+          }
+          latestSnapshotRef.current = applyJsonPatchClient(latestSnapshotRef.current, patch)
+        } catch (err) {
+          if (optimisticKey !== undefined) {
+            setOptimisticValues((prev) => {
+              const next = { ...prev }
+              delete next[optimisticKey]
+              return next
+            })
+          }
+          toast.error(err instanceof Error ? err.message : '推送属性补丁失败')
+        } finally {
+          inFlightCountRef.current = Math.max(0, inFlightCountRef.current - 1)
+        }
+      })
   }
 
   if (fields.length === 0) {
@@ -204,7 +220,10 @@ export function PropsPanel({
             size="sm"
             leftIcon={<RotateCcw size={11} />}
             loading={pushMutation.isPending}
-            onClick={() => void applyPatch([{ op: 'add', path: '/props', value: {} }])}
+            onClick={() => {
+              setOptimisticValues({})
+              enqueuePropUpdate(() => [{ op: 'add', path: '/props', value: {} }])
+            }}
           >
             重置
           </Button>
@@ -233,13 +252,14 @@ export function PropsPanel({
                   id={inputId}
                   type="checkbox"
                   checked={checked}
-                  onChange={(e) =>
-                    void applyPatch(
-                      buildPropPatch(stateSnapshot, field.key, e.target.checked),
+                  onChange={(e) => {
+                    const nextChecked = e.target.checked
+                    enqueuePropUpdate(
+                      (snap) => buildPropPatch(snap, field.key, nextChecked),
                       field.key,
-                      e.target.checked,
+                      nextChecked,
                     )
-                  }
+                  }}
                   className="h-4 w-4 accent-violet-600"
                 />
               </label>
@@ -255,13 +275,14 @@ export function PropsPanel({
                 <select
                   id={inputId}
                   value={String(rawVal ?? field.options[0]?.value ?? '')}
-                  onChange={(e) =>
-                    void applyPatch(
-                      buildPropPatch(stateSnapshot, field.key, e.target.value),
+                  onChange={(e) => {
+                    const nextValue = e.target.value
+                    enqueuePropUpdate(
+                      (snap) => buildPropPatch(snap, field.key, nextValue),
                       field.key,
-                      e.target.value,
+                      nextValue,
                     )
-                  }
+                  }}
                   className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-ink focus:border-accent focus:outline-none"
                 >
                   {field.options.map((opt) => (
@@ -293,8 +314,8 @@ export function PropsPanel({
                   value={numVal}
                   onChange={(e) => {
                     const nextNum = Number(e.target.value)
-                    void applyPatch(
-                      buildPropPatch(stateSnapshot, field.key, nextNum),
+                    enqueuePropUpdate(
+                      (snap) => buildPropPatch(snap, field.key, nextNum),
                       field.key,
                       nextNum,
                     )
@@ -314,13 +335,14 @@ export function PropsPanel({
                 id={inputId}
                 type="text"
                 value={String(rawVal ?? '')}
-                onChange={(e) =>
-                  void applyPatch(
-                    buildPropPatch(stateSnapshot, field.key, e.target.value),
+                onChange={(e) => {
+                  const nextText = e.target.value
+                  enqueuePropUpdate(
+                    (snap) => buildPropPatch(snap, field.key, nextText),
                     field.key,
-                    e.target.value,
+                    nextText,
                   )
-                }
+                }}
                 className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-ink focus:border-accent focus:outline-none"
               />
             </div>
