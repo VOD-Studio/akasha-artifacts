@@ -181,8 +181,45 @@ export class FsArtifactRepository implements ArtifactRepository {
 
   constructor(
     private readonly artifactsRoot: string,
+    private readonly projectId: string,
     private readonly inner: ArtifactRepository,
   ) {}
+
+  private assertOwnedProject(projectId: string): void {
+    if (projectId !== this.projectId) {
+      throw new DomainError(
+        'BAD_REQUEST',
+        `当前 .artifacts/ 文件存储仅绑定项目 "${this.projectId}"，拒绝写入其它项目 "${projectId}"，以避免跨项目覆写原生文件`,
+        { expectedProjectId: this.projectId, actualProjectId: projectId },
+      )
+    }
+  }
+
+  private async assertNoPhysicalDirCollision(
+    artifact: Artifact,
+    layout: ArtifactFileLayout,
+  ): Promise<void> {
+    if (!fs.existsSync(layout.idFile)) return
+    let rawId: string
+    try {
+      rawId = fs.readFileSync(layout.idFile, 'utf8').trim()
+    } catch {
+      return
+    }
+    const parsedId = PublicIdSchema.safeParse(rawId)
+    if (!parsedId.success || parsedId.data === artifact.publicId) return
+
+    const owner = await this.inner.findByPublicId(parsedId.data)
+    if (!owner) return
+    const ownerLayout = resolveArtifactFileLayout(this.artifactsRoot, owner.type, owner.slug)
+    if (path.resolve(ownerLayout.artifactDir) === path.resolve(layout.artifactDir)) {
+      throw new DomainError(
+        'BAD_REQUEST',
+        `物理目录 "${layout.normalizedRelativeDir}" 已被 Artifact "${owner.publicId}"（slug: "${owner.slug}"）占用，请使用不同的 slug`,
+        { conflictingPublicId: owner.publicId, conflictingSlug: owner.slug },
+      )
+    }
+  }
 
   isOwnWrite(filePath: string, content: string): boolean {
     const resolved = path.resolve(filePath)
@@ -195,10 +232,13 @@ export class FsArtifactRepository implements ArtifactRepository {
 
   // 仅更新 .state/ 索引元数据而不改写磁盘源文件（用于外部目录重命名保 ID 同步）
   async updateIndexOnly(artifact: Artifact): Promise<void> {
+    this.assertOwnedProject(artifact.projectId)
+    resolveArtifactFileLayout(this.artifactsRoot, artifact.type, artifact.slug)
     await this.inner.saveArtifact(artifact)
   }
 
   private syncToDisk(artifact: Artifact, source: string): void {
+    this.assertOwnedProject(artifact.projectId)
     const layout = resolveArtifactFileLayout(
       this.artifactsRoot,
       artifact.type,
@@ -229,6 +269,9 @@ export class FsArtifactRepository implements ArtifactRepository {
   }
 
   async saveArtifact(artifact: Artifact): Promise<void> {
+    this.assertOwnedProject(artifact.projectId)
+    const layout = resolveArtifactFileLayout(this.artifactsRoot, artifact.type, artifact.slug)
+    await this.assertNoPhysicalDirCollision(artifact, layout)
     await this.inner.saveArtifact(artifact)
     const headVer = await this.inner.getVersion(artifact.publicId, artifact.headVersion)
     if (!headVer) return
@@ -248,9 +291,13 @@ export class FsArtifactRepository implements ArtifactRepository {
   }
 
   async appendVersion(version: Readonly<Version>): Promise<void> {
+    const artifact = await this.inner.findByPublicId(version.artifactId)
+    if (artifact) {
+      this.assertOwnedProject(artifact.projectId)
+      resolveArtifactFileLayout(this.artifactsRoot, artifact.type, artifact.slug, version.source)
+    }
     await this.inner.appendVersion(version)
     // 兼容新建 v1 时先 saveArtifact 后 appendVersion 的顺序，确保首次发布同样立即落盘原生文件
-    const artifact = await this.inner.findByPublicId(version.artifactId)
     if (artifact && version.version >= artifact.headVersion) {
       this.syncToDisk(artifact, version.source)
     }
@@ -267,6 +314,8 @@ export class FsArtifactRepository implements ArtifactRepository {
 
 export interface FsArtifactsStorageOptions {
   artifactsRoot: string
+  // 绑定当前 .artifacts/ 根目录的项目 ID；缺省时沿用已登记的同根目录项目或回退为 'default'
+  projectId?: string
 }
 
 // 项目内 .artifacts/ 原生文件存储适配器：
@@ -274,6 +323,7 @@ export interface FsArtifactsStorageOptions {
 // - 评论、轮次、回执、状态流与版本索引由服务端独占存放在 .artifacts/.state/state.db，彻底避免与源码编辑冲突。
 export class FsArtifactsStorage {
   readonly artifactsRoot: string
+  readonly projectId: string
   readonly stateDir: string
   readonly stateDbPath: string
   private readonly sqlite: SqliteStorage
@@ -292,8 +342,35 @@ export class FsArtifactsStorage {
     fs.mkdirSync(this.stateDir, { recursive: true })
     this.sqlite = new SqliteStorage(this.stateDbPath)
 
+    const projectRoot = path.dirname(this.artifactsRoot)
+    let resolvedProjectId = options.projectId
+    if (!resolvedProjectId) {
+      const existingRow = this.sqlite.db
+        .prepare('SELECT id FROM projects WHERE root_path = ?')
+        .get(projectRoot) as { id: string } | undefined
+      resolvedProjectId = existingRow?.id ?? 'default'
+    }
+    this.projectId = resolvedProjectId
+
+    // 登记当前 .artifacts/ 所属项目根目录，使宿主从同目录调用 POST /api/v1/projects 时自动复用该 projectId
+    this.sqlite.db
+      .prepare(
+        `INSERT OR IGNORE INTO projects (id, root_path, name, last_active_at)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run(
+        this.projectId,
+        projectRoot,
+        path.basename(projectRoot) || this.projectId,
+        new Date().toISOString(),
+      )
+
     this.projects = this.sqlite.projects
-    this.artifacts = new FsArtifactRepository(this.artifactsRoot, this.sqlite.artifacts)
+    this.artifacts = new FsArtifactRepository(
+      this.artifactsRoot,
+      this.projectId,
+      this.sqlite.artifacts,
+    )
     this.states = this.sqlite.states
     this.rounds = this.sqlite.rounds
     this.feedbacks = this.sqlite.feedbacks

@@ -5,7 +5,10 @@ import { SpecRegistry } from '../application/spec-registry.js'
 import type { Clock, IdGenerator } from '../domain/ports.js'
 import { LogStore } from '../infrastructure/logging/log-store.js'
 import { RealtimeEventHub } from '../infrastructure/realtime/event-hub.js'
-import { FsArtifactsStorage } from '../infrastructure/storage/fs/index.js'
+import {
+  FsArtifactsStorage,
+  resolveArtifactFileLayout,
+} from '../infrastructure/storage/fs/index.js'
 import { FsArtifactsWatcher } from '../infrastructure/storage/fs/watcher.js'
 import {
   CryptoIdGenerator,
@@ -71,6 +74,7 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
           artifactsRoot: path.resolve(
             options.artifactsDir ?? path.join(process.cwd(), '.artifacts'),
           ),
+          projectId: options.fsProjectId,
         })
       : undefined
   const sqlite = fsStorage || dbPath === 'memory' ? undefined : new SqliteStorage(dbPath)
@@ -117,13 +121,15 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
   })
 
   // .artifacts/ 原生文件模式下启用文件监听：外部编辑自动生成新版本并广播到 WS（保态重绘）
-  const fsProjectId = options.fsProjectId ?? 'default'
+  const fsProjectId = fsStorage?.projectId ?? options.fsProjectId ?? 'default'
+  let containerClosed = false
   const fsWatcher = fsStorage
     ? new FsArtifactsWatcher({
         artifactsRoot: fsStorage.artifactsRoot,
         debounceMs: options.fsWatchDebounceMs ?? 120,
         isOwnWrite: (filePath, content) => fsStorage.artifacts.isOwnWrite(filePath, content),
         onError: (err) => {
+          if (containerClosed) return
           logs.append({
             level: 'warn',
             projectId: fsProjectId,
@@ -131,6 +137,7 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
           })
         },
         onExternalFileChange: async (evt) => {
+          if (containerClosed) return
           // 1. 优先按 .artifact-id 定位既有 Artifact（支持目录重命名/移动后保持稳定 publicId）
           let existing = evt.existingPublicId
             ? await artifacts.findByPublicId(evt.existingPublicId)
@@ -138,10 +145,26 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
           if (!existing) {
             existing = await artifacts.findBySlug(fsProjectId, evt.slug)
           }
+          // 兼容单段 slug（如 card 落盘在 html/card/）在缺少 .artifact-id 时仍能匹配回原记录
+          if (!existing && evt.slug.startsWith(`${evt.type}/`)) {
+            const shortSlug = evt.slug.slice(evt.type.length + 1)
+            const candidate = await artifacts.findBySlug(fsProjectId, shortSlug)
+            if (candidate && candidate.type === evt.type) {
+              existing = candidate
+            }
+          }
 
           if (existing) {
-            // 若目录已移动/重命名但保留 .artifact-id，先仅更新索引 slug（绝不以旧源码覆写磁盘新文件），保持 URL publicId 稳定
-            if (existing.slug !== evt.slug) {
+            // 仅当物理目录确实迁移或类型变更时才视为重命名；单段 slug（如 card → html/card/）物理目录未变时必须保留原 slug
+            const existingLayout = resolveArtifactFileLayout(
+              fsStorage.artifactsRoot,
+              existing.type,
+              existing.slug,
+            )
+            const dirMoved =
+              path.resolve(existingLayout.artifactDir) !== path.resolve(evt.artifactDir) ||
+              existing.type !== evt.type
+            if (dirMoved && existing.slug !== evt.slug) {
               const conflictBySlug = await artifacts.findBySlug(existing.projectId, evt.slug)
               if (!conflictBySlug || conflictBySlug.publicId === existing.publicId) {
                 existing = {
@@ -187,6 +210,20 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
     : undefined
 
   fsWatcher?.start()
+  // 启动期立即全量对账既有 .artifacts/ 文件（覆盖停机期间的外部编辑或 Git checkout）；
+  // startNodeServer 会在监听端口前 await ready，确保首批请求绝不读到过期快照或覆写离线修改。
+  const ready: Promise<void> = fsWatcher
+    ? fsWatcher
+        .scanAll()
+        .then(() => undefined)
+        .catch((err) => {
+          logs.append({
+            level: 'warn',
+            projectId: fsProjectId,
+            message: `.artifacts 启动期全量对账异常：${err instanceof Error ? err.message : String(err)}`,
+          })
+        })
+    : Promise.resolve()
 
   const initialPort = options.port ?? 24321
   const token = options.security?.token ?? generateSecureToken()
@@ -258,8 +295,10 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
     daemonState,
     fsStorage,
     fsWatcher,
+    ready,
     repositories: { projects, artifacts, states, rounds, feedbacks, receipts },
     close: () => {
+      containerClosed = true
       fsWatcher?.close()
       fsStorage?.close()
       sqlite?.close()

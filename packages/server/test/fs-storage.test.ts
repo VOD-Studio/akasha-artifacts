@@ -4,6 +4,7 @@ import path from 'node:path'
 import type { RealtimeServerEvent } from '@akasha/protocol'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createLocalContainer } from '../src/app/create-local-container.js'
+import { startNodeServer } from '../src/entry/node.js'
 import {
   ARTIFACT_ID_FILENAME,
   parseArtifactPathFromFs,
@@ -11,13 +12,13 @@ import {
   STATE_DIR_NAME,
 } from '../src/infrastructure/storage/fs/index.js'
 
-const closers: Array<() => void> = []
+const closers: Array<() => void | Promise<void>> = []
 const tempDirs: string[] = []
 
-afterEach(() => {
+afterEach(async () => {
   while (closers.length > 0) {
     const close = closers.pop()
-    if (close) close()
+    if (close) await close()
   }
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop()
@@ -174,5 +175,180 @@ describe('.artifacts/ 原生文件存储适配器与外部编辑监听', () => {
     const discovered = await container.service.getArtifact({ id: discoveredId })
     expect(discovered.artifact.type).toBe('mermaid')
     expect(discovered.version.source).toContain('FsWatcher')
+  })
+
+  it('拒绝跨项目写入同一 .artifacts/ 目录，防止其它项目覆写原生文件与 .artifact-id', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-scope-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    const container = createLocalContainer({
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_a',
+      fsWatchDebounceMs: 30,
+    })
+    closers.push(container.close)
+    await container.ready
+
+    const pubA = await container.service.publish({
+      projectId: 'proj_a',
+      slug: 'html/card',
+      title: 'Project A Card',
+      type: 'html',
+      source: '<div>owned by A</div>',
+      author: 'agent:a',
+    })
+
+    await expect(
+      container.service.publish({
+        projectId: 'proj_b',
+        slug: 'html/card',
+        title: 'Project B Card',
+        type: 'html',
+        source: '<div>hijack from B</div>',
+        author: 'agent:b',
+      }),
+    ).rejects.toThrow(/仅绑定项目 "proj_a"/)
+
+    // A 的源文件、.artifact-id 与 state.db 均保持完好，且 proj_b 未产生任何残留记录
+    const cardFile = path.join(artifactsDir, 'html', 'card', 'index.html')
+    const idFile = path.join(artifactsDir, 'html', 'card', ARTIFACT_ID_FILENAME)
+    expect(fs.readFileSync(cardFile, 'utf8')).toBe('<div>owned by A</div>')
+    expect(fs.readFileSync(idFile, 'utf8').trim()).toBe(pubA.artifact.publicId)
+    expect(await container.repositories.artifacts.listByProject('proj_b')).toHaveLength(0)
+  })
+
+  it('外部编辑单段 slug（如 card）时保留原 slug 不误判为重命名，并阻止别名 slug 覆写同目录', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-single-slug-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    const container = createLocalContainer({
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_slug',
+      fsWatchDebounceMs: 30,
+    })
+    closers.push(container.close)
+    await container.ready
+
+    const pub = await container.service.publish({
+      projectId: 'proj_slug',
+      slug: 'card',
+      title: 'Single Segment Card',
+      type: 'html',
+      source: '<div>v1</div>',
+      author: 'agent:cli',
+    })
+
+    const cardFile = path.join(artifactsDir, 'html', 'card', 'index.html')
+    expect(fs.existsSync(cardFile)).toBe(true)
+
+    // 1. 外部编辑原目录文件后，slug 必须保持 'card' 而非被改写为 'html/card'
+    fs.writeFileSync(cardFile, '<div>v2 external</div>', 'utf8')
+    await container.fsWatcher?.syncFile(cardFile)
+
+    const resolvedByShortSlug = await container.service.getArtifact({
+      id: 'card',
+      projectId: 'proj_slug',
+    })
+    expect(resolvedByShortSlug.artifact.publicId).toBe(pub.artifact.publicId)
+    expect(resolvedByShortSlug.artifact.slug).toBe('card')
+    expect(resolvedByShortSlug.artifact.headVersion).toBe(2)
+    expect(resolvedByShortSlug.version.source).toBe('<div>v2 external</div>')
+
+    // 2. 再次以 slug='card' 发布应正常推进为 v3，而非新建第二个 Artifact 覆写文件
+    const pub3 = await container.service.publish({
+      projectId: 'proj_slug',
+      slug: 'card',
+      title: 'Single Segment Card',
+      type: 'html',
+      source: '<div>v3 from mcp</div>',
+      baseVersion: 2,
+      author: 'agent:cli',
+    })
+    expect(pub3.artifact.publicId).toBe(pub.artifact.publicId)
+    expect(pub3.artifact.headVersion).toBe(3)
+    expect(await container.repositories.artifacts.listByProject('proj_slug')).toHaveLength(1)
+
+    // 3. 尝试用别名 slug='html/card' 发布到已被 'card' 占用的同一物理目录必须被拒绝
+    await expect(
+      container.service.publish({
+        projectId: 'proj_slug',
+        slug: 'html/card',
+        title: 'Alias Collision',
+        type: 'html',
+        source: '<div>collision</div>',
+        author: 'agent:cli',
+      }),
+    ).rejects.toThrow(/物理目录 "html\/card" 已被 Artifact/)
+  })
+
+  it('startNodeServer 启动文件系统模式时自动全量对账既有文件与停机期间的离线修改', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-boot-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    // 1. 首次启动并发布 v1，然后停机
+    const srv1 = await startNodeServer({
+      host: '127.0.0.1',
+      port: 0,
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_boot',
+    })
+    const pub1 = await srv1.service.publish({
+      projectId: 'proj_boot',
+      slug: 'html/dashboard',
+      title: 'Dashboard',
+      type: 'html',
+      source: '<h1>v1 before stop</h1>',
+      author: 'agent:cli',
+    })
+    await srv1.close()
+
+    // 2. 模拟停机期间离线编辑已有文件 + Git checkout 引入全新原生文件
+    const existingFile = path.join(artifactsDir, 'html', 'dashboard', 'index.html')
+    fs.writeFileSync(existingFile, '<h1>v2 offline edit</h1>', 'utf8')
+
+    const checkoutDir = path.join(artifactsDir, 'markdown', 'release-notes')
+    fs.mkdirSync(checkoutDir, { recursive: true })
+    fs.writeFileSync(path.join(checkoutDir, 'index.md'), '# Release Notes from Git\n', 'utf8')
+
+    // 3. 重新启动服务（不手动调用 scanAll）：启动完成时应已完成离线修改与新文件的全量对账
+    const srv2 = await startNodeServer({
+      host: '127.0.0.1',
+      port: 0,
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_boot',
+    })
+    closers.push(srv2.close)
+
+    const reconciled = await srv2.service.getArtifact({ id: pub1.artifact.publicId })
+    expect(reconciled.artifact.headVersion).toBe(2)
+    expect(reconciled.version.source).toBe('<h1>v2 offline edit</h1>')
+    expect(reconciled.version.author).toBe('agent:fs')
+
+    // 基于过期 baseVersion=1 的服务端写入必须触发版本冲突，绝不静默覆盖离线改动
+    await expect(
+      srv2.service.publish({
+        projectId: 'proj_boot',
+        slug: 'html/dashboard',
+        title: 'Dashboard',
+        type: 'html',
+        source: '<h1>stale overwrite</h1>',
+        baseVersion: 1,
+        author: 'agent:cli',
+      }),
+    ).rejects.toThrow(/版本冲突/)
+
+    // 新检出的文件在启动后应立即可查询并已回写 .artifact-id
+    const checkoutId = fs.readFileSync(path.join(checkoutDir, ARTIFACT_ID_FILENAME), 'utf8').trim()
+    expect(checkoutId.length).toBeGreaterThan(10)
+    const discovered = await srv2.service.getArtifact({ id: checkoutId })
+    expect(discovered.artifact.type).toBe('markdown')
+    expect(discovered.version.source).toContain('Release Notes from Git')
   })
 })

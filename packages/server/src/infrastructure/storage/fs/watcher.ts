@@ -111,14 +111,18 @@ export class FsArtifactsWatcher {
     return result
   }
 
-  // 启动时或手工全量扫描 .artifacts/ 下全部原生源文件并对齐到索引
+  // 启动时或手工全量扫描 .artifacts/ 下全部原生源文件并对齐到索引；单个文件异常不阻断其余文件对账
   async scanAll(): Promise<number> {
     const files = walkSourceFiles(this.artifactsRoot)
     let synced = 0
     for (const file of files) {
       if (this.closed) break
-      if (await this.syncFile(file)) {
-        synced++
+      try {
+        if (await this.syncFile(file)) {
+          synced++
+        }
+      } catch (err) {
+        this.onError?.(err)
       }
     }
     return synced
