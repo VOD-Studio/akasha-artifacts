@@ -26,6 +26,7 @@ export interface LocalContainerOptions {
   maxEventHistory?: number
   // 默认强制启用本地安全边界（Host/Origin/Token）；仅在需要自定义策略时覆写
   security?: HttpSecurityConfig
+  onShutdown?: () => void
   clock?: Clock
   ids?: IdGenerator
 }
@@ -121,6 +122,7 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
       state: 'editing' | 'idle' | 'offline'
       summary?: string
     }) => realtime.reportAgentActivity(input),
+    requestShutdown: options.onShutdown,
   }
 
   const app = createHttpApp({

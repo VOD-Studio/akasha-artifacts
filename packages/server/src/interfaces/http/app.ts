@@ -52,6 +52,7 @@ export interface DaemonInfoProvider {
     state: 'editing' | 'idle' | 'offline'
     summary?: string
   }) => Promise<void>
+  requestShutdown?: () => void
 }
 
 export interface HttpAppDeps {
@@ -109,6 +110,21 @@ const AgentActivityBodySchema = z.object({
   state: AgentActivityStateSchema,
   summary: z.string().optional(),
 })
+
+const OtcCreateBodySchema = z.object({
+  // 仅允许站内相对路径，防止开放重定向
+  next: z
+    .string()
+    .regex(/^\/(?!\/)[^\r\n]*$/, 'next 须为站内相对路径')
+    .optional()
+    .default('/'),
+})
+
+function randomHex(bytesLen: number): string {
+  const bytes = new Uint8Array(bytesLen)
+  globalThis.crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+}
 
 function errorCodeToStatus(code: ErrorCode): ContentfulStatusCode {
   switch (code) {
@@ -169,11 +185,13 @@ async function parseJsonBody<T>(req: Request, schema: z.ZodType<T>): Promise<T> 
 // Hono HTTP 接口层：遵循纯 Web 标准 Request/Response，同时适配 Node 本地 Daemon 与 Cloudflare Workers。
 export function createHttpApp(deps: HttpAppDeps): Hono {
   const app = new Hono()
+  // 一次性浏览器登录码：60 秒有效且仅可消费一次，用于 akasha open 换取 HttpOnly Cookie
+  const otcStore = new Map<string, { next: string; expiresAt: number }>()
 
   // 本地安全边界中间件：Host 校验（防 DNS rebinding）、Origin 校验与写接口鉴权
   if (deps.security) {
     const sec = deps.security
-    app.use('/api/v1/*', async (c, next) => {
+    app.use('*', async (c, next) => {
       if (sec.allowedHosts && sec.allowedHosts.length > 0) {
         const host = c.req.header('host')?.toLowerCase()
         if (!host || !sec.allowedHosts.some((h) => h.toLowerCase() === host)) {
@@ -183,7 +201,10 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
           )
         }
       }
+      await next()
+    })
 
+    app.use('/api/v1/*', async (c, next) => {
       const method = c.req.method.toUpperCase()
       const isMutation = method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS'
       const isWsUpgrade = c.req.header('upgrade')?.toLowerCase() === 'websocket'
@@ -566,6 +587,44 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
     const body = await parseJsonBody(c.req.raw, AgentActivityBodySchema)
     await deps.daemon.reportAgentActivity(body)
     return c.json({ ok: true as const })
+  })
+
+  app.post('/api/v1/auth/otc', async (c) => {
+    const body = await parseJsonBody(c.req.raw, OtcCreateBodySchema)
+    const now = Date.now()
+    for (const [k, v] of otcStore.entries()) {
+      if (v.expiresAt <= now) otcStore.delete(k)
+    }
+    const code = randomHex(16)
+    otcStore.set(code, { next: body.next, expiresAt: now + 60_000 })
+    return c.json({ code, openPath: `/auth/open?otc=${code}` }, 201)
+  })
+
+  app.get('/auth/open', (c) => {
+    const code = c.req.query('otc')
+    if (!code) {
+      return c.json({ error: { code: 'UNAUTHORIZED', message: '缺少一次性访问码' } }, 401)
+    }
+    const entry = otcStore.get(code)
+    otcStore.delete(code)
+    if (!entry || entry.expiresAt <= Date.now()) {
+      return c.json({ error: { code: 'UNAUTHORIZED', message: '一次性访问码无效或已过期' } }, 401)
+    }
+    if (deps.security?.token) {
+      const cookieName = deps.security.cookieName ?? 'akasha_session'
+      c.header(
+        'Set-Cookie',
+        `${cookieName}=${encodeURIComponent(deps.security.token)}; HttpOnly; SameSite=Lax; Path=/`,
+      )
+    }
+    return c.redirect(entry.next, 302)
+  })
+
+  app.post('/api/v1/daemon/shutdown', (c) => {
+    if (deps.daemon.requestShutdown) {
+      setTimeout(() => deps.daemon.requestShutdown?.(), 20)
+    }
+    return c.json({ ok: true as const, status: 'stopping' as const })
   })
 
   app.notFound((c) => {
