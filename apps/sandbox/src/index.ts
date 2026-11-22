@@ -1,5 +1,11 @@
 export { SandboxApp, type SandboxAppProps } from './App'
 export { parseSandboxHash, SandboxBridgeClient } from './bridge/client'
+export {
+  buildCssSelector,
+  buildElementRef,
+  findElementByRef,
+  SandboxInspector,
+} from './inspector/index'
 export { registerBuiltinRenderers } from './renderers/builtins'
 export {
   type ArtifactRenderer,

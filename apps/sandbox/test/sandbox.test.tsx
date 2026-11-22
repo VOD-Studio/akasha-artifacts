@@ -390,4 +390,98 @@ describe('apps/sandbox 运行时与安全边界', () => {
 
     consoleSpy.mockRestore()
   })
+
+  it('SandboxInspector 按 blockId > loc > selector 优先级命中元素且不在沙盒内绘制外壳 UI', async () => {
+    const { bridge, posted, dispatchFromHost, nonce } = createMockBridgeHarness()
+    const stateStore = new ArtifactStateStore()
+    const preserved = new PreservedStateManager({ debounceMs: 0 })
+
+    const reactSource = [
+      'export default function InspectTarget() {',
+      '  const items = ["甲", "乙"]',
+      '  return (',
+      '    <div>',
+      '      <section data-ak-block="summary-card">',
+      '        <h2>概览标题</h2>',
+      '      </section>',
+      '      <ul>',
+      '        {items.map((item) => (',
+      '          <li key={item}>{item}</li>',
+      '        ))}',
+      '      </ul>',
+      '    </div>',
+      '  )',
+      '}',
+    ].join('\n')
+
+    const { container } = render(
+      <SandboxApp bridge={bridge} stateStore={stateStore} preserved={preserved} />,
+    )
+
+    act(() => {
+      dispatchFromHost({
+        v: PROTOCOL_VERSION,
+        nonce,
+        type: 'render',
+        artifactType: 'react',
+        version: 1,
+        source: reactSource,
+        state: {},
+      })
+    })
+
+    const heading = await screen.findByText('概览标题')
+    const listItem = await screen.findByText('乙')
+    const domCountBeforeInspect = container.querySelectorAll('*').length
+
+    // 启动元素指认模式
+    act(() => {
+      dispatchFromHost({ v: PROTOCOL_VERSION, nonce, type: 'inspect.start' })
+    })
+
+    // 点击带 data-ak-block 的结构化块子节点：优先解析出 blockId，同时附带精确 loc 与 rect
+    fireEvent.click(heading)
+    const selectHeading = [...posted].reverse().find((m) => m.data.type === 'inspect.select')
+    expect(
+      selectHeading?.data.type === 'inspect.select' && selectHeading.data.element,
+    ).toMatchObject({
+      blockId: 'summary-card',
+      loc: '6:9',
+      textPreview: '概览标题',
+    })
+
+    // 点击 .map() 生成的动态列表项：无 blockId，降级到精确源码 loc 与 selector
+    fireEvent.click(listItem)
+    const selectItem = [...posted].reverse().find((m) => m.data.type === 'inspect.select')
+    expect(selectItem?.data.type === 'inspect.select' && selectItem.data.element).toMatchObject({
+      loc: '10:11',
+      textPreview: '乙',
+    })
+    expect(
+      selectItem?.data.type === 'inspect.select' && selectItem.data.element.blockId,
+    ).toBeUndefined()
+
+    // 验证沙盒内未注入任何外壳高亮 UI DOM
+    expect(container.querySelectorAll('*').length).toBe(domCountBeforeInspect)
+
+    // HTML 渲染器同样注入 data-ak-loc 并可命中
+    act(() => {
+      dispatchFromHost({
+        v: PROTOCOL_VERSION,
+        nonce,
+        type: 'render',
+        artifactType: 'html',
+        version: 2,
+        source: '<article>\n  <p>纯 HTML 段落</p>\n</article>',
+        state: {},
+      })
+    })
+    const htmlPara = await screen.findByText('纯 HTML 段落')
+    fireEvent.click(htmlPara)
+    const selectHtml = [...posted].reverse().find((m) => m.data.type === 'inspect.select')
+    expect(selectHtml?.data.type === 'inspect.select' && selectHtml.data.element).toMatchObject({
+      loc: '2:3',
+      textPreview: '纯 HTML 段落',
+    })
+  })
 })

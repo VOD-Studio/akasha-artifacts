@@ -1,7 +1,7 @@
 import type { JsonPatchOp } from '@akasha/protocol'
-import { Alert } from '@akasha/ui/alert'
 import { useEffect, useMemo, useRef } from 'react'
 import { useWorkspaceStore } from '../../entities/workspace/store'
+import { RuntimeErrorPanel } from '../../features/error-recovery/RuntimeErrorPanel'
 import { VersionDiffView } from '../../features/version-diff/VersionDiffView'
 import type { ArtifactDetailResponse } from '../../shared/api/client'
 import {
@@ -141,10 +141,12 @@ export function ArtifactWorkspace({
     <div className="flex min-h-0 flex-1 flex-col bg-canvas">
       {sandboxError ? (
         <div className="shrink-0 border-b border-border bg-surface px-4 py-2">
-          <Alert
-            tone="danger"
-            title={`沙盒${sandboxError.phase === 'compile' ? '编译' : '运行'}异常${sandboxError.loc ? ` (${sandboxError.loc})` : ''}`}
-            description={sandboxError.message}
+          <RuntimeErrorPanel
+            artifactId={artifact.publicId}
+            projectId={artifact.projectId}
+            version={version.version}
+            source={version.source}
+            error={sandboxError}
             onDismiss={() => setSandboxError(artifact.publicId, null)}
           />
         </div>

@@ -1,3 +1,4 @@
+import { injectJsxLocations } from '@akasha/jsx-source'
 import type { ComponentType } from 'react'
 import { transform } from 'sucrase'
 import { installSandboxGlobals, isWhitelistedModule } from './modules'
@@ -153,9 +154,21 @@ async function importCompiledModule(code: string): Promise<Record<string, unknow
 export async function compileReactArtifact(source: string): Promise<ComponentType> {
   installSandboxGlobals()
 
+  // 先经 @akasha/jsx-source 注入 data-ak-loc="line:col"，保证编译前后的源码行列号与服务端 AST 完全一致。
+  let instrumentedSource: string
+  try {
+    instrumentedSource = injectJsxLocations(source).code
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    const locObj = (err as { loc?: { line?: number; column?: number } })?.loc
+    const loc =
+      locObj?.line !== undefined ? `${locObj.line}:${(locObj.column ?? 0) + 1}` : undefined
+    throw new ArtifactCompileError(msg, loc)
+  }
+
   let jsCode: string
   try {
-    const transformed = transform(source, {
+    const transformed = transform(instrumentedSource, {
       transforms: ['typescript', 'jsx'],
       jsxRuntime: 'automatic',
       production: true,

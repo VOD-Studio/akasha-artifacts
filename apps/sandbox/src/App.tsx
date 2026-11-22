@@ -1,6 +1,7 @@
 import type { ArtifactType, PreservedViewState } from '@akasha/protocol'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { SandboxBridgeClient } from './bridge/client'
+import { SandboxInspector } from './inspector/index'
 import { registerBuiltinRenderers } from './renderers/builtins'
 import { getRenderer } from './renderers/registry'
 import {
@@ -59,6 +60,8 @@ export function SandboxApp({
       bridge.send({ type: 'viewState.snapshot', state: snapshot })
     })
 
+    const inspector = new SandboxInspector(() => rootRef.current, bridge)
+
     const off = bridge.onMessage((msg) => {
       if (msg.type === 'render') {
         stateStore.replace(msg.state)
@@ -78,6 +81,12 @@ export function SandboxApp({
             message: err instanceof Error ? err.message : String(err),
           })
         }
+      } else if (msg.type === 'inspect.start') {
+        inspector.startInspecting()
+      } else if (msg.type === 'inspect.stop') {
+        inspector.stopInspecting()
+      } else if (msg.type === 'highlight') {
+        inspector.highlight(msg.element)
       }
     })
 
@@ -107,6 +116,7 @@ export function SandboxApp({
     window.addEventListener('unhandledrejection', handleRejection)
 
     return () => {
+      inspector.dispose()
       off()
       preserved.setSnapshotReporter(undefined)
       window.removeEventListener('error', handleWindowError)

@@ -1,7 +1,10 @@
 import {
   type Artifact,
   type DaemonStatus,
+  type ElementRef,
   ErrorEnvelopeSchema,
+  type Feedback,
+  type FeedbackKind,
   type Project,
   type ReviewRound,
   type StateStreamSnapshot,
@@ -130,5 +133,42 @@ export async function revertArtifactVersion(
       method: 'POST',
       body: JSON.stringify(input),
     },
+  )
+}
+
+export interface SubmitFeedbackInput {
+  project?: string
+  version: number
+  roundId?: string | null
+  groupId?: string | null
+  kind: FeedbackKind
+  element?: ElementRef | null
+  body: string
+}
+
+export async function submitArtifactFeedback(
+  id: string,
+  input: SubmitFeedbackInput,
+): Promise<{ feedback: Feedback }> {
+  return requestJson<{ feedback: Feedback }>(
+    `/api/v1/artifacts/${encodeURIComponent(id)}/feedback`,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  )
+}
+
+export async function fetchArtifactFeedback(
+  id: string,
+  includeDrafts = true,
+): Promise<{ items: Feedback[]; rounds: ReviewRound[]; cursor: string }> {
+  const params = new URLSearchParams({
+    id,
+    includeDrafts: String(includeDrafts),
+    detail: 'true',
+  })
+  return requestJson<{ items: Feedback[]; rounds: ReviewRound[]; cursor: string }>(
+    `/api/v1/feedback?${params.toString()}`,
   )
 }

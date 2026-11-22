@@ -26,6 +26,7 @@ beforeAll(() => {
 import { artifactKeys } from '../src/entities/artifact/queries'
 import { projectKeys } from '../src/entities/project/queries'
 import { useWorkspaceStore } from '../src/entities/workspace/store'
+import { RuntimeErrorPanel } from '../src/features/error-recovery/RuntimeErrorPanel'
 import { applyRealtimeEventToCache } from '../src/features/live-sync/useLiveSync'
 import { VersionDiffView } from '../src/features/version-diff/VersionDiffView'
 import type { ArtifactDetailResponse } from '../src/shared/api/client'
@@ -80,6 +81,7 @@ afterEach(() => {
     preservedViewByArtifact: {},
     unsentDraftsByArtifact: {},
     sandboxErrorByArtifact: {},
+    sentErrorFingerprints: {},
   })
 })
 
@@ -450,5 +452,94 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     } finally {
       fs.rmSync(tmpRoot, { recursive: true, force: true })
     }
+  })
+
+  it('RuntimeErrorPanel 高亮报错源码行、一键提交 runtime_error 给 Agent 并对重复异常去重', async () => {
+    const submitted: Array<{ id: string; input: unknown }> = []
+    const mockSubmit = vi.fn(async (id: string, input: unknown) => {
+      submitted.push({ id, input })
+      return {
+        feedback: {
+          id: 'fb_1',
+          artifactId: id,
+          version: 1,
+          roundId: null,
+          groupId: null,
+          kind: 'runtime_error' as const,
+          element: null,
+          body: 'err',
+          author: 'human:local',
+          draft: false,
+          status: 'pending' as const,
+          createdAt: '2026-11-22T09:00:00.000Z',
+          updatedAt: '2026-11-22T09:00:00.000Z',
+        },
+      }
+    })
+
+    const brokenSource = [
+      'export default function App() {',
+      '  const x = 1',
+      '  return <div>{undefinedVar.foo}</div>',
+      '}',
+    ].join('\n')
+
+    const { container, rerender } = render(
+      <RuntimeErrorPanel
+        artifactId={SAMPLE_ARTIFACT.publicId}
+        projectId={SAMPLE_ARTIFACT.projectId}
+        version={1}
+        source={brokenSource}
+        error={{
+          phase: 'runtime',
+          message: 'ReferenceError: undefinedVar is not defined',
+          loc: '3:16',
+          stack: 'ReferenceError: undefinedVar is not defined\n  at App (Artifact.tsx:3:16)',
+        }}
+        onDismiss={() => {}}
+        onSubmitFeedback={
+          mockSubmit as unknown as typeof import('../src/shared/api/client').submitArtifactFeedback
+        }
+      />,
+    )
+
+    // 第 3 行源码应被高亮展示
+    const errorLineEl = container.querySelector('[data-error-line="true"]')
+    expect(errorLineEl?.textContent).toContain('undefinedVar.foo')
+
+    // 点击「交给 Agent 修复」提交 kind=runtime_error
+    const btn = screen.getByRole('button', { name: '交给 Agent 修复' })
+    fireEvent.click(btn)
+
+    await vi.waitFor(() => expect(submitted).toHaveLength(1))
+    expect(submitted[0]).toMatchObject({
+      id: SAMPLE_ARTIFACT.publicId,
+      input: {
+        version: 1,
+        kind: 'runtime_error',
+        element: { loc: '3:16' },
+      },
+    })
+
+    // 同一错误重渲染后应显示去重已提交状态，不再允许重复刷屏
+    rerender(
+      <RuntimeErrorPanel
+        artifactId={SAMPLE_ARTIFACT.publicId}
+        projectId={SAMPLE_ARTIFACT.projectId}
+        version={1}
+        source={brokenSource}
+        error={{
+          phase: 'runtime',
+          message: 'ReferenceError: undefinedVar is not defined',
+          loc: '3:16',
+        }}
+        onDismiss={() => {}}
+        onSubmitFeedback={
+          mockSubmit as unknown as typeof import('../src/shared/api/client').submitArtifactFeedback
+        }
+      />,
+    )
+    expect(screen.getByText('已交给 Agent 修复')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '交给 Agent 修复' })).toBeNull()
   })
 })
