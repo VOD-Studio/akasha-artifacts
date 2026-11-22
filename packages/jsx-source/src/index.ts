@@ -1,0 +1,1 @@
+export const PACKAGE_JSX_SOURCE_VERSION = '0.1.0'

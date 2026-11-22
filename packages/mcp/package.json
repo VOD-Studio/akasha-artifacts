@@ -1,0 +1,25 @@
+{
+  "name": "@akasha/mcp",
+  "version": "0.1.0",
+  "description": "Akasha MCP stdio server",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "@akasha/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@akasha/protocol": "workspace:*"
+  }
+}

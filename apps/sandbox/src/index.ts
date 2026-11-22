@@ -1,0 +1,1 @@
+export const PACKAGE_SANDBOX_VERSION = '0.1.0'

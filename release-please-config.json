@@ -11,6 +11,13 @@
     ".": {
       "changelog-path": "CHANGELOG.md",
       "version-file": "package.json",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "packages/akasha/package.json",
+          "jsonpath": "$.version"
+        }
+      ],
       "release-type": "node",
       "changelog-sections": [
         { "type": "feat", "section": "新增" },

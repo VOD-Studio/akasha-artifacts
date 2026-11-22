@@ -7,7 +7,9 @@
       "!**/node_modules",
       "!**/pnpm-lock.yaml",
       "!**/.release-please-manifest.json",
-      "!docs/assets/*.svg"
+      "!docs/assets/*.svg",
+      "!packages/ui/src/styles/fixed.generated.css",
+      "!packages/ui/src/styles/palettes/*.generated.css"
     ]
   },
   "formatter": {
@@ -26,6 +28,11 @@
     "formatter": {
       "quoteStyle": "single",
       "semicolons": "asNeeded"
+    }
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
     }
   }
 }

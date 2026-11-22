@@ -1,0 +1,27 @@
+{
+  "name": "@akasha/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Akasha interactive artifact workspace shell SPA",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "@akasha/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@akasha/protocol": "workspace:*",
+    "@akasha/ui": "workspace:*"
+  }
+}

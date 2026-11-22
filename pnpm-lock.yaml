@@ -21,6 +21,88 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@24.19.2)
 
+  apps/sandbox:
+    dependencies:
+      '@akasha/jsx-source':
+        specifier: workspace:*
+        version: link:../../packages/jsx-source
+      '@akasha/kit':
+        specifier: workspace:*
+        version: link:../../packages/kit
+      '@akasha/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
+
+  apps/web:
+    dependencies:
+      '@akasha/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
+      '@akasha/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+
+  packages/akasha:
+    dependencies:
+      '@akasha/hooks':
+        specifier: workspace:*
+        version: link:../hooks
+      '@akasha/mcp':
+        specifier: workspace:*
+        version: link:../mcp
+      '@akasha/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@akasha/server':
+        specifier: workspace:*
+        version: link:../server
+      '@akasha/skills':
+        specifier: workspace:*
+        version: link:../skills
+
+  packages/hooks:
+    dependencies:
+      '@akasha/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+
+  packages/jsx-source:
+    dependencies:
+      '@akasha/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+
+  packages/kit:
+    dependencies:
+      '@akasha/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+
+  packages/mcp:
+    dependencies:
+      '@akasha/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+
+  packages/protocol: {}
+
+  packages/server:
+    dependencies:
+      '@akasha/jsx-source':
+        specifier: workspace:*
+        version: link:../jsx-source
+      '@akasha/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+
+  packages/skills:
+    dependencies:
+      '@akasha/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+
+  packages/ui: {}
+
 packages:
 
   '@biomejs/biome@2.6.8':
