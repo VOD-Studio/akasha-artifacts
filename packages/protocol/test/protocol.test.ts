@@ -295,6 +295,7 @@ describe('@akasha/protocol MCP, HTTP, Realtime, and Bridge', () => {
     const report = await runContractTests({
       baseUrl: 'http://127.0.0.1:24321',
       fetchImpl: mockFetch,
+      suite: 'core',
     })
     expect(report.passed).toBe(true)
     expect(report.cases).toHaveLength(2)

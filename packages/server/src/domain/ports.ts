@@ -68,6 +68,18 @@ export interface RealtimePublisher {
   publish(event: RealtimeEventPayload): Promise<void>
 }
 
+export interface RealtimeSubscriptionOptions {
+  artifactId?: PublicId
+  projectId?: string
+  lastSeq?: number
+  onEvent: (event: RealtimeServerEvent) => void
+}
+
+export interface RealtimeSubscriber {
+  subscribe(options: RealtimeSubscriptionOptions): () => void
+  getActiveConnections(): number
+}
+
 export interface Clock {
   now(): string
 }
