@@ -9,7 +9,9 @@ import {
   type Slug,
   type Version,
 } from '@akasha/protocol'
-import { DomainError } from '../../../domain/errors.js'
+import { createImmutableVersion } from '../../../domain/artifact/index.js'
+import { computeUnifiedDiff } from '../../../domain/diff.js'
+import { DomainError, VersionConflictError } from '../../../domain/errors.js'
 import type {
   ArtifactRepository,
   FeedbackRepository,
@@ -243,12 +245,88 @@ export class FsArtifactRepository implements ArtifactRepository {
   private readonly pendingVersions = new Map<PublicId, Readonly<Version>>()
   // 同步记录已被占用的规范物理目录（防止并发首次发布 card 与 html/card 同时通过校验并互相覆写）
   private readonly reservedDirs = new Map<string, PublicId>()
+  private onDiskReconciled?: (artifact: Artifact, version: Readonly<Version>) => void
 
   constructor(
     private readonly artifactsRoot: string,
     private readonly projectId: string,
     private readonly inner: SqliteArtifactRepository,
   ) {}
+
+  setOnDiskReconciled(cb: (artifact: Artifact, version: Readonly<Version>) => void): void {
+    this.onDiskReconciled = cb
+  }
+
+  private findExistingDiskEntry(artifact: Artifact): string | null {
+    const layout = resolveArtifactFileLayout(this.artifactsRoot, artifact.type, artifact.slug)
+    for (const filename of CANONICAL_ENTRY_FILENAMES[artifact.type]) {
+      const candidate = path.join(layout.artifactDir, filename)
+      if (!fs.existsSync(candidate)) continue
+      try {
+        assertRealPathInsideRoot(this.artifactsRoot, candidate)
+        if (fs.statSync(candidate).isFile()) return candidate
+      } catch {
+        // 忽略非法或非普通文件
+      }
+    }
+    return null
+  }
+
+  // 在服务端写入覆写磁盘前检查是否存在尚未被防抖监听器捕获的外部磁盘改动：
+  // 若磁盘内容已领先于数据库 headVersion，则先把外部修改入库为新版本并抛出 409 VERSION_CONFLICT，绝不静默覆盖外部改动。
+  private reconcilePendingDiskEditBeforeWrite(
+    previous: Artifact,
+    stagedForHead: Readonly<Version>,
+  ): void {
+    const prevHeadVer = this.inner.getVersionSync(previous.publicId, previous.headVersion)
+    if (!prevHeadVer) return
+    const diskFile = this.findExistingDiskEntry(previous)
+    if (!diskFile) return
+
+    let diskSource: string
+    try {
+      diskSource = fs.readFileSync(diskFile, 'utf8')
+    } catch {
+      return
+    }
+
+    if (diskSource === prevHeadVer.source) return
+    // 若本次写入正是监听器针对该磁盘快照的同步请求，直接放行
+    if (stagedForHead.author === 'agent:fs' && diskSource === stagedForHead.source) return
+
+    const nextExternalVersion = previous.headVersion + 1
+    const now = new Date().toISOString()
+    const externalVersion = createImmutableVersion({
+      artifactId: previous.publicId,
+      version: nextExternalVersion,
+      parentVersion: previous.headVersion,
+      author: 'agent:fs',
+      title: previous.title,
+      source: diskSource,
+      createdAt: now,
+    })
+    const reconciledArtifact: Artifact = {
+      ...previous,
+      headVersion: nextExternalVersion,
+      updatedAt: now,
+    }
+    this.inner.saveArtifactWithVersionSync(reconciledArtifact, externalVersion)
+    this.recordSyncedContent(diskFile, diskSource)
+    this.onDiskReconciled?.(reconciledArtifact, externalVersion)
+
+    throw new VersionConflictError({
+      artifactId: previous.publicId,
+      baseVersion: previous.headVersion,
+      headVersion: nextExternalVersion,
+      diff: computeUnifiedDiff(
+        prevHeadVer.source,
+        diskSource,
+        `v${previous.headVersion}`,
+        `v${nextExternalVersion}`,
+      ),
+      authors: ['agent:fs'],
+    })
+  }
 
   private assertOwnedProject(projectId: string): void {
     if (projectId !== this.projectId) {
@@ -325,7 +403,29 @@ export class FsArtifactRepository implements ArtifactRepository {
 
   isOwnWrite(filePath: string, content: string): boolean {
     const resolved = path.resolve(filePath)
-    return this.lastWrittenContent.get(resolved) === content
+    if (this.lastWrittenContent.get(resolved) !== content) {
+      return false
+    }
+    // 仅当磁盘文件的 .artifact-id 与索引中记录的当前物理目录及类型完全一致时，才判定为自写回环；
+    // 若目录先改名后又移回原路径（内容未变），必须放行给监听器重新对账索引与 slug。
+    const parsed = parseArtifactPathFromFs(this.artifactsRoot, resolved)
+    if (!parsed) return false
+    const indexed = parsed.existingPublicId
+      ? this.inner.findByPublicIdSync(parsed.existingPublicId)
+      : undefined
+    if (!indexed) {
+      this.lastWrittenContent.delete(resolved)
+      return false
+    }
+    const indexedDir = resolveRealPathAllowMissing(
+      resolveArtifactFileLayout(this.artifactsRoot, indexed.type, indexed.slug).artifactDir,
+    )
+    const actualDir = resolveRealPathAllowMissing(parsed.artifactDir)
+    if (indexed.type !== parsed.type || indexedDir !== actualDir) {
+      this.lastWrittenContent.delete(resolved)
+      return false
+    }
+    return true
   }
 
   recordSyncedContent(filePath: string, content: string): void {
@@ -335,7 +435,19 @@ export class FsArtifactRepository implements ArtifactRepository {
   // 仅更新 .state/ 索引元数据而不改写磁盘源文件（用于外部目录重命名保 ID 同步）
   async updateIndexOnly(artifact: Artifact): Promise<void> {
     this.assertOwnedProject(artifact.projectId)
-    resolveArtifactFileLayout(this.artifactsRoot, artifact.type, artifact.slug)
+    const nextLayout = resolveArtifactFileLayout(this.artifactsRoot, artifact.type, artifact.slug)
+    const previous = this.inner.findByPublicIdSync(artifact.publicId)
+    if (previous) {
+      const prevLayout = resolveArtifactFileLayout(this.artifactsRoot, previous.type, previous.slug)
+      for (const filename of CANONICAL_ENTRY_FILENAMES[previous.type]) {
+        this.lastWrittenContent.delete(path.resolve(path.join(prevLayout.artifactDir, filename)))
+      }
+      const prevDir = resolveRealPathAllowMissing(prevLayout.artifactDir)
+      if (this.reservedDirs.get(prevDir) === previous.publicId) {
+        this.reservedDirs.delete(prevDir)
+      }
+    }
+    this.reservedDirs.set(resolveRealPathAllowMissing(nextLayout.artifactDir), artifact.publicId)
     await this.inner.saveArtifact(artifact)
   }
 
@@ -451,9 +563,12 @@ export class FsArtifactRepository implements ArtifactRepository {
       artifact.slug,
       stagedForHead?.source,
     )
-    // 以下校验、占位与 SQLite 原子提交全同步执行，避免并发别名 slug 同时通过检查后互相覆盖
+    // 以下校验、外部未同步改动对账、占位与 SQLite 原子提交全同步执行，避免并发别名碰撞或静默覆写外部编辑
     this.assertNoPhysicalDirCollisionSync(artifact, layout)
     const previous = this.inner.findByPublicIdSync(artifact.publicId)
+    if (previous && stagedForHead) {
+      this.reconcilePendingDiskEditBeforeWrite(previous, stagedForHead)
+    }
     const targetDir = resolveRealPathAllowMissing(layout.artifactDir)
     this.reservedDirs.set(targetDir, artifact.publicId)
 

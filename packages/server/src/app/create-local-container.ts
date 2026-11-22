@@ -99,6 +99,18 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
       : undefined,
   })
 
+  // 当服务端写入前检测到尚未经防抖监听器入库的外部磁盘改动时，同步广播其补录的 version.created 事件
+  fsStorage?.artifacts.setOnDiskReconciled((artifact, version) => {
+    void realtime.publish(
+      {
+        type: 'version.created',
+        artifactId: artifact.publicId,
+        version,
+      },
+      { projectId: artifact.projectId },
+    )
+  })
+
   const projects = persistentBackend ? persistentBackend.projects : new InMemoryProjectRepository()
   const artifacts = persistentBackend
     ? persistentBackend.artifacts

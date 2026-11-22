@@ -786,4 +786,107 @@ describe('.artifacts/ 原生文件存储适配器与外部编辑监听', () => {
     expect(afterOfflineClear.version.source).toBe('')
     expect(afterOfflineClear.version.author).toBe('agent:fs')
   })
+
+  it('防抖窗口内出现未同步的外部磁盘修改时，服务端旧 baseVersion 写入先补录外部版本并抛出 409，绝不静默覆盖', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-debounce-race-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    const container = createLocalContainer({
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_debounce',
+      // 故意拉长防抖时间，模拟宿主改完文件后、监听器尚未触发前就有 API 写入到达
+      fsWatchDebounceMs: 5000,
+    })
+    closers.push(container.close)
+    await container.ready
+
+    const pub = await container.service.publish({
+      projectId: 'proj_debounce',
+      slug: 'html/card',
+      title: 'Card',
+      type: 'html',
+      source: '<div>v1</div>',
+      author: 'agent:cli',
+    })
+    const cardFile = path.join(artifactsDir, 'html', 'card', 'index.html')
+
+    // 宿主直接改写磁盘，尚未触发防抖同步
+    fs.writeFileSync(cardFile, '<div>external host edit before debounce</div>', 'utf8')
+
+    // 服务端旧 baseVersion=1 的 API 写入必须先将磁盘改动补录为 v2 并返回 VERSION_CONFLICT
+    await expect(
+      container.service.publish({
+        projectId: 'proj_debounce',
+        slug: 'html/card',
+        title: 'Card Stale API',
+        type: 'html',
+        source: '<div>stale api overwrite</div>',
+        baseVersion: 1,
+        author: 'agent:cli',
+      }),
+    ).rejects.toThrow(/版本冲突/)
+
+    // 磁盘保留外部编辑，历史版本完整记录 v2（agent:fs），可随时合并或回退
+    expect(fs.readFileSync(cardFile, 'utf8')).toBe('<div>external host edit before debounce</div>')
+    const latest = await container.service.getArtifact({ id: pub.artifact.publicId })
+    expect(latest.artifact.headVersion).toBe(2)
+    expect(latest.version.source).toBe('<div>external host edit before debounce</div>')
+    expect(latest.version.author).toBe('agent:fs')
+  })
+
+  it('目录改名后再原样移回原路径（内容不变）时，不被自写缓存误屏蔽且索引 slug 正确恢复', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-move-back-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    const container = createLocalContainer({
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_moveback',
+      fsWatchDebounceMs: 30,
+    })
+    closers.push(container.close)
+    await container.ready
+
+    const pub = await container.service.publish({
+      projectId: 'proj_moveback',
+      slug: 'html/card',
+      title: 'Move Back Card',
+      type: 'html',
+      source: '<div>unchanged content</div>',
+      author: 'agent:cli',
+    })
+
+    const origDir = path.join(artifactsDir, 'html', 'card')
+    const movedDir = path.join(artifactsDir, 'html', 'moved')
+
+    // 1. 移到 html/moved 并同步（内容未改）
+    fs.renameSync(origDir, movedDir)
+    await container.fsWatcher?.syncFile(path.join(movedDir, 'index.html'))
+    const afterMove = await container.service.getArtifact({ id: pub.artifact.publicId })
+    expect(afterMove.artifact.slug).toBe('html/moved')
+
+    // 2. 不修改内容直接移回 html/card，通过 scanAll / syncFile 必须能恢复索引 slug='html/card'
+    fs.renameSync(movedDir, origDir)
+    await container.fsWatcher?.scanAll()
+    const afterMoveBack = await container.service.getArtifact({ id: pub.artifact.publicId })
+    expect(afterMoveBack.artifact.slug).toBe('html/card')
+
+    // 3. 随后 API 更新只写入 html/card，绝不重建旧目录 html/moved
+    await container.service.publish({
+      projectId: 'proj_moveback',
+      slug: 'html/card',
+      title: 'Move Back Card v2',
+      type: 'html',
+      source: '<div>updated in restored dir</div>',
+      baseVersion: 1,
+      author: 'agent:cli',
+    })
+    expect(fs.readFileSync(path.join(origDir, 'index.html'), 'utf8')).toBe(
+      '<div>updated in restored dir</div>',
+    )
+    expect(fs.existsSync(movedDir)).toBe(false)
+  })
 })

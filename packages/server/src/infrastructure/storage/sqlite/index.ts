@@ -413,6 +413,10 @@ export class SqliteArtifactRepository implements ArtifactRepository {
   }
 
   async getVersion(artifactId: PublicId, version: number): Promise<Readonly<Version> | undefined> {
+    return this.getVersionSync(artifactId, version)
+  }
+
+  getVersionSync(artifactId: PublicId, version: number): Readonly<Version> | undefined {
     const row = this.db
       .prepare('SELECT * FROM versions WHERE artifact_id = ? AND version = ?')
       .get(artifactId, version) as VersionRow | undefined
