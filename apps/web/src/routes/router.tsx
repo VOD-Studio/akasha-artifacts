@@ -10,6 +10,7 @@ import {
   createRouter,
   Outlet,
   type RouterHistory,
+  useLocation,
   useNavigate,
   useParams,
 } from '@tanstack/react-router'
@@ -59,6 +60,10 @@ function ArtifactRouteView({
   requestedVersion?: number
 }) {
   const navigate = useNavigate()
+  const address = useLocation({ select: (location) => location.hash })
+  const clearAddress = useCallback(() => {
+    void navigate({ hash: '', search: true, replace: true, resetScroll: false })
+  }, [navigate])
   const probingLocal = useLocalArtifactRedirect(identifier, requestedVersion)
   const { data: daemonStatus } = useDaemonStatusQuery()
   const detailQuery = useArtifactDetailQuery(identifier, requestedVersion)
@@ -87,16 +92,20 @@ function ArtifactRouteView({
       void navigate({
         to: '/a/$publicId/v/$version',
         params: { publicId: actualPublicId, version: String(requestedVersion) },
+        hash: address,
+        search: true,
         replace: true,
       })
     } else {
       void navigate({
         to: '/a/$publicId',
         params: { publicId: actualPublicId },
+        hash: address,
+        search: true,
         replace: true,
       })
     }
-  }, [detailQuery.data?.artifact.publicId, identifier, requestedVersion, navigate])
+  }, [detailQuery.data?.artifact.publicId, identifier, requestedVersion, address, navigate])
 
   useLiveSync({
     artifactId: publicId,
@@ -163,11 +172,15 @@ function ArtifactRouteView({
             void navigate({
               to: '/a/$publicId',
               params: { publicId: detail.artifact.publicId },
+              hash: address,
+              search: true,
             })
           } else {
             void navigate({
               to: '/a/$publicId/v/$version',
               params: { publicId: detail.artifact.publicId, version: String(ver) },
+              hash: address,
+              search: true,
             })
           }
         }}
@@ -179,12 +192,17 @@ function ArtifactRouteView({
         feedbacks={feedbacks}
         rounds={rounds}
         sandboxOrigin={sandboxOrigin}
+        address={address}
+        fixedVersion={requestedVersion}
+        onClearAddress={clearAddress}
         onRegisterStateForwarder={registerStateForwarder}
         onVersionSaved={() => {
           if (requestedVersion !== undefined) {
             void navigate({
               to: '/a/$publicId',
               params: { publicId: detail.artifact.publicId },
+              hash: address,
+              search: true,
             })
           }
         }}
@@ -193,6 +211,8 @@ function ArtifactRouteView({
             void navigate({
               to: '/a/$publicId',
               params: { publicId: detail.artifact.publicId },
+              hash: address,
+              search: true,
             })
           }
         }}

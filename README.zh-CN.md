@@ -132,7 +132,7 @@ flowchart TB
 ## 快速开始
 
 > [!NOTE]
-> `akasha serve` 启动本地工作台、MCP 后端与隔离沙盒。打开制品即可操作画布，按需打开批注抽屉，也可直改静态 HTML/React 节点。Kit 还提供 `pr-walkthrough` 与 `data-story`。以下 Hub 部署方式需要自备域名和 OAuth App。
+> `akasha serve` 启动本地工作台、MCP 后端与隔离沙盒。打开 `artboard` 制品即可对比各自有独立尺寸的画板；在页面与画板导航中可切换位置，或复制保留当前版本范围的页面链接。HTML 和 React 制品默认使用一张画板，保留批注抽屉与静态节点直改。Kit 还提供 `pr-walkthrough` 与 `data-story`。以下 Hub 部署方式需要自备域名和 OAuth App。
 
 ### 1. 接入你的编程 Agent（MCP 与 Hooks — M1/M2）
 

@@ -24,6 +24,7 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
     ...BridgeEnvelopeBase,
     type: z.literal('render'),
     artifactType: ArtifactTypeSchema,
+    boardId: z.string().min(1).optional(),
     version: z.number().int().min(1),
     source: z.string(),
     state: z.record(z.string(), z.unknown()),

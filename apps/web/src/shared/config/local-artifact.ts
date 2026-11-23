@@ -47,8 +47,19 @@ export function useLocalArtifactRedirect(publicId: string, version?: number): bo
     const lifetime = new AbortController()
     void findLocalArtifact(publicId, version, lifetime.signal).then((url) => {
       if (lifetime.signal.aborted) return
-      if (url) window.location.replace(url)
-      else setCompleted(key)
+      if (!url) {
+        setCompleted(key)
+        return
+      }
+      const destination = new URL(url)
+      const current = new URLSearchParams(window.location.hash.slice(1))
+      const locator = new URLSearchParams()
+      for (const key of ['page', 'board']) {
+        const value = current.get(key)
+        if (value !== null) locator.set(key, value)
+      }
+      destination.hash = locator.toString()
+      window.location.replace(destination)
     })
     return () => lifetime.abort()
   }, [publicId, version, shouldProbe, key])

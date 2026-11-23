@@ -102,7 +102,7 @@ class ArtifactErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryS
   }
 }
 
-function HtmlRenderer({ source, version, preserved, onRendered }: RendererProps) {
+function HtmlRenderer({ source, boardId, version, preserved, onRendered }: RendererProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const onRenderedRef = useRef(onRendered)
   onRenderedRef.current = onRendered
@@ -110,14 +110,22 @@ function HtmlRenderer({ source, version, preserved, onRendered }: RendererProps)
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
-    const instrumented = injectHtmlLocations(source).code
+    // 拆出的 HTML 片段不对应原版本源码的行列。
+    const instrumented = boardId ? source : injectHtmlLocations(source).code
     el.innerHTML = sanitizeMarkup(instrumented, 'html')
     const cleanup = preserved.bindDomPersistence(el, window)
     onRenderedRef.current(version)
     return cleanup
-  }, [source, version, preserved])
+  }, [source, boardId, version, preserved])
 
-  return <div ref={containerRef} data-ak-renderer="html" className="ak-html-root p-4" />
+  return (
+    <div
+      ref={containerRef}
+      data-ak-renderer="html"
+      data-ak-block={boardId}
+      className={boardId ? 'ak-html-root min-h-screen' : 'ak-html-root p-4'}
+    />
+  )
 }
 
 function MarkdownRenderer({ source, preserved, onError, onRendered }: RendererProps) {

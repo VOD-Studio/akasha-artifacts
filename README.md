@@ -132,7 +132,7 @@ flowchart TB
 ## Quick Start
 
 > [!NOTE]
-> `akasha serve` runs the local workbench, MCP backend and isolated sandbox. Open an artifact on the interactive canvas, use the comments drawer or visually edit static HTML/React nodes. The Kit also includes `pr-walkthrough` and `data-story`. The Hub deployment options below require your own origins and OAuth App.
+> `akasha serve` runs the local workbench, MCP backend and isolated sandbox. Open an `artboard` artifact to compare independently sized boards. Use the page and board picker to navigate or copy a link to the current page at the current version scope. HTML and React artifacts open on a single board; the comments drawer and inline editing of static nodes remain available. The Kit also includes `pr-walkthrough` and `data-story`. The Hub deployment options below require your own origins and OAuth App.
 
 ### 1. Connect to Your Coding Agent (MCP & Hooks — M1/M2)
 

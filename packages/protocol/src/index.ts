@@ -1,3 +1,4 @@
+export * from './artboard.js'
 export * from './bridge.js'
 export * from './contract.js'
 export * from './domain.js'

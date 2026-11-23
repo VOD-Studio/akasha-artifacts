@@ -38,7 +38,6 @@ afterEach(() => {
     presenceByArtifact: {},
     preservedViewByArtifact: {},
     unsentDraftsByArtifact: {},
-    sandboxErrorByArtifact: {},
     sentErrorFingerprints: {},
   })
   useSelectionStore.setState({

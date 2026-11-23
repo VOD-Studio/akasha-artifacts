@@ -30,7 +30,6 @@ export interface WorkspaceStoreState {
   presenceByArtifact: Record<string, { viewers: number; agentOnline: boolean }>
   preservedViewByArtifact: Record<string, PreservedViewState>
   unsentDraftsByArtifact: Record<string, string>
-  sandboxErrorByArtifact: Record<string, SandboxErrorRecord | null>
   sentErrorFingerprints: Record<string, boolean>
 
   openArtifactView: (publicId: string | null) => void
@@ -43,7 +42,6 @@ export interface WorkspaceStoreState {
   setPresence: (artifactId: string, presence: { viewers: number; agentOnline: boolean }) => void
   setPreservedView: (artifactId: string, state: PreservedViewState) => void
   setUnsentDraft: (artifactId: string, text: string) => void
-  setSandboxError: (artifactId: string, err: SandboxErrorRecord | null) => void
   markErrorSent: (fingerprint: string) => void
 }
 
@@ -59,7 +57,6 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set) => ({
   presenceByArtifact: {},
   preservedViewByArtifact: {},
   unsentDraftsByArtifact: {},
-  sandboxErrorByArtifact: {},
   sentErrorFingerprints: {},
 
   openArtifactView: (artifactViewId) =>
@@ -88,10 +85,6 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set) => ({
   setUnsentDraft: (artifactId, text) =>
     set((s) => ({
       unsentDraftsByArtifact: { ...s.unsentDraftsByArtifact, [artifactId]: text },
-    })),
-  setSandboxError: (artifactId, err) =>
-    set((s) => ({
-      sandboxErrorByArtifact: { ...s.sandboxErrorByArtifact, [artifactId]: err },
     })),
   markErrorSent: (fingerprint) =>
     set((s) => ({

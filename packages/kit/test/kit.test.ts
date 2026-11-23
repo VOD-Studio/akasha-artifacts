@@ -1,10 +1,10 @@
+import { parseArtboard } from '@akasha/protocol'
 import { describe, expect, it } from 'vitest'
 import {
   applyLiveTimelineState,
   applyVerifyState,
   getKitTemplate,
   listKitTemplates,
-  parseArtboard,
   parseDocument,
   parseLiveTimeline,
   parseOptionCompare,

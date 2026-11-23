@@ -1,232 +1,621 @@
 import { Button } from '@akasha/ui/button'
-import { Hand, Maximize, Minus, Pencil, Plus } from 'lucide-react'
-import { type PointerEvent, type ReactNode, useLayoutEffect, useRef, useState } from 'react'
+import {
+  type PointerEvent,
+  type ReactNode,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useSelectionStore } from '../../entities/selection/store'
-import { ElementPickerButton } from '../../features/element-picker/ElementPickerButton'
-
-const BOARD_WIDTH = 1280
-const BOARD_HEIGHT = 800
-const GUTTER = 24
-const ZOOM_LEVELS = [0.25, 0.33, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2] as const
-
-interface CanvasDrag {
-  pointerId: number
-  x: number
-  y: number
-  left: number
-  top: number
-}
+import { CanvasToolbar, PageNavigator } from './CanvasControls'
+import {
+  type Camera,
+  DEFAULT_CAMERA,
+  fitCamera,
+  layoutBoards,
+  type Point,
+  zoomCamera,
+} from './canvas-camera'
+import type { CanvasBoard, CanvasDocument, CanvasPage } from './canvas-model'
 
 interface ArtifactCanvasProps {
-  children: ReactNode
+  document: CanvasDocument
   visible: boolean
+  storageKey: string
+  address: string
+  onClearAddress?: () => void
+  pageLink: (pageId: string) => string
+  renderBoard: (board: CanvasBoard, interactive: boolean) => ReactNode
   visualEdit?: { isPicking: boolean; toggle: () => void; cancel: () => void }
 }
 
-export function ArtifactCanvas({ children, visible, visualEdit }: ArtifactCanvasProps) {
-  const viewportRef = useRef<HTMLElement>(null)
-  const boardRef = useRef<HTMLDivElement>(null)
-  const dragRef = useRef<CanvasDrag | null>(null)
-  const zoomCenterRef = useRef<{ x: number; y: number } | null>(null)
-  const [availableScale, setAvailableScale] = useState(1)
-  const [zoom, setZoom] = useState<number | null>(null)
-  const [hand, setHand] = useState(false)
-  const setPickerActive = useSelectionStore((s) => s.setPickerActive)
+interface PageView {
+  selected: string | null
+  camera: Camera | null
+}
 
-  const fit = Math.min(1, availableScale)
-  const scale = zoom ?? fit
-  const smaller = ZOOM_LEVELS.findLast((level) => level < scale) ?? fit
-  const larger = ZOOM_LEVELS.find((level) => level > scale)
-  const canPan = scale > availableScale
-  const handActive = hand && canPan
+interface CanvasView {
+  pageId: string | null
+  address?: string
+  hand?: boolean
+  pages: Record<string, PageView>
+}
 
+const DEFAULT_PAGE: PageView = { selected: null, camera: null }
+const KEYBOARD_CONTROL =
+  'input, textarea, select, button, a[href], [contenteditable]:not([contenteditable="false"]), [role="button"]'
+
+function readView(storageKey: string): CanvasView {
+  try {
+    const raw = sessionStorage.getItem(storageKey)
+    const saved: CanvasView | null = raw ? JSON.parse(raw) : null
+    if (saved?.pages) return saved
+  } catch {
+    // 存储不可用时仍可在当前会话内操作画布。
+  }
+  return { pageId: null, pages: {} }
+}
+
+function pageViewFor(view: CanvasView, id: string): PageView {
+  return Object.hasOwn(view.pages, id) ? (view.pages[id] ?? DEFAULT_PAGE) : DEFAULT_PAGE
+}
+
+function saveView(storageKey: string, view: CanvasView) {
+  try {
+    sessionStorage.setItem(storageKey, JSON.stringify(view))
+  } catch {
+    // 隐私设置或配额不影响画布本身。
+  }
+}
+
+function useViewportSize(ref: { current: HTMLElement | null }, visible: boolean) {
+  const [size, setSize] = useState({ width: 0, height: 0 })
   useLayoutEffect(() => {
-    const viewport = viewportRef.current
-    if (!viewport) return
+    const viewport = ref.current
+    if (!visible || !viewport) return
     const measure = () => {
-      // 测量滚动条之外的视口，避免放大后显示滚动条使「适应画布」的比例来回变化。
-      const { offsetWidth, offsetHeight } = viewport
-      if (!offsetWidth || !offsetHeight) return
-      const widthScale = (offsetWidth - 2 * GUTTER) / BOARD_WIDTH
-      const heightScale = (offsetHeight - 2 * GUTTER) / BOARD_HEIGHT
-      setAvailableScale(Math.max(0.05, Math.min(widthScale, heightScale)))
+      const { clientWidth: width, clientHeight: height } = viewport
+      setSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }))
     }
     measure()
     if (typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(measure)
-    observer.observe(viewport, { box: 'border-box' })
+    observer.observe(viewport)
     return () => observer.disconnect()
-  }, [])
+  }, [ref, visible])
+  return size
+}
 
+export function ArtifactCanvas({
+  document,
+  visible,
+  storageKey,
+  address,
+  onClearAddress,
+  pageLink,
+  renderBoard,
+  visualEdit,
+}: ArtifactCanvasProps) {
+  const viewportRef = useRef<HTMLElement>(null)
+  const pendingFocus = useRef<{ pageId: string; boardId: string } | null>(null)
+  const pointers = useRef(new Map<number, Point>())
+  const wasPinching = useRef(false)
+  const [view, setView] = useState(() => readView(storageKey))
+  const latestView = useRef(view)
+  latestView.current = view
+  const [dismissedAddress, setDismissedAddress] = useState('')
+  const [navigatorOpen, setNavigatorOpen] = useState(false)
+  const [copyStatus, setCopyStatus] = useState('')
+  const hand = view.hand ?? false
+  const setHand = (next: boolean) =>
+    setView((prev) => ((prev.hand ?? false) === next ? prev : { ...prev, hand: next }))
+  const [space, setSpace] = useState(false)
+  const [modifier, setModifier] = useState(false)
+  const [dragging, setDragging] = useState(false)
+  const pickerActive = useSelectionStore((state) => state.pickerActive)
+  const setPickerActive = useSelectionStore((state) => state.setPickerActive)
+  const size = useViewportSize(viewportRef, visible)
+  const measurable = visible && size.width > 0 && size.height > 0
+
+  const params = useMemo(() => new URLSearchParams(address.replace(/^#/, '')), [address])
+  const explicit = address !== dismissedAddress && (params.has('page') || params.has('board'))
+  const requestedPage = params.get('page')
+  const requestedBoard = params.get('board')
+  const firstPage = document.pages[0]
+  const overview = document.pages.find((entry) => entry.id === '') ?? firstPage
+  const storedPage = document.pages.find((entry) => entry.id === view.pageId)
+  const addressedPage = document.pages.find((entry) => entry.id === requestedPage)
+  const addressedBoard = addressedPage?.boards.find((board) => board.id === requestedBoard)
+  const invalidAddress =
+    explicit && (!addressedPage || (requestedBoard !== null && !addressedBoard))
+  const page = explicit ? addressedPage : (storedPage ?? firstPage)
+  const pageId = page?.id
+  const pageView = page ? pageViewFor(view, page.id) : DEFAULT_PAGE
+  const selected =
+    !invalidAddress && page?.boards.some((board) => board.id === pageView.selected)
+      ? pageView.selected
+      : null
+  const camera = pageView.camera ?? DEFAULT_CAMERA
+  const layout = useMemo(
+    () => layoutBoards(page?.boards ?? [], document.columns),
+    [page?.boards, document.columns],
+  )
+  const flows = useMemo(() => {
+    const unique = new Map<string, CanvasDocument['flows'][number]>()
+    for (const flow of document.flows) {
+      if (flow.from === flow.to || !layout.bounds.has(flow.from) || !layout.bounds.has(flow.to)) {
+        continue
+      }
+      unique.set(JSON.stringify([flow.from, flow.to, flow.label]), flow)
+    }
+    return Array.from(unique)
+  }, [document.flows, layout.bounds])
+  const handActive = hand || space
+
+  useEffect(() => {
+    setDismissedAddress((dismissed) => (dismissed === address ? dismissed : ''))
+    setCopyStatus('')
+  }, [address])
+
+  useEffect(() => {
+    const persist = () => saveView(storageKey, latestView.current)
+    window.addEventListener('pagehide', persist)
+    return () => {
+      window.removeEventListener('pagehide', persist)
+      persist()
+    }
+  }, [storageKey])
+  useEffect(() => {
+    const timer = window.setTimeout(() => saveView(storageKey, view), 140)
+    return () => window.clearTimeout(timer)
+  }, [storageKey, view])
+
+  // 显式链接只定位一次；初次进入页面也等视口可测量后再保存相机。
+  const activeAddress = explicit && !invalidAddress ? address : ''
+  const addressedBoardId = activeAddress ? addressedBoard?.id : undefined
   useLayoutEffect(() => {
-    const viewport = viewportRef.current
-    const board = boardRef.current
-    const center = zoomCenterRef.current
-    if (!viewport || !board || !center) return
-    zoomCenterRef.current = null
-    viewport.scrollLeft = board.offsetLeft + center.x * scale - viewport.clientWidth / 2
-    viewport.scrollTop = board.offsetTop + center.y * scale - viewport.clientHeight / 2
-  }, [scale])
+    if (pageId === undefined || invalidAddress) {
+      if (view.address) setView((prev) => ({ ...prev, address: '' }))
+      return
+    }
+    const pendingAddress = Boolean(activeAddress && view.address !== activeAddress)
+    const focusedBoard =
+      pendingFocus.current?.pageId === pageId ? pendingFocus.current.boardId : undefined
+    const targetBoard = pendingAddress ? addressedBoardId : focusedBoard
+    const boardBounds = targetBoard === undefined ? undefined : layout.bounds.get(targetBoard)
+    const applied =
+      pendingAddress && boardBounds && !measurable ? (view.address ?? '') : activeAddress
+    if (measurable) pendingFocus.current = null
+    if (
+      !pendingAddress &&
+      !boardBounds &&
+      (!measurable || pageView.camera) &&
+      view.address === applied
+    )
+      return
+    setView((prev) => {
+      const current = pageViewFor(prev, pageId)
+      const next = {
+        selected: pendingAddress ? (addressedBoardId ?? current.selected) : current.selected,
+        camera: measurable
+          ? boardBounds
+            ? fitCamera(boardBounds, size, 'board')
+            : (current.camera ?? fitCamera(layout.page, size, 'page'))
+          : current.camera,
+      }
+      if (
+        prev.pageId === pageId &&
+        (prev.address ?? '') === (applied ?? '') &&
+        current.selected === next.selected &&
+        current.camera === next.camera
+      ) {
+        return prev
+      }
+      return { ...prev, pageId, address: applied, pages: { ...prev.pages, [pageId]: next } }
+    })
+  }, [
+    activeAddress,
+    addressedBoardId,
+    invalidAddress,
+    layout,
+    measurable,
+    pageId,
+    pageView.camera,
+    size,
+    view.address,
+  ])
 
-  const changeZoom = (next: number | null) => {
-    if (zoom === next) return
+  const clearAddress = () => {
+    if (!explicit) return
+    setDismissedAddress(address)
+    onClearAddress?.()
+  }
+
+  const navigate = (target: CanvasPage, boardId?: string | null) => {
+    clearAddress()
+    setNavigatorOpen(false)
+    setCopyStatus('')
+    pendingFocus.current = boardId && !measurable ? { pageId: target.id, boardId } : null
+    setView((prev) => {
+      const current = pageViewFor(prev, target.id)
+      const bounds = boardId
+        ? layoutBoards(target.boards, document.columns).bounds.get(boardId)
+        : undefined
+      return {
+        ...prev,
+        address: '',
+        pageId: target.id,
+        pages: {
+          ...prev.pages,
+          [target.id]: {
+            selected: boardId === undefined ? current.selected : boardId,
+            camera: bounds && measurable ? fitCamera(bounds, size, 'board') : current.camera,
+          },
+        },
+      }
+    })
+  }
+
+  const selectBoard = (boardId: string | null) => {
+    if (!page || invalidAddress) return
+    if (boardId !== null || requestedBoard !== null) clearAddress()
+    pendingFocus.current = null
+    const id = page.id
+    setView((prev) => {
+      const current = pageViewFor(prev, id)
+      const camera =
+        current.camera?.fit === 'board' && boardId !== current.selected
+          ? { ...current.camera, fit: null }
+          : current.camera
+      return {
+        ...prev,
+        pageId: id,
+        address: boardId === null && requestedBoard === null ? (prev.address ?? '') : '',
+        pages: { ...prev.pages, [id]: { camera, selected: boardId } },
+      }
+    })
+  }
+
+  const updateCamera = (transform: (camera: Camera) => Camera) => {
+    if (!page || invalidAddress) return
+    const id = page.id
+    setView((prev) => {
+      const current = pageViewFor(prev, id)
+      const next = transform(current.camera ?? DEFAULT_CAMERA)
+      if (next === (current.camera ?? DEFAULT_CAMERA)) return prev
+      return {
+        ...prev,
+        pageId: id,
+        pages: { ...prev.pages, [id]: { ...current, camera: next } },
+      }
+    })
+  }
+
+  const keyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (event.defaultPrevented || navigatorOpen) return
+    const target = event.target instanceof Element ? event.target : null
+    const editing = target?.closest(KEYBOARD_CONTROL)
+    if (event.code === 'Space' && !editing && !event.altKey && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault()
+      setSpace(true)
+    }
+    if (event.key === 'Control' || event.key === 'Meta') setModifier(true)
+    if (event.key !== 'Escape' || target?.closest('input, textarea, [contenteditable="true"]'))
+      return
+    setHand(false)
+    setSpace(false)
+    setPickerActive(false)
+    visualEdit?.cancel()
+    selectBoard(null)
+  })
+
+  useEffect(() => {
+    if (!visible) return
+    const keyUp = (event: KeyboardEvent) => {
+      if (event.code === 'Space') setSpace(false)
+      if (event.key === 'Control' || event.key === 'Meta')
+        setModifier(event.ctrlKey || event.metaKey)
+    }
+    const blur = () => {
+      setSpace(false)
+      setModifier(false)
+    }
+    window.addEventListener('keydown', keyDown)
+    window.addEventListener('keyup', keyUp)
+    window.addEventListener('blur', blur)
+    return () => {
+      window.removeEventListener('keydown', keyDown)
+      window.removeEventListener('keyup', keyUp)
+      window.removeEventListener('blur', blur)
+    }
+  }, [visible])
+
+  const wheel = useEffectEvent((event: WheelEvent) => {
     const viewport = viewportRef.current
-    const board = boardRef.current
-    if ((next ?? fit) !== scale && viewport && board) {
-      zoomCenterRef.current = {
-        x: (viewport.scrollLeft + viewport.clientWidth / 2 - board.offsetLeft) / scale,
-        y: (viewport.scrollTop + viewport.clientHeight / 2 - board.offsetTop) / scale,
+    if (!viewport || !event.deltaY || pageId === undefined || invalidAddress) return
+    event.preventDefault()
+    const rect = viewport.getBoundingClientRect()
+    const anchor = { x: event.clientX - rect.left, y: event.clientY - rect.top }
+    const delta =
+      event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? size.height : 1)
+    updateCamera((current) => zoomCamera(current, Math.exp(-delta * 0.002), anchor))
+  })
+
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!visible || !viewport) return
+    viewport.addEventListener('wheel', wheel, { passive: false })
+    return () => viewport.removeEventListener('wheel', wheel)
+  }, [visible])
+
+  const startPointer = (event: PointerEvent<HTMLElement>) => {
+    if (event.button !== 0) return
+    if (!pointers.current.size) wasPinching.current = false
+    const target = event.target as Element
+    if (
+      !handActive &&
+      (event.pointerType !== 'touch' || target.closest('.artifact-canvas-board-title'))
+    ) {
+      return
+    }
+    if (invalidAddress || pointers.current.size >= 2) return
+    const local = event.currentTarget.getBoundingClientRect()
+    pointers.current.set(event.pointerId, {
+      x: event.clientX - local.left,
+      y: event.clientY - local.top,
+    })
+    if (pointers.current.size === 2) wasPinching.current = true
+    const capture = handActive ? event.currentTarget : target
+    capture.setPointerCapture?.(event.pointerId)
+    if (handActive) {
+      event.currentTarget.focus({ preventScroll: true })
+      event.preventDefault()
+      setDragging(true)
+    }
+  }
+
+  const movePointer = (event: PointerEvent<HTMLElement>) => {
+    const previous = pointers.current.get(event.pointerId)
+    if (!previous) return
+    const local = event.currentTarget.getBoundingClientRect()
+    const next = { x: event.clientX - local.left, y: event.clientY - local.top }
+    pointers.current.set(event.pointerId, next)
+    let other: Point | undefined
+    if (pointers.current.size === 2) {
+      for (const [id, point] of pointers.current) {
+        if (id !== event.pointerId) {
+          other = point
+          break
+        }
       }
     }
-    if ((next ?? fit) <= availableScale) setHand(false)
-    setZoom(next)
-  }
-
-  const startDrag = (event: PointerEvent<HTMLElement>) => {
-    if (!handActive || event.button !== 0 || dragRef.current) return
-    event.preventDefault()
-    const viewport = event.currentTarget
-    viewport.setPointerCapture(event.pointerId)
-    dragRef.current = {
-      pointerId: event.pointerId,
-      x: event.clientX,
-      y: event.clientY,
-      left: viewport.scrollLeft,
-      top: viewport.scrollTop,
+    if (other) {
+      const distance = Math.hypot(previous.x - other.x, previous.y - other.y)
+      if (!distance) return
+      const anchor = { x: (previous.x + other.x) / 2, y: (previous.y + other.y) / 2 }
+      const center = { x: (next.x + other.x) / 2, y: (next.y + other.y) / 2 }
+      const factor = Math.hypot(next.x - other.x, next.y - other.y) / distance
+      updateCamera((current) => zoomCamera(current, factor, anchor, center))
+    } else if (handActive) {
+      updateCamera((current) => ({
+        ...current,
+        x: current.x + next.x - previous.x,
+        y: current.y + next.y - previous.y,
+        fit: null,
+      }))
     }
   }
 
-  const moveDrag = (event: PointerEvent<HTMLElement>) => {
-    const drag = dragRef.current
-    if (drag?.pointerId !== event.pointerId) return
-    event.currentTarget.scrollLeft = drag.left + drag.x - event.clientX
-    event.currentTarget.scrollTop = drag.top + drag.y - event.clientY
+  const endPointer = (event: PointerEvent<HTMLElement>) => {
+    pointers.current.delete(event.pointerId)
+    if (!pointers.current.size) setDragging(false)
   }
 
+  const setCanvasTool = (next: boolean) => {
+    setHand(next)
+    setPickerActive(false)
+    visualEdit?.cancel()
+  }
+
+  const selectionBounds = selected === null ? undefined : layout.bounds.get(selected)
+  const zoom = (factor: number) =>
+    updateCamera((current) =>
+      zoomCamera(current, factor, { x: size.width / 2, y: size.height / 2 }),
+    )
+
   return (
-    <div hidden={!visible} className={visible ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
+    <div hidden={!visible} className={visible ? 'artifact-canvas-shell' : 'hidden'}>
+      <div className="artifact-canvas-navigation">
+        <PageNavigator
+          open={navigatorOpen && visible}
+          onOpenChange={setNavigatorOpen}
+          pages={document.pages}
+          page={invalidAddress ? undefined : page}
+          selected={selected}
+          onNavigate={navigate}
+          pageLink={pageLink}
+          status={copyStatus}
+          onStatus={setCopyStatus}
+        />
+      </div>
       <section
         ref={viewportRef}
         aria-label="制品画布"
-        className={`artifact-canvas relative min-h-0 flex-1 overflow-auto overscroll-contain ${
-          handActive ? 'touch-none cursor-grab select-none active:cursor-grabbing' : ''
-        }`}
-        onPointerDown={startDrag}
-        onPointerMove={moveDrag}
-        onLostPointerCapture={(event) => {
-          if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null
-        }}
+        tabIndex={-1}
+        className="artifact-canvas"
+        data-hand={handActive}
+        data-dragging={dragging}
+        onPointerDown={startPointer}
+        onPointerMove={movePointer}
+        onPointerUp={endPointer}
+        onPointerCancel={endPointer}
+        onLostPointerCapture={endPointer}
       >
-        <div
-          className="flex min-h-full w-max min-w-full items-center justify-center"
-          style={{ padding: GUTTER }}
-        >
-          <div
-            ref={boardRef}
-            className="relative shrink-0 overflow-hidden bg-white shadow-sm outline outline-border"
-            style={{ width: BOARD_WIDTH * scale, height: BOARD_HEIGHT * scale }}
-          >
-            {/* 沙盒回传的坐标以未缩放视口为基准，预览与叠层必须一起缩放。 */}
-            <div
-              inert={handActive}
-              className="absolute top-0 left-0 origin-top-left"
-              style={{ width: BOARD_WIDTH, height: BOARD_HEIGHT, transform: `scale(${scale})` }}
-            >
-              {children}
-            </div>
-          </div>
-        </div>
-      </section>
-      <section
-        aria-label="画布工具"
-        className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-border bg-surface px-2 py-1 sm:px-4"
-      >
-        <div className="flex items-center gap-1">
-          <ElementPickerButton
-            onStart={() => {
-              setHand(false)
-              visualEdit?.cancel()
-            }}
-          />
-          {visualEdit ? (
+        {invalidAddress ? (
+          <div className="artifact-canvas-message">
+            <p role="alert">
+              {addressedPage ? '链接指定的画板不存在或已移除' : '链接指定的页面不存在或已移除'}
+            </p>
             <Button
-              variant={visualEdit.isPicking ? 'secondary' : 'ghost'}
               size="sm"
-              leftIcon={<Pencil size={13} />}
-              aria-pressed={visualEdit.isPicking}
+              variant="secondary"
               onClick={() => {
-                setHand(false)
-                setPickerActive(false)
-                visualEdit.toggle()
+                const target = addressedPage ?? overview
+                if (target) navigate(target, null)
+                else clearAddress()
               }}
             >
-              可视化直改
+              {addressedPage ? '返回页面' : '返回总览'}
             </Button>
-          ) : null}
-          <span className="ml-2 hidden text-xs text-ink-muted sm:inline">
-            {BOARD_WIDTH} × {BOARD_HEIGHT}
-          </span>
-        </div>
-        <div className="flex items-center gap-1">
-          <Button
-            variant={handActive ? 'secondary' : 'ghost'}
-            size="sm"
-            iconOnly
-            aria-label="抓手平移"
-            title={canPan ? '抓手平移' : '放大后可平移画布'}
-            disabled={!canPan}
-            aria-pressed={handActive}
-            onClick={() => {
-              setPickerActive(false)
-              visualEdit?.cancel()
-              setHand(!handActive)
-            }}
-          >
-            <Hand size={15} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            iconOnly
-            aria-label="缩小画布"
-            title="缩小画布"
-            disabled={smaller >= scale}
-            onClick={() => changeZoom(smaller)}
-          >
-            <Minus size={15} />
-          </Button>
-          <output
-            aria-label="画布缩放比例"
-            className="w-10 text-center text-xs tabular-nums text-ink"
-          >
-            {Math.round(scale * 100)}%
-          </output>
-          <Button
-            variant="ghost"
-            size="sm"
-            iconOnly
-            aria-label="放大画布"
-            title="放大画布"
-            disabled={larger === undefined}
-            onClick={() => {
-              if (larger !== undefined) changeZoom(larger)
-            }}
-          >
-            <Plus size={15} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            iconOnly
-            aria-label="适应画布"
-            title="适应画布"
-            aria-pressed={zoom === null}
-            onClick={() => changeZoom(null)}
-          >
-            <Maximize size={15} />
-          </Button>
-        </div>
+          </div>
+        ) : page?.boards.length ? (
+          <>
+            {flows.length ? (
+              <svg
+                aria-hidden="true"
+                className="artifact-canvas-flows"
+                data-hand-drawn={document.handDrawnFlows}
+              >
+                {flows.map(([key, { from, to, label }]) => {
+                  const start = layout.bounds.get(from)
+                  const end = layout.bounds.get(to)
+                  if (!start || !end) return null
+                  const sameRow = start.y === end.y
+                  const forward = sameRow ? start.x < end.x : start.y < end.y
+                  const x1 =
+                    camera.x +
+                    (start.x + start.width * (sameRow ? Number(forward) : 0.5)) * camera.scale
+                  const x2 =
+                    camera.x +
+                    (end.x + end.width * (sameRow ? Number(!forward) : 0.5)) * camera.scale
+                  const y1 =
+                    camera.y +
+                    (start.y + start.height * (sameRow ? 0.5 : Number(forward))) * camera.scale
+                  const y2 =
+                    camera.y +
+                    (end.y + end.height * (sameRow ? 0.5 : Number(!forward))) * camera.scale
+                  return (
+                    <g key={key}>
+                      <line x1={x1} y1={y1} x2={x2} y2={y2} />
+                      {label ? (
+                        <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 6}>
+                          {label}
+                        </text>
+                      ) : null}
+                    </g>
+                  )
+                })}
+              </svg>
+            ) : null}
+            {page.boards.map((board) => {
+              const bounds = layout.bounds.get(board.id)
+              if (!bounds) return null
+              const isSelected = selected === board.id
+              const interactive = !handActive && (!board.scoped || pickerActive)
+              return (
+                <div
+                  key={board.id}
+                  className="artifact-canvas-board"
+                  data-selected={isSelected}
+                  style={{
+                    left: camera.x + bounds.x * camera.scale,
+                    top: camera.y + bounds.y * camera.scale,
+                    width: board.width * camera.scale,
+                    height: board.height * camera.scale,
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="artifact-canvas-board-title"
+                    aria-pressed={isSelected}
+                    title={board.subtitle ?? board.title}
+                    onFocus={(event) => {
+                      if (!measurable || !event.currentTarget.matches(':focus-visible')) return
+                      const viewport = viewportRef.current?.getBoundingClientRect()
+                      const title = event.currentTarget.getBoundingClientRect()
+                      if (
+                        viewport &&
+                        (title.right < viewport.left ||
+                          title.left > viewport.right ||
+                          title.bottom < viewport.top ||
+                          title.top > viewport.bottom)
+                      ) {
+                        updateCamera(() => fitCamera(bounds, size, null))
+                      }
+                    }}
+                    onClick={(event) => {
+                      if (!handActive || event.detail === 0) selectBoard(board.id)
+                    }}
+                  >
+                    {board.title}
+                    {board.recommended ? (
+                      <span className="ml-2 text-[10px] opacity-75">推荐</span>
+                    ) : null}
+                  </button>
+                  <div className="artifact-canvas-board-clip">
+                    <div
+                      style={{
+                        width: board.width,
+                        height: board.height,
+                        transform: `scale(${camera.scale})`,
+                      }}
+                      className="artifact-canvas-board-frame"
+                    >
+                      {renderBoard(board, interactive)}
+                    </div>
+                    {/* 抓手与组合键缩放由外层捕获，不依赖跨域 iframe 冒泡。 */}
+                    {handActive || modifier ? (
+                      <div aria-hidden="true" data-gesture className="artifact-canvas-board-hit" />
+                    ) : !interactive ? (
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        aria-label={`选择画板：${board.title}`}
+                        className="artifact-canvas-board-hit"
+                        onClick={(event) => {
+                          if (!wasPinching.current || event.detail === 0) selectBoard(board.id)
+                        }}
+                      />
+                    ) : null}
+                  </div>
+                </div>
+              )
+            })}
+          </>
+        ) : (
+          <p className="artifact-canvas-message text-sm text-ink-muted">此页面没有画板</p>
+        )}
       </section>
+      <CanvasToolbar
+        camera={camera}
+        hand={hand}
+        onChangeTool={setCanvasTool}
+        canZoom={Boolean(page?.boards.length && !invalidAddress)}
+        onZoom={zoom}
+        onFitPage={
+          measurable && page?.boards.length && !invalidAddress
+            ? () => updateCamera(() => fitCamera(layout.page, size, 'page'))
+            : undefined
+        }
+        onFitSelection={
+          measurable && selectionBounds
+            ? () => updateCamera(() => fitCamera(selectionBounds, size, 'board'))
+            : undefined
+        }
+        onStartPicker={() => {
+          setHand(false)
+          visualEdit?.cancel()
+        }}
+        visualEditActive={visualEdit?.isPicking}
+        onToggleVisualEdit={() => {
+          setHand(false)
+          setPickerActive(false)
+          visualEdit?.toggle()
+        }}
+      />
     </div>
   )
 }

@@ -90,7 +90,6 @@ afterEach(() => {
     presenceByArtifact: {},
     preservedViewByArtifact: {},
     unsentDraftsByArtifact: {},
-    sandboxErrorByArtifact: {},
     sentErrorFingerprints: {},
   })
   useSelectionStore.setState({
@@ -304,8 +303,12 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     expect(screen.queryByRole('dialog', { name: '批注与评审' })).toBeNull()
     expect(screen.queryByText('导出 HTML')).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: '放大画布' }))
-    expect(screen.getByLabelText('画布缩放比例').textContent).toBe('125%')
+    const zoomRatio = () =>
+      Number.parseFloat(screen.getByLabelText('画布缩放比例').textContent ?? '')
+    const initialZoom = zoomRatio()
+    fireEvent.click(screen.getByRole('button', { name: '放大' }))
+    const previewZoom = zoomRatio()
+    expect(previewZoom).toBeGreaterThan(initialZoom)
     fireEvent.keyDown(screen.getByRole('button', { name: '更多操作' }), { key: 'Enter' })
     expect(screen.getByRole('menuitem', { name: '导出 HTML' })).toBeTruthy()
     fireEvent.click(screen.getByRole('menuitem', { name: '查看源码' }))
@@ -313,6 +316,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     expect(screen.getByText(SAMPLE_V1.source)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '返回画布' }))
     expect(container.querySelector('iframe')).toBe(iframe)
+    expect(zoomRatio()).toBe(previewZoom)
 
     const iframeWin = iframe?.contentWindow
     expect(iframeWin).toBeTruthy()
@@ -351,11 +355,12 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     fireEvent.click(screen.getByRole('button', { name: '批注' }))
     const drawer = screen.getByRole('dialog', { name: '批注与评审' })
     expect(drawer.getAttribute('aria-modal')).toBe('false')
-    const zoomIn = screen.getByRole('button', { name: '放大画布' })
+    const zoomIn = screen.getByRole('button', { name: '放大' })
     act(() => zoomIn.focus())
     expect(document.activeElement).toBe(zoomIn)
     fireEvent.click(zoomIn)
-    expect(screen.getByLabelText('画布缩放比例').textContent).toBe('150%')
+    const reviewZoom = zoomRatio()
+    expect(reviewZoom).toBeGreaterThan(previewZoom)
     expect(screen.getByRole('dialog', { name: '批注与评审' })).toBe(drawer)
     const draftInput = screen.getByLabelText('批注内容') as HTMLTextAreaElement
     fireEvent.change(draftInput, { target: { value: '请把按钮改成次要描边样式' } })
@@ -387,7 +392,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       scrollY: 180,
     })
     expect(container.querySelector('iframe')).toBe(iframe)
-    expect(screen.getByLabelText('画布缩放比例').textContent).toBe('150%')
+    expect(zoomRatio()).toBe(reviewZoom)
     fireEvent.click(screen.getByRole('button', { name: '批注' }))
     expect((screen.getByLabelText('批注内容') as HTMLTextAreaElement).value).toBe(
       '请把按钮改成次要描边样式',
