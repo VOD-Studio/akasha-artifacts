@@ -49,7 +49,7 @@ function writeAttempt(value: DesignAttempt | null) {
 
 interface CreateDesignProps {
   projects: readonly Project[]
-  initialProject?: string | null
+  open: boolean
   hub: boolean
   onClose: () => void
   onOpenArtifact: (publicId: string) => void
@@ -58,7 +58,7 @@ interface CreateDesignProps {
 /** 只有同一受理会话的真实 v1 发布记录才允许打开制品；未发布时保留用户需求。 */
 export function CreateDesignDialog({
   projects,
-  initialProject,
+  open,
   hub,
   onClose,
   onOpenArtifact,
@@ -66,13 +66,13 @@ export function CreateDesignDialog({
   const formId = useId()
   const cache = useQueryClient()
   const [attempt, setAttempt] = useState(() => (hub ? null : readAttempt()))
-  const [projectId, setProjectId] = useState(attempt?.projectId ?? initialProject ?? '')
+  const [projectId, setProjectId] = useState(attempt?.projectId ?? '')
   const [agent, setAgent] = useState<'codex' | ''>(attempt ? 'codex' : '')
   const [message, setMessage] = useAgentDraft('new-design')
   const connections = useQuery({
     queryKey: ['agent-connections'],
     queryFn: ({ signal }) => fetchAgentConnections(signal),
-    enabled: !hub,
+    enabled: open && !hub,
     retry: false,
     refetchInterval: 4000,
   })
@@ -82,7 +82,7 @@ export function CreateDesignDialog({
       if (!attempt) throw new Error('没有已受理的设计会话')
       return fetchAgentDesignSession(attempt.id, signal)
     },
-    enabled: Boolean(attempt) && !hub,
+    enabled: open && Boolean(attempt) && !hub,
     retry: false,
     refetchInterval: (query) =>
       query.state.data?.turns.at(-1)?.status === 'running' ? 1000 : false,
@@ -148,9 +148,9 @@ export function CreateDesignDialog({
 
   return (
     <Modal
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose()
+      open={open}
+      onOpenChange={(visible) => {
+        if (!visible) onClose()
       }}
       title="新建设计"
       description="把需求交付给明确授权的本机 CLI。只有实际发布后，库里才出现可打开的制品。"

@@ -239,10 +239,11 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
           </div>
         </ScrollArea>
       </main>
-      {showCreateDesign ? (
+      {/* 保留同一个提交实例，关闭再重开不能丢掉还未返回的受理响应。 */}
+      {!cloudHub || hubSession?.member ? (
         <CreateDesignDialog
           projects={projects ?? []}
-          initialProject={selectedProjectId}
+          open={showCreateDesign}
           hub={cloudHub}
           onClose={() => setShowCreateDesign(false)}
           onOpenArtifact={(id) => {
