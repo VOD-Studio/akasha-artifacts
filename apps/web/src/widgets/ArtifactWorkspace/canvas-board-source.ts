@@ -1,4 +1,4 @@
-import { ARTBOARD_GEOMETRY_LIMITS, DesignLayersSchema } from '@akasha/protocol'
+import { ARTBOARD_GEOMETRY_LIMITS, type DesignLayer, DesignLayersSchema } from '@akasha/protocol'
 import type { CanvasBounds } from './canvas-camera'
 import { readEditableCanvasSource, removeCanvasBoards } from './canvas-edit-source'
 
@@ -15,6 +15,9 @@ export type CanvasBoardEdit =
       changes: readonly { id: string; bounds: CanvasBounds }[]
     }
   | { kind: 'layerGroup'; boardId: string; ids: readonly string[]; layoutGroup: string | null }
+  | { kind: 'layerCreate'; boardId: string; layer: DesignLayer }
+  | { kind: 'layerDuplicate'; boardId: string; layerId: string; id: string }
+  | { kind: 'layerDelete'; boardId: string; layerId: string }
 
 /** 版本重放用真实源码，而不是可变 DOM 或相机快照。 */
 export interface CanvasSourceChange {
@@ -104,6 +107,36 @@ export function editCanvasBoards(
         Object.assign(target.raw, geometry(bounds))
       }
       break
+    case 'layerCreate':
+    case 'layerDuplicate':
+    case 'layerDelete': {
+      const board = boards.get(edit.boardId)
+      if (!board) throw new Error('原生图层所在的画板已变更')
+      const layers = (board.raw.designLayers ?? []) as Array<Record<string, unknown>>
+      if (edit.kind === 'layerCreate') {
+        layers.push(edit.layer)
+      } else {
+        const index = layers.findIndex((layer) => layer.id === edit.layerId)
+        if (index === -1) throw new Error('图层已不存在')
+        if (edit.kind === 'layerDelete') layers.splice(index, 1)
+        else {
+          const original = board.board.designLayers?.[index]
+          if (!original) throw new Error('图层已不存在')
+          const copy = {
+            ...layers[index],
+            id: edit.id,
+            x: Math.min(ARTBOARD_GEOMETRY_LIMITS.coordinate, original.x + 16),
+            y: Math.min(ARTBOARD_GEOMETRY_LIMITS.coordinate, original.y + 16),
+          } as Record<string, unknown>
+          delete copy.layoutGroup
+          layers.push(copy)
+        }
+      }
+      if (!DesignLayersSchema.safeParse(layers).success)
+        throw new Error('画板最多可容纳 96 个图层，标识必须唯一')
+      board.raw.designLayers = layers
+      break
+    }
     case 'layerGeometry':
     case 'layerGroup': {
       const board = boards.get(edit.boardId)

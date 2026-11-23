@@ -1031,3 +1031,38 @@ it('检查器只编排原生图层，同画板选区在发布后重绑，旧基�
   expect(await screen.findByText(/未保存的操作没有覆盖新版本/)).toBeTruthy()
   expect(JSON.parse(editor.current.version.source).boards[0].designLayers[1].width).toBe(92)
 })
+
+it('拖出矩形只预览，松开按画板固有坐标保存并可撤销重做', async () => {
+  stubResizeObserver()
+  vi.stubGlobal('PointerEvent', MouseEvent)
+  const editor = showEditableWorkspace(detailFor())
+  fireEvent.click(screen.getByRole('button', { name: '绘制矩形' }))
+  const surface = screen.getByRole('button', { name: '在宽屏首页绘制矩形' })
+  vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 50, 720, 450))
+  fireEvent.pointerDown(surface, { button: 0, pointerId: 1, clientX: 120, clientY: 80 })
+  fireEvent.pointerMove(surface, { pointerId: 1, clientX: 190, clientY: 140 })
+  expect(editor.current.version.version).toBe(1)
+  fireEvent.pointerUp(surface, { pointerId: 1, clientX: 190, clientY: 140 })
+  await waitFor(() => expect(editor.current.version.version).toBe(2))
+  const layers = () => JSON.parse(editor.current.version.source).boards[0].designLayers
+  expect(layers()).toEqual([
+    expect.objectContaining({ kind: 'rectangle', x: 40, y: 60, width: 140, height: 120 }),
+  ])
+  expect(screen.getByRole('button', { name: '选择' }).getAttribute('aria-pressed')).toBe('true')
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: '撤销画布编辑' }).hasAttribute('disabled')).toBe(
+      false,
+    ),
+  )
+  fireEvent.click(screen.getByRole('button', { name: '撤销画布编辑' }))
+  await waitFor(() => expect(editor.current.version.version).toBe(3))
+  expect(layers()).toBeUndefined()
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: '重做画布编辑' }).hasAttribute('disabled')).toBe(
+      false,
+    ),
+  )
+  fireEvent.click(screen.getByRole('button', { name: '重做画布编辑' }))
+  await waitFor(() => expect(editor.current.version.version).toBe(4))
+  expect(layers()[0]).toMatchObject({ kind: 'rectangle', x: 40, y: 60, width: 140, height: 120 })
+})
