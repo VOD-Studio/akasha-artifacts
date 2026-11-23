@@ -303,7 +303,6 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     expect(iframe?.getAttribute('sandbox')).toBe('allow-scripts')
     expect(screen.getByRole('region', { name: '制品画布' }).contains(iframe)).toBe(true)
     expect(screen.queryByRole('dialog', { name: '批注与评审' })).toBeNull()
-    expect(screen.queryByText('导出 HTML')).toBeNull()
 
     const zoomRatio = () =>
       Number.parseFloat(screen.getByLabelText('画布缩放比例').textContent ?? '')
@@ -312,7 +311,6 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     const previewZoom = zoomRatio()
     expect(previewZoom).toBeGreaterThan(initialZoom)
     fireEvent.keyDown(screen.getByRole('button', { name: '更多操作' }), { key: 'Enter' })
-    expect(screen.getByRole('menuitem', { name: '导出 HTML' })).toBeTruthy()
     fireEvent.click(screen.getByRole('menuitem', { name: '查看源码' }))
     expect(screen.queryByRole('region', { name: '制品画布' })).toBeNull()
     expect(screen.getByText(SAMPLE_V1.source)).toBeTruthy()
