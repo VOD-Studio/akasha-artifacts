@@ -719,6 +719,17 @@ it('画板保存后提交对应版本的 Agent 编辑反馈，通知失败不回
   expect(screen.queryByRole('alert')).toBeNull()
 })
 
+it('抓手模式不抢画板弹层里的输入焦点', () => {
+  vi.stubGlobal('PointerEvent', MouseEvent)
+  showWorkspace()
+  fireEvent.click(screen.getByRole('button', { name: '抓手' }))
+  fireEvent.click(screen.getByRole('button', { name: '设置画板：宽屏首页' }))
+  const width = screen.getByRole('spinbutton', { name: '宽度' })
+  width.focus()
+  expect(fireEvent.pointerDown(width, { button: 0, clientX: 24, clientY: 24 })).toBe(true)
+  expect(document.activeElement).toBe(width)
+})
+
 it('沿用旧页定位链接完成重命名，确认删除时只移除该页直属画板', async () => {
   const initial = detailFor(
     1,

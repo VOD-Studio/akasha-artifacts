@@ -420,9 +420,10 @@ export function ArtifactCanvas({
   }, [showOverview])
 
   const startPointer = (event: PointerEvent<HTMLElement>) => {
-    if (event.button !== 0) return
-    if (!pointers.current.size) wasPinching.current = false
+    // Portal 内容沿 React 树冒泡，但不属于画布的 DOM 手势区域。
     const target = event.target as Element
+    if (event.button !== 0 || !event.currentTarget.contains(target)) return
+    if (!pointers.current.size) wasPinching.current = false
     if (target.closest('.artifact-canvas-board-action')) return
     if (
       !handActive &&
