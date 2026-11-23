@@ -195,7 +195,6 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
               fsStorage.artifacts.recordSyncedContent(evt.entryFile, evt.source)
               return
             }
-            fsStorage.artifacts.recordSyncedContent(evt.entryFile, evt.source)
             await service.publish({
               projectId: existing.projectId,
               slug: existing.slug,
@@ -205,11 +204,11 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
               baseVersion: existing.headVersion,
               author: 'agent:fs',
             })
+            fsStorage.artifacts.recordSyncedContent(evt.entryFile, evt.source)
             return
           }
 
           // 2. 外部宿主工具新建或 Git 检出的文件：自动建档；若已带合法 .artifact-id 则保留原 publicId 避免索引重建破坏书签
-          fsStorage.artifacts.recordSyncedContent(evt.entryFile, evt.source)
           fsStorage.artifacts.markImportingExternalFile(evt.entryFile, evt.slug, evt.source)
           const slugTitle = path.basename(evt.slug) || evt.slug
           try {
@@ -222,6 +221,7 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
               author: 'agent:fs',
               preferredPublicId: evt.existingPublicId,
             })
+            fsStorage.artifacts.recordSyncedContent(evt.entryFile, evt.source)
           } finally {
             fsStorage.artifacts.clearImportingExternalFile(evt.entryFile)
           }

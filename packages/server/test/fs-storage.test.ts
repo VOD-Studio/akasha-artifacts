@@ -1132,5 +1132,63 @@ describe('.artifacts/ 原生文件存储适配器与外部编辑监听', () => {
     // 健康目录仍正常导入，双入口冲突目录未被错误建档
     const list = await srv.repositories.artifacts.listByProject('proj_dual')
     expect(list.map((a) => a.slug)).toEqual(['html/healthy'])
+
+    // 清理掉冲突的 index.jsx 后再次扫描，保留的 index.tsx 必须能正常导入且不被失败缓存屏蔽
+    fs.rmSync(path.join(dualReactDir, 'index.jsx'))
+    const recovered = await srv.fsWatcher?.scanAll()
+    expect(recovered).toBeGreaterThanOrEqual(1)
+    const afterResolve = await srv.repositories.artifacts.listByProject('proj_dual')
+    expect(afterResolve.map((a) => a.slug).sort()).toEqual(['html/healthy', 'react/conflict-react'])
+  })
+
+  it('双入口冲突导致外部编辑同步被拒后，删除冲突文件仍可恢复同步为新版本而不被自写缓存屏蔽', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-recover-after-reject-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    const container = createLocalContainer({
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_recover',
+      fsWatchDebounceMs: 30,
+    })
+    closers.push(container.close)
+    await container.ready
+
+    const pub = await container.service.publish({
+      projectId: 'proj_recover',
+      slug: 'react/app',
+      title: 'App',
+      type: 'react',
+      source: 'export default function App() { return <div>v1</div> }',
+      author: 'agent:cli',
+    })
+
+    const appDir = path.join(artifactsDir, 'react', 'app')
+    const tsxFile = path.join(appDir, 'index.tsx')
+    const jsxFile = path.join(appDir, 'index.jsx')
+
+    // 同时修改 index.tsx 并新建不同内容的 index.jsx → 触发双入口冲突拒绝
+    fs.writeFileSync(
+      tsxFile,
+      'export default function App() { return <div>tsx edit</div> }',
+      'utf8',
+    )
+    fs.writeFileSync(
+      jsxFile,
+      'export default function App() { return <div>jsx edit</div> }',
+      'utf8',
+    )
+    await expect(container.fsWatcher?.syncFile(tsxFile)).rejects.toThrow(/多个未入库的外部修改/)
+
+    // 删除冲突的 index.jsx 后，保留的 index.tsx 编辑必须能顺利同步为 v2
+    fs.rmSync(jsxFile)
+    const synced = await container.fsWatcher?.scanAll()
+    expect(synced).toBe(1)
+
+    const latest = await container.service.getArtifact({ id: pub.artifact.publicId })
+    expect(latest.artifact.headVersion).toBe(2)
+    expect(latest.version.source).toContain('tsx edit')
+    expect(latest.version.author).toBe('agent:fs')
   })
 })
