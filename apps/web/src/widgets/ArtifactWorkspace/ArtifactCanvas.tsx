@@ -25,6 +25,7 @@ import {
   zoomCamera,
 } from './canvas-camera'
 import type { CanvasBoard, CanvasDocument, CanvasLocation, CanvasPage } from './canvas-model'
+import { useBoardGesture } from './useBoardGesture'
 import { useBoardPresentation } from './useBoardPresentation'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
 import { useViewportSize } from './useViewportSize'
@@ -353,6 +354,15 @@ export function ArtifactCanvas({
       }
     })
   }
+  const boardGesture = useBoardGesture(boardEditing, (boardId) => {
+    selectBoard(boardId)
+    updateCamera((current) => (current.fit ? { ...current, fit: null } : current))
+  })
+  const boundsFor = (id: string) =>
+    boardGesture.preview?.pageId === pageId && boardGesture.preview?.boardId === id
+      ? boardGesture.preview.bounds
+      : layout.bounds.get(id)
+  const canDragBoards = boardEditing?.available && !handActive && !pickerActive && !modifier
 
   const keyDown = useEffectEvent((event: KeyboardEvent) => {
     if (event.defaultPrevented || navigatorOpen) return
@@ -366,6 +376,24 @@ export function ArtifactCanvas({
     }
     const target = event.target instanceof Element ? event.target : null
     const editing = target?.closest(KEYBOARD_CONTROL)
+    if (
+      boardEditing &&
+      (event.ctrlKey || event.metaKey) &&
+      !event.altKey &&
+      !event.isComposing &&
+      event.key.toLowerCase() === 'z' &&
+      target &&
+      (target === window.document.body || viewportRef.current?.contains(target)) &&
+      !target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')
+    ) {
+      const action = event.shiftKey ? boardEditing.redo : boardEditing.undo
+      if (action) {
+        boardGesture.cancel()
+        event.preventDefault()
+        action()
+      }
+      return
+    }
     if (event.code === 'Space' && !editing && !event.altKey && !event.ctrlKey && !event.metaKey) {
       event.preventDefault()
       setSpace(true)
@@ -373,6 +401,7 @@ export function ArtifactCanvas({
     if (event.key === 'Control' || event.key === 'Meta') setModifier(true)
     if (event.key !== 'Escape' || target?.closest('input, textarea, [contenteditable="true"]'))
       return
+    boardGesture.cancel()
     setHand(false)
     setSpace(false)
     setPickerActive(false)
@@ -405,6 +434,7 @@ export function ArtifactCanvas({
     const viewport = viewportRef.current
     if (!viewport || !event.deltaY || pageId === undefined || invalidAddress) return
     event.preventDefault()
+    if (boardGesture.preview?.phase === 'dragging') return
     const rect = viewport.getBoundingClientRect()
     const anchor = { x: event.clientX - rect.left, y: event.clientY - rect.top }
     const delta =
@@ -485,12 +515,14 @@ export function ArtifactCanvas({
   }
 
   const setCanvasTool = (next: boolean) => {
+    boardGesture.cancel()
     setHand(next)
     setPickerActive(false)
     visualEdit?.cancel()
   }
 
   const pauseCanvasTools = () => {
+    boardGesture.cancel()
     setNavigatorOpen(false)
     setPickerActive(false)
     setSpace(false)
@@ -561,8 +593,8 @@ export function ArtifactCanvas({
                   data-hand-drawn={document.handDrawnFlows}
                 >
                   {flows.map(([key, { from, to, label }]) => {
-                    const start = layout.bounds.get(from)
-                    const end = layout.bounds.get(to)
+                    const start = boundsFor(from)
+                    const end = boundsFor(to)
                     if (!start || !end) return null
                     const sameRow = start.y === end.y
                     const forward = sameRow ? start.x < end.x : start.y < end.y
@@ -592,7 +624,7 @@ export function ArtifactCanvas({
                 </svg>
               ) : null}
               {page.boards.map((board) => {
-                const bounds = layout.bounds.get(board.id)
+                const bounds = boundsFor(board.id)
                 if (!bounds) return null
                 const isSelected = selected === board.id
                 const interactive =
@@ -609,8 +641,8 @@ export function ArtifactCanvas({
                     style={{
                       left: camera.x + bounds.x * camera.scale,
                       top: camera.y + bounds.y * camera.scale,
-                      width: board.width * camera.scale,
-                      height: board.height * camera.scale,
+                      width: bounds.width * camera.scale,
+                      height: bounds.height * camera.scale,
                     }}
                   >
                     <div className="artifact-canvas-board-header">
@@ -619,6 +651,19 @@ export function ArtifactCanvas({
                         className="artifact-canvas-board-title"
                         aria-pressed={isSelected}
                         title={board.subtitle ?? board.title}
+                        data-movable={canDragBoards ? true : undefined}
+                        {...boardGesture.events}
+                        onPointerDown={(event) => {
+                          if (canDragBoards) {
+                            boardGesture.begin(event, {
+                              pageId: page.id,
+                              boardId: board.id,
+                              original: bounds,
+                              mode: 'move',
+                              scale: camera.scale,
+                            })
+                          }
+                        }}
                         onFocus={(event) => {
                           if (!measurable || !event.currentTarget.matches(':focus-visible')) return
                           const viewport = viewportRef.current?.getBoundingClientRect()
@@ -712,6 +757,25 @@ export function ArtifactCanvas({
                         />
                       ) : null}
                     </div>
+                    {isSelected && canDragBoards ? (
+                      <button
+                        type="button"
+                        className="artifact-canvas-board-resize"
+                        tabIndex={-1}
+                        aria-label={`拖动调整尺寸：${board.title}`}
+                        title="拖动调整尺寸；键盘请使用设置画板"
+                        {...boardGesture.events}
+                        onPointerDown={(event) =>
+                          boardGesture.begin(event, {
+                            pageId: page.id,
+                            boardId: board.id,
+                            original: bounds,
+                            mode: 'resize',
+                            scale: camera.scale,
+                          })
+                        }
+                      />
+                    ) : null}
                   </div>
                 )
               })}
@@ -737,6 +801,7 @@ export function ArtifactCanvas({
               : undefined
           }
           canAddBoard={boardEditing?.available}
+          history={boardEditing}
           canZoom={Boolean(page?.boards.length && !invalidAddress)}
           onZoom={zoom}
           onFitPage={

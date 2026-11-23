@@ -3,7 +3,11 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 import { artifactKeys, notifyHumanVersionEdit } from '../../entities/artifact/queries'
 import { ApiError, type ArtifactDetailResponse, publishHumanVersion } from '../../shared/api/client'
-import { type CanvasBoardEdit, editCanvasBoards } from './canvas-board-source'
+import {
+  type CanvasBoardEdit,
+  type CanvasSourceChange,
+  editCanvasBoards,
+} from './canvas-board-source'
 
 interface EditingInput {
   artifact: Artifact
@@ -12,10 +16,19 @@ interface EditingInput {
   onVersionSaved?: (version: Version) => void
 }
 
+interface Timeline {
+  past: readonly CanvasSourceChange[]
+  future: readonly CanvasSourceChange[]
+}
+
+const EMPTY_TIMELINE: Timeline = { past: [], future: [] }
+const MAX_LOCAL_EDITS = 24
+
 interface PendingEdit {
   artifactId: string
   base: Version
   source: string
+  timeline: Timeline
   status: 'saving' | 'failed'
   error?: string
 }
@@ -27,6 +40,8 @@ export interface CanvasBoardEditing {
   inputError: string
   available: boolean
   change: (command: CanvasBoardEdit, base?: Version) => void
+  undo?: () => void
+  redo?: () => void
   dismissDraft: () => void
 }
 
@@ -39,9 +54,20 @@ export function useCanvasBoardEditing({
 }: EditingInput): CanvasBoardEditing {
   const query = useQueryClient()
   const [pending, setPending] = useState<PendingEdit | null>(null)
+  const [history, setHistory] = useState<{
+    artifactId: string
+    version: number
+    timeline: Timeline
+  } | null>(null)
   const [inputError, setInputError] = useState('')
   const inFlight = useRef(false)
   const draft = pending?.artifactId === artifact.publicId ? pending : null
+  const available = enabled && !draft
+  // 不跨作者或页面编辑发布的新头版本重放旧快照。
+  const timeline =
+    history?.artifactId === artifact.publicId && history.version === version.version
+      ? history.timeline
+      : EMPTY_TIMELINE
 
   async function save(edit: PendingEdit) {
     if (inFlight.current) return
@@ -73,6 +99,11 @@ export function useCanvasBoardEditing({
             ? current
             : { ...current, artifact: saved.artifact, version: saved.version },
       )
+      setHistory({
+        artifactId: artifact.publicId,
+        version: saved.version.version,
+        timeline: edit.timeline,
+      })
       setPending(null)
       void query.invalidateQueries({ queryKey: artifactKeys.all })
       onVersionSaved?.(saved.version)
@@ -90,18 +121,41 @@ export function useCanvasBoardEditing({
     }
   }
 
+  function replay(forward: boolean) {
+    if (!available) return
+    const change = (forward ? timeline.future : timeline.past).at(-1)
+    if (!change) return
+    void save({
+      artifactId: artifact.publicId,
+      base: version,
+      source: forward ? change.after : change.before,
+      timeline: forward
+        ? { past: [...timeline.past, change], future: timeline.future.slice(0, -1) }
+        : { past: timeline.past.slice(0, -1), future: [...timeline.future, change] },
+      status: 'saving',
+    })
+  }
+
   return {
     version,
     draft,
     inputError,
-    available: enabled && !draft,
+    available,
+    undo: available && timeline.past.length ? () => replay(false) : undefined,
+    redo: available && timeline.future.length ? () => replay(true) : undefined,
     change(command: CanvasBoardEdit, base = version) {
       if (draft || inFlight.current) return
       setInputError('')
       try {
-        const source = editCanvasBoards(base.source, base.version, command)
-        if (source === base.source) return
-        void save({ artifactId: artifact.publicId, base, source, status: 'saving' })
+        const change = editCanvasBoards(base.source, base.version, command)
+        if (change.after === base.source) return
+        void save({
+          artifactId: artifact.publicId,
+          base,
+          source: change.after,
+          timeline: { past: [...timeline.past.slice(1 - MAX_LOCAL_EDITS), change], future: [] },
+          status: 'saving',
+        })
       } catch (cause) {
         setInputError(cause instanceof Error ? cause.message : '无法应用画板操作')
       }

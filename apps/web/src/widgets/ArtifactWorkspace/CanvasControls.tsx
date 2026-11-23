@@ -12,12 +12,15 @@ import {
   PanelTop,
   Pencil,
   Plus,
+  Redo2,
+  Undo2,
 } from 'lucide-react'
 import { useState } from 'react'
 import { ElementPickerButton } from '../../features/element-picker/ElementPickerButton'
 import { CanvasPageActions, type CanvasPageEditing } from './CanvasPageActions'
 import type { Camera } from './canvas-camera'
 import type { CanvasPage } from './canvas-model'
+import type { CanvasBoardEditing } from './useCanvasBoardEditing'
 
 const ZOOM_STEP = 1.25
 
@@ -170,6 +173,7 @@ export function CanvasToolbar({
   onToggleVisualEdit,
   onAddBoard,
   canAddBoard,
+  history,
 }: {
   camera: Camera
   hand: boolean
@@ -183,6 +187,7 @@ export function CanvasToolbar({
   onToggleVisualEdit: () => void
   onAddBoard?: () => void
   canAddBoard?: boolean
+  history?: Pick<CanvasBoardEditing, 'undo' | 'redo'>
 }) {
   return (
     <>
@@ -274,6 +279,32 @@ export function CanvasToolbar({
           </Button>
         ) : null}
         <ElementPickerButton onStart={onStartPicker} />
+        {history ? (
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              iconOnly
+              aria-label="撤销画布编辑"
+              title="撤销画布编辑"
+              disabled={!history.undo}
+              onClick={history.undo}
+            >
+              <Undo2 size={15} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              iconOnly
+              aria-label="重做画布编辑"
+              title="重做画布编辑"
+              disabled={!history.redo}
+              onClick={history.redo}
+            >
+              <Redo2 size={15} />
+            </Button>
+          </>
+        ) : null}
         {visualEditActive !== undefined ? (
           <Button
             variant={visualEditActive ? 'secondary' : 'ghost'}

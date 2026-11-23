@@ -671,6 +671,10 @@ function showEditableWorkspace(initial: ArtifactDetailResponse, address?: string
     get submittedVersion() {
       return submittedVersion
     },
+    receiveAgentSource(source: string) {
+      current = detailFor(current.version.version + 1, source)
+      view.update(editable(current))
+    },
   }
 }
 
@@ -799,4 +803,76 @@ it('画板表单打开后收到新版本时，保留未保存布局而不提交�
       ([path, init]) => path === '/api/v1/artifacts' && init?.method === 'POST',
     ),
   ).toBe(false)
+})
+
+it('撤销和重做只重放本会话操作，其他作者推进头版本后停止', async () => {
+  const editor = showEditableWorkspace(detailFor())
+  const board = () => screen.getByTitle<HTMLIFrameElement>('宽屏首页 隔离沙盒')
+  fireEvent.click(screen.getByRole('button', { name: '设置画板：宽屏首页' }))
+  fireEvent.change(screen.getByRole('spinbutton', { name: '宽度' }), { target: { value: '900' } })
+  fireEvent.click(screen.getByRole('button', { name: '应用布局' }))
+  await waitFor(() => expect(board().width).toBe('900'))
+  expect(editor.submittedVersion).toBe(1)
+
+  fireEvent.click(screen.getByRole('button', { name: '撤销画布编辑' }))
+  await waitFor(() => expect(board().width).toBe('1440'))
+  expect(editor.submittedVersion).toBe(2)
+  fireEvent.click(screen.getByRole('button', { name: '重做画布编辑' }))
+  await waitFor(() => expect(board().width).toBe('900'))
+  expect(editor.submittedVersion).toBe(3)
+
+  editor.receiveAgentSource(
+    JSON.stringify({
+      ...design,
+      boards: design.boards.map((entry) =>
+        entry.id === 'desktop' ? { ...entry, viewport: { width: 1000, height: 700 } } : entry,
+      ),
+    }),
+  )
+  const undo = screen.getByRole('button', { name: '撤销画布编辑' })
+  expect(undo.hasAttribute('disabled')).toBe(true)
+  fireEvent.click(undo)
+  expect(board().width).toBe('1000')
+  expect(editor.submittedVersion).toBe(3)
+})
+
+it('拖动只预览，取消不发布，移动或调整大小完成时各发布一次', async () => {
+  vi.stubGlobal('PointerEvent', MouseEvent)
+  const editor = showEditableWorkspace(detailFor())
+  const title = screen.getByRole('button', { name: '宽屏首页' })
+  const frame = () => screen.getByTitle<HTMLIFrameElement>('宽屏首页 隔离沙盒')
+  const outer = title.closest<HTMLElement>('.artifact-canvas-board')
+  if (!outer) throw new Error('桌面画板夹具不可用')
+  const initialLeft = Number.parseFloat(outer.style.left)
+  const first = { button: 0, clientX: 12, clientY: 20 }
+  fireEvent.pointerDown(title, first)
+  fireEvent.pointerMove(title, { clientX: 68, clientY: 53 })
+  expect(Number.parseFloat(outer.style.left)).toBe(initialLeft + 56)
+  expect(editor.submittedVersion).toBeUndefined()
+  fireEvent.pointerCancel(title)
+  expect(Number.parseFloat(outer.style.left)).toBe(initialLeft)
+  expect(editor.current.version.version).toBe(1)
+
+  fireEvent.pointerDown(title, first)
+  fireEvent.pointerMove(title, { clientX: 72, clientY: 54 })
+  fireEvent.pointerUp(title, { clientX: 72, clientY: 54 })
+  await waitFor(() => expect(editor.current.version.version).toBe(2))
+  expect(JSON.parse(editor.current.version.source).boards[0].position).toEqual({ x: 60, y: 34 })
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: '撤销画布编辑' }).hasAttribute('disabled')).toBe(
+      false,
+    ),
+  )
+  const resize = await screen.findByRole('button', { name: '拖动调整尺寸：宽屏首页' })
+  fireEvent.pointerDown(resize, first)
+  fireEvent.pointerMove(resize, { clientX: 76, clientY: 64 })
+  expect(
+    Number.parseFloat(frame().closest<HTMLElement>('.artifact-canvas-board')?.style.width ?? ''),
+  ).toBe(1504)
+  expect(frame().width).toBe('1440')
+  expect(editor.current.version.version).toBe(2)
+  fireEvent.pointerUp(resize, { clientX: 76, clientY: 64 })
+  await waitFor(() => expect(frame().width).toBe('1504'))
+  expect(editor.current.version.version).toBe(3)
+  expect(frame().height).toBe('944')
 })

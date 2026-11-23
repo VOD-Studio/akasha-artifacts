@@ -9,6 +9,12 @@ export type CanvasBoardEdit =
   | { kind: 'delete'; ids: readonly string[] }
   | { kind: 'geometry'; changes: readonly { id: string; bounds: CanvasBounds }[] }
 
+/** 版本重放用真实源码，而不是可变 DOM 或相机快照。 */
+export interface CanvasSourceChange {
+  before: string
+  after: string
+}
+
 function geometry({ x, y, width, height }: CanvasBounds) {
   const { coordinate, viewport } = ARTBOARD_GEOMETRY_LIMITS
   if (![x, y].every((value) => Number.isFinite(value) && Math.abs(value) <= coordinate)) {
@@ -23,9 +29,14 @@ function geometry({ x, y, width, height }: CanvasBounds) {
 }
 
 /** 应用已完成的画板操作，保留无关字段、旧定位和版本内的流程引用。 */
-export function editCanvasBoards(source: string, version: number, edit: CanvasBoardEdit): string {
+export function editCanvasBoards(
+  source: string,
+  version: number,
+  edit: CanvasBoardEdit,
+): CanvasSourceChange {
   const draft = readEditableCanvasSource(source, version)
   const { raw, boards, pages } = draft
+  const before = draft.stabilized ? JSON.stringify(raw, null, 2) : source
   switch (edit.kind) {
     case 'create': {
       if (boards.has(edit.id)) throw new Error('画板标识已存在')
@@ -78,5 +89,5 @@ export function editCanvasBoards(source: string, version: number, edit: CanvasBo
       }
       break
   }
-  return JSON.stringify(raw, null, 2)
+  return { before, after: JSON.stringify(raw, null, 2) }
 }
