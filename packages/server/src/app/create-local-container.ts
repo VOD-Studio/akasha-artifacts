@@ -365,6 +365,7 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
         store: artifactStorage,
         projects,
         artifacts,
+        ids,
         service,
         baseUrl: () => `http://${options.agentHost ?? '127.0.0.1'}:${daemonState.port}`,
       })

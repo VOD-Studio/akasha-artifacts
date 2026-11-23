@@ -11,7 +11,7 @@ import type {
 import type { AgentRunner } from '../domain/agent-runner.js'
 import type { ArtifactStorageRepository } from '../domain/artifact-storage.js'
 import { DomainError, NotFoundError } from '../domain/errors.js'
-import type { ArtifactRepository, ProjectRepository } from '../domain/ports.js'
+import type { ArtifactRepository, IdGenerator, ProjectRepository } from '../domain/ports.js'
 import type { ArtifactService } from './artifact-service.js'
 
 interface StoredSession {
@@ -19,6 +19,8 @@ interface StoredSession {
   threadId?: string
   /** 首发时的本机项目目录；重新登记相同项目 ID 不会转移授权线程。 */
   root?: string
+  /** 写入制品前保留首发地址和轮次；只有实际存在的 v1 才确认发布。 */
+  firstPublication?: { artifactId: string; turnId: string }
   /** 经过权限过滤后可向本机浏览器返回的信息。 */
   conversation: AgentConversation
 }
@@ -47,6 +49,7 @@ interface AgentSessionDeps {
   projects: ProjectRepository
   /** 校验固定源和当前归属。 */
   artifacts: ArtifactRepository
+  ids: IdGenerator
   /** 真实发布与普通发布使用同一版本写入路径。 */
   service: ArtifactService
   /** 监听完成后取得本机回环地址，不使用请求 Host 拼接。 */
@@ -129,6 +132,7 @@ export class AgentSessions {
     if (
       !record?.threadId ||
       !record.root ||
+      record.conversation.artifactId !== id ||
       record.conversation.projectId !== artifact.projectId ||
       (await this.deps.projects.findById(artifact.projectId))?.rootPath !== record.root
     )
@@ -192,6 +196,8 @@ export class AgentSessions {
         !threadId
       )
         throw forbidden()
+      const first = await this.reserveFirstPublication(run)
+      run.controller.signal.throwIfAborted()
       const result = await this.deps.service.publish({
         projectId: conversation.projectId,
         slug: input.slug,
@@ -199,19 +205,13 @@ export class AgentSessions {
         type: input.type,
         source: input.source,
         visibility: 'private',
-        author: 'agent:codex',
+        author: `agent:${conversation.id}`,
+        preferredPublicId: first,
         createOnly: true,
       })
       conversation.artifactId = result.artifact.publicId
-      await this.recordPublication(run, result.artifact.publicId, result.version.version)
-      if (
-        !(await this.deps.store.compareAndSet(
-          artifactKey(result.artifact.publicId),
-          0,
-          JSON.stringify(conversation.id),
-        ))
-      )
-        throw new Error('制品的会话绑定已存在')
+      // 这里不依赖再次写会话日志。已存在的 v1 加发布前预留记录足以恢复。
+      run.turn.publications.push({ artifactId: result.artifact.publicId, version: 1 })
       return result
     })
   }
@@ -225,7 +225,7 @@ export class AgentSessions {
         baseVersion: input.baseVersion,
         title: input.title,
         edits: input.edits,
-        author: 'agent:codex',
+        author: `agent:${run.record.conversation.id}`,
       })
       await this.recordPublication(run, result.artifact.publicId, result.version.version)
       return result
@@ -270,10 +270,38 @@ export class AgentSessions {
     return result
   }
 
+  private async reserveFirstPublication({ record, turn }: RunningTurn) {
+    const first = record.firstPublication ?? {
+      artifactId: this.deps.ids.publicId(),
+      turnId: turn.id,
+    }
+    record.firstPublication = first
+    await this.save(record)
+    const key = artifactKey(first.artifactId)
+    const expected = JSON.stringify(record.conversation.id)
+    const existing = await this.deps.store.read(key)
+    if (
+      existing
+        ? existing.json !== expected
+        : !(await this.deps.store.compareAndSet(key, 0, expected))
+    )
+      throw new DomainError('RESOURCE_CONFLICT', '首发地址已有其他绑定，未发布制品')
+    return first.artifactId
+  }
+
   private async load(id: string): Promise<StoredSession | undefined> {
     const snapshot = await this.deps.store.read(sessionKey(id))
     if (!snapshot) return
     const record = JSON.parse(snapshot.json) as StoredSession
+    const first = record.firstPublication
+    if (first && !record.conversation.artifactId) {
+      const version = await this.deps.artifacts.getVersion(first.artifactId, 1)
+      const origin = record.conversation.turns.find(({ id }) => id === first.turnId)
+      if (version?.author === `agent:${id}` && origin) {
+        record.conversation.artifactId = first.artifactId
+        origin.publications.push({ artifactId: first.artifactId, version: 1 })
+      }
+    }
     const last = record.conversation.turns.at(-1)
     const active = this.running.get(record.conversation.projectId)
     if (last?.status === 'running' && active?.turn.id !== last.id) {
