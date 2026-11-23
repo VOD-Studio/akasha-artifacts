@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.0](https://github.com/VOD-Studio/akasha-artifacts/compare/v0.3.0...v0.4.0) (2026-11-23)
+
+
+### 新增
+
+* **kit:** 实现模板注册机制决策形态与属性面板 ([dcceab4](https://github.com/VOD-Studio/akasha-artifacts/commit/dcceab4e864a5704bc3b0f02e415a68a4929102e))
+* **server:** 实现项目内原生文件目录存储 ([515fbad](https://github.com/VOD-Studio/akasha-artifacts/commit/515fbad87f6dbcb7cb5c10a20082e2178b80d0fd))
+* **web:** 实现分栏代码编辑与版本冲突处理界面 ([9ab14df](https://github.com/VOD-Studio/akasha-artifacts/commit/9ab14df28893558a49e0038aca857d450be9844b))
+
 ## [0.3.0](https://github.com/VOD-Studio/akasha-artifacts/compare/v0.2.0...v0.3.0) (2026-11-22)
 
 
