@@ -1,4 +1,5 @@
 import type { ArtifactType, DesignLayer } from '@akasha/protocol'
+import { tsxLanguage } from '@codemirror/lang-javascript'
 import { strToU8, zipSync } from 'fflate'
 import boot from './offline-boot.js?raw'
 import player from './offline-player.js?raw'
@@ -64,19 +65,43 @@ function inspectHtml(source: string) {
   }
 }
 
+function inspectReact(source: string) {
+  // 静态检测条件分支中的资源字面量；表达式的实际结果由隔离沙盒预检。
+  tsxLanguage.parser.parse(source).iterate({
+    enter({ name, node, from, to }) {
+      if (
+        name === 'MemberExpression' &&
+        /^(?:window\.)?akasha\s*(?:\?\.|\.)\s*storage$/.test(source.slice(from, to))
+      )
+        throw new Error('依赖运行存储的交互不能离线打包，请改用内置初始数据')
+      if (name !== 'JSXAttribute') return
+      const attribute = node.getChild('JSXIdentifier')
+      const tag = node.parent?.getChild('JSXBuiltin')?.getChild('JSXIdentifier')
+      if (!attribute || !tag) return
+      const key = source.slice(attribute.from, attribute.to)
+      const element = source.slice(tag.from, tag.to)
+      const isResource =
+        (key === 'src' &&
+          /^(?:img|audio|video|source|track|input|iframe|script|embed)$/.test(element)) ||
+        (key === 'poster' && element === 'video') ||
+        (key === 'href' && /^(?:image|use|link)$/.test(element))
+      if (!isResource) return
+      const expression = node.getChild('JSXEscape')
+      const literal =
+        node.getChild('JSXAttributeValue') ??
+        expression?.getChild('String') ??
+        expression?.getChild('TemplateString')
+      if (!literal) return
+      const url = source.slice(literal.from + 1, literal.to - 1).trim()
+      if (!url.includes('${') && !url.includes('\\') && !embedded(url))
+        throw new Error(`不能离线打包资源：${url.slice(0, 180)}`)
+    },
+  })
+}
+
 function inspectBoard(board: OfflineBoard) {
   if (board.type === 'html' || board.type === 'svg') inspectHtml(board.source)
-  if (board.type !== 'react') return
-  if (/\bakasha\s*(?:\?\.|\.)\s*storage\b/.test(board.source))
-    throw new Error('依赖运行存储的交互不能离线打包，请改用内置初始数据')
-  // 动态渲染的资源另用真实沙盒预检；这里提前发现条件分支中的常见字面量。
-  for (const match of board.source.matchAll(
-    /\b(?:src|poster)\s*=\s*(?:\{\s*)?(['"`])([^\n]*?)\1/g,
-  )) {
-    const url = match[2]?.trim() ?? ''
-    if (!url.includes('${') && !embedded(url))
-      throw new Error(`不能离线打包资源：${url.slice(0, 180)}`)
-  }
+  if (board.type === 'react') inspectReact(board.source)
 }
 
 function frameParts(runtime: string) {
