@@ -30,10 +30,11 @@ import { TopBar } from '../widgets/TopBar/TopBar'
 
 function RootLayout() {
   const navigate = useNavigate()
+  const isLibrary = useLocation({ select: (location) => location.pathname === '/' })
   return (
     <>
       <Outlet />
-      <ArtifactCommandPalette onNavigate={(to) => void navigate({ to })} />
+      {!isLibrary ? <ArtifactCommandPalette onNavigate={(to) => void navigate({ to })} /> : null}
       <Toaster position="bottom-right" />
     </>
   )
