@@ -8,7 +8,7 @@
 Akasha 的服务端要以两种形态运行：
 
 - **本地 Daemon**：通过 `npx akasha-artifacts` 分发，零配置启动。
-- **云端 Hub**：用 Docker 自托管，或部署到 Cloudflare Workers。
+- **云端 Hub**：先交付 Docker 自托管，Cloudflare Workers 仅作为后续可选的部署目标。
 
 同时，下面这些逻辑必须在浏览器外壳、沙盒 iframe、服务端和 MCP 进程四个运行时中保持一致：
 
@@ -48,4 +48,4 @@ Akasha 的服务端要以两种形态运行：
 
 - 单个 Hub 实例的实时连接数持续超过 Node 的承载能力。
 - 产品重心转向不需要和浏览器共享逻辑的服务端功能。
-- 放弃 Cloudflare Workers 部署形态。
+- 不再保留 Cloudflare Workers 作为可选的部署目标。

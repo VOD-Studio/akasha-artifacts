@@ -125,7 +125,9 @@ flowchart TB
 | **M3** | `@akasha/kit` schema 引擎与 L2 属性面板、`artboard` / `document` / `verify`、L3 分栏代码编辑、`.artifacts/` 原生文件模式 | 已完成 |
 | **M4** | L4 可视化直改（AST 回写与撤销）、作用域存储、PR 走查与数据故事模板                                                       | 已完成 |
 | **M5** | Docker 单容器 Cloud Hub 自托管（OAuth、可见性权限、离线反馈队列、本机访问优先直连 Daemon）                               | 已完成 |
-| **M6** | Cloudflare Workers（D1 + R2 + Durable Objects）与多人 CRDT 协同编辑                                                      | 未实现 |
+| **M6** | 可选的 Cloudflare Workers 部署（[#29](https://github.com/VOD-Studio/akasha-artifacts/issues/29)）                        | 后置   |
+
+多人同时编辑尚未实现，独立于 Hub 的部署方式。
 
 ---
 
@@ -171,7 +173,7 @@ claude mcp add akasha -- npx -y akasha-artifacts mcp
 
 ### 2. 团队云端部署（Docker）
 
-按[单镜像部署指南](deploy/docker/README.md)配置[环境变量](deploy/docker/.env.example)。默认 SQLite，可选 PostgreSQL 和 S3 兼容对象存储。生产外壳与沙盒必须使用不同的注册域名。
+Docker 是 Cloud Hub 的默认部署方式，不需要 Cloudflare。按[单镜像部署指南](deploy/docker/README.md)配置[环境变量](deploy/docker/.env.example)。默认 SQLite，可选 PostgreSQL 和 S3 兼容对象存储。生产外壳与沙盒必须使用不同的注册域名。
 
 先登录，再将 MCP 接到团队 Hub：
 
