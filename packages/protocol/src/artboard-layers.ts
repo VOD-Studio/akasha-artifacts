@@ -31,12 +31,33 @@ const geometry = {
 
 /** 可独立变换的原生设计图层；声明式数据，不执行制品脚本。 */
 export const DesignLayerSchema = z.discriminatedUnion('kind', [
-  z.object({ ...geometry, kind: z.literal('text'), text: z.string().max(8000) }),
-  z.object({ ...geometry, kind: z.literal('note'), text: z.string().max(8000) }),
-  z.object({ ...geometry, kind: z.literal('rectangle') }),
-  z.object({ ...geometry, kind: z.literal('ellipse') }),
   z.object({
     ...geometry,
+    // 无底色的设计文案；与网页节点的运行文字无关
+    kind: z.literal('text'),
+    // 原样显示换行，按纯文本渲染而不解释为 HTML
+    text: z.string().max(8000),
+  }),
+  z.object({
+    ...geometry,
+    // 带底色和内边距的说明，不生成批注线程或 Agent 反馈
+    kind: z.literal('note'),
+    // 便签的纯文本正文；允许空白便签
+    text: z.string().max(8000),
+  }),
+  z.object({
+    ...geometry,
+    // 直角实心形状，以几何边界决定尺寸
+    kind: z.literal('rectangle'),
+  }),
+  z.object({
+    ...geometry,
+    // 在矩形边界内作内切椭圆；宽高相等时为正圆
+    kind: z.literal('ellipse'),
+  }),
+  z.object({
+    ...geometry,
+    // 按采样顺序连接的开放笔迹，不填充轮廓
     kind: z.literal('stroke'),
     // 在自己的包围盒中归一化到 0–1，移动、缩放不改笔迹采样
     points: z.array(unitPoint).min(2).max(2048),
