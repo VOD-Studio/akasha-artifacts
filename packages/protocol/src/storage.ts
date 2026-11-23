@@ -33,6 +33,7 @@ export const ArtifactStorageOperationSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('list'),
     scope,
+    // 只列出以它开头的键
     prefix: z.string().max(ARTIFACT_STORAGE_LIMITS.keyBytes).optional(),
   }),
 ])
