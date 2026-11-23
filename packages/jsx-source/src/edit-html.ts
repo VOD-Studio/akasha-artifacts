@@ -2,6 +2,7 @@ import { type DefaultTreeAdapterTypes, defaultTreeAdapter } from 'parse5'
 import type { LiteralTarget, SourcePatch } from './edit.js'
 import { parseHtmlSource, SKIP_HTML_TAGS } from './html-loc.js'
 
+// 内容按原始文本处理的标签；其中没有可解析的子元素
 const RAW_TEXT: Record<string, true> = {
   iframe: true,
   noembed: true,
@@ -57,6 +58,7 @@ function htmlAttributeEditor(
   }
 }
 
+/** 收集 HTML 源码里可直改的静态节点，以 `loc` 为键。 */
 export function collectHtmlTargets(source: string): Map<string, LiteralTarget> {
   const root = parseHtmlSource(source)
   const targets = new Map<string, LiteralTarget>()

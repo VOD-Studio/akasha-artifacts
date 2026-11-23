@@ -34,6 +34,7 @@ interface Parse5Node {
   sourceCodeLocation?: Parse5Location | null
 }
 
+/** 不注入 `data-ak-loc` 的标签：文档骨架，以及不含可指认内容的元素。 */
 export const SKIP_HTML_TAGS = new Set([
   'html',
   'head',
@@ -48,6 +49,7 @@ export const SKIP_HTML_TAGS = new Set([
   'template',
 ])
 
+/** 完整文档用 `parse`，片段用 `parseFragment`；两者都带源码位置信息。 */
 export function parseHtmlSource(
   source: string,
 ): DefaultTreeAdapterMap['document'] | DefaultTreeAdapterMap['documentFragment'] {
@@ -56,7 +58,11 @@ export function parseHtmlSource(
     : parseFragment(source, { sourceCodeLocationInfo: true })
 }
 
-// 使用 parse5 的 sourceCodeLocationInfo 为 HTML/文档元素注入 data-ak-loc="line:col"，不破坏原有格式。
+/**
+ * 为 HTML 或文档源码里的元素注入 `data-ak-loc="line:col"`，不改写其余内容。
+ *
+ * @remarks 已带 `data-ak-loc` 的元素跳过；`loc` 取起始标签的行列，从 1 起。
+ */
 export function injectHtmlLocations(source: string): InjectLocationsResult {
   const root = parseHtmlSource(source) as unknown as Parse5Node
 
