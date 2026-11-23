@@ -114,6 +114,25 @@ afterEach(() => {
   sessionStorage.clear()
 })
 
+it('聚焦报错仍用普通制品的原始链接向 Agent 投递', async () => {
+  const request = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json({}))
+  const base = detailFor(1, '<h1>预约首页</h1>')
+  showWorkspace({ ...base, artifact: { ...base.artifact, type: 'html' } })
+  fireEvent.click(screen.getByRole('button', { name: '聚焦画板：茶席预约' }))
+  const focus = screen.getByRole('region', { name: '画板聚焦' })
+  const frame = within(focus).getByTitle<HTMLIFrameElement>('茶席预约 隔离沙盒')
+  const sandboxFrame = sandbox(frame)
+  sandboxFrame.receive({ type: 'ready' })
+  sandboxFrame.receive({ type: 'error', phase: 'runtime', message: '焦点画板报错' })
+  fireEvent.click(within(focus).getByRole('button', { name: '交给 Agent 修复' }))
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith(
+      expect.stringContaining(`/api/v1/artifacts/${artifact.publicId}/feedback`),
+      expect.objectContaining({ method: 'POST' }),
+    ),
+  )
+})
+
 it('在同一画布页面比较独立视口的宽屏和手机画板', () => {
   const legacyPin: Feedback = {
     id: 'mobile-pin',
@@ -167,6 +186,12 @@ it('在同一画布页面比较独立视口的宽屏和手机画板', () => {
   mobileSandbox.receive({ type: 'error', phase: 'runtime', message: '手机画板渲染失败' })
   expect(mobile.parentElement?.contains(screen.getByText('手机画板渲染失败'))).toBe(true)
   expect(desktop.parentElement?.querySelector('[role="alert"]')).toBeNull()
+
+  fireEvent.click(screen.getByRole('button', { name: '聚焦画板：手机首页' }))
+  const focus = screen.getByRole('region', { name: '画板聚焦' })
+  expect(within(focus).queryByTitle('确认手机字号')).toBeNull()
+  fireEvent.click(within(focus).getByRole('button', { name: '返回总览' }))
+  expect(screen.getByTitle('确认手机字号')).toBeTruthy()
 })
 
 it('跨页查找、热更新和刷新都保留仍在的选板与倍率', () => {

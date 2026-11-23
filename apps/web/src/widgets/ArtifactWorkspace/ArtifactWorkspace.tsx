@@ -207,7 +207,7 @@ export function ArtifactWorkspace({
         version={version}
         state={state}
         sandboxOrigin={sandboxOrigin}
-        pins={versionPins}
+        pins={focused ? EMPTY_FEEDBACKS : versionPins}
         interactive={interactive}
         focused={focused}
         register={focused ? registerFocusedFrame : registerFrame}

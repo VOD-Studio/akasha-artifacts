@@ -347,7 +347,7 @@ export function ArtifactFrame({
       {error?.version === versionNumber ? (
         <div className="pointer-events-auto absolute inset-x-0 bottom-0 z-20 max-h-full overflow-auto p-2">
           <RuntimeErrorPanel
-            artifactId={viewKey}
+            artifactId={scoped ? viewKey : artifactId}
             projectId={artifact.projectId}
             version={versionNumber}
             source={scoped ? source : version.source}
