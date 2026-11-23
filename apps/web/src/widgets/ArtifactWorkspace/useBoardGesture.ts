@@ -1,12 +1,12 @@
 import { ARTBOARD_GEOMETRY_LIMITS, type Version } from '@akasha/protocol'
-import { type PointerEvent, useRef, useState } from 'react'
+import { type MouseEvent, type PointerEvent, useEffect, useRef, useState } from 'react'
 import type { CanvasBounds, Point } from './canvas-camera'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
 
 interface GestureStart {
   pageId: string
   boardId: string
-  original: CanvasBounds
+  initial: ReadonlyMap<string, CanvasBounds>
   mode: 'move' | 'resize'
   scale: number
 }
@@ -17,13 +17,14 @@ interface Gesture extends GestureStart {
   start: Point
   base: Version
   moved: boolean
+  minDelta: Point
+  maxDelta: Point
 }
 
 interface BoardPreview {
   pageId: string
-  boardId: string
   baseVersion: number
-  bounds: CanvasBounds
+  bounds: ReadonlyMap<string, CanvasBounds>
   phase: 'dragging' | 'saving'
 }
 
@@ -32,30 +33,50 @@ type HandleEvent = PointerEvent<HTMLButtonElement>
 function atPointer(
   drag: Gesture,
   event: Pick<HandleEvent, 'clientX' | 'clientY'>,
-): CanvasBounds | undefined {
+): ReadonlyMap<string, CanvasBounds> | undefined {
   const dx = event.clientX - drag.start.x
   const dy = event.clientY - drag.start.y
   if (!drag.moved && Math.abs(dx) < 4 && Math.abs(dy) < 4) return undefined
   const deltaX = Math.round(dx / drag.scale)
   const deltaY = Math.round(dy / drag.scale)
-  const { coordinate, viewport } = ARTBOARD_GEOMETRY_LIMITS
-  const { original } = drag
+  const { viewport } = ARTBOARD_GEOMETRY_LIMITS
   if (drag.mode === 'move') {
-    return {
-      ...original,
-      x: Math.min(coordinate, Math.max(-coordinate, original.x + deltaX)),
-      y: Math.min(coordinate, Math.max(-coordinate, original.y + deltaY)),
+    const x = Math.min(drag.maxDelta.x, Math.max(drag.minDelta.x, deltaX))
+    const y = Math.min(drag.maxDelta.y, Math.max(drag.minDelta.y, deltaY))
+    const boxes = new Map<string, CanvasBounds>()
+    for (const [id, original] of drag.initial) {
+      boxes.set(id, { ...original, x: original.x + x, y: original.y + y })
     }
+    return boxes
   }
-  return {
-    ...original,
-    width: Math.max(1, Math.min(viewport, original.width + deltaX)),
-    height: Math.max(1, Math.min(viewport, original.height + deltaY)),
-  }
+  const original = drag.initial.get(drag.boardId)
+  if (!original) return undefined
+  return new Map([
+    [
+      drag.boardId,
+      {
+        ...original,
+        width: Math.max(1, Math.min(viewport, original.width + deltaX)),
+        height: Math.max(1, Math.min(viewport, original.height + deltaY)),
+      },
+    ],
+  ])
 }
 
-function sameBounds(a: CanvasBounds, b: CanvasBounds) {
-  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
+function sameBounds(a: ReadonlyMap<string, CanvasBounds>, b: ReadonlyMap<string, CanvasBounds>) {
+  if (a.size !== b.size) return false
+  for (const [id, box] of a) {
+    const other = b.get(id)
+    if (
+      !other ||
+      box.x !== other.x ||
+      box.y !== other.y ||
+      box.width !== other.width ||
+      box.height !== other.height
+    )
+      return false
+  }
+  return true
 }
 
 /** 按手势开始时的相机换算坐标，进行中从不发布；松手后沿用抓取时的版本。 */
@@ -65,17 +86,21 @@ export function useBoardGesture(
 ) {
   const active = useRef<Gesture | null>(null)
   const [preview, setPreview] = useState<BoardPreview | null>(null)
+  const draggedTitle = useRef<HTMLButtonElement | null>(null)
+  const saving = editing?.draft?.status === 'saving'
+  useEffect(() => {
+    if (preview?.phase === 'saving' && !saving) setPreview(null)
+  }, [preview?.phase, saving])
 
-  function show(drag: Gesture, bounds: CanvasBounds, phase: BoardPreview['phase']) {
+  function show(drag: Gesture, bounds: BoardPreview['bounds'], phase: BoardPreview['phase']) {
     setPreview((current) =>
       current &&
       current.phase === phase &&
-      current.boardId === drag.boardId &&
+      current.pageId === drag.pageId &&
       sameBounds(current.bounds, bounds)
         ? current
         : {
             pageId: drag.pageId,
-            boardId: drag.boardId,
             baseVersion: drag.base.version,
             phase,
             bounds,
@@ -95,15 +120,24 @@ export function useBoardGesture(
   return {
     preview:
       preview &&
-      (preview.phase === 'dragging' ||
-        (preview.baseVersion === editing?.version.version && editing.draft?.status === 'saving'))
+      (preview.phase === 'dragging' || (preview.baseVersion === editing?.version.version && saving))
         ? preview
         : null,
     begin(event: HandleEvent, start: GestureStart) {
+      draggedTitle.current = null
       if (!editing?.available || active.current || event.button !== 0 || event.isPrimary === false)
         return
       event.stopPropagation()
       event.currentTarget.setPointerCapture?.(event.pointerId)
+      const { coordinate } = ARTBOARD_GEOMETRY_LIMITS
+      const minDelta = { x: -Infinity, y: -Infinity }
+      const maxDelta = { x: Infinity, y: Infinity }
+      for (const bounds of start.initial.values()) {
+        minDelta.x = Math.max(minDelta.x, -coordinate - bounds.x)
+        minDelta.y = Math.max(minDelta.y, -coordinate - bounds.y)
+        maxDelta.x = Math.min(maxDelta.x, coordinate - bounds.x)
+        maxDelta.y = Math.min(maxDelta.y, coordinate - bounds.y)
+      }
       active.current = {
         ...start,
         pointerId: event.pointerId,
@@ -111,9 +145,16 @@ export function useBoardGesture(
         start: { x: event.clientX, y: event.clientY },
         base: editing.version,
         moved: false,
+        minDelta,
+        maxDelta,
       }
     },
     cancel,
+    consumesClick(event: MouseEvent<HTMLButtonElement>) {
+      if (!event.detail || draggedTitle.current !== event.currentTarget) return false
+      draggedTitle.current = null
+      return true
+    },
     events: {
       onPointerMove(event: HandleEvent) {
         const drag = active.current
@@ -130,13 +171,17 @@ export function useBoardGesture(
         const drag = active.current
         if (!drag || event.pointerId !== drag.pointerId) return
         const bounds = atPointer(drag, event)
-        if (!bounds || sameBounds(bounds, drag.original) || !editing) {
+        if (bounds && drag.mode === 'move') draggedTitle.current = event.currentTarget
+        if (!bounds || sameBounds(bounds, drag.initial) || !editing) {
           cancel()
           return
         }
         active.current = null
         show(drag, bounds, 'saving')
-        editing.change({ kind: 'geometry', changes: [{ id: drag.boardId, bounds }] }, drag.base)
+        editing.change(
+          { kind: 'geometry', changes: Array.from(bounds, ([id, bounds]) => ({ id, bounds })) },
+          drag.base,
+        )
       },
       onPointerCancel(event: HandleEvent) {
         if (event.pointerId === active.current?.pointerId) cancel()

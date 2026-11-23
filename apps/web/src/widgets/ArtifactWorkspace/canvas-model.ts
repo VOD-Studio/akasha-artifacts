@@ -18,6 +18,8 @@ export interface CanvasBoard {
   type: ArtifactType
   /** 未声明时沿用旧制品的网格布局。 */
   position?: { x: number; y: number }
+  /** 同一页面内共用选择和位置变换。 */
+  layoutGroup?: string
   source: string
   /** 从说明合成的内容并非源码片段。 */
   generated?: true
@@ -147,6 +149,7 @@ export function createCanvasDocument(
       scoped: true,
       ...(board.viewport ?? DEFAULT_VIEWPORT),
       position: board.position,
+      layoutGroup: board.layoutGroup,
     }
     if (!board.pageId) {
       shared.push(entry)

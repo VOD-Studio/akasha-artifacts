@@ -15,7 +15,7 @@ import {
   Redo2,
   Undo2,
 } from 'lucide-react'
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { ElementPickerButton } from '../../features/element-picker/ElementPickerButton'
 import { CanvasPageActions, type CanvasPageEditing } from './CanvasPageActions'
 import type { Camera } from './canvas-camera'
@@ -174,6 +174,7 @@ export function CanvasToolbar({
   onAddBoard,
   canAddBoard,
   history,
+  arrangementMenu,
 }: {
   camera: Camera
   hand: boolean
@@ -188,6 +189,7 @@ export function CanvasToolbar({
   onAddBoard?: () => void
   canAddBoard?: boolean
   history?: Pick<CanvasBoardEditing, 'undo' | 'redo'>
+  arrangementMenu?: ReactNode
 }) {
   return (
     <>
@@ -278,6 +280,7 @@ export function CanvasToolbar({
             <PanelTop size={15} />
           </Button>
         ) : null}
+        {arrangementMenu}
         <ElementPickerButton onStart={onStartPicker} />
         {history ? (
           <>

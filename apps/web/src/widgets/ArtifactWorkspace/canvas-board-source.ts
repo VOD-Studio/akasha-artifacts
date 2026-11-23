@@ -8,6 +8,7 @@ export type CanvasBoardEdit =
   | { kind: 'duplicate'; boardId: string; id: string; bounds: CanvasBounds }
   | { kind: 'delete'; ids: readonly string[] }
   | { kind: 'geometry'; changes: readonly { id: string; bounds: CanvasBounds }[] }
+  | { kind: 'group'; ids: readonly string[]; layoutGroup: string | null }
 
 /** 版本重放用真实源码，而不是可变 DOM 或相机快照。 */
 export interface CanvasSourceChange {
@@ -61,6 +62,7 @@ export function editCanvasBoards(
       } as Record<string, unknown>
       delete copy.legacyId
       delete copy.groupId
+      delete copy.layoutGroup
       raw.boards.push(copy)
       if (Array.isArray(raw.flows)) {
         raw.flows.push(
@@ -80,6 +82,14 @@ export function editCanvasBoards(
     }
     case 'delete':
       removeCanvasBoards(draft, new Set(edit.ids))
+      break
+    case 'group':
+      for (const id of edit.ids) {
+        const target = boards.get(id)
+        if (!target) throw new Error('该分组包含已移除的画板')
+        if (edit.layoutGroup) target.raw.layoutGroup = edit.layoutGroup
+        else delete target.raw.layoutGroup
+      }
       break
     case 'geometry':
       for (const { id, bounds } of edit.changes) {
