@@ -1,7 +1,7 @@
 import { ArtifactStorageOperationSchema, type StorageScope } from '@akasha/protocol'
 import type { SandboxBridgeClient } from '../bridge/client'
 
-/** `scope` 省略时为 `private`。 */
+// scope 省略时为 private
 interface StorageOptions {
   scope?: StorageScope
 }
