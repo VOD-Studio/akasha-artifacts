@@ -283,10 +283,6 @@ export class FsArtifactRepository implements ArtifactRepository {
     return found
   }
 
-  private findExistingDiskEntry(artifact: Artifact): string | null {
-    return this.findExistingDiskEntries(artifact)[0] ?? null
-  }
-
   // 在服务端写入覆写磁盘前检查所有规范入口文件（含 document 的 index.html/index.json 与 react 的 index.tsx/index.jsx）：
   // 若存在尚未被防抖监听器捕获的外部磁盘改动，则先把外部修改入库为新版本并抛出 409 VERSION_CONFLICT，绝不静默覆盖或误删。
   private reconcilePendingDiskEditBeforeWrite(
@@ -379,26 +375,44 @@ export class FsArtifactRepository implements ArtifactRepository {
     })
   }
 
-  // 首次发布前若目标物理目录已存在尚未被监听器入库的外部源文件，则先将其补录为 v1（保留原文件与合法 .artifact-id）
-  // 并抛出 409 VERSION_CONFLICT，防止防抖窗口内 API 首次发布静默覆写外部新文件。
+  // 首次发布或启动期导入前检查目标物理目录的全部规范入口文件：
+  // - 若存在多个内容不同的规范入口（如同时存在 document 的 index.html 与 index.json），拒绝导入/覆写且不删除任何文件；
+  // - 若仅存在单个未入库外部源文件（且非当前监听器导入），先补录为 v1 并抛出 409 VERSION_CONFLICT。
   private reconcileUnindexedDiskFileBeforeCreate(
     artifact: Artifact,
     layout: ArtifactFileLayout,
   ): void {
-    const existingDiskFile = this.findExistingDiskEntry(artifact)
-    if (!existingDiskFile) return
+    const existingDiskFiles = this.findExistingDiskEntries(artifact)
+    if (existingDiskFiles.length === 0) return
 
-    let diskSource: string
-    try {
-      diskSource = fs.readFileSync(existingDiskFile, 'utf8')
-    } catch {
-      return
+    const entries: Array<{ file: string; source: string }> = []
+    for (const file of existingDiskFiles) {
+      try {
+        entries.push({ file, source: fs.readFileSync(file, 'utf8') })
+      } catch {
+        // 忽略不可读文件
+      }
+    }
+    if (entries.length === 0) return
+
+    if (new Set(entries.map((e) => e.source)).size > 1) {
+      throw new DomainError(
+        'BAD_REQUEST',
+        `目标目录 "${layout.normalizedRelativeDir}" 同时存在多个内容不同的规范入口文件（${entries.map((e) => path.basename(e.file)).join('、')}），请保留唯一入口文件后再导入或发布`,
+      )
     }
 
-    const importing = this.importingExternalFiles.get(resolveRealPathAllowMissing(existingDiskFile))
-    if (importing && importing.slug === artifact.slug && importing.source === diskSource) {
-      return
+    for (const entry of entries) {
+      const importing = this.importingExternalFiles.get(resolveRealPathAllowMissing(entry.file))
+      if (importing && importing.slug === artifact.slug && importing.source === entry.source) {
+        return
+      }
     }
+
+    const primary = entries[0]
+    if (!primary) return
+    const existingDiskFile = primary.file
+    const diskSource = primary.source
 
     let reconciledId = artifact.publicId
     if (fs.existsSync(layout.idFile)) {
@@ -698,28 +712,38 @@ export class FsArtifactRepository implements ArtifactRepository {
       const prevLayout = resolveArtifactFileLayout(this.artifactsRoot, previous.type, previous.slug)
       const prevDir = resolveRealPathAllowMissing(prevLayout.artifactDir)
       if (prevDir !== targetDir) {
-        const destDiskFile = this.findExistingDiskEntry(artifact)
-        if (destDiskFile) {
-          let destSource: string | undefined
-          try {
-            destSource = fs.readFileSync(destDiskFile, 'utf8')
-          } catch {
-            destSource = undefined
-          }
-          const isWatcherOwnMigration =
-            stagedForHead.author === 'agent:fs' && destSource === stagedForHead.source
-          const importing = this.importingExternalFiles.get(
-            resolveRealPathAllowMissing(destDiskFile),
-          )
-          if (
-            !isWatcherOwnMigration &&
-            !(importing && importing.slug === artifact.slug && importing.source === destSource)
-          ) {
+        const destDiskFiles = this.findExistingDiskEntries(artifact)
+        if (destDiskFiles.length > 0) {
+          if (destDiskFiles.length > 1) {
             throw new DomainError(
               'BAD_REQUEST',
-              `目标物理目录 "${layout.normalizedRelativeDir}" 已存在尚未入库的外部源文件，拒绝迁移覆写`,
+              `目标物理目录 "${layout.normalizedRelativeDir}" 已存在多个未入库的外部源文件，拒绝迁移覆写`,
               { destinationDir: layout.normalizedRelativeDir },
             )
+          }
+          const destDiskFile = destDiskFiles[0]
+          if (destDiskFile) {
+            let destSource: string | undefined
+            try {
+              destSource = fs.readFileSync(destDiskFile, 'utf8')
+            } catch {
+              destSource = undefined
+            }
+            const isWatcherOwnMigration =
+              stagedForHead.author === 'agent:fs' && destSource === stagedForHead.source
+            const importing = this.importingExternalFiles.get(
+              resolveRealPathAllowMissing(destDiskFile),
+            )
+            if (
+              !isWatcherOwnMigration &&
+              !(importing && importing.slug === artifact.slug && importing.source === destSource)
+            ) {
+              throw new DomainError(
+                'BAD_REQUEST',
+                `目标物理目录 "${layout.normalizedRelativeDir}" 已存在尚未入库的外部源文件，拒绝迁移覆写`,
+                { destinationDir: layout.normalizedRelativeDir },
+              )
+            }
           }
         }
       }

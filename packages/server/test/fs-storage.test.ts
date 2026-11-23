@@ -1079,4 +1079,58 @@ describe('.artifacts/ 原生文件存储适配器与外部编辑监听', () => {
     expect(reactLatest.version.source).toBe(externalJsx)
     expect(reactLatest.version.author).toBe('agent:fs')
   })
+
+  it('启动期首次导入遇到同目录存在内容不同的双规范入口（html+json / tsx+jsx）时拒绝导入且不删除任何未归档文件', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-dual-import-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    // 构造未入库的双入口 document 目录与双入口 react 目录，外加一个正常 html 目录
+    const dualDocDir = path.join(artifactsDir, 'document', 'conflict-doc')
+    fs.mkdirSync(dualDocDir, { recursive: true })
+    fs.writeFileSync(path.join(dualDocDir, 'index.html'), '<article>html copy</article>', 'utf8')
+    fs.writeFileSync(
+      path.join(dualDocDir, 'index.json'),
+      JSON.stringify({ title: 'json copy', sections: [] }),
+      'utf8',
+    )
+
+    const dualReactDir = path.join(artifactsDir, 'react', 'conflict-react')
+    fs.mkdirSync(dualReactDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(dualReactDir, 'index.tsx'),
+      'export default function App() { return <div>tsx</div> }',
+      'utf8',
+    )
+    fs.writeFileSync(
+      path.join(dualReactDir, 'index.jsx'),
+      'export default function App() { return <div>jsx</div> }',
+      'utf8',
+    )
+
+    const healthyDir = path.join(artifactsDir, 'html', 'healthy')
+    fs.mkdirSync(healthyDir, { recursive: true })
+    fs.writeFileSync(path.join(healthyDir, 'index.html'), '<p>healthy</p>', 'utf8')
+
+    const srv = await startNodeServer({
+      host: '127.0.0.1',
+      port: 0,
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_dual',
+    })
+    closers.push(srv.close)
+
+    // 双入口冲突目录中的四个原始文件必须全部完好保留，绝不可在首次导入时被静默删除
+    expect(fs.readFileSync(path.join(dualDocDir, 'index.html'), 'utf8')).toBe(
+      '<article>html copy</article>',
+    )
+    expect(fs.readFileSync(path.join(dualDocDir, 'index.json'), 'utf8')).toContain('json copy')
+    expect(fs.readFileSync(path.join(dualReactDir, 'index.tsx'), 'utf8')).toContain('tsx')
+    expect(fs.readFileSync(path.join(dualReactDir, 'index.jsx'), 'utf8')).toContain('jsx')
+
+    // 健康目录仍正常导入，双入口冲突目录未被错误建档
+    const list = await srv.repositories.artifacts.listByProject('proj_dual')
+    expect(list.map((a) => a.slug)).toEqual(['html/healthy'])
+  })
 })
