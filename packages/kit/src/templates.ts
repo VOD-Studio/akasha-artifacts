@@ -77,7 +77,10 @@ function checkUniqueIds(
 // 1. live-timeline（实时排障与任务进度看板）
 // ============================================================================
 
-// pending 待执行；running 进行中；done 已完成；failed 失败；skipped 跳过
+/**
+ * 步骤状态：`pending` 待执行；`running` 进行中；`done` 已完成；
+ * `failed` 失败；`skipped` 跳过。
+ */
 export type TimelineStepStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped'
 
 /** 时间线里的一个步骤；`id` 用来匹配状态流里的 `stepOverrides`。 */
@@ -743,7 +746,10 @@ export const DOCUMENT_TEMPLATE: KitTemplateDefinition<DocumentData> = {
 // 5. verify（交付验收：预期/实际并排对比 + 可验证声明证据 + 未验证项清单）
 // ============================================================================
 
-// checked 已验证；failed 验证失败；updated 修复后待重验；pending 待验证
+/**
+ * 声明状态：`checked` 已验证；`failed` 验证失败；
+ * `updated` 修复后待重验；`pending` 待验证。
+ */
 export type VerifyClaimStatus = 'checked' | 'failed' | 'updated' | 'pending'
 
 /** 预期界面与实际界面的并排对比。 */
