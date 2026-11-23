@@ -18,7 +18,6 @@ import {
   Layers,
   MoreHorizontal,
   Search,
-  Sparkles,
   Trash2,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -159,14 +158,9 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
   return (
     <div className="flex h-screen flex-col bg-canvas text-ink">
       <header className="flex h-13 shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4">
-        <div className="flex items-center gap-2.5">
-          <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-xs font-bold text-white">
-            <Sparkles size={15} />
-          </span>
-          <div>
-            <div className="text-sm font-semibold leading-none text-ink">Akasha Terminal</div>
-            <div className="mt-0.5 text-[11px] text-ink-muted">多项目交互式 Artifact 工作台</div>
-          </div>
+        <div>
+          <div className="text-sm font-semibold leading-none text-ink">Akasha Terminal</div>
+          <div className="mt-0.5 text-[11px] text-ink-muted">多项目交互式 Artifact 工作台</div>
         </div>
 
         <div className="flex items-center gap-2">
