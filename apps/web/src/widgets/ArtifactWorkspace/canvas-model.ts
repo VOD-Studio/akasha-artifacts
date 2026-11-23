@@ -17,6 +17,8 @@ export interface CanvasBoard {
   height: number
   type: ArtifactType
   source: string
+  /** 从说明合成的内容并非源码片段。 */
+  generated?: true
   /** 是否有独立的画板作用域；独立制品的默认画板为 false。 */
   scoped: boolean
 }
@@ -27,6 +29,12 @@ export interface CanvasPage {
   boards: readonly CanvasBoard[]
   /** 署名页面上的直属画板数；总览等虚拟页面不支持改名或删除。 */
   ownedBoardCount?: number
+}
+
+/** 当前页面与选板；没有选中的画板时只记录页面。 */
+export interface CanvasLocation {
+  pageId: string
+  boardId?: string
 }
 
 /** 制品的画布文档：若干页面，每页若干画板。 */
@@ -132,6 +140,7 @@ export function createCanvasDocument(
       ...(id !== board.id ? { legacyBlockId: board.id } : {}),
       type: 'html',
       source: board.html ?? descriptionMarkup(board.description ?? '空白画板'),
+      ...(board.html === undefined ? { generated: true } : {}),
       scoped: true,
       ...(board.viewport ?? DEFAULT_VIEWPORT),
     }

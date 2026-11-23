@@ -23,7 +23,7 @@ import {
   type Point,
   zoomCamera,
 } from './canvas-camera'
-import type { CanvasBoard, CanvasDocument, CanvasPage } from './canvas-model'
+import type { CanvasBoard, CanvasDocument, CanvasLocation, CanvasPage } from './canvas-model'
 import { useBoardPresentation } from './useBoardPresentation'
 import { useViewportSize } from './useViewportSize'
 
@@ -39,6 +39,10 @@ interface ArtifactCanvasProps {
   pageLink: (pageId: string) => string
   /** 只在可保存画布页面的头版本传入。 */
   pageEditing?: CanvasPageEditing
+  /** 抽屉选板后定位；换工具不消费尚不可见的请求。 */
+  reveal?: CanvasLocation | null
+  onRevealHandled: () => void
+  onLocationChange: (location: CanvasLocation | null) => void
   renderBoard: (board: CanvasBoard, purpose: BoardFramePurpose) => ReactNode
   canPlay: (board: CanvasBoard) => boolean
   /** 可视化直改的开关；省略时画布不提供直改入口。 */
@@ -100,6 +104,9 @@ export function ArtifactCanvas({
   onClearAddress,
   pageLink,
   pageEditing,
+  reveal,
+  onRevealHandled,
+  onLocationChange,
   renderBoard,
   canPlay,
   visualEdit,
@@ -162,6 +169,16 @@ export function ArtifactCanvas({
     return Array.from(unique)
   }, [document.flows, document.showFlows, layout.bounds])
   const handActive = hand || space
+
+  const inspectedFocus = presentation.focused ? presentation.focus : null
+  useEffect(() => {
+    onLocationChange(
+      inspectedFocus ??
+        (pageId === undefined || invalidAddress
+          ? null
+          : { pageId, boardId: selected ?? undefined }),
+    )
+  }, [inspectedFocus, invalidAddress, onLocationChange, pageId, selected])
 
   useEffect(() => {
     setDismissedAddress((dismissed) => (dismissed === address ? dismissed : ''))
@@ -266,6 +283,18 @@ export function ArtifactCanvas({
       }
     })
   }
+
+  const revealFromInspector = useEffectEvent((target: CanvasLocation) => {
+    const page = document.pages.find((item) => item.id === target.pageId)
+    if (!page || (target.boardId && !page.boards.some((item) => item.id === target.boardId))) return
+    presentation.dismiss()
+    navigate(page, target.boardId)
+  })
+  useEffect(() => {
+    if (!visible || !reveal) return
+    onRevealHandled()
+    revealFromInspector(reveal)
+  }, [onRevealHandled, reveal, visible])
 
   const selectBoard = (boardId: string | null) => {
     if (!page || invalidAddress) return
