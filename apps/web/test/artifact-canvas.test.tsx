@@ -274,6 +274,63 @@ it('聚焦按画板固有视口渲染，退出恢复总览的倍率、选板和�
   expect(document.activeElement).toBe(launch)
 })
 
+it('必须显式播放，按声明的边跨页导航，再返回未改动的聚焦视图', () => {
+  const source = JSON.stringify({
+    ...design,
+    showFlows: false,
+    flows: [{ from: 'mobile', to: 'success', label: '确认预约' }],
+    boards: design.boards.map((board) =>
+      board.id === 'mobile'
+        ? { ...board, html: '<button data-ak-next="success">确认预约</button>' }
+        : board,
+    ),
+  })
+  showWorkspace(detailFor(1, source))
+  const overview = screen.getByRole('region', { name: '制品画布' })
+  const mobile = within(overview).getByTitle<HTMLIFrameElement>('手机首页 隔离沙盒')
+  const mobileSandbox = sandbox(mobile)
+  mobileSandbox.receive({ type: 'ready' })
+  mobileSandbox.receive({ type: 'rendered', version: 1, playable: false })
+  expect(within(overview).queryByRole('button', { name: '播放画板：手机首页' })).toBeNull()
+  mobileSandbox.receive({ type: 'prototype.availability', version: 2, playable: true })
+  expect(within(overview).queryByRole('button', { name: '播放画板：手机首页' })).toBeNull()
+  mobileSandbox.receive({ type: 'prototype.availability', version: 1, playable: true })
+  expect(mobile.hasAttribute('inert')).toBe(true)
+  expect(within(overview).queryByRole('button', { name: '播放画板：宽屏首页' })).toBeNull()
+
+  fireEvent.click(within(overview).getByRole('button', { name: '聚焦画板：手机首页' }))
+  const focus = screen.getByRole('region', { name: '画板聚焦' })
+  fireEvent.click(within(focus).getByRole('button', { name: '实际大小' }))
+  const play = within(focus).getByRole('button', { name: '播放画板：手机首页' })
+  fireEvent.click(play)
+  const playback = screen.getByRole('region', { name: '原型试玩' })
+  const running = within(playback).getByTitle<HTMLIFrameElement>('手机首页 隔离沙盒')
+  expect(running.hasAttribute('inert')).toBe(false)
+  expect(running.getAttribute('sandbox')).toBe('allow-scripts')
+  expect(running.contentWindow).not.toBe(mobile.contentWindow)
+
+  const player = sandbox(running)
+  player.receive({ type: 'ready' })
+  expect(player.post).toHaveBeenCalledWith(
+    expect.objectContaining({ type: 'render', playback: true, version: 1, boardId: 'mobile' }),
+    '*',
+  )
+  player.receive({ type: 'prototype.navigate', version: 1, target: 'desktop' })
+  player.receive({ type: 'prototype.navigate', version: 2, target: 'success' })
+  expect(within(playback).queryByTitle('预约完成 隔离沙盒')).toBeNull()
+  player.receive({ type: 'prototype.navigate', version: 1, target: 'success' })
+  const nextPlayback = screen.getByRole('region', { name: '原型试玩' })
+  const complete = within(nextPlayback).getByTitle<HTMLIFrameElement>('预约完成 隔离沙盒')
+  expect(complete.contentWindow).not.toBe(running.contentWindow)
+  const completeSandbox = sandbox(complete)
+  completeSandbox.receive({ type: 'ready' })
+  completeSandbox.receive({ type: 'prototype.exit', version: 1 })
+  expect(screen.queryByRole('region', { name: '原型试玩' })).toBeNull()
+  expect(screen.getByRole('region', { name: '画板聚焦' })).toBe(focus)
+  expect(within(focus).getByLabelText('画板缩放比例').textContent).toBe('100%')
+  expect(document.activeElement).toBe(play)
+})
+
 it('旧制品没有显式 ID 时，重排后仍选中原标题的画板', () => {
   const home = { title: '旧的预约页' }
   const other = { title: '旧的结果页' }

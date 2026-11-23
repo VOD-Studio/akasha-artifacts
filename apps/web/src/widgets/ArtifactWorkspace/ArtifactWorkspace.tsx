@@ -17,7 +17,7 @@ import type { ArtifactDetailResponse } from '../../shared/api/client'
 import { syncProjectSelection } from '../../shared/api/client'
 import { InspectorPanel } from '../InspectorPanel/InspectorPanel'
 import { ArtifactCanvas } from './ArtifactCanvas'
-import { ArtifactFrame, type FrameConnection } from './ArtifactFrame'
+import { ArtifactFrame, type BoardFramePurpose, type FrameConnection } from './ArtifactFrame'
 import {
   type CanvasBoard,
   createCanvasDocument,
@@ -199,18 +199,47 @@ export function ArtifactWorkspace({
     [artifact.publicId, fixedVersion],
   )
   const canvasSessionKey = `akasha:canvas:${artifact.publicId}/${fixedVersion ?? 'head'}`
+  const [playable, setPlayable] = useState<{
+    artifactId: string
+    version: number
+    sources: ReadonlyMap<string, string>
+  } | null>(null)
+  const onPlayable = useCallback(
+    (board: CanvasBoard, activeVersion: number, available: boolean) => {
+      setPlayable((previous) => {
+        const sources =
+          previous?.artifactId === artifact.publicId && previous.version === activeVersion
+            ? previous.sources
+            : undefined
+        if (available ? sources?.get(board.id) === board.source : !sources?.has(board.id)) {
+          return previous
+        }
+        const next = new Map(sources)
+        if (available) next.set(board.id, board.source)
+        else next.delete(board.id)
+        return { artifactId: artifact.publicId, version: activeVersion, sources: next }
+      })
+    },
+    [artifact.publicId],
+  )
   const renderBoard = useCallback(
-    (board: CanvasBoard, interactive: boolean, focused = false) => (
+    (board: CanvasBoard, purpose: BoardFramePurpose) => (
       <ArtifactFrame
         artifact={artifact}
         board={board}
         version={version}
         state={state}
         sandboxOrigin={sandboxOrigin}
-        pins={focused ? EMPTY_FEEDBACKS : versionPins}
-        interactive={interactive}
-        focused={focused}
-        register={focused ? registerFocusedFrame : registerFrame}
+        pins={purpose.type === 'overview' ? versionPins : EMPTY_FEEDBACKS}
+        purpose={purpose}
+        register={
+          purpose.type === 'overview'
+            ? registerFrame
+            : purpose.type === 'focus'
+              ? registerFocusedFrame
+              : undefined
+        }
+        onPlayable={onPlayable}
         onVisualSelect={onVisualSelect}
       />
     ),
@@ -222,6 +251,7 @@ export function ArtifactWorkspace({
       versionPins,
       registerFrame,
       registerFocusedFrame,
+      onPlayable,
       onVisualSelect,
     ],
   )
@@ -272,6 +302,11 @@ export function ArtifactWorkspace({
                 : undefined
             }
             renderBoard={renderBoard}
+            canPlay={(board) =>
+              playable?.artifactId === artifact.publicId &&
+              playable.version === version.version &&
+              playable.sources.get(board.id) === board.source
+            }
             visible={showCanvas}
             visualEdit={
               visual.available

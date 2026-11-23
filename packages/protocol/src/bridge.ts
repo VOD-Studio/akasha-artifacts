@@ -35,6 +35,8 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
     artifactType: ArtifactTypeSchema,
     // HTML 画板的 id；给出时整段源码作为一个画板块渲染
     boardId: z.string().min(1).optional(),
+    // 仅显式试玩启用原型导航；缺省仍是设计视图
+    playback: z.literal(true).optional(),
     version: z.number().int().min(1),
     source: z.string(),
     // 完整的初始状态快照
@@ -118,6 +120,27 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('rendered'),
     version: z.number().int().min(1),
     height: z.number().nonnegative().optional(),
+    // 该版本的沙盒内容包含至少一个可操作控件
+    playable: z.boolean().optional(),
+  }),
+  z.object({
+    ...BridgeEnvelopeBase,
+    type: z.literal('prototype.navigate'),
+    version: z.number().int().min(1),
+    // 源码里的目标画板 id；外壳按当前画板的流程边验证
+    target: z.string().min(1).max(1024),
+  }),
+  z.object({
+    ...BridgeEnvelopeBase,
+    type: z.literal('prototype.exit'),
+    version: z.number().int().min(1),
+  }),
+  z.object({
+    ...BridgeEnvelopeBase,
+    type: z.literal('prototype.availability'),
+    version: z.number().int().min(1),
+    // 当前渲染 DOM 的可用控件变化；不代表整份源码重绘
+    playable: z.boolean(),
   }),
   z.object({
     ...BridgeEnvelopeBase,
