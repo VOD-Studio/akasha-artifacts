@@ -197,7 +197,10 @@ export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
             '</head>',
             `<script>window.__AKASHA_CONFIG__=${JSON.stringify({ sandboxOrigin: activeSandboxSrv.origin })};</script></head>`,
           )
-        return c.html(html, 200, { 'Cache-Control': 'no-store' })
+        return c.html(html, 200, {
+          'Cache-Control': 'no-store',
+          'Content-Security-Policy': `frame-src ${activeSandboxSrv.origin}`,
+        })
       }
 
       if (reqPath === '/' || reqPath === '/index.html') {

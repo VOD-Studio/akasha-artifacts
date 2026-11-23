@@ -180,7 +180,7 @@ describe('Local singleton Daemon lifecycle & security', () => {
     expect(wrongHub.headers.has('access-control-allow-origin')).toBe(false)
   })
 
-  it('injects window.__AKASHA_CONFIG__ on root "/" as well as SPA fallback routes', async () => {
+  it('在根页与 SPA 回退页注入相同沙盒地址，并禁止外框加载其他来源', async () => {
     const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-web-cfg-'))
     const fakeWebDir = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fake-web-'))
     tempDirs.push(homeDir, fakeWebDir)
@@ -197,13 +197,15 @@ describe('Local singleton Daemon lifecycle & security', () => {
     })
     closers.push(daemon.close)
 
-    const rootHtml = await (await fetch(`${daemon.baseUrl}/`)).text()
-    expect(rootHtml).toContain('window.__AKASHA_CONFIG__=')
-    expect(rootHtml).toContain(daemon.sandboxOrigin)
-
-    const spaHtml = await (await fetch(`${daemon.baseUrl}/a/AbCdEfGhIjKlMnOpQrStU`)).text()
-    expect(spaHtml).toContain('window.__AKASHA_CONFIG__=')
-    expect(spaHtml).toContain(daemon.sandboxOrigin)
+    for (const pathname of ['/', '/a/AbCdEfGhIjKlMnOpQrStU']) {
+      const response = await fetch(`${daemon.baseUrl}${pathname}`)
+      expect(response.headers.get('Content-Security-Policy')).toBe(
+        `frame-src ${daemon.sandboxOrigin}`,
+      )
+      const html = await response.text()
+      expect(html).toContain('window.__AKASHA_CONFIG__=')
+      expect(html).toContain(daemon.sandboxOrigin)
+    }
   })
 
   it('replaces running Daemon smoothly on version upgrade while preserving custom dbPath and artifact URLs', async () => {

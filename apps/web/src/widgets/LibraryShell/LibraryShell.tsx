@@ -23,10 +23,11 @@ import { DaemonStatusPill } from '../../features/daemon-control/DaemonStatusPill
 import { HubAccountButton } from '../../features/hub/HubActions'
 import { isCloudHub } from '../../shared/config/runtime'
 import { ARTIFACT_TYPE_LABELS, formatRelativeTime } from '../../shared/lib/format'
+import { LibraryArtwork } from './LibraryArtwork'
 import { LibraryToolbar } from './LibraryToolbar'
 import { useLibraryView } from './library-view'
 
-const HUB_LIBRARY_REFRESH_MS = 10_000
+const LIBRARY_REFRESH_MS = 10_000
 
 export interface LibraryShellProps {
   onOpenArtifact: (publicId: string) => void
@@ -43,9 +44,8 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const restored = useRef(false)
   const cloudHub = isCloudHub()
-  const interval = cloudHub ? HUB_LIBRARY_REFRESH_MS : undefined
-  const projectsQuery = useProjectsQuery(interval)
-  const artifactsQuery = useArtifactsQuery(undefined, interval)
+  const projectsQuery = useProjectsQuery(LIBRARY_REFRESH_MS)
+  const artifactsQuery = useArtifactsQuery(undefined, LIBRARY_REFRESH_MS)
   const projects = projectsQuery.data
   const artifacts = artifactsQuery.data
   const isLoading = projectsQuery.isLoading || artifactsQuery.isLoading
@@ -167,16 +167,22 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
                       type="button"
                       className={
                         layout === 'cards'
-                          ? 'flex w-full flex-col gap-2 rounded-xl border border-border bg-surface p-4 text-left hover:border-accent focus-visible:outline-2 focus-visible:outline-accent'
+                          ? 'flex h-full w-full flex-col gap-2 rounded-xl border border-border bg-surface p-3 text-left hover:border-accent focus-visible:outline-2 focus-visible:outline-accent'
                           : 'flex w-full flex-wrap items-center gap-x-4 gap-y-1 rounded px-2 py-3 text-left hover:bg-muted focus-visible:outline-2 focus-visible:outline-accent'
                       }
                       onClick={() => onOpenArtifact(artifact.publicId)}
                     >
-                      <h2 className="min-w-0 break-words text-sm font-semibold">
-                        {artifact.title}
-                      </h2>
+                      {layout === 'cards' ? (
+                        <LibraryArtwork artifact={artifact} />
+                      ) : (
+                        <h2 className="min-w-0 break-words text-sm font-semibold">
+                          {artifact.title}
+                        </h2>
+                      )}
                       <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-muted">
-                        <Badge tone="neutral">{ARTIFACT_TYPE_LABELS[artifact.type]}</Badge>
+                        {layout === 'list' ? (
+                          <Badge tone="neutral">{ARTIFACT_TYPE_LABELS[artifact.type]}</Badge>
+                        ) : null}
                         <span>{projectMap.get(artifact.projectId)?.name ?? '其他项目'}</span>
                         <time dateTime={artifact.updatedAt}>
                           {formatRelativeTime(artifact.updatedAt)}
