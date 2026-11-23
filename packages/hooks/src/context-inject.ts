@@ -2,6 +2,7 @@ import type { ElementRef, Feedback, ReviewRound } from '@akasha/protocol'
 
 export type HarnessId = 'claude-code' | 'antigravity' | 'codex' | 'cursor'
 
+/** 外壳为某个项目保存的当前选区与草稿，Hook 拉取后注入上下文。 */
 export interface ProjectSelectionSnapshot {
   projectId: string
   artifactId?: string
@@ -12,11 +13,15 @@ export interface ProjectSelectionSnapshot {
 
 export interface PromptContextInput {
   projectId: string
+  // 没有选中元素也没有草稿时不产出选区段
   selection?: ProjectSelectionSnapshot | null
+  // 只注入其中非草稿且 pending 的条目，最多列 8 条
   pendingFeedback?: readonly Feedback[]
+  // 只注入其中 status 为 submitted 的轮次
   submittedRounds?: readonly ReviewRound[]
   // 来自外部云端共享链接的不可信内容需做隔离标记，防提示词注入
   untrustedExternal?: boolean
+  // 输出预算（字符数），下限 200，缺省 2400
   maxChars?: number
 }
 
@@ -29,8 +34,13 @@ function formatElementCompact(el: ElementRef): string {
   return parts.join(' ')
 }
 
-// 构造 UserPromptSubmit / PreInvocation 注入上下文：不推进消费游标、严格按字符预算裁剪，
-// 对外部云端共享内容加隔离边界以防提示词注入。
+/**
+ * 构造 UserPromptSubmit / PreInvocation 事件的注入上下文：当前选区与草稿、已提交的评审轮次、
+ * 未消费反馈的摘要。
+ *
+ * @returns 没有可注入的内容时返回空串。输出按 `maxChars` 截断；
+ * `untrustedExternal` 为 true 时整体包进不可信内容边界。
+ */
 export function buildPromptContext(input: PromptContextInput): string {
   const maxChars = Math.max(200, input.maxChars ?? 2400)
   const sections: string[] = []
@@ -97,6 +107,7 @@ export function buildPromptContext(input: PromptContextInput): string {
   return `<akasha-context project="${input.projectId}">\n${body}\n</akasha-context>`
 }
 
+/** 按各宿主的 Hook 协议包装附加上下文；上下文为空时返回空对象。 */
 export function formatHarnessHookOutput(
   harness: HarnessId,
   additionalContext: string,
@@ -122,12 +133,18 @@ export interface FetchPromptContextOptions {
   baseUrl: string
   token?: string
   projectId: string
+  // 当前对话来自云端分享链接时置 true
   untrustedExternal?: boolean
   maxChars?: number
   fetchImpl?: typeof fetch
 }
 
-// 从本地 Daemon 轻量拉取选区与未读摘要（显式传 detail=false，确保 Hook 永不推进消费游标）。
+/**
+ * 从服务端拉取选区与未读反馈摘要，拼成注入上下文。
+ *
+ * @remarks 固定传 `detail=false`，Hook 永远拿不到回执，因此不会推进消费游标。
+ * 任一请求失败都降级为空内容，不阻塞对话回合。
+ */
 export async function fetchPromptContext(options: FetchPromptContextOptions): Promise<string> {
   const f = options.fetchImpl ?? fetch
   const headers: Record<string, string> = options.token

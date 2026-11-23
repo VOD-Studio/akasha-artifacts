@@ -4,28 +4,40 @@ import {
   RealtimeServerEventSchema,
 } from '@akasha/protocol'
 
+// feedback：有新反馈；round.submitted：评审轮次已提交；resync：游标失效，需要对账
 export type WakeupReason = 'feedback' | 'round.submitted' | 'resync'
 
 export interface WakeupBatch {
   projectId: string
+  // 批次涉及的制品；只监听单个制品时就是它
   artifactIds: string[]
+  // 本批包含的唤醒原因，已去重
   reasons: WakeupReason[]
+  // 本批最后一条事件的序号，宿主重连时作为 lastSeq
   latestSeq: number
+  // 触发本批的原始事件
   events: RealtimeServerEvent[]
 }
 
 export interface AsyncWakeupMonitorOptions {
   wsUrl: string
   projectId: string
+  // 只监听该制品；省略则监听整个项目
   artifactId?: string
+  // 突发事件的合并窗口（毫秒），缺省 250；0 表示收到即唤醒
   debounceMs?: number
+  // 防抖窗口结束后交出合并批次
   onWakeup: (batch: WakeupBatch) => void
   WebSocketImpl?: typeof WebSocket
 }
 
-// 判定某条实时事件是否应当触发后台异步唤醒：
-// 未提交评审轮次中的草稿评论（draft === true）与非 submitted 轮次一律不唤醒，严防中途打断用户；
-// 服务端下发 resync 时触发一次对账唤醒，避免断线或 Daemon 重启期间遗漏反馈。
+/**
+ * 判定一条实时事件是否应触发后台异步唤醒。
+ *
+ * @returns 唤醒原因；草稿反馈、未提交的轮次与其他事件返回 `null`。
+ *
+ * @remarks `resync` 也算唤醒原因，用于在断线或 Daemon 重启后做一次对账，避免遗漏反馈。
+ */
 export function classifyWakeupEvent(event: RealtimeServerEvent): WakeupReason | null {
   if (event.type === 'feedback.created') {
     return event.feedback.draft ? null : 'feedback'
@@ -39,7 +51,12 @@ export function classifyWakeupEvent(event: RealtimeServerEvent): WakeupReason | 
   return null
 }
 
-// 后台异步唤醒监视器：监听 Daemon WS 事件流，过滤草稿与无关 Artifact 事件，并将突发通知按防抖窗口合并为单次唤醒。
+/**
+ * 后台异步唤醒监视器：监听服务端的 WebSocket 事件流，过滤草稿与无关制品的事件，
+ * 并把防抖窗口内的突发通知合并成一次唤醒。
+ *
+ * @remarks 连接断开 1 秒后自动重连，重连时带上 `lastSeq` 续传。
+ */
 export class AsyncWakeupMonitor {
   private ws: WebSocket | null = null
   private lastSeq = 0
@@ -91,7 +108,7 @@ export class AsyncWakeupMonitor {
     }
   }
 
-  // 直接喂入事件（便于单元测试验证防抖合并、目标 Artifact 过滤、resync 对账与草稿过滤逻辑）
+  /** 处理一条实时事件；测试可以直接调用，不必经过 WebSocket。 */
   handleEvent(event: RealtimeServerEvent): void {
     // 收到 resync 说明游标失效或 Daemon 重启导致序列重置，必须同步采纳服务端当前 seq
     if (event.type === 'resync') {
@@ -133,6 +150,7 @@ export class AsyncWakeupMonitor {
     }, this.debounceMs)
   }
 
+  /** 立即交出缓冲中的事件并清空；没有缓冲时不触发回调。 */
   flush(): void {
     if (this.bufferedEvents.length === 0) return
     const batch: WakeupBatch = {
