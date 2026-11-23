@@ -283,6 +283,43 @@ export class FsArtifactRepository implements ArtifactRepository {
     return found
   }
 
+  // 在 .artifacts/ 根目录内查找持有指定 publicId 的其它 .artifact-id 所在目录（跳过 .state 与符号链接），
+  // 用于在旧目录已缺失时识别防抖窗口内尚未同步的目录移动，防止服务端在旧路径重建第二份同 ID 目录。
+  private findRelocatedDirByPublicId(publicId: PublicId, excludeDir: string): string | null {
+    const root = path.resolve(this.artifactsRoot)
+    if (!fs.existsSync(root)) return null
+    const excludedReal = resolveRealPathAllowMissing(excludeDir)
+    const queue: string[] = [root]
+    while (queue.length > 0) {
+      const dir = queue.shift()
+      if (!dir) continue
+      let entries: fs.Dirent[]
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true })
+      } catch {
+        continue
+      }
+      for (const entry of entries) {
+        if (entry.isSymbolicLink()) continue
+        const full = path.join(dir, entry.name)
+        if (entry.isDirectory()) {
+          if (entry.name === STATE_DIR_NAME || entry.name.startsWith('.')) continue
+          queue.push(full)
+        } else if (entry.isFile() && entry.name === ARTIFACT_ID_FILENAME) {
+          if (resolveRealPathAllowMissing(dir) === excludedReal) continue
+          try {
+            if (fs.readFileSync(full, 'utf8').trim() === publicId) {
+              return dir
+            }
+          } catch {
+            // 忽略读取异常
+          }
+        }
+      }
+    }
+    return null
+  }
+
   // 在服务端写入覆写磁盘前检查所有规范入口文件（含 document 的 index.html/index.json 与 react 的 index.tsx/index.jsx）：
   // 若存在尚未被防抖监听器捕获的外部磁盘改动，则先把外部修改入库为新版本并抛出 409 VERSION_CONFLICT，绝不静默覆盖或误删。
   private reconcilePendingDiskEditBeforeWrite(
@@ -292,7 +329,24 @@ export class FsArtifactRepository implements ArtifactRepository {
     const prevHeadVer = this.inner.getVersionSync(previous.publicId, previous.headVersion)
     if (!prevHeadVer) return
     const diskFiles = this.findExistingDiskEntries(previous)
-    if (diskFiles.length === 0) return
+    if (diskFiles.length === 0) {
+      // 原目录无规范源文件时，排查是否存在尚未被防抖监听器同步的目录移动（同 .artifact-id 位于新目录），
+      // 若已迁往新路径则拒绝在旧路径重建重复副本。
+      const prevLayout = resolveArtifactFileLayout(this.artifactsRoot, previous.type, previous.slug)
+      const relocatedDir = this.findRelocatedDirByPublicId(
+        previous.publicId,
+        prevLayout.artifactDir,
+      )
+      if (relocatedDir) {
+        const relMoved = path.relative(path.resolve(this.artifactsRoot), relocatedDir)
+        throw new DomainError(
+          'VERSION_CONFLICT',
+          `检测到 Artifact "${previous.publicId}" 的磁盘目录已迁至 "${relMoved}" 且尚未完成监听同步，拒绝在旧路径重建重复目录`,
+          { artifactId: previous.publicId, relocatedDir: relMoved },
+        )
+      }
+      return
+    }
 
     const modifiedEntries: Array<{ file: string; source: string }> = []
     const unmodifiedEntries: string[] = []

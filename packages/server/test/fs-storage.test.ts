@@ -1434,4 +1434,66 @@ describe('.artifacts/ 原生文件存储适配器与外部编辑监听', () => {
     expect(cardState.artifact.slug).toBe('card')
     expect(cardState.artifact.headVersion).toBe(1)
   })
+
+  it('目录改名后在防抖同步前收到旧路径 API 更新时拒绝在旧目录重建同 ID 副本', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-pending-move-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    const container = createLocalContainer({
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_pending_move',
+      fsWatchDebounceMs: 5000,
+    })
+    closers.push(container.close)
+    await container.ready
+
+    const pub = await container.service.publish({
+      projectId: 'proj_pending_move',
+      slug: 'card',
+      title: 'Card',
+      type: 'html',
+      source: '<div>v1</div>',
+      author: 'agent:cli',
+    })
+
+    const origDir = path.join(artifactsDir, 'html', 'card')
+    const movedDir = path.join(artifactsDir, 'html', 'moved')
+    fs.renameSync(origDir, movedDir)
+
+    // 防抖尚未同步目录改名时，针对旧路径发起 API 更新必须被拒绝，绝不能在 html/card 重建第二份同 ID 目录
+    await expect(
+      container.service.publish({
+        projectId: 'proj_pending_move',
+        slug: 'card',
+        title: 'Card Stale Path Update',
+        type: 'html',
+        source: '<div>should not recreate old dir</div>',
+        baseVersion: 1,
+        author: 'agent:cli',
+      }),
+    ).rejects.toThrow(/已迁至|拒绝在旧路径重建重复目录/)
+
+    expect(fs.existsSync(origDir)).toBe(false)
+    expect(fs.existsSync(path.join(movedDir, 'index.html'))).toBe(true)
+
+    // 监听器同步改名后，基于新 slug 'html/moved' 正常推进 v2 且磁盘仅存单一目录
+    await container.fsWatcher?.syncFile(path.join(movedDir, 'index.html'))
+    const updated = await container.service.publish({
+      projectId: 'proj_pending_move',
+      slug: 'html/moved',
+      title: 'Card Moved v2',
+      type: 'html',
+      source: '<div>v2 in moved dir</div>',
+      baseVersion: 1,
+      author: 'agent:cli',
+    })
+    expect(updated.artifact.publicId).toBe(pub.artifact.publicId)
+    expect(updated.artifact.headVersion).toBe(2)
+    expect(fs.existsSync(origDir)).toBe(false)
+    expect(fs.readFileSync(path.join(movedDir, 'index.html'), 'utf8')).toBe(
+      '<div>v2 in moved dir</div>',
+    )
+  })
 })
