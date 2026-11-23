@@ -49,7 +49,7 @@ body,
 }
 
 .artifact-canvas-board,
-.artifact-canvas-board-title {
+.artifact-canvas-board-header {
   position: absolute;
 }
 
@@ -58,11 +58,17 @@ body,
   z-index: 1;
 }
 
-.artifact-canvas-board-title {
+.artifact-canvas-board-header {
   inset-block-end: calc(100% + 4px);
   inset-inline-start: 0;
-  min-width: 32px;
-  max-width: max(32px, 100%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: max(68px, 100%);
+}
+
+.artifact-canvas-board-title {
+  min-width: 0;
   min-height: 28px;
   overflow: hidden;
   border: 1px solid var(--border);
@@ -85,6 +91,10 @@ body,
 .artifact-canvas-board[data-selected="true"] .artifact-canvas-board-title {
   background: var(--primary);
   color: var(--primary-foreground);
+}
+
+.artifact-canvas-board-action {
+  flex-shrink: 0;
 }
 
 .artifact-canvas-board-clip,

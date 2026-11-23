@@ -2,7 +2,7 @@
 import { type Artifact, type Feedback, PROTOCOL_VERSION, type Version } from '@akasha/protocol'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createAppRouter } from '../src/routes/router'
 import type { ArtifactDetailResponse } from '../src/shared/api/client'
@@ -214,6 +214,39 @@ it('跨页查找、热更新和刷新都保留仍在的选板与倍率', () => {
     'true',
   )
   expect(screen.getByLabelText('画布缩放比例').textContent).toBe(zoomed)
+})
+
+it('聚焦按画板固有视口渲染，退出恢复总览的倍率、选板和键盘焦点', () => {
+  showWorkspace()
+  const canvas = screen.getByRole('region', { name: '制品画布' })
+  const title = within(canvas).getByRole('button', { name: '手机首页' })
+  fireEvent.click(title)
+  fireEvent.click(screen.getByRole('button', { name: '放大' }))
+  const overviewZoom = screen.getByLabelText('画布缩放比例').textContent
+  const launch = within(canvas).getByRole('button', { name: '聚焦画板：手机首页' })
+  fireEvent.click(launch)
+
+  const focus = screen.getByRole('region', { name: '画板聚焦' })
+  expect(screen.queryByRole('region', { name: '制品画布' })).toBeNull()
+  const frame = within(focus).getByTitle<HTMLIFrameElement>('手机首页 隔离沙盒')
+  expect([frame.width, frame.height, frame.getAttribute('sandbox')]).toEqual([
+    '390',
+    '844',
+    'allow-scripts',
+  ])
+  expect(frame.hasAttribute('inert')).toBe(true)
+  fireEvent.click(within(focus).getByRole('button', { name: '填充宽度' }))
+  expect(within(focus).getByRole('button', { name: '填充宽度' }).getAttribute('aria-pressed')).toBe(
+    'true',
+  )
+  fireEvent.click(within(focus).getByRole('button', { name: '实际大小' }))
+  expect(within(focus).getByLabelText('画板缩放比例').textContent).toBe('100%')
+
+  fireEvent.keyDown(within(focus).getByRole('button', { name: '返回总览' }), { key: 'Escape' })
+  expect(screen.queryByRole('region', { name: '画板聚焦' })).toBeNull()
+  expect(title.getAttribute('aria-pressed')).toBe('true')
+  expect(screen.getByLabelText('画布缩放比例').textContent).toBe(overviewZoom)
+  expect(document.activeElement).toBe(launch)
 })
 
 it('旧制品没有显式 ID 时，重排后仍选中原标题的画板', () => {

@@ -40,6 +40,8 @@ interface ArtifactFrameProps {
   sandboxOrigin: string
   pins: readonly Feedback[]
   interactive: boolean
+  /** 聚焦是独立的只读沙盒，不能改写总览的选区或运行控件保态。 */
+  focused: boolean
   /** 向工作区登记或注销这块画板的连接。 */
   register: (id: string, frame: FrameConnection | null) => void
   /** 直改模式下沙盒上报选中元素时调用。 */
@@ -72,13 +74,18 @@ export function ArtifactFrame({
   sandboxOrigin,
   pins,
   interactive,
+  focused,
   register,
   onVisualSelect,
 }: ArtifactFrameProps) {
   const artifactId = artifact.publicId
   const { id, scoped, type, source } = board
   const versionNumber = version.version
-  const viewKey = scoped ? JSON.stringify([artifactId, id]) : artifactId
+  const viewKey = focused
+    ? JSON.stringify([artifactId, id, 'focus'])
+    : scoped
+      ? JSON.stringify([artifactId, id])
+      : artifactId
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const lastStateSeq = useRef(-1)
   const hadSelection = useRef(false)
@@ -180,6 +187,7 @@ export function ArtifactFrame({
           setHovered(message.element ? bindSandboxReference(message.element, id, scoped) : null)
           break
         case 'inspect.select': {
+          if (focused) break
           const element = bindSandboxReference(message.element, id, scoped)
           if (!element) break
           if (message.reason === 'sync') {
@@ -204,6 +212,18 @@ export function ArtifactFrame({
           setLivePinRects(message.rects)
           break
         case 'storage.request':
+          if (
+            focused &&
+            (message.operation.action === 'set' || message.operation.action === 'delete')
+          ) {
+            host.send({
+              type: 'storage.response',
+              requestId: message.requestId,
+              ok: false,
+              error: '聚焦模式不能修改制品存储',
+            })
+            break
+          }
           void storage.handle(message)
           break
         case 'visual.select': {
@@ -219,7 +239,7 @@ export function ArtifactFrame({
           break
         }
         case 'annotation.request': {
-          if (message.version !== activeVersion) break
+          if (focused || message.version !== activeVersion) break
           const element = bindSandboxReference(message.element, id, scoped)
           if (!element) break
           selectionStore.setSelectedElement(artifactId, element)
@@ -245,7 +265,7 @@ export function ArtifactFrame({
       off()
       host.stop()
     }
-  }, [artifactId, id, scoped, viewKey, host, register])
+  }, [artifactId, id, scoped, focused, viewKey, host, register])
 
   // 未 ready 的新 render 会替换队列；重新下发属于该帧的图钉和指认设定。
   useEffect(() => {
