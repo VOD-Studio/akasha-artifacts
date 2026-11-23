@@ -42,6 +42,7 @@ const SCHEMAS = {
   ArtifactPushStateOutput: protocol.ArtifactPushStateOutputSchema,
   ArtifactGetInput: protocol.ArtifactGetInputSchema,
   ArtifactGetOutput: protocol.ArtifactGetOutputSchema,
+  ArtifactReadHandoffInput: protocol.ArtifactReadHandoffInputSchema,
   ArtifactPullFeedbackInput: protocol.ArtifactPullFeedbackInputSchema,
   ArtifactPullFeedbackOutput: protocol.ArtifactPullFeedbackOutputSchema,
   ArtifactAckFeedbackInput: protocol.ArtifactAckFeedbackInputSchema,

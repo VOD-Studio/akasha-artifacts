@@ -209,6 +209,7 @@ await window.akasha.storage.delete('layout')
 | `artifact_spec`           | M1     | 按需拉取指定 Artifact 类型的完整写作规范与依赖白名单。                                   |
 | `artifact_push_state`     | M1     | 向 Artifact 的 `StateStream` 推送原子 RFC 6902 JSON Patch，无需重写源码即可零闪烁更新。  |
 | `artifact_get`            | M1     | 读取最新或历史版本源码、状态快照与评审轮次（用于在 `409` 冲突后合并）。                  |
+| `artifact_read_handoff`   | 工作区 | 在接收方 CLI 项目的读取权限内取回移交的固定版本、画板或图层。                            |
 | `artifact_pull_feedback`  | M2     | 非阻塞拉取结构化反馈与已提交轮次；仅完整拉取时签发消费回执 `receipt`。                   |
 | `artifact_ack_feedback`   | M2     | 凭 `receipt` 确认反馈已消费，并可将已处理线程标记为 `resolved`。                         |
 | `artifact_await_feedback` | M2     | 在无异步 Hook 唤醒的客户端中长轮询等待浏览器反馈（单次最长 50 秒）。                     |

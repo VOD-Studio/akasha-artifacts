@@ -1,10 +1,12 @@
 import {
+  ARTIFACT_DEFAULT_VIEWPORT,
   type ArtboardPage,
   type ArtifactType,
   canvasIds,
   type DesignLayer,
   type ElementRef,
   parseArtboard,
+  STANDALONE_BOARD_ID,
 } from '@akasha/protocol'
 
 /** 画布上的一块画板。 */
@@ -56,12 +58,6 @@ export interface CanvasDocument {
   handDrawnFlows: boolean
 }
 
-/** 非 `artboard` 制品在画布上的唯一画板的 id。 */
-export const STANDALONE_BOARD_ID = 'main'
-
-// 画板没有声明尺寸时的默认视口，单位 CSS 像素
-const DEFAULT_VIEWPORT = { width: 1280, height: 800 }
-
 function descriptionMarkup(description: string) {
   const text = description.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
   return `<p class="p-4 text-sm">${text}</p>`
@@ -88,7 +84,14 @@ export function createCanvasDocument(
           id: '',
           title: '总览',
           boards: [
-            { id: STANDALONE_BOARD_ID, title, type, source, scoped: false, ...DEFAULT_VIEWPORT },
+            {
+              id: STANDALONE_BOARD_ID,
+              title,
+              type,
+              source,
+              scoped: false,
+              ...ARTIFACT_DEFAULT_VIEWPORT,
+            },
           ],
         },
       ],
@@ -123,7 +126,7 @@ export function createCanvasDocument(
       source: board.html ?? descriptionMarkup(board.description ?? '空白画板'),
       ...(board.html === undefined ? { generated: true } : {}),
       scoped: true,
-      ...(board.viewport ?? DEFAULT_VIEWPORT),
+      ...(board.viewport ?? ARTIFACT_DEFAULT_VIEWPORT),
       position: board.position,
       layoutGroup: board.layoutGroup,
       designLayers: board.designLayers,
