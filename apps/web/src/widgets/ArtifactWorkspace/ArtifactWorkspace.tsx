@@ -6,6 +6,7 @@ import {
   type JsonPatchOp,
   type ReviewRound,
   type SandboxToShellMessage,
+  STANDALONE_BOARD_ID,
 } from '@akasha/protocol'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { selectionForVersion, useSelectionStore } from '../../entities/selection/store'
@@ -20,14 +21,13 @@ import { syncProjectSelection } from '../../shared/api/client'
 import { InspectorPanel } from '../InspectorPanel/InspectorPanel'
 import { ArtifactCanvas, type InspectorReveal } from './ArtifactCanvas'
 import { ArtifactFrame, type BoardFramePurpose, type FrameConnection } from './ArtifactFrame'
-import { BoardInspector } from './BoardInspector'
+import { BoardInspector, type BoardInspectorHandoff } from './BoardInspector'
 import {
   type CanvasBoard,
   type CanvasLocation,
   type CanvasPage,
   createCanvasDocument,
   createCanvasElementResolver,
-  STANDALONE_BOARD_ID,
 } from './canvas-model'
 import { InlineCanvasText } from './InlineCanvasText'
 import { useBoardInspection } from './useBoardInspection'
@@ -53,6 +53,8 @@ export interface ArtifactWorkspaceProps {
   onRememberThread?: (id: string) => void
   /** 只导出当前已保存快照中的画板，编辑器临时预览不提供出口。 */
   onExportBoard?: (boardId: string) => void
+  /** 未保存的预览不能移交画板或对象。 */
+  onHandoff?: BoardInspectorHandoff
   /** 登记把状态补丁转发给各画板沙盒的函数；传 `null` 表示注销。 */
   onRegisterStateForwarder?: (forwarder: ((seq: number, ops: JsonPatchOp[]) => void) | null) => void
   onVersionSaved?: (version: ArtifactDetailResponse['version']) => void
@@ -77,6 +79,7 @@ export function ArtifactWorkspace({
   onClearAddress,
   onRememberThread,
   onExportBoard,
+  onHandoff,
   onRegisterStateForwarder,
   onVersionSaved,
   onVersionAdopted,
@@ -532,6 +535,7 @@ export function ArtifactWorkspace({
         layers={watchBoard ? inspection.layers : null}
         selectedLayerId={inspection.selectedId}
         layersAvailable={canvas === savedCanvas}
+        onHandoff={canvas === savedCanvas ? onHandoff : undefined}
         onSelectLayer={inspection.onSelect}
         onStartPicking={() => {
           if (canvasLocation) revealBoard(canvasLocation)

@@ -2,6 +2,7 @@ import { z } from 'zod'
 import {
   ArtifactSchema,
   CheckResultSchema,
+  ElementRefSchema,
   FeedbackSchema,
   JsonPatchOpSchema,
   ReviewRoundSchema,
@@ -134,6 +135,32 @@ export const ArtifactGetOutputSchema = z.object({
   rounds: z.array(ReviewRoundSchema),
 })
 export type ArtifactGetOutput = z.infer<typeof ArtifactGetOutputSchema>
+
+/** 无授权语义的固定快照引用；CLI 始终按自己绑定的项目与读取权限重新取回。 */
+export const ArtifactHandoffReferenceSchema = z
+  .object({
+    artifactId: PublicIdSchema,
+    // 接收方 MCP 配置绑定的 Project.id，而不是磁盘路径
+    projectId: z.string().min(1).max(512),
+    version: z.number().int().positive(),
+    // 空字符串指向画布的总览或未分组页面
+    pageId: z.string().max(512).optional(),
+    boardId: z.string().min(1).max(512).optional(),
+    // 选择器和文本只是定位证据，不作为代码执行
+    element: ElementRefSchema.optional(),
+  })
+  .refine(
+    ({ boardId, element }) =>
+      !element || Boolean(boardId && (!element.boardId || element.boardId === boardId)),
+    {
+      path: ['element'],
+      message: '选区必须属于交接中指定的画板',
+    },
+  )
+export type ArtifactHandoffReference = z.infer<typeof ArtifactHandoffReferenceSchema>
+
+/** 取回交接而不回退到头版本。 */
+export const ArtifactReadHandoffInputSchema = z.object({ handoff: ArtifactHandoffReferenceSchema })
 
 export const ArtifactPullFeedbackInputSchema = z.object({
   // 省略时拉取 `project` 内的全部制品；两者都省略则不限范围

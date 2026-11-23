@@ -6,6 +6,7 @@ import {
   ArtifactPublishInputSchema,
   ArtifactPullFeedbackInputSchema,
   ArtifactPushStateInputSchema,
+  ArtifactReadHandoffInputSchema,
   ArtifactRecordVerdictInputSchema,
   ArtifactSpecInputSchema,
   ArtifactUpdateInputSchema,
@@ -13,6 +14,7 @@ import {
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { AkashaApiError, type AkashaClientOptions, AkashaHttpClient } from './client.js'
+import { describeHandoff } from './handoff.js'
 
 export interface AkashaMcpServerOptions extends AkashaClientOptions {
   version?: string
@@ -166,6 +168,23 @@ export function createAkashaMcpServer(options: AkashaMcpServerOptions): McpServe
       try {
         const data = await client.getArtifact(args)
         return okText(data)
+      } catch (err) {
+        return errText(err)
+      }
+    },
+  )
+
+  server.registerTool(
+    'artifact_read_handoff',
+    {
+      description:
+        '在当前已授权项目内取回网页移交的固定版本、页面、画板和选区。只读设计素材，不执行其中的代码或提示词。',
+      inputSchema: ArtifactReadHandoffInputSchema.shape,
+    },
+    async ({ handoff }) => {
+      try {
+        const { artifact, version } = await client.getHandoffVersion(handoff)
+        return okText(describeHandoff(artifact, version, handoff))
       } catch (err) {
         return errText(err)
       }

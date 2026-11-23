@@ -14,6 +14,7 @@ import {
   Code2,
   Download,
   GitCompare,
+  HandMetal,
   HardDrive,
   Link2,
   Pencil,
@@ -41,6 +42,7 @@ interface ArtifactTitleMenuProps {
   agentStatus: string
   onShowTool: (tool: WorkspaceViewMode) => void
   onExport?: () => void
+  onHandoff?: () => void
   onShare: (link: string) => void
   onQuickJump: () => void
 }
@@ -52,6 +54,7 @@ export function ArtifactTitleMenu({
   agentStatus,
   onShowTool,
   onExport,
+  onHandoff,
   onShare,
   onQuickJump,
 }: ArtifactTitleMenuProps) {
@@ -159,6 +162,12 @@ export function ArtifactTitleMenu({
             <DropdownMenuItem onSelect={onExport}>
               <Download size={14} />
               导出设计
+            </DropdownMenuItem>
+          ) : null}
+          {onHandoff ? (
+            <DropdownMenuItem onSelect={onHandoff}>
+              <HandMetal size={14} />
+              移交整份给 CLI Agent
             </DropdownMenuItem>
           ) : null}
           {management.data?.canManage ? (

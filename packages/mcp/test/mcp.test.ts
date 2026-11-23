@@ -56,6 +56,7 @@ describe('@akasha/mcp stdio tools integration', () => {
       'artifact_publish',
       'artifact_pull_feedback',
       'artifact_push_state',
+      'artifact_read_handoff',
       'artifact_record_verdict',
       'artifact_spec',
       'artifact_update',
@@ -133,6 +134,30 @@ describe('@akasha/mcp stdio tools integration', () => {
     })
     expect(upd.isError).not.toBe(true)
     expect(extractText(upd)).toContain('v3')
+
+    const handoff = {
+      artifactId: pub1Json.publicId,
+      projectId: 'proj-mcp',
+      version: 1,
+      pageId: '',
+      boardId: 'main',
+      element: { selector: 'button', textPreview: 'Submit' },
+    }
+    const readHandoff = (target: typeof handoff) =>
+      client.callTool({ name: 'artifact_read_handoff', arguments: { handoff: target } })
+    const original = await readHandoff(handoff)
+    expect(original.isError).not.toBe(true)
+    expect(JSON.parse(extractText(original))).toMatchObject({
+      projectId: 'proj-mcp',
+      artifactId: pub1Json.publicId,
+      version: 1,
+      source: '<h1>v1</h1>\n<button>Submit</button>',
+      selection: { boardId: 'main', element: { selector: 'button' } },
+    })
+    const mismatch = await readHandoff({ ...handoff, projectId: 'unrelated-project' })
+    expect(mismatch.isError).toBe(true)
+    expect(extractText(mismatch)).not.toContain('<h1>')
+    expect((await readHandoff({ ...handoff, boardId: 'another-board' })).isError).toBe(true)
 
     // 5. push_state 零闪烁更新
     const pushed = await client.callTool({

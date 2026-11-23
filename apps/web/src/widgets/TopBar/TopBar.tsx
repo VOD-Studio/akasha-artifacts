@@ -19,6 +19,7 @@ export interface TopBarProps {
   onBackToLibrary: () => void
   /** 打开基于当前允许读取版本的整份制品导出。 */
   onExport?: () => void
+  onHandoff?: () => void
   onSelectVersion: (version?: number) => void
 }
 
@@ -31,6 +32,7 @@ export function TopBar({
   hasActiveRound = false,
   onBackToLibrary,
   onExport,
+  onHandoff,
   onSelectVersion,
 }: TopBarProps) {
   const [shareLink, setShareLink] = useState<string | null>(null)
@@ -75,6 +77,7 @@ export function TopBar({
           agentStatus={agentStatus}
           onShowTool={showTool}
           onExport={onExport}
+          onHandoff={onHandoff}
           onShare={setShareLink}
           onQuickJump={() => setCommandPaletteOpen(true)}
         />

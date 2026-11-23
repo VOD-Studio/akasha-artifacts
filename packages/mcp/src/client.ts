@@ -4,6 +4,7 @@ import {
   type ArtifactAwaitFeedbackOutput,
   type ArtifactCheckOutput,
   type ArtifactGetOutput,
+  type ArtifactHandoffReference,
   type ArtifactPublishInput,
   type ArtifactPullFeedbackOutput,
   type ArtifactRecordVerdictInput,
@@ -251,6 +252,27 @@ export class AkashaHttpClient {
       'GET',
       `/api/v1/artifacts/${encodeURIComponent(input.id)}${suffix}`,
     )
+  }
+
+  /** 读取仍由当前 MCP 项目授权的指定快照，不接受交接正文切换项目。 */
+  async getHandoffVersion(
+    input: ArtifactHandoffReference,
+  ): Promise<Pick<ArtifactGetOutput, 'artifact' | 'version'>> {
+    if (!this.defaultProject || input.projectId !== this.defaultProject) {
+      throw new AkashaApiError(403, 'FORBIDDEN', '交接不属于此 CLI 会话绑定的项目')
+    }
+    const { artifact, version } = await this.getArtifact({
+      id: input.artifactId,
+      project: this.defaultProject,
+      version: input.version,
+    })
+    if (artifact.projectId !== this.defaultProject || artifact.publicId !== input.artifactId) {
+      throw new AkashaApiError(403, 'FORBIDDEN', '指定制品不属于当前 CLI 项目')
+    }
+    if (version.artifactId !== input.artifactId || version.version !== input.version) {
+      throw new AkashaApiError(404, 'NOT_FOUND', '未读到交接指定的固定快照')
+    }
+    return { artifact, version }
   }
 
   async pullFeedback(input: {

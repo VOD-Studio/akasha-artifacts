@@ -4,6 +4,12 @@ import {
   DesignLayersSchema,
 } from './artboard-layers.js'
 
+/** 普通 HTML、React 等制品在画布上的唯一画板标识。 */
+export const STANDALONE_BOARD_ID = 'main'
+
+/** 未声明固有视口时的画板尺寸，单位为 CSS 像素。 */
+export const ARTIFACT_DEFAULT_VIEWPORT = { width: 1280, height: 800 } as const
+
 /** 画布页面：制品内的一组画板。 */
 export interface ArtboardPage {
   /** 源码里的 `id`；缺省时按数组下标生成 `page-<n>`。 */

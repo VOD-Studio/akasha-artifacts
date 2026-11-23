@@ -209,6 +209,7 @@ The default scope is `private`, isolated by user and artifact. `shared` is reada
 | `artifact_spec`           | M1        | Fetch full authoring guide and component whitelist on demand for a given artifact type.                               |
 | `artifact_push_state`     | M1        | Push an atomic RFC 6902 JSON Patch to the artifact's live `StateStream` without rewriting source code.                |
 | `artifact_get`            | M1        | Read latest or historical version source, state snapshot, and active review rounds (used to resolve `409` conflicts). |
+| `artifact_read_handoff`   | Workspace | Read an explicitly handed-off version and selected board or layer using the receiving CLI project's own access.       |
 | `artifact_pull_feedback`  | M2        | Pull structured feedback and submitted review rounds; returns a `receipt` only when full details are fetched.         |
 | `artifact_ack_feedback`   | M2        | Acknowledge consumed feedback by `receipt` and optionally mark threads as `resolved`.                                 |
 | `artifact_await_feedback` | M2        | Long-poll wait (up to 50s) for browser feedback in harnesses without async hook wakeup.                               |

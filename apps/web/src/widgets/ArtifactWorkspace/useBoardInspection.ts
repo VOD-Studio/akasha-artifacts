@@ -2,11 +2,12 @@ import {
   type CanvasLayer,
   DESIGN_LAYER_BLOCK_PREFIX,
   type ShellToSandboxMessage,
+  STANDALONE_BOARD_ID,
 } from '@akasha/protocol'
 import { useCallback, useState } from 'react'
 import { selectionForVersion, useSelectionStore } from '../../entities/selection/store'
 import { useWorkspaceStore } from '../../entities/workspace/store'
-import { type CanvasDocument, type CanvasLocation, STANDALONE_BOARD_ID } from './canvas-model'
+import type { CanvasDocument, CanvasLocation } from './canvas-model'
 
 interface BoardInspectionInput {
   artifactId: string

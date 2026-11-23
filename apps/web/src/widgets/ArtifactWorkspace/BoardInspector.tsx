@@ -1,7 +1,9 @@
 import {
   type Artifact,
+  type ArtifactHandoffReference,
   type CanvasLayer,
   DESIGN_LAYER_BLOCK_PREFIX,
+  STANDALONE_BOARD_ID,
   type Version,
 } from '@akasha/protocol'
 import { Badge } from '@akasha/ui/badge'
@@ -25,6 +27,12 @@ import { LayerTree } from './LayerTree'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
 import type { CanvasTextTools } from './useInlineCanvasText'
 
+/** 检查器定位已经保存的画板；元素仅来自同版本的图层选择。 */
+export type BoardInspectorHandoff = (
+  title: string,
+  scope: Pick<ArtifactHandoffReference, 'pageId' | 'boardId' | 'element'>,
+) => void
+
 interface BoardInspectorProps {
   artifact: Artifact
   version: Version
@@ -39,6 +47,7 @@ interface BoardInspectorProps {
   layers: { layers: readonly CanvasLayer[]; truncated: boolean } | null
   layersAvailable: boolean
   selectedLayerId?: string
+  onHandoff?: BoardInspectorHandoff
   /** 树选区包含运行时节点 id；传 null 清除已有图层选区。 */
   onSelectLayer: (layer: CanvasLayer | null) => void
   onStartPicking: () => void
@@ -60,6 +69,7 @@ export function BoardInspector({
   layers,
   layersAvailable,
   selectedLayerId,
+  onHandoff,
   onSelectLayer,
   onStartPicking,
   onNavigate,
@@ -71,6 +81,19 @@ export function BoardInspector({
   const source = board && !board.generated ? board.source : version.source
   const layer = layers?.layers.find((entry) => entry.id === selectedLayerId)
   const excerpt = !board?.generated && layer ? locateSource(source, layer) : null
+  const handoffElement = useSelectionStore((state) => {
+    const scoped = state.layersByArtifact[artifact.publicId]
+    const target = state.selectedByArtifact[artifact.publicId]
+    if (
+      !target ||
+      scoped?.version !== version.version ||
+      scoped.id !== layer?.id ||
+      (target.boardId ?? STANDALONE_BOARD_ID) !== board?.id
+    )
+      return undefined
+    // 仅复制可重定位的标识，不携带 DOM 文本、几何或输入值。
+    return target
+  })
   const selectedBlock = useSelectionStore((state) => {
     const target = state.selectedByArtifact[artifact.publicId]
     return target?.boardId === board?.id ? target?.blockId : undefined
@@ -282,6 +305,27 @@ export function BoardInspector({
                         onClick={() => setDrawer('review')}
                       >
                         批注该图层
+                      </Button>
+                    ) : null}
+                    {onHandoff && page ? (
+                      <Button
+                        className="mt-3 ml-1"
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          onHandoff(`${page.title} / ${board.title}`, {
+                            pageId: page.id,
+                            boardId: board.id,
+                            element: handoffElement
+                              ? {
+                                  blockId: handoffElement.blockId,
+                                  selector: handoffElement.selector,
+                                }
+                              : undefined,
+                          })
+                        }
+                      >
+                        {handoffElement ? '移交所选对象' : '移交当前画板'}
                       </Button>
                     ) : null}
                   </>

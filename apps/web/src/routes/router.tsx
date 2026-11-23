@@ -1,4 +1,4 @@
-import { isAnnotationKind, type JsonPatchOp } from '@akasha/protocol'
+import { type ArtifactHandoffReference, isAnnotationKind, type JsonPatchOp } from '@akasha/protocol'
 import { Alert } from '@akasha/ui/alert'
 import { Button } from '@akasha/ui/button'
 import { Spinner } from '@akasha/ui/indicator'
@@ -31,6 +31,10 @@ import {
   ArtifactExportDialog,
   type DesignExportTarget,
 } from '../widgets/ArtifactWorkspace/ArtifactExportDialog'
+import {
+  ArtifactHandoffDialog,
+  type ArtifactHandoffTarget,
+} from '../widgets/ArtifactWorkspace/ArtifactHandoffDialog'
 import { ArtifactWorkspace } from '../widgets/ArtifactWorkspace/ArtifactWorkspace'
 import { LibraryShell } from '../widgets/LibraryShell/LibraryShell'
 import { TopBar } from '../widgets/TopBar/TopBar'
@@ -70,6 +74,7 @@ function ArtifactRouteView({
   const navigate = useNavigate()
   const address = useLocation({ select: (location) => location.hash })
   const [exportTarget, setExportTarget] = useState<DesignExportTarget | null>(null)
+  const [handoffTarget, setHandoffTarget] = useState<ArtifactHandoffTarget | null>(null)
   const clearAddress = useCallback(() => {
     void navigate({
       hash: (previous) => {
@@ -200,6 +205,19 @@ function ArtifactRouteView({
   const sandboxOrigin = resolveSandboxOrigin(daemonStatus?.sandboxPort)
   const openExport = (boardId?: string) =>
     setExportTarget({ artifact: detail.artifact, version: detail.version, boardId })
+  const openHandoff = (
+    label: string,
+    scope?: Pick<ArtifactHandoffReference, 'pageId' | 'boardId' | 'element'>,
+  ) =>
+    setHandoffTarget({
+      label,
+      reference: {
+        artifactId: detail.artifact.publicId,
+        projectId: detail.artifact.projectId,
+        version: detail.version.version,
+        ...scope,
+      },
+    })
 
   return (
     <div className="flex h-dvh flex-col bg-canvas text-ink">
@@ -215,6 +233,7 @@ function ArtifactRouteView({
         )}
         hasActiveRound={rounds.some((round) => round.status !== 'closed')}
         onExport={() => openExport()}
+        onHandoff={() => openHandoff(detail.version.title)}
         onBackToLibrary={() => void navigate({ to: '/' })}
         onSelectVersion={(ver) => {
           if (ver === undefined) {
@@ -247,6 +266,7 @@ function ArtifactRouteView({
         onClearAddress={clearAddress}
         onRememberThread={rememberThread}
         onExportBoard={openExport}
+        onHandoff={openHandoff}
         onRegisterStateForwarder={registerStateForwarder}
         onVersionSaved={() => {
           if (requestedVersion !== undefined) {
@@ -271,6 +291,9 @@ function ArtifactRouteView({
       />
       {exportTarget?.artifact.publicId === detail.artifact.publicId ? (
         <ArtifactExportDialog target={exportTarget} onClose={() => setExportTarget(null)} />
+      ) : null}
+      {handoffTarget?.reference.artifactId === detail.artifact.publicId ? (
+        <ArtifactHandoffDialog target={handoffTarget} onClose={() => setHandoffTarget(null)} />
       ) : null}
     </div>
   )

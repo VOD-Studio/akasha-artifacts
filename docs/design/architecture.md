@@ -277,6 +277,7 @@ sequenceDiagram
 | `artifact_push_state`     | `id, patch (JSON Patch)`                                         | `{ seq }`                             | 只更新运行时状态，不生成版本                                           |
 | `artifact_spec`           | `type`                                                           | `{ schema, guide, whitelist }`        | 按需拉取某类 Artifact 的完整写作规范与白名单，避免每次会话常驻大段说明 |
 | `artifact_get`            | `id, version?`                                                   | 源码、状态、轮次和元数据              | 发生冲突后或续写前获取最新内容                                         |
+| `artifact_read_handoff`   | `handoff`                                                        | 固定版本的源码、画板结构与定位        | 在接收方已绑定的项目与读取权限内取回；不授予访问权                     |
 | `artifact_pull_feedback`  | `id?, after?, includeDrafts?, detail?`                           | `{ items, rounds, cursor, receipt? }` | 非阻塞拉取反馈。仅 `detail=true` 返回完整证据与 `receipt`              |
 | `artifact_ack_feedback`   | `receipt, resolveIds?`                                           | `{ acknowledged }`                    | 凭回执确认已消费完整反馈，可选将已处理线程标为 `resolved`              |
 | `artifact_await_feedback` | `id, after?, timeoutSec?`                                        | `{ status, items, cursor, receipt? }` | 阻塞等待反馈（无 Hook 环境的兜底）。超时返回 `pending` 与 `cursor`     |
