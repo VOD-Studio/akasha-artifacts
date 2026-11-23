@@ -4,12 +4,19 @@ import path from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { resolveAkashaHome } from '../daemon/state.js'
 
+/** 保存在 `~/.akasha/hub-login.json` 的 Hub 登录凭据。 */
 export interface HubLogin {
   origin: string
+  /** CLI 访问令牌，以 Bearer 头发送。 */
   token: string
   expiresAt: string
 }
 
+/**
+ * 校验并规范化 Hub 地址。
+ *
+ * @throws {Error} 不是 HTTPS origin（本机回环地址允许 HTTP），或带有凭据、路径、查询串、片段。
+ */
 export function parseHubOrigin(value: string): string {
   const url = new URL(value)
   const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
@@ -26,6 +33,7 @@ export function parseHubOrigin(value: string): string {
   return url.origin
 }
 
+/** 读取 Hub 登录凭据；文件不存在、不完整或已过期时返回 `null`。 */
 export function readHubLogin(homeDir: string): HubLogin | null {
   try {
     const value = JSON.parse(
@@ -45,6 +53,12 @@ export function readHubLogin(homeDir: string): HubLogin | null {
   }
 }
 
+/**
+ * 用 PKCE 流程登录 Hub：打印登录链接，等用户粘贴授权码，换取 CLI 令牌后写入 home 目录。
+ *
+ * @remarks 授权码只能兑换一次。凭据以 0600 权限原子写入 `hub-login.json`。
+ * @throws {Error} 用户没有输入授权码、换取令牌失败，或 Hub 返回的凭据无效或已过期。
+ */
 export async function loginToHub(origin: string, homeOverride?: string): Promise<void> {
   const verifier = randomBytes(32).toString('base64url')
   const challenge = createHash('sha256').update(verifier).digest('base64url')
@@ -89,6 +103,7 @@ export async function loginToHub(origin: string, homeOverride?: string): Promise
   console.log(`CLI 已登录 ${origin}，到期时间 ${expiresAt}`)
 }
 
+/** 向 Hub 登记本机目录对应的项目；`rootPath` 用目录路径的摘要，不上传真实路径。 */
 export async function registerHubProject(
   origin: string,
   token: string,

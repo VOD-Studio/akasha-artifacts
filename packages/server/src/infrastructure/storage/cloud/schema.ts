@@ -1,5 +1,12 @@
 import type { SqlStatement } from './types.js'
 
+/**
+ * 建表语句，幂等，可重复执行。Hub 的 SQLite 与 PostgreSQL 共用这一套结构。
+ *
+ * @remarks 约定：`rounds.ord` 是制品内的轮次顺序；`feedbacks.insertion_seq` 是插入顺序，
+ * `delivery_seq` 是可投递顺序号（草稿为 NULL）；`versions` 的 `source_json` 与 `blob_key`
+ * 二选一，由 CHECK 约束保证；`hub_realtime_cursor` 是只有一行的实时序号游标。
+ */
 export const schema: SqlStatement[] = [
   [
     `CREATE TABLE IF NOT EXISTS projects (

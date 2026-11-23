@@ -24,6 +24,12 @@ interface NodeHubOptions {
   oauth: HubContainerOptions['oauth']
 }
 
+/**
+ * 启动 Cloud Hub：装配存储、鉴权、实时通道与外壳静态资源。
+ *
+ * @remarks `connectionString` 存在时用 PostgreSQL，否则用 SQLite；`s3` 存在时版本源码放对象存储。
+ * 返回的 `close` 先断开连接并等实时事件写完，再关闭存储。
+ */
 export async function startNodeHub(options: NodeHubOptions) {
   const index = fs.readFileSync(path.join(options.webDir, 'index.html'), 'utf8')
   const blobs = options.s3 ? createS3Blobs(options.s3) : undefined

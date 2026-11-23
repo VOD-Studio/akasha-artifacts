@@ -17,5 +17,5 @@
 
 - **双语 README 对称**：修改 `README.md` 必须同步修改 `README.zh-CN.md`，保持章节、配置示例与表格完全对齐。
 - **分支、提交、PR 与 Issue**：遵循 `docs/agents/git.md`（中文 Conventional Commits：`<type>(<scope>): <subject>`）。
-- **代码注释**：遵循 `docs/agents/comments.md`（新写注释用中文，只写契约、不变量与非显然陷阱，不复述签名）。
+- **代码注释**：遵循 `docs/agents/comments.md`。注释写契约、不变量和陷阱，不复述签名；导出符号用 TSDoc，函数体内的陷阱用行内注释。改协议领域模型、领域类型、请求响应或持久化结构前，先看[字段注释规则](docs/agents/comments.md#字段注释规则)：领域模型字段必注，其余只注释无法从名字和类型推断的语义。
 - **Issue 跟踪与分诊标签**：见 `docs/agents/issue-tracker.md` 与 `docs/agents/triage-labels.md`。

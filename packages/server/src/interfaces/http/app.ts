@@ -34,16 +34,19 @@ import type {
   RealtimeSubscriber,
 } from '../../domain/ports.js'
 
+/** 本地 Daemon 的安全边界配置；Hub 不传，改由 `mountHubGuard` 做同源与角色校验。 */
 export interface HttpSecurityConfig {
   // 防 DNS rebinding：允许的 Host 头白名单（例如 ['localhost:24321', '127.0.0.1:24321']）
   allowedHosts?: readonly string[]
   // 写接口鉴权令牌（Bearer token 或同源 session cookie）
   token?: string
+  // 承载 token 的 cookie 名，缺省 akasha_session
   cookieName?: string
   // 跨站写请求 Origin 白名单
   allowedOrigins?: readonly string[]
 }
 
+/** 状态、日志与活跃状态接口的数据来源；本地由容器提供，Hub 以固定值填充。 */
 export interface DaemonInfoProvider {
   version: string
   pid: number
@@ -58,6 +61,7 @@ export interface DaemonInfoProvider {
     state: 'editing' | 'idle' | 'offline'
     summary?: string
   }) => Promise<void>
+  // 省略时 shutdown 接口只应答，不做任何事
   requestShutdown?: () => void
 }
 
@@ -71,7 +75,9 @@ export interface HttpAppDeps {
   clock: Clock
   daemon: DaemonInfoProvider
   security?: HttpSecurityConfig
+  // 省略时制品存储接口返回 404
   artifactStorage?: ArtifactStorageRepository
+  // 从请求解析制品存储的调用方身份；null 表示未登录。省略时视为本地单一用户
   storagePrincipal?: (request: Request) => Promise<string | null>
 }
 
@@ -160,6 +166,7 @@ function randomHex(bytesLen: number): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
+// Hub 守卫在转发前自行拒绝的请求不经过这里：例如 INVALID_RECEIPT，守卫回 400，这里映射为 422
 function errorCodeToStatus(code: ErrorCode): ContentfulStatusCode {
   switch (code) {
     case 'BAD_REQUEST':
@@ -198,6 +205,7 @@ function parseCookies(header: string | undefined): Record<string, string> {
   return out
 }
 
+// Content-Type、JSON 语法与 schema 校验的失败都归一为 BAD_REQUEST
 async function parseJsonBody<T>(req: Request, schema: z.ZodType<T>): Promise<T> {
   const ct = req.headers.get('content-type')?.toLowerCase() ?? ''
   if (!ct.includes('application/json')) {
@@ -216,7 +224,12 @@ async function parseJsonBody<T>(req: Request, schema: z.ZodType<T>): Promise<T> 
   return result.data
 }
 
-// Hono HTTP 接口层：遵循纯 Web 标准 Request/Response，同时适配 Node 本地 Daemon 与 Cloudflare Workers。
+/**
+ * Hono HTTP 接口层：只依赖 Web 标准的 `Request` / `Response`，同时适配 Node 本地 Daemon 与
+ * Cloudflare Workers。
+ *
+ * @remarks 传入 `security` 才启用 Host / Origin / Token 校验；领域错误在此统一转为错误信封。
+ */
 export function createHttpApp(deps: HttpAppDeps): Hono {
   const app = new Hono()
   // 一次性浏览器登录码：60 秒有效且仅可消费一次，用于 akasha open 换取 HttpOnly Cookie
@@ -407,6 +420,7 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
     return c.json(deps.specs.getSpec(parsed.data))
   })
 
+  // 首次创建（得到 v1）返回 201，更新返回 200
   app.post('/api/v1/artifacts', async (c) => {
     const body = await parseJsonBody(c.req.raw, PublishBodySchema)
     const isNew = body.baseVersion === undefined
@@ -757,6 +771,7 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
     return c.redirect(entry.next, 302)
   })
 
+  // 先应答再触发退出，保证响应先送达
   app.post('/api/v1/daemon/shutdown', (c) => {
     if (deps.daemon.requestShutdown) {
       setTimeout(() => deps.daemon.requestShutdown?.(), 20)

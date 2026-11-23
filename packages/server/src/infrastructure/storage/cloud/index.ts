@@ -53,6 +53,7 @@ const mapFeedback = ({ draft, element_json, ...feedback }: FeedbackRow): Feedbac
   element: element_json === null ? null : (JSON.parse(element_json) as Feedback['element']),
 })
 const insertRound = `INSERT INTO rounds (id, artifact_id, ord, status, groups_json, submitted_at, created_at)`
+// SQLite BIGINT 的上限；更大的游标一律按它处理，避免 CAST 溢出
 const maxSqlCursor = '9223372036854775807'
 
 async function versionBlobKey(version: Readonly<Version>): Promise<string> {
@@ -64,6 +65,12 @@ async function versionBlobKey(version: Readonly<Version>): Promise<string> {
   return `versions/${encodeURIComponent(version.artifactId)}/${version.version}/${hex}`
 }
 
+/**
+ * 基于 SQL 驱动组装全部仓储，是 Hub 的 SQLite 与 PostgreSQL 两种部署共用的实现。
+ *
+ * @remarks 建表在首次查询前完成，`ready` 可供调用方等待。传入 `blobs` 后版本源码写入对象存储，
+ * 表里只保留对象键。返回的版本对象一律递归冻结。
+ */
 export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
   const ready = driver.batch(schema, 'schema').then(() => {})
   async function query<Row>(sql: string, ...params: SqlValue[]): Promise<Row[]> {
@@ -147,6 +154,7 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
             `SELECT ${artifactColumns} FROM artifacts WHERE project_id = ? ORDER BY updated_at DESC`,
             projectId,
           ),
+    // 先写对象再写表行，表行指向的对象一定已经存在
     async appendVersion(version) {
       await ready
       let key: string | null = null
@@ -236,6 +244,7 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
   }
 
   const rounds: RoundRepository = {
+    // 新轮次的 ord 取制品内最大值加一；已有轮次只更新状态、分组与提交时间
     async saveRound(round) {
       await write('rounds', [
         `${insertRound} VALUES (?, ?, (SELECT COALESCE(MAX(ord), 0) + 1 FROM rounds WHERE artifact_id = ?), ?, ?, ?, ?)
@@ -250,6 +259,7 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
         round.createdAt,
       ])
     },
+    // 删除后按数组下标重排 ord，整个替换在同一事务内完成
     async replaceRounds(artifactId, replacement) {
       const statements: SqlStatement[] = [['DELETE FROM rounds WHERE artifact_id = ?', artifactId]]
       for (let index = 0; index < replacement.length; index += 1) {
@@ -320,6 +330,7 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
       return row && mapFeedback(row)
     },
     async list(filter) {
+      // 范围是空集时直接返回，不依赖各数据库对 IN () 的处理
       if (filter.artifactIds?.size === 0) return { items: [], cursor: filter.afterCursor ?? '' }
       const seq = filter.afterCursor?.match(/^\s*\+?0*([1-9]\d*)/)?.[1] ?? ''
       const boundedSeq =
@@ -347,6 +358,7 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
          ORDER BY CASE WHEN delivery_seq IS NULL THEN 1 ELSE 0 END, delivery_seq, insertion_seq`,
         ...params,
       )
+      // 游标取最后一条可投递反馈的序号；结果里只有草稿时沿用入参
       let cursor = seq || filter.afterCursor || ''
       const items = rows.map(({ cursor: delivered, ...row }) => {
         if (delivered !== null) cursor = delivered
@@ -354,6 +366,7 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
       })
       return { items, cursor }
     },
+    // 转正的草稿按插入顺序接在当前最大投递序号之后
     async promoteRoundDrafts(artifactId, roundId, updatedAt) {
       const promoted = await write('feedbacks', [
         `UPDATE feedbacks SET draft = 0, delivery_seq = promoted.next_seq, updated_at = ?
@@ -382,6 +395,7 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
         receipt.issuedAt,
       )
     },
+    // 删除并返回，天然只能消费一次
     async consume(id) {
       const row = await first<ReceiptRow>(
         `DELETE FROM receipts WHERE receipt = ? RETURNING ${receiptColumns}`,
@@ -402,6 +416,7 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
         )) ?? null
       )
     },
+    // revision 为 0 走插入（已存在则不改动），其余走带修订号条件的更新
     async compareAndSet(namespace, revision, json) {
       const rows =
         revision === 0
@@ -422,6 +437,11 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
     },
   }
 
+  /**
+   * 单行计数器自增并返回新序号。
+   *
+   * @remarks 每个序号都持久化，重启后不会回退或复用。
+   */
   async function allocateRealtimeSeq(): Promise<number> {
     const row = await first<{ seq: string }>(
       `INSERT INTO hub_realtime_cursor (id, seq) VALUES (1, 0)

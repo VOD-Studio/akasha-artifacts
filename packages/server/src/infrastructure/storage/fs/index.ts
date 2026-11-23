@@ -22,9 +22,12 @@ import type {
 } from '../../../domain/ports.js'
 import { type SqliteArtifactRepository, SqliteStorage } from '../sqlite/index.js'
 
+/** 服务端独占管理的索引目录名；评论、轮次与运行态都在其中，不随源码一起编辑。 */
 export const STATE_DIR_NAME = '.state'
+/** 制品目录内记录稳定 `publicId` 的文件名；目录改名或 Git 检出后据此找回身份。 */
 export const ARTIFACT_ID_FILENAME = '.artifact-id'
 
+// 每种类型的规范入口文件名；监听器只认这些名字，其余文件的变化不触发同步
 const CANONICAL_ENTRY_FILENAMES: Record<ArtifactType, readonly string[]> = {
   react: ['index.tsx', 'index.jsx'],
   html: ['index.html'],
@@ -40,6 +43,7 @@ const CANONICAL_ENTRY_FILENAMES: Record<ArtifactType, readonly string[]> = {
   'data-story': ['index.json'],
 }
 
+/** 写盘时采用的入口文件名；`document` 按源码是否以 `{` 开头选 JSON 或 HTML。 */
 export function entryFilenameForType(type: ArtifactType, source?: string): string {
   switch (type) {
     case 'react':
@@ -60,9 +64,13 @@ export function entryFilenameForType(type: ArtifactType, source?: string): strin
 }
 
 export interface ArtifactFileLayout {
+  /** 制品目录的绝对路径。 */
   artifactDir: string
+  /** 源码入口文件。 */
   entryFile: string
+  /** 记录 `publicId` 的文件。 */
   idFile: string
+  /** 相对 `.artifacts/` 的目录路径，用作 slug 比对的规范形式。 */
   normalizedRelativeDir: string
 }
 
@@ -80,7 +88,11 @@ function resolveRealPathAllowMissing(targetPath: string): string {
   return tail.length > 0 ? path.join(realBase, ...tail) : realBase
 }
 
-// 校验目标路径及其每一级已存在祖先（含符号链接与悬空链接）均严格落在 artifactsRoot 真实路径内部，防止通过 symlink 越界读写。
+/**
+ * 校验目标路径及其每一级已存在祖先都落在 `artifactsRoot` 的真实路径之内。
+ *
+ * @throws {DomainError} 路径字面越界、任一级是符号链接，或真实路径越界；错误码为 `BAD_REQUEST`。
+ */
 export function assertRealPathInsideRoot(artifactsRoot: string, targetPath: string): void {
   const lexicalRoot = path.resolve(artifactsRoot)
   const lexicalTarget = path.resolve(targetPath)
@@ -116,7 +128,11 @@ export function assertRealPathInsideRoot(artifactsRoot: string, targetPath: stri
   }
 }
 
-// 解析 Artifact 在 .artifacts/<type>/<slug>/ 下的安全物理路径，严防路径穿越与符号链接越界。
+/**
+ * 解析制品在 `.artifacts/<type>/<slug>/` 下的物理路径，拦截路径穿越与符号链接越界。
+ *
+ * @throws {DomainError} slug 为空、含 `.`、`..` 或 `.state` 段，或路径越界（`BAD_REQUEST`）。
+ */
 export function resolveArtifactFileLayout(
   artifactsRoot: string,
   type: ArtifactType,
@@ -163,10 +179,16 @@ export interface ParsedFsArtifactPath {
   artifactDir: string
   entryFile: string
   idFile: string
+  /** 目录内 `.artifact-id` 的内容；文件缺失或内容不合法时省略。 */
   existingPublicId?: PublicId
 }
 
-// 从 .artifacts/ 内的物理文件路径反推出 (type, slug, publicId)，忽略 .state/、.artifact-id 与临时文件。
+/**
+ * 从 `.artifacts/` 内的物理文件路径反推出类型、slug 与已有的 `publicId`。
+ *
+ * @returns 不是制品规范入口文件的路径返回 `null`：位于 `.state/` 下、是隐藏或临时文件，
+ * 或文件名不在该类型的规范入口名之内。
+ */
 export function parseArtifactPathFromFs(
   artifactsRoot: string,
   absoluteFilePath: string,
@@ -231,6 +253,7 @@ export function parseArtifactPathFromFs(
   }
 }
 
+// 先写同目录临时文件再 rename，监听器不会读到写了一半的内容
 function writeFileAtomic(filePath: string, content: string): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true })
   const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`
@@ -238,6 +261,12 @@ function writeFileAtomic(filePath: string, content: string): void {
   fs.renameSync(tmp, filePath)
 }
 
+/**
+ * `ArtifactRepository` 的文件存储实现：源码落盘为原生文件，元数据与版本历史仍存 SQLite。
+ *
+ * @remarks 每次写入都先做物理目录碰撞校验与外部改动对账，再与 SQLite 在单个同步事务内提交；
+ * 校验失败时不落盘、不残留版本行。目录布局与 `.artifact-id` 见 `FsArtifactsStorage`。
+ */
 export class FsArtifactRepository implements ArtifactRepository {
   // 记录服务端最近一次落盘的源码内容，供文件监听器识别并跳过自写回环
   private readonly lastWrittenContent = new Map<string, string>()
@@ -255,14 +284,17 @@ export class FsArtifactRepository implements ArtifactRepository {
     private readonly inner: SqliteArtifactRepository,
   ) {}
 
+  /** 注册回调：服务端写入前补录了未入库的外部改动时触发，用于把补录的版本广播出去。 */
   setOnDiskReconciled(cb: (artifact: Artifact, version: Readonly<Version>) => void): void {
     this.onDiskReconciled = cb
   }
 
+  /** 标记某文件正由监听器或全量扫描导入，使随后的首次发布不被当作覆写未入库的文件。 */
   markImportingExternalFile(filePath: string, slug: Slug, source: string): void {
     this.importingExternalFiles.set(resolveRealPathAllowMissing(filePath), { slug, source })
   }
 
+  /** 清除导入标记。 */
   clearImportingExternalFile(filePath: string): void {
     this.importingExternalFiles.delete(resolveRealPathAllowMissing(filePath))
   }
@@ -283,8 +315,12 @@ export class FsArtifactRepository implements ArtifactRepository {
     return found
   }
 
-  // 检查索引记录指向的原物理目录是否仍存在有效规范源文件（且未被其它 publicId 接管），
-  // 用于区分“真实目录移动”与“带 .artifact-id 的目录复制”，防止复制目录劫持原 Artifact 身份。
+  /**
+   * 检查索引记录指向的原物理目录是否仍存在有效的规范源文件，且未被其他 `publicId` 接管。
+   *
+   * @remarks 用于区分「目录真的移动了」与「带着 `.artifact-id` 复制了目录」，
+   * 防止复制的目录劫持原制品的身份。
+   */
   hasLiveIndexedLayout(artifact: Artifact): boolean {
     const entries = this.findExistingDiskEntries(artifact)
     if (entries.length === 0) return false
@@ -623,6 +659,7 @@ export class FsArtifactRepository implements ArtifactRepository {
     }
   }
 
+  /** 判定磁盘上的内容是否服务端自己刚写入的；是则监听器跳过，避免自触发。 */
   isOwnWrite(filePath: string, content: string): boolean {
     const resolved = path.resolve(filePath)
     if (this.lastWrittenContent.get(resolved) !== content) {
@@ -650,12 +687,16 @@ export class FsArtifactRepository implements ArtifactRepository {
     return true
   }
 
+  /** 记录服务端最近一次落盘的内容，供 `isOwnWrite` 比对。 */
   recordSyncedContent(filePath: string, content: string): void {
     this.lastWrittenContent.set(path.resolve(filePath), content)
   }
 
-  // 仅更新 .state/ 索引中的目录元数据（slug/type/updatedAt）而不改写磁盘源文件；
-  // 内部同步重读最新记录并严格保留既有 headVersion，防止与并发 publish/update 交错时回退版本号。
+  /**
+   * 只更新索引里的目录元数据（slug、type、updatedAt），不改写磁盘上的源文件。
+   *
+   * @remarks 内部重读最新记录并保留既有 `headVersion`，防止与并发的发布或更新交错时回退版本号。
+   */
   async updateIndexOnly(artifact: Artifact): Promise<Artifact> {
     this.assertOwnedProject(artifact.projectId)
     const nextLayout = resolveArtifactFileLayout(this.artifactsRoot, artifact.type, artifact.slug)
@@ -785,6 +826,11 @@ export class FsArtifactRepository implements ArtifactRepository {
     return { ...layout, entryFile }
   }
 
+  /**
+   * 保存制品元数据；该制品有待提交的新版本时，与它一起原子提交并把源码落盘。
+   *
+   * @remarks `appendVersion` 对 v2 及之后的版本只暂存，真正的落盘发生在这里。
+   */
   async saveArtifact(artifact: Artifact): Promise<void> {
     const staged = this.pendingVersions.get(artifact.publicId)
     this.pendingVersions.delete(artifact.publicId)
@@ -877,6 +923,9 @@ export class FsArtifactRepository implements ArtifactRepository {
     return this.inner.listByProject(projectId)
   }
 
+  /**
+   * 追加版本；v2 及之后的版本先暂存，等随后的 `saveArtifact` 校验通过后一起提交。
+   */
   async appendVersion(version: Readonly<Version>): Promise<void> {
     const artifact = await this.inner.findByPublicId(version.artifactId)
     if (artifact) {
@@ -909,13 +958,17 @@ export interface FsArtifactsStorageOptions {
   artifactsRoot: string
   // 该存储绑定的业务项目根目录（独立于 artifactsRoot，兼容 --artifacts-dir 指向子目录或外部缓存路径）
   projectRoot?: string
-  // 绑定当前 .artifacts/ 根目录的项目 ID；缺省时沿用已登记的同根目录项目或回退为 'default'
+  // 缺省时依次取同根目录已登记的项目、meta 里的记录、最近活跃的项目，最后回退为 default
   projectId?: string
 }
 
-// 项目内 .artifacts/ 原生文件存储适配器：
-// - 源码按 <type>/<slug>/<entry> 原生文件落盘并附 .artifact-id 稳定标识（可纳入 Git、支持宿主直接编辑）；
-// - 评论、轮次、回执、状态流与版本索引由服务端独占存放在 .artifacts/.state/state.db，彻底避免与源码编辑冲突。
+/**
+ * 项目内 `.artifacts/` 原生文件存储适配器。
+ *
+ * @remarks 源码按 `<type>/<slug>/<入口文件>` 落盘并附 `.artifact-id` 稳定标识，可纳入 Git、
+ * 也可由宿主直接编辑。评论、轮次、回执、状态流与版本索引由服务端独占存放在
+ * `.artifacts/.state/state.db`，不与源码编辑冲突。
+ */
 export class FsArtifactsStorage {
   readonly artifactsRoot: string
   readonly projectRoot: string

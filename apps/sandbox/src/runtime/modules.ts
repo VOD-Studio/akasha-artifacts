@@ -17,7 +17,11 @@ const AkashaRuntime = {
   usePersistentControl: usePersistentControlHook,
 }
 
-// 沙盒预打包白名单模块表：与服务端 SpecRegistry 宣称的依赖白名单完全一致，彻底离线不请求外部 CDN。
+/**
+ * 沙盒预打包的白名单模块表，键与服务端声明的依赖白名单一致。
+ *
+ * @remarks 运行时不请求外部 CDN；Artifact 的 import 被改写为对这张表的同步读取。
+ */
 export const SANDBOX_MODULES: Record<string, unknown> = {
   react: { ...React, default: React },
   'react-dom': { ...ReactDom, default: ReactDom },
@@ -43,6 +47,7 @@ interface SandboxGlobalScope {
   usePersistentControl?: typeof usePersistentControlHook
 }
 
+/** 把模块表与两个状态 Hook 挂到全局，供编译后的 Artifact 代码读取。 */
 export function installSandboxGlobals(): void {
   const scope = globalThis as unknown as SandboxGlobalScope
   scope.__AKASHA_MODULES__ = SANDBOX_MODULES

@@ -24,8 +24,11 @@ import { createStorageRelay } from '../../shared/bridge/storage-relay'
 import { ElementOverlay } from '../../shared/overlay/ElementOverlay'
 import type { CanvasBoard } from './canvas-model'
 
+/** 一块画板的沙盒向外壳提供的连接，登记到工作区后由工作区使用。 */
 export interface FrameConnection {
+  /** 向该沙盒发送 Bridge 指令。 */
   send: (message: ShellOutgoingPayload) => void
+  /** 把状态补丁转发给该沙盒。 */
   forwardState: (seq: number, ops: JsonPatchOp[]) => void
 }
 
@@ -37,7 +40,9 @@ interface ArtifactFrameProps {
   sandboxOrigin: string
   pins: readonly Feedback[]
   interactive: boolean
+  /** 向工作区登记或注销这块画板的连接。 */
   register: (id: string, frame: FrameConnection | null) => void
+  /** 直改模式下沙盒上报选中元素时调用。 */
   onVisualSelect: (message: Extract<SandboxToShellMessage, { type: 'visual.select' }>) => void
 }
 
@@ -54,6 +59,11 @@ function bindSandboxReference(element: ElementRef, id: string, scoped: boolean):
   return bound.blockId || bound.selector || bound.textPreview ? bound : null
 }
 
+/**
+ * 单块画板的独立沙盒：每块画板一个隔离的 iframe，外壳叠层负责选区与图钉。
+ *
+ * @remarks 画板改变作用域时会重新握手，即使它恰好与默认画板同名。
+ */
 export function ArtifactFrame({
   artifact,
   version,

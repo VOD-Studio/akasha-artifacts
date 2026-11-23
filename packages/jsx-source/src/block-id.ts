@@ -1,7 +1,7 @@
 import type { CheckDiagnostic } from '@akasha/protocol'
 import type { BlockEntry } from './types.js'
 
-// 校验文档/画板中的块标识唯一性，返回结构化诊断结果供 CheckService 与编译器共用。
+/** 校验块标识是否唯一；每个重复的标识产生一条 `DUPLICATE_BLOCK_ID` 错误诊断。 */
 export function validateBlockIds(blocks: readonly BlockEntry[]): CheckDiagnostic[] {
   const firstSeen = new Map<string, BlockEntry>()
   const diagnostics: CheckDiagnostic[] = []

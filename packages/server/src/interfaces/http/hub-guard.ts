@@ -33,6 +33,7 @@ interface HubGuardOptions {
 
 const jsonObject = z.record(z.string(), z.unknown())
 const shareInput = z.object({
+  // 分享链接有效期（秒），缺省一天，最长 7 天
   ttlSeconds: z
     .number()
     .int()
@@ -49,6 +50,7 @@ const registerProjectInput = z.object({
   name: z.string().min(1),
   rootPath: z.string().min(1),
 })
+// 允许转发到 core 的读路径后缀；空串即制品详情
 const readSuffixes: Readonly<Record<string, true>> = {
   '': true,
   '/versions': true,
@@ -56,6 +58,7 @@ const readSuffixes: Readonly<Record<string, true>> = {
   '/visual-edit': true,
   '/edits': true,
 }
+// 允许转发到 core 的写路径后缀；authored 表示强制以调用方身份作为作者
 const writeSuffixes: Readonly<Record<string, 'write' | 'authored'>> = {
   '/state': 'write',
   '/rounds': 'write',
@@ -70,6 +73,7 @@ const writeSuffixes: Readonly<Record<string, 'write' | 'authored'>> = {
 const roundAction = /^\/rounds\/[^/]+\/(?:submit|withdraw)$/
 const artifactPath = /^\/api\/v1\/artifacts\/([^/]+)(.*)$/
 
+// 无权访问与不存在统一返回 404，不泄露制品是否存在
 function hidden(c: Context) {
   return c.json({ error: { code: 'NOT_FOUND', message: '未找到请求的资源' } }, 404)
 }
@@ -118,6 +122,11 @@ function rewrite(request: Request, url: URL, body?: Record<string, unknown>) {
   })
 }
 
+/**
+ * 在通用接口外层挂载 Hub 守卫：同源校验、鉴权、按角色的访问控制与回执封装。
+ *
+ * @remarks 默认拒绝：只有显式列出的路径会转发到 `core`，新增的 core 路由不会自动在 Hub 暴露。
+ */
 export function mountHubGuard(
   app: Hono,
   { core, auth, access, repositories, origin, clock, ids }: HubGuardOptions,

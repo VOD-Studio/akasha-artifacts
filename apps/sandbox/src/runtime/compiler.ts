@@ -3,6 +3,7 @@ import type { ComponentType } from 'react'
 import { transform } from 'sucrase'
 import { installSandboxGlobals, isWhitelistedModule } from './modules'
 
+/** 源码在编译阶段被拒绝；`loc` 是出错位置的源码坐标，拿不到时省略。 */
 export class ArtifactCompileError extends Error {
   readonly phase = 'compile' as const
   readonly loc?: string
@@ -42,7 +43,14 @@ function parseNamedBindings(raw: string): Array<{ imported: string; local: strin
     })
 }
 
-// 将白名单静态 import 改写为对预打包 globalThis.__AKASHA_MODULES__ 的同步读取；越界依赖或动态 import 一律在编译阶段拦截。
+/**
+ * 把白名单内的静态 `import` 改写成对预打包模块表的同步读取。
+ *
+ * @throws {ArtifactCompileError} 出现动态 `import()`、从外部模块直接 re-export，
+ * 或依赖不在白名单内。
+ *
+ * @remarks 改写保持与原 import 声明相同的换行数，编译后的代码行号不漂移。
+ */
 export function rewriteWhitelistedImports(code: string): string {
   const dynamicMatch = DYNAMIC_IMPORT_RE.exec(code)
   DYNAMIC_IMPORT_RE.lastIndex = 0
@@ -155,6 +163,12 @@ async function importCompiledModule(code: string): Promise<Record<string, unknow
   }
 }
 
+/**
+ * 编译 React Artifact，返回其默认导出的组件。
+ *
+ * @remarks 顺序为：注入源码位置、转译 TSX、改写 import、以 ESM 模块加载。产物从沙盒全局读取依赖。
+ * @throws {ArtifactCompileError} 语法错误、依赖不合规，或默认导出不是组件。
+ */
 export async function compileReactArtifact(source: string): Promise<ComponentType> {
   installSandboxGlobals()
 

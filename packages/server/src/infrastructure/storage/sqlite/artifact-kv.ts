@@ -4,6 +4,7 @@ import type {
   ArtifactStorageSnapshot,
 } from '../../../domain/artifact-storage.js'
 
+/** 在本地 Daemon 的 SQLite 库上挂载制品存储表。 */
 export function createSqliteArtifactStorage(db: DatabaseSync): ArtifactStorageRepository {
   db.exec(`CREATE TABLE IF NOT EXISTS artifact_kv (
     namespace TEXT PRIMARY KEY,
@@ -21,6 +22,7 @@ export function createSqliteArtifactStorage(db: DatabaseSync): ArtifactStorageRe
     async read(namespace) {
       return (read.get(namespace) as ArtifactStorageSnapshot | undefined) ?? null
     },
+    // revision 为 0 走插入（已存在则不改动），其余走带修订号条件的更新
     async compareAndSet(namespace, revision, json) {
       const { changes } =
         revision === 0 ? insert.run(namespace, json) : update.run(json, namespace, revision)

@@ -2,14 +2,18 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { type ParsedFsArtifactPath, parseArtifactPathFromFs, STATE_DIR_NAME } from './index.js'
 
+/** 监听器确认属于外部改动后交出的同步事件：文件路径的解析结果加上当前内容。 */
 export interface ExternalArtifactFileEvent extends ParsedFsArtifactPath {
   source: string
 }
 
 export interface FsArtifactsWatcherOptions {
   artifactsRoot: string
+  // 同一文件连续改动合并的窗口（毫秒），缺省 120
   debounceMs?: number
+  // 判定一次落盘是否服务端自己写的；是则忽略，避免自触发
   isOwnWrite?: (filePath: string, content: string) => boolean
+  // 确认为外部改动后调用；抛出的错误经 `onError` 上报
   onExternalFileChange: (event: ExternalArtifactFileEvent) => Promise<void>
   onError?: (err: unknown) => void
 }
@@ -28,8 +32,12 @@ function walkSourceFiles(dir: string, out: string[] = []): string[] {
   return out
 }
 
-// 项目内 .artifacts/ 外部文件变更监听器：捕获宿主原生 Read/Edit/Write 变更，
-// 自动过滤 .state/、临时文件与服务端自写事件，并按文件粒度防抖触发版本快照同步。
+/**
+ * 项目内 `.artifacts/` 的外部文件变更监听器：捕获宿主原生读写工具的改动，同步为版本快照。
+ *
+ * @remarks 自动忽略 `.state/`、临时文件与服务端自己的写入；同一文件按防抖窗口合并，
+ * 全部同步任务串行执行。
+ */
 export class FsArtifactsWatcher {
   private watcher: fs.FSWatcher | null = null
   private closed = false
@@ -67,6 +75,7 @@ export class FsArtifactsWatcher {
     }
   }
 
+  /** 为一次文件变更安排防抖同步；不是制品源文件的路径直接忽略。 */
   scheduleSync(filePath: string): void {
     const resolved = path.resolve(filePath)
     if (!parseArtifactPathFromFs(this.artifactsRoot, resolved)) return
@@ -81,6 +90,14 @@ export class FsArtifactsWatcher {
     this.timers.set(resolved, timer)
   }
 
+  /**
+   * 读取文件当前内容并交给同步回调。
+   *
+   * @returns 是否触发了同步；文件已删除、内容是服务端自写或监听器已关闭时为 false。
+   *
+   * @remarks `fromWatch` 为 true 且读到空内容时，再等一个短稳定窗口复读一次，
+   * 以避开编辑器先截断再写入的窗口。
+   */
   async syncFile(filePath: string, options: { fromWatch?: boolean } = {}): Promise<boolean> {
     let result = false
     const run = async () => {
@@ -123,7 +140,11 @@ export class FsArtifactsWatcher {
     return result
   }
 
-  // 启动时或手工全量扫描 .artifacts/ 下全部原生源文件并对齐到索引；单个文件异常不阻断其余文件对账
+  /**
+   * 全量扫描 `.artifacts/` 下的源文件并对齐到索引。
+   *
+   * @returns 实际触发同步的文件数；单个文件异常不阻断其余文件。
+   */
   async scanAll(): Promise<number> {
     const files = walkSourceFiles(this.artifactsRoot)
     let synced = 0

@@ -3,6 +3,7 @@ import { bodyLimit } from 'hono/body-limit'
 import { z } from 'zod'
 import type { Clock, ReceiptRepository } from '../../domain/ports.js'
 
+// __Host- 前缀要求 cookie 带 Secure、Path=/ 且不设 Domain，子域名无法覆盖这些 cookie
 const sessionCookie = '__Host-akasha_hub_session'
 const stateCookie = '__Host-akasha_hub_oauth'
 const shareCookie = (artifactId: string) => `__Host-akasha_hub_share_${artifactId}`
@@ -17,10 +18,15 @@ const decoder = new TextDecoder()
 export interface HubOAuthOptions {
   clientId: string
   clientSecret: string
+  // 至少 32 字节；用于 HMAC 签名所有凭证
   signingSecret: string
+  // 设置后，调用方须是该组织的活跃成员才算 Hub 成员
   organization?: string
+  // 在组织内进一步限定到某个团队；须同时设置 `organization`
   team?: string
+  // 按 GitHub login 放行的成员白名单，比较时不区分大小写
   allowlist?: readonly string[]
+  // 缺省用全局 `fetch`；测试时可替换
   fetch?: typeof fetch
 }
 
@@ -30,6 +36,8 @@ const identity = z.object({
   member: z.boolean(),
 })
 const expires = z.object({ exp: z.number().int() })
+// 六种凭证共用同一签名格式：session（浏览器会话）、cli（CLI 令牌）、grant（一次性授权码）、
+// state（OAuth 防 CSRF）、share（分享链接）、receipt（封装给 CLI 的回执）
 const credentials = z.discriminatedUnion('kind', [
   identity.merge(expires).extend({ kind: z.literal('session') }),
   identity.merge(expires).extend({ kind: z.literal('cli') }),
@@ -57,16 +65,25 @@ interface GitHubIdentity {
   member: boolean
 }
 
+/** 已通过鉴权的调用方身份。 */
 export interface HubPrincipal extends GitHubIdentity {
+  // session 来自浏览器 cookie，cli 来自 Bearer 令牌
   kind: 'session' | 'cli'
+  // 是否为 Hub 成员；非成员只能读 public 制品
 }
 
 export interface HubAuth {
+  /** 注册 `/auth/*` 登录路由与 CLI 令牌接口。 */
   mount(app: Hono): void
+  /** 凭会话 cookie 或 Bearer 令牌识别调用方；Bearer 只接受 cli 凭证。 */
   authenticate(request: Request): Promise<HubPrincipal | undefined>
+  /** 请求是否持有某制品的有效分享链接。 */
   hasShare(request: Request, artifactId: string): Promise<boolean>
+  /** 签发一条分享链接；`ttl` 的单位为秒。 */
   createShare(artifactId: string, ttl: number): Promise<{ url: string; expiresAt: string }>
+  /** 把回执封装成只对该调用方有效的令牌；Hub 把回执交给 CLI 之前使用。 */
   sealReceipt(principal: HubPrincipal, artifactId: string, receipt: string): Promise<string>
+  /** 还原 `sealReceipt` 封装的回执；调用方不一致或已过期时返回 `undefined`。 */
   openReceipt(
     token: string,
     principal: HubPrincipal,
@@ -101,6 +118,7 @@ function cookieHeader(name: string, value: string, ttl: number): string {
   return `${name}=${value}; Max-Age=${ttl}; Path=/; Secure; HttpOnly; SameSite=Lax`
 }
 
+// 登录后的跳转目标只接受站内路径，且不能落在 /auth/ 下
 function safeNext(value: string | undefined, origin: string): string {
   if (!value?.startsWith('/') || value.startsWith('//') || /[\\\r\n\t]/.test(value)) return '/'
   const url = new URL(value, origin)
@@ -109,6 +127,7 @@ function safeNext(value: string | undefined, origin: string): string {
     : '/'
 }
 
+/** 请求是否来自 Hub 自己的 origin：带 `Origin` 头时以它为准，否则看 `sec-fetch-site`。 */
 export function sameHubOrigin(request: Request, origin: string): boolean {
   const supplied = request.headers.get('origin')
   const fetchSite = request.headers.get('sec-fetch-site')
@@ -117,6 +136,11 @@ export function sameHubOrigin(request: Request, origin: string): boolean {
     : fetchSite !== 'cross-site' && fetchSite !== 'same-site'
 }
 
+/**
+ * 组装 Hub 鉴权：GitHub OAuth 登录、CLI 授权码换令牌、分享链接与回执封装。
+ *
+ * @throws {Error} OAuth 配置缺失、签名密钥不足 32 字节，或设置了 `team` 而没有 `organization`。
+ */
 export function createHubAuth(
   options: HubOAuthOptions,
   origin: string,
@@ -142,6 +166,7 @@ export function createHubAuth(
   )
   const now = () => Math.floor(Date.parse(clock.now()) / 1000)
 
+  // 签名内容带上 origin，令牌换到别的 Hub 域名下即失效
   async function sign(claim: Credential): Promise<string> {
     const payload = base64url(encoder.encode(JSON.stringify(claim)))
     const mac = await crypto.subtle.sign('HMAC', await key, encoder.encode(`${origin}\n${payload}`))
@@ -214,6 +239,7 @@ export function createHubAuth(
     return claim?.kind === 'receipt' && claim.userId === principal.userId ? claim : undefined
   }
 
+  // 成员资格：命中白名单，或是所配置组织（及团队）的活跃成员
   async function githubIdentity(code: string) {
     const tokenResponse = await fetchGithub('https://github.com/login/oauth/access_token', {
       method: 'POST',
@@ -264,6 +290,7 @@ export function createHubAuth(
   }
 
   function mount(app: Hono) {
+    // 发起 GitHub OAuth：签一个带 nonce 的 state 存入 cookie，回调时比对
     async function begin(next: string, challenge?: string) {
       const nonce = random()
       const state = await sign({ kind: 'state', nonce, next, challenge, exp: now() + stateTtl })

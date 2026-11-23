@@ -3,6 +3,7 @@ import type {
   ArtifactStorageSnapshot,
 } from '../../../domain/artifact-storage.js'
 
+/** 制品存储的内存实现；命名空间之间彼此隔离。 */
 export class InMemoryArtifactStorage implements ArtifactStorageRepository {
   private readonly namespaces = new Map<string, ArtifactStorageSnapshot>()
 

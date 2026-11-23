@@ -36,6 +36,7 @@ function escapeJsonPointer(token: string): string {
   return token.replace(/~/g, '~0').replace(/\//g, '~1')
 }
 
+/** 从制品写作规范的 `x-akasha-props` 里取出属性面板的字段；类型不合法的字段被跳过。 */
 export function extractPropFieldsFromSpec(spec?: ArtifactSpecOutput | null): PropsPanelField[] {
   const rawSchema = spec?.schema
   if (!rawSchema || typeof rawSchema !== 'object') return []
@@ -82,7 +83,11 @@ export function extractPropFieldsFromSpec(spec?: ArtifactSpecOutput | null): Pro
   return fields
 }
 
-// 构造针对 /props/<key> 的 RFC 6902 原子补丁：若状态快照尚未创建 /props 对象，则一次性初始化，避免路径缺失报错。
+/**
+ * 构造把 `/props/<key>` 设为 `value` 的补丁。
+ *
+ * @remarks 状态快照里还没有 `props` 对象时，用一条操作整体初始化，避免路径缺失报错。
+ */
 export function buildPropPatch(
   stateSnapshot: Record<string, unknown>,
   key: string,
@@ -95,7 +100,11 @@ export function buildPropPatch(
   return [{ op: 'add', path: `/props/${escapeJsonPointer(key)}`, value }]
 }
 
-// L2 结构化属性面板：按 Kit 模板 schema 自动生成表单并通过 StateStream 零闪烁推送补丁；无 schema 时自动降级回 L1。
+/**
+ * L2 结构化属性面板：按 Kit 模板的 schema 自动生成表单，改动以补丁推送到状态流。
+ *
+ * @remarks 没有 schema 时不显示属性面板。
+ */
 export function PropsPanel({
   artifactId,
   projectId,

@@ -1,6 +1,7 @@
 import type { ElementRef } from '@akasha/protocol'
 import { useEffect, useRef } from 'react'
 
+/** 模板源码无法解析时显示的错误卡片。 */
 export function DecisionSourceError({ error }: { error: string }) {
   return (
     <div
@@ -13,6 +14,11 @@ export function DecisionSourceError({ error }: { error: string }) {
   )
 }
 
+/**
+ * 源码、版本或视图变化后，通知外壳内容已重新渲染。
+ *
+ * @param view - 当前视图的标识，例如章节与 diff 模式；它变化时可见的批注锚点也会变。
+ */
 export function useDecisionRendered(
   source: string,
   version: number,
@@ -30,6 +36,7 @@ export function useDecisionRendered(
   }, [source, version, view])
 }
 
+/** 取元素相对视口的矩形，作为批注锚点。 */
 export function annotationAnchor(el: Element): Pick<ElementRef, 'rect'> {
   const { x, y, width, height } = el.getBoundingClientRect()
   return { rect: { x, y, width, height } }

@@ -5,6 +5,14 @@ import type { SandboxBridgeHost } from './host'
 type StorageRequest = Extract<SandboxToShellMessage, { type: 'storage.request' }>
 const encoder = new TextEncoder()
 
+/**
+ * 把沙盒经 Bridge 提出的制品存储请求转交给服务端，并把结果回给沙盒。
+ *
+ * @returns `handle` 交给 Bridge 宿主分发；`dispose` 中止在途请求并停止应答。
+ *
+ * @remarks 以同源 cookie 带上登录态，调用方身份由服务端从会话解析，不采信沙盒。
+ * 同一 `requestId` 只处理一次，同时最多 16 个在途请求，单个请求 8 秒超时。
+ */
 export function createStorageRelay(artifactId: string, host: SandboxBridgeHost) {
   const lifetime = new AbortController()
   const pending = new Set<string>()

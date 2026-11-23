@@ -24,6 +24,7 @@ export function formatCliBanner(): string {
   return `Akasha Terminal — Open-Source Live Web Artifacts for CLI Agents (v${AKASHA_VERSION})`
 }
 
+// 支持 --key value、--key=value 与不带值的 --key；后一个参数以 -- 开头时，前者按无值处理
 function parseFlags(args: string[]): {
   positional: string[]
   flags: Record<string, string | boolean>
@@ -131,6 +132,14 @@ function printHelp(): void {
 `)
 }
 
+/**
+ * CLI 入口：按第一个参数分发子命令。
+ *
+ * @returns 进程退出码。`0` 成功；`1` 运行态失败（Daemon 未运行、自检不通过）；
+ * `2` 用法错误或参数不合法；`3` 表示 `check` 发现了校验错误。
+ *
+ * @remarks `mcp` 子命令在本地模式下确保 Daemon 在运行；连接失效时重新确保后再重试一次。
+ */
 export async function runCli(argv: string[]): Promise<number> {
   const [command, ...rest] = argv
   if (!command || command === '--help' || command === '-h' || command === 'help') {
@@ -199,6 +208,7 @@ export async function runCli(argv: string[]): Promise<number> {
 
       let resolveConnection: (() => Promise<{ baseUrl: string; token?: string }>) | undefined
 
+      // 兼容旧用法：把本机 Daemon 的回环地址当 Hub 传入。命中默认端口段且未登录该地址时仍走本地
       const legacyLocal =
         hubUrl?.protocol === 'http:' &&
         ['localhost', '127.0.0.1', '[::1]'].includes(hubUrl.hostname) &&
@@ -479,6 +489,7 @@ export async function runCli(argv: string[]): Promise<number> {
   }
 }
 
+// 只有作为脚本直接执行时才运行；被 import 时不触发
 const isEntry =
   process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 

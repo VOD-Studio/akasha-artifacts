@@ -16,7 +16,11 @@ const GROUPS: CommandGroup[] = [
   { id: 'actions', label: '导航与快捷操作' },
 ]
 
-// ⌘K 跨项目全局命令面板：支持标题/slug/项目模糊搜索，↵ 当前页打开，⌘↵ 新标签打开。
+/**
+ * ⌘K 跨项目命令面板：按标题、slug 或项目模糊搜索制品。
+ *
+ * @remarks 回车在当前页打开，⌘回车在新标签打开。
+ */
 export function ArtifactCommandPalette({ onNavigate }: ArtifactCommandPaletteProps) {
   const open = useWorkspaceStore((s) => s.commandPaletteOpen)
   const setOpen = useWorkspaceStore((s) => s.setCommandPaletteOpen)

@@ -1,5 +1,6 @@
 import type { AgentActivityState } from '@akasha/protocol'
 
+/** 宿主 Harness 的生命周期事件名。 */
 export type HarnessLifecycleEvent =
   | 'PreToolUse'
   | 'PostToolUse'
@@ -8,6 +9,10 @@ export type HarnessLifecycleEvent =
   | 'UserPromptSubmit'
   | 'PreInvocation'
 
+/**
+ * 把宿主事件映射成 Agent 活跃状态：调用工具前为 `editing`，回合内的其他事件为 `idle`，
+ * 会话结束为 `offline`。
+ */
 export function mapHarnessEventToActivity(event: HarnessLifecycleEvent): AgentActivityState {
   switch (event) {
     case 'PreToolUse':
@@ -26,14 +31,21 @@ export interface ReportActivityOptions {
   baseUrl: string
   token?: string
   projectId: string
+  // 省略表示整个项目的状态
   artifactId?: string
+  // 触发本次上报的宿主事件，决定上报的状态
   event: HarnessLifecycleEvent
   summary?: string
+  // 请求超时（毫秒），缺省 1500
   timeoutMs?: number
   fetchImpl?: typeof fetch
 }
 
-// 异步轻量状态上报：驱动外壳顶栏实时切换「Agent 正在修改 / 空闲待命 / 离线」，超时或离线静默返回不拖慢宿主。
+/**
+ * 向服务端上报一次 Agent 活跃状态。
+ *
+ * @returns 服务端是否以 2xx 应答；超时、离线或非 2xx 都返回 false，不向宿主抛错。
+ */
 export async function reportHookActivity(options: ReportActivityOptions): Promise<boolean> {
   const f = options.fetchImpl ?? fetch
   const state = mapHarnessEventToActivity(options.event)

@@ -227,6 +227,11 @@ function directComponentReturn(path: readonly Node[], child: Node): boolean {
   )
 }
 
+/**
+ * 收集 TSX 源码里可直改的静态节点，以 `loc` 为键。
+ *
+ * @remarks 只收集默认导出组件直接返回的 JSX 中的原生元素；循环或表达式生成的节点不算。
+ */
 export function collectJsxTargets(source: string): Map<string, LiteralTarget> {
   const ast = parse(source, {
     sourceType: 'module',

@@ -17,7 +17,7 @@ export interface MemoryContainerOptions {
   ids?: IdGenerator
 }
 
-// 手工装配内存容器：用于单元测试与无持久化场景，不引入 DI 框架。
+/** 手工装配内存容器：用于单元测试与无持久化场景，重启后数据全部丢失。 */
 export function createMemoryContainer(options: MemoryContainerOptions = {}) {
   const clock = options.clock ?? new SystemClock()
   const ids = options.ids ?? new CryptoIdGenerator()

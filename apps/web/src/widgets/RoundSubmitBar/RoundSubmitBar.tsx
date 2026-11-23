@@ -16,7 +16,11 @@ export interface RoundSubmitBarProps {
   onWithdrawRound?: (roundId: string) => Promise<unknown>
 }
 
-// 只在评审面板展示轮次动作；除提交轮次外，草稿不会唤醒 Agent。
+/**
+ * 评审轮次的提交栏：只在评审面板里展示。
+ *
+ * @remarks 提交轮次会唤醒 Agent；在此之前写下的草稿不会。
+ */
 export function RoundSubmitBar({
   artifactId,
   projectId,

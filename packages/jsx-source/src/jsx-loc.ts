@@ -91,7 +91,12 @@ function isDynamicContainer(node: AstNode): boolean {
   return false
 }
 
-// 解析 TSX/JSX 并为原生元素注入 data-ak-loc="line:col"（1-based 行列），同时提取稳定 blockId。
+/**
+ * 解析 TSX/JSX，为原生元素注入 `data-ak-loc="line:col"`，并提取稳定块标识。
+ *
+ * @remarks 行列均从 1 起。只向小写开头的原生标签注入，避免把非法属性透传给 React.Fragment
+ * 或第三方组件。位于 `.map` 等循环内的元素额外标上 `data-ak-dynamic`。
+ */
 export function injectJsxLocations(source: string): InjectLocationsResult {
   const ast = parse(source, {
     sourceType: 'module',

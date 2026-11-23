@@ -4,6 +4,7 @@ import type { WsConnectionStatus } from '../../shared/api/ws'
 
 export type WorkspaceViewMode = 'preview' | 'edit' | 'diff' | 'source'
 
+/** 某项目最近一次上报的 Agent 活跃状态。 */
 export interface AgentActivityRecord {
   state: AgentActivityState
   summary?: string
@@ -11,6 +12,7 @@ export interface AgentActivityRecord {
   updatedAt: string
 }
 
+/** 沙盒上报的最近一次编译或运行错误。 */
 export interface SandboxErrorRecord {
   version: number
   phase: 'compile' | 'runtime'
@@ -19,9 +21,11 @@ export interface SandboxErrorRecord {
   loc?: string
 }
 
+/** 工作台的客户端状态。 */
 export interface WorkspaceStoreState {
   selectedProjectId: string | null
   commandPaletteOpen: boolean
+  // 右侧抽屉当前打开的页签；null 表示关闭
   inspectorTab: 'review' | 'props' | null
   artifactViewId: string | null
   viewMode: WorkspaceViewMode
@@ -30,6 +34,7 @@ export interface WorkspaceStoreState {
   presenceByArtifact: Record<string, { viewers: number; agentOnline: boolean }>
   preservedViewByArtifact: Record<string, PreservedViewState>
   unsentDraftsByArtifact: Record<string, string>
+  // 已交给 Agent 的错误指纹，同一条错误不重复提交
   sentErrorFingerprints: Record<string, boolean>
 
   openArtifactView: (publicId: string | null) => void
@@ -45,7 +50,11 @@ export interface WorkspaceStoreState {
   markErrorSent: (fingerprint: string) => void
 }
 
-// 客户端工作台状态：管理视角切换、保态快照与未提交草稿，确保 Agent 推送新版本重绘时不丢失用户上下文。
+/**
+ * 工作台状态的 Zustand 容器。
+ *
+ * @remarks Agent 推送新版本重绘时，靠这里保存的视图模式、保态快照与未提交草稿恢复用户的上下文。
+ */
 export const useWorkspaceStore = create<WorkspaceStoreState>((set) => ({
   selectedProjectId: null,
   commandPaletteOpen: false,

@@ -1,15 +1,18 @@
 import { type ArtifactType, type ElementRef, parseArtboard } from '@akasha/protocol'
 
+/** 画布上的一块画板。 */
 export interface CanvasBoard {
   id: string
   title: string
   subtitle?: string
   recommended?: boolean
+  /** 画板 id 被改写以保持稳定时，保留源码里原来的 id。 */
   legacyBlockId?: string
   width: number
   height: number
   type: ArtifactType
   source: string
+  /** 是否有独立的画板作用域；独立制品的默认画板为 false。 */
   scoped: boolean
 }
 
@@ -19,15 +22,19 @@ export interface CanvasPage {
   boards: readonly CanvasBoard[]
 }
 
+/** 制品的画布文档：若干页面，每页若干画板。 */
 export interface CanvasDocument {
   pages: readonly CanvasPage[]
   columns: number
+  /** 画板之间的流程连线，两端是画板 id。 */
   flows: readonly { from: string; to: string; label?: string }[]
   handDrawnFlows: boolean
 }
 
+/** 非 `artboard` 制品在画布上的唯一画板的 id。 */
 export const STANDALONE_BOARD_ID = 'main'
 
+// 画板没有声明尺寸时的默认视口，单位 CSS 像素
 const DEFAULT_VIEWPORT = { width: 1280, height: 800 }
 
 function descriptionMarkup(description: string) {
@@ -62,6 +69,12 @@ function canvasIds(
   return ids
 }
 
+/**
+ * 把制品源码转成画布文档。
+ *
+ * @remarks 只有 `artboard` 类型会解析出多页面与多画板；其余类型，以及解析失败时，
+ * 都落在一块默认画板上。`props` 里可以覆盖每行列数、是否显示连线与手绘风格。
+ */
 export function createCanvasDocument(
   type: ArtifactType,
   title: string,
@@ -160,6 +173,12 @@ interface BlockPlacement {
   blockId: string
 }
 
+/**
+ * 返回一个函数，为只带 `blockId` 的历史反馈补上画板归属。
+ *
+ * @returns 元素已带 `boardId` 或没有 `blockId` 时原样返回；否则按画板源码里的
+ * `data-ak-block` 找到所属画板并补上 `boardId`。同一个块标识出现在多个画板时不补。
+ */
 export function createCanvasElementResolver(canvas: CanvasDocument) {
   let legacyBoards: Map<string, BlockPlacement | null> | undefined
   return (element: ElementRef): ElementRef => {

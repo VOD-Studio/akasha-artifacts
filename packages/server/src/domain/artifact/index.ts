@@ -16,7 +16,14 @@ function lineNumberAt(text: string, offset: number): number {
   return line
 }
 
-// 增量替换契约：每条 old_str 必须在当前源码中精确匹配且仅匹配一次，任一步失败则整体不生效。
+/**
+ * 按序应用增量替换，返回新源码。
+ *
+ * @remarks 每条 `old_str` 须在前序编辑的结果里恰好匹配一次。
+ * @throws {DomainError} `edits` 为空，或某条 `old_str` 为空；错误码为 `BAD_REQUEST`。
+ * @throws {MatchNotFoundError} `old_str` 零匹配。
+ * @throws {AmbiguousMatchError} `old_str` 匹配到多处。
+ */
 export function applyTextEdits(source: string, edits: readonly TextEdit[]): string {
   if (edits.length === 0) {
     throw new DomainError('BAD_REQUEST', 'edits 不能为空')
@@ -34,6 +41,7 @@ export function applyTextEdits(source: string, edits: readonly TextEdit[]): stri
       const pos = current.indexOf(edit.old_str, start)
       if (pos === -1) break
       positions.push(pos)
+      // 每次只前进 1，重叠出现同样计为多处
       start = pos + 1
     }
     if (positions.length === 0) {
@@ -56,6 +64,7 @@ export function applyTextEdits(source: string, edits: readonly TextEdit[]): stri
   return current
 }
 
+/** 组装并递归冻结一个版本；返回值在任何深度上都不能被修改。 */
 export function createImmutableVersion(params: {
   artifactId: PublicId
   version: number
@@ -76,7 +85,13 @@ export function createImmutableVersion(params: {
   })
 }
 
-// 并发写入不变量：针对已有 Artifact 的任何写入都须声明 baseVersion，落后于 headVersion 时抛出 409 并附带差异。
+/**
+ * 校验写入声明的基准版本；与头版本一致时直接返回。
+ *
+ * @throws {DomainError} `baseVersion` 缺省；错误码为 `BAD_REQUEST`。
+ * @throws {VersionConflictError} `baseVersion` 不等于 `headVersion`；`details` 附带两者间的
+ * diff 与期间作者。
+ */
 export function assertBaseVersion(
   artifact: Artifact,
   versions: readonly Version[],

@@ -4,6 +4,12 @@ import { DatabaseSync } from 'node:sqlite'
 import { createCloudStorage } from '../cloud/index.js'
 import type { SqlStatement, VersionBlobs } from '../cloud/types.js'
 
+/**
+ * 用 node:sqlite 组装 Hub 的 SQLite 存储。
+ *
+ * @remarks 开启 WAL 与 5 秒忙等待。成组写入用 `BEGIN IMMEDIATE` 事务串行，
+ * `lock` 参数在这里被忽略。
+ */
 export function createSqliteHubStorage(dbPath: string, blobs?: VersionBlobs) {
   if (dbPath !== ':memory:') fs.mkdirSync(path.dirname(dbPath), { recursive: true })
   const db = new DatabaseSync(dbPath)

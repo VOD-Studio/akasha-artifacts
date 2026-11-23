@@ -8,10 +8,12 @@ declare global {
   }
 }
 
+/** 当前页面是否由 Hub 托管；Daemon 注入的配置里带 `hub` 标记。 */
 export function isCloudHub(): boolean {
   return typeof window !== 'undefined' && window.__AKASHA_CONFIG__?.hub === true
 }
 
+/** API 的根地址；空串表示与页面同源。 */
 export function getApiBaseUrl(): string {
   if (typeof window !== 'undefined' && window.__AKASHA_CONFIG__?.apiBaseUrl) {
     return window.__AKASHA_CONFIG__.apiBaseUrl.replace(/\/$/, '')
@@ -19,6 +21,7 @@ export function getApiBaseUrl(): string {
   return ''
 }
 
+/** WebSocket 地址：与 API 同源，协议按页面换成 `ws:` 或 `wss:`。 */
 export function getWsUrl(): string {
   if (typeof window === 'undefined') {
     return 'ws://127.0.0.1:24321/api/v1/ws'
@@ -33,7 +36,9 @@ export function getWsUrl(): string {
   return `${protocol}//${window.location.host}/api/v1/ws`
 }
 
-// 优先读取 Daemon 注入的独立沙盒 origin，开发环境回退到 Daemon 上报的 sandboxPort。
+/**
+ * 沙盒的 origin：优先用 Daemon 注入的配置，否则用页面主机名加 Daemon 上报的 `sandboxPort`。
+ */
 export function resolveSandboxOrigin(sandboxPort?: number): string {
   if (typeof window !== 'undefined' && window.__AKASHA_CONFIG__?.sandboxOrigin) {
     return window.__AKASHA_CONFIG__.sandboxOrigin.replace(/\/$/, '')

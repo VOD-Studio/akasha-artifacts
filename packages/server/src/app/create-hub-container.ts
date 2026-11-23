@@ -17,15 +17,24 @@ export interface HubContainerOptions {
     ArtifactServiceDeps,
     'projects' | 'artifacts' | 'states' | 'rounds' | 'feedbacks' | 'receipts'
   >
+  // 须同时支持发布与订阅
   realtime: RealtimePublisher & RealtimeSubscriber
   clock?: ArtifactServiceDeps['clock']
   ids?: ArtifactServiceDeps['ids']
+  // Hub 的 origin，须为无路径的 HTTPS origin
   origin: string
+  // 沙盒的 origin，须与 Hub 使用不同的注册域名
   sandboxOrigin: string
   oauth: HubOAuthOptions
+  // 省略时制品存储接口返回 404
   artifactStorage?: ArtifactStorageRepository
 }
 
+/**
+ * 手工装配 Hub 容器：在通用接口之外挂载鉴权、访问控制与 Hub 守卫。
+ *
+ * @throws {Error} `origin` 或 `sandboxOrigin` 不合法，或两者注册域名相同。
+ */
 export function createHubContainer(options: HubContainerOptions) {
   validateHubOrigins(options.origin, options.sandboxOrigin)
   const hubUrl = new URL(options.origin)

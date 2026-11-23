@@ -43,23 +43,36 @@ function readPackageVersion(): string {
   return '0.1.0'
 }
 
+/** 当前包版本；读不到 `package.json` 时为 0.1.0。 */
 export const AKASHA_VERSION = readPackageVersion()
 
 export interface StartDaemonOptions {
+  // Akasha home 目录
   homeDir?: string
   host?: string
+  // 指定后只尝试这一个端口；省略时按候选端口段取第一个空闲的
   port?: number
+  // 同 `port`，作用于沙盒服务
   sandboxPort?: number
+  // SQLite 库路径，缺省 <homeDir>/akasha.db
   dbPath?: string
+  // fs 时用项目内 .artifacts/ 目录，否则用 SQLite
   storageMode?: 'sqlite' | 'fs'
+  // 仅 fs 模式使用
   artifactsDir?: string
+  // 仅 fs 模式使用；缺省为当前工作目录
   projectRoot?: string
+  // 对外报告的版本，缺省取当前包版本
   version?: string
+  // 外壳静态产物目录；缺省自动定位，找不到时返回占位页
   webDir?: string
+  // 沙盒静态产物目录；缺省自动定位，找不到时返回占位页
   sandboxDir?: string
+  // 没有实时连接且持续空闲超过该秒数时自动退出；省略或 0 表示常驻
   idleTimeoutSec?: number
 }
 
+// 依次在 npm 包的 assets 目录与仓库工作区里找带 index.html 的产物目录
 function defaultAssetDir(relFromWorkspace: string): string | undefined {
   const here = path.dirname(fileURLToPath(import.meta.url))
   const candidates = [
@@ -74,7 +87,13 @@ function defaultAssetDir(relFromWorkspace: string): string | undefined {
   return undefined
 }
 
-// 启动整机单例 Daemon：先抢占原子单例锁，再绑定外壳主服务（固定高端口段）与独立 Origin 沙盒服务。
+/**
+ * 启动整机单例 Daemon：外壳主服务，以及独立 origin 的沙盒服务。
+ *
+ * @remarks 先取单例锁再绑定端口，启动失败时释放已占用的端口与锁。就绪后写出 `daemon.json`。
+ * 返回的 `close` 会清掉状态文件、关闭两个服务并释放锁。
+ * @throws {Error} 已有 Daemon 在运行，或候选端口全部被占用。
+ */
 export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
   const homeDir = resolveAkashaHome(options.homeDir)
   const host = options.host ?? '127.0.0.1'
@@ -222,6 +241,7 @@ export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
   let idleTimer: ReturnType<typeof setInterval> | undefined
   let lastActivityMs = Date.now()
 
+  // 空闲判定只看实时连接数：有连接就视为活跃
   if (options.idleTimeoutSec && options.idleTimeoutSec > 0) {
     const idleMs = options.idleTimeoutSec * 1000
     idleTimer = setInterval(

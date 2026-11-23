@@ -27,16 +27,18 @@ import type {
 
 const ALPHANUM = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 
+/** 以系统时间的 `toISOString()` 作为当前时间，产出 UTC 时间戳。 */
 export class SystemClock implements Clock {
   now(): string {
     return new Date().toISOString()
   }
 }
 
-// 使用 Web 标准 crypto.getRandomValues，兼容 Node 与 Cloudflare Workers
+/** 基于 Web Crypto 的标识生成器，Node 与 Cloudflare Workers 通用。 */
 export class CryptoIdGenerator implements IdGenerator {
   private counter = 0
 
+  /** 21 位字母数字。 */
   publicId(): PublicId {
     const bytes = new Uint8Array(21)
     globalThis.crypto.getRandomValues(bytes)
@@ -47,6 +49,7 @@ export class CryptoIdGenerator implements IdGenerator {
     return out
   }
 
+  /** `<prefix>_<进程内序号>_<12 位十六进制随机数>`。 */
   id(prefix: string): string {
     this.counter += 1
     const bytes = new Uint8Array(6)
@@ -55,6 +58,8 @@ export class CryptoIdGenerator implements IdGenerator {
     return `${prefix}_${this.counter}_${rand}`
   }
 }
+
+// 本文件内的内存实现对外一律深拷贝：调用方修改传入或返回的对象，都不会影响已存数据。
 
 export class InMemoryProjectRepository implements ProjectRepository {
   private readonly byId = new Map<string, Project>()
@@ -86,6 +91,7 @@ export class InMemoryProjectRepository implements ProjectRepository {
   }
 }
 
+/** 另按「项目 + slug」维护唯一索引；同一制品版本号重复时追加失败。 */
 export class InMemoryArtifactRepository implements ArtifactRepository {
   private readonly artifacts = new Map<PublicId, Artifact>()
   private readonly slugIndex = new Map<string, PublicId>()
@@ -203,6 +209,7 @@ interface StoredFeedback {
   deliverySeq: number | null
 }
 
+/** 以可投递顺序号作为游标；转正的草稿排在已下发的反馈之后。 */
 export class InMemoryFeedbackRepository implements FeedbackRepository {
   private nextDeliverySeq = 0
   private readonly orderedIds: string[] = []
@@ -310,6 +317,7 @@ export class InMemoryReceiptRepository implements ReceiptRepository {
   }
 }
 
+/** 只发布、不订阅的内存总线；事件按序保存在 `events` 里供断言。 */
 export class InMemoryRealtimeBus implements RealtimePublisher {
   private seq = 0
   readonly events: RealtimeServerEvent[] = []

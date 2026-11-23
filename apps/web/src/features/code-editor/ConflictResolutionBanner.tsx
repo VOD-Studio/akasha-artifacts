@@ -9,7 +9,9 @@ export interface EditorConflictState {
   baseVersion: number
   headVersion: number
   authors: string[]
+  /** 409 响应里服务端给出的差异。 */
   serverDiff?: string
+  /** 远端最新版本的源码。 */
   remoteSource?: string
   localSource: string
 }
@@ -22,7 +24,11 @@ export interface ConflictResolutionBannerProps {
   onDismiss?: () => void
 }
 
-// 并发版本冲突横幅：展示落后基线与最新远端版本的作者与逐行差异，支持加载最新或基于最新基线合并保存。
+/**
+ * 并发版本冲突横幅：展示落后的基线与最新版本的作者及逐行差异。
+ *
+ * @remarks 支持直接加载最新版本，或以最新版本为基线合并保存。
+ */
 export function ConflictResolutionBanner({
   conflict,
   saving = false,

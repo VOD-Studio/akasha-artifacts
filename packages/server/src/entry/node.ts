@@ -4,9 +4,16 @@ import { createLocalContainer, type LocalContainerOptions } from '../app/create-
 import { attachNodeWebSocket } from '../interfaces/realtime/ws.js'
 
 export interface NodeServerOptions extends LocalContainerOptions {
+  // 缺省 127.0.0.1，只监听回环
   host?: string
 }
 
+/**
+ * 启动本地 Daemon 的 HTTP 与 WebSocket 服务。
+ *
+ * @remarks 先等容器 `ready`（`.artifacts/` 启动期对账）再监听端口；`port` 传 `0` 时由系统分配，
+ * 返回值里的 `port` 是实际端口。
+ */
 export async function startNodeServer(options: NodeServerOptions = {}) {
   const host = options.host ?? '127.0.0.1'
   const requestedPort = options.port ?? 24321

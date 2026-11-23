@@ -49,6 +49,7 @@ import {
 import { applyJsonPatch, replayStateStream } from '../domain/state/index.js'
 import { KeyedAsyncLock } from './keyed-lock.js'
 
+/** 用例依赖的端口集合，全部经构造参数注入。 */
 export interface ArtifactServiceDeps {
   projects: ProjectRepository
   artifacts: ArtifactRepository
@@ -81,6 +82,12 @@ interface VisualEditBase {
 
 type VisualEditCommand = { op: EditOp } | { undoVersion: number }
 
+/**
+ * 制品用例编排：发布、增量更新、回退、状态流、评审轮次与反馈队列。
+ *
+ * @remarks 版本写入与状态流补丁各自按制品串行化：同一制品的读-检-写不会交错，
+ * 不同制品互不阻塞。
+ */
 export class ArtifactService {
   // 分别串行化同一 Artifact 的版本写入与状态流补丁，避免并发读-检-写竞态
   private readonly writeLocks = new KeyedAsyncLock()
@@ -88,6 +95,7 @@ export class ArtifactService {
 
   constructor(private readonly deps: ArtifactServiceDeps) {}
 
+  /** 登记项目；同一 `rootPath` 重复登记时沿用既有 `id`。 */
   async registerProject(input: { id?: string; rootPath: string; name: string }): Promise<Project> {
     const existing = await this.deps.projects.findByRootPath(input.rootPath)
     const now = this.deps.clock.now()
@@ -100,11 +108,21 @@ export class ArtifactService {
     return this.deps.projects.upsert(project)
   }
 
-  // 供本地存储适配层在执行元数据对账（如目录重命名）时与 publish/update/revert 共用同一把 Artifact 写锁，避免并发回写过期 headVersion。
+  /**
+   * 在与 `publish`、`update`、`revert` 相同的制品写锁内执行 `fn`。
+   *
+   * @remarks 供本地文件存储对账元数据（如目录改名）时使用，
+   * 避免并发回写过期的 `headVersion`。
+   */
   withArtifactLock<T>(publicId: PublicId, fn: () => Promise<T>): Promise<T> {
     return this.writeLocks.run(`artifact:${publicId}`, fn)
   }
 
+  /**
+   * 把 `publicId` 或 `slug` 解析成制品。
+   *
+   * @throws {NotFoundError} 解析不到，或未指定项目时同名 slug 命中多个制品。
+   */
   async resolveArtifact(identifier: ArtifactIdentifier, projectId?: string): Promise<Artifact> {
     if (PublicIdSchema.safeParse(identifier).success) {
       const byPublic = await this.deps.artifacts.findByPublicId(identifier)
@@ -129,6 +147,14 @@ export class ArtifactService {
     })
   }
 
+  /**
+   * 新建制品，或对已有制品整体替换源码并生成新版本。
+   *
+   * @remarks 以「项目 + slug」为锁键串行化，命中已有制品后再进入该制品的写锁。
+   * 新建时写入 v1 与初始空状态快照。
+   * @throws {DomainError} 制品已存在而未传 `baseVersion`；错误码为 `BAD_REQUEST`。
+   * @throws {VersionConflictError} `baseVersion` 落后于头版本。
+   */
   async publish(input: {
     projectId?: string
     slug: Slug
@@ -237,6 +263,13 @@ export class ArtifactService {
     })
   }
 
+  /**
+   * 在头版本源码上按序应用增量替换，生成新版本。
+   *
+   * @remarks 失败方式见 `applyTextEdits`；任一条编辑失败则不写入任何版本。
+   * @throws {NotFoundError} 制品或其头版本不存在。
+   * @throws {VersionConflictError} `baseVersion` 不等于头版本。
+   */
   async update(input: {
     id: ArtifactIdentifier
     projectId?: string
@@ -290,6 +323,7 @@ export class ArtifactService {
     })
   }
 
+  /** 查询某个 `loc` 能否直改；不带 `loc` 时返回当前可撤销的版本号。 */
   async inspectVisualEdit(input: VisualEditBase & { loc?: string }) {
     const artifact = await this.resolveArtifact(input.id, input.projectId)
     const head = await this.visualEditHead(artifact, input.baseVersion)
@@ -297,12 +331,20 @@ export class ArtifactService {
     return { undoVersion: (await this.findVisualUndo(artifact, head))?.version ?? null }
   }
 
+  /** 只计算直改后的源码，供沙盒乐观预览；不写入版本。 */
   async previewVisualEdit(input: VisualEditBase & VisualEditCommand): Promise<string> {
     const artifact = await this.resolveArtifact(input.id, input.projectId)
     const head = await this.visualEditHead(artifact, input.baseVersion)
     return this.visualEditSource(artifact, head, input)
   }
 
+  /**
+   * 应用一次可视化直改或撤销，生成新版本并自动写入一条 `kind=edit` 的反馈。
+   *
+   * @remarks 改写后源码与头版本相同时不产生新版本。反馈的 `id` 带 `visualedit_` 前缀，
+   * 撤销链据此识别连续的直改。
+   * @throws {DomainError} `author` 不是人类；错误码为 `FORBIDDEN`。
+   */
   async visualEdit(input: VisualEditBase & VisualEditCommand & { author: Author }) {
     if (!input.author.startsWith('human:')) {
       throw new DomainError('FORBIDDEN', '可视化直改仅支持人类作者')
@@ -422,7 +464,12 @@ export class ArtifactService {
     return stack.at(-1)
   }
 
-  // 回退历史版本同样作为一次新写入，不覆盖或篡改既有不可变版本历史。
+  /**
+   * 回退到历史版本：生成内容等于目标版本的新版本，不改动既有版本。
+   *
+   * @throws {NotFoundError} 目标版本不存在。
+   * @throws {VersionConflictError} `baseVersion` 不等于头版本。
+   */
   async revert(input: {
     id: ArtifactIdentifier
     projectId?: string
@@ -474,6 +521,13 @@ export class ArtifactService {
     })
   }
 
+  /**
+   * 向状态流追加一条补丁并推进快照；不参与版本冲突检测。
+   *
+   * @remarks 按制品串行化，补丁总是作用于最新状态。落库顺序为补丁日志、快照，最后广播
+   * `state.patched`。
+   * @throws {StatePatchError} 补丁应用失败，此时状态流不变。
+   */
   async pushState(input: {
     id: ArtifactIdentifier
     projectId?: string
@@ -518,6 +572,7 @@ export class ArtifactService {
     })
   }
 
+  /** 回放补丁日志得到指定 `seq` 处的状态；省略 `seq` 时为最新状态。 */
   async getStateAt(input: {
     id: ArtifactIdentifier
     projectId?: string
@@ -529,6 +584,7 @@ export class ArtifactService {
     return { artifactId: artifact.publicId, ...replayed }
   }
 
+  /** 读取制品元数据、指定版本（缺省为头版本）、最新状态快照与全部轮次。 */
   async getArtifact(input: {
     id: ArtifactIdentifier
     projectId?: string
@@ -563,6 +619,7 @@ export class ArtifactService {
     return this.deps.artifacts.getVersions(artifact.publicId)
   }
 
+  /** 开启新一轮：此前未关闭的轮次自动转为 `closed`。 */
   async openRound(input: {
     id: ArtifactIdentifier
     projectId?: string
@@ -589,6 +646,13 @@ export class ArtifactService {
     return round
   }
 
+  /**
+   * 把一次分组决定写入轮次，可同时提交本轮。
+   *
+   * @remarks `roundId` 省略时作用于最新一轮；`groupId` 省略时只做提交。
+   * `fromAgent` 为 true 时允许改写非 `drafting` 轮次，用于回写终端里的口头答复。
+   * @throws {NotFoundError} 没有可用的轮次。
+   */
   async recordDecision(input: {
     id: ArtifactIdentifier
     projectId?: string
@@ -633,6 +697,7 @@ export class ArtifactService {
     return next
   }
 
+  /** 提交轮次并把本轮草稿转为可投递，随后广播 `round.updated`。 */
   async submitRound(input: {
     id: ArtifactIdentifier
     projectId?: string
@@ -658,6 +723,7 @@ export class ArtifactService {
     return submitted
   }
 
+  /** 撤回已提交的轮次，回到 `drafting`；已转正的草稿不会退回。 */
   async withdrawRound(input: {
     id: ArtifactIdentifier
     projectId?: string
@@ -681,6 +747,13 @@ export class ArtifactService {
     return withdrawn
   }
 
+  /**
+   * 写入一条反馈；所属轮次处于 `drafting` 时标记为草稿。
+   *
+   * @remarks 草稿照常落库但不广播，非草稿广播 `feedback.created`。`idPrefix` 区分来源，
+   * 可视化直改传入 `visualedit`。
+   * @throws {NotFoundError} 反馈绑定的版本不存在。
+   */
   async submitFeedback(
     input: {
       id: ArtifactIdentifier
@@ -733,6 +806,12 @@ export class ArtifactService {
     return feedback
   }
 
+  /**
+   * 非阻塞拉取反馈。
+   *
+   * @remarks 未指定 `id` 而指定 `projectId` 时，范围限定为该项目内的全部制品。
+   * 只有 `detail` 为真且有结果时才签发回执。
+   */
   async pullFeedback(input: {
     id?: ArtifactIdentifier
     projectId?: string
@@ -790,6 +869,12 @@ export class ArtifactService {
     return { items, rounds, cursor, receipt }
   }
 
+  /**
+   * 凭回执确认消费：回执覆盖的反馈转为 `delivered`，`resolveIds` 中的转为 `resolved`。
+   *
+   * @returns 实际更新的条数，以及其中被标记为 `resolved` 的条数。
+   * @throws {InvalidReceiptError} 回执不存在或已被消费。
+   */
   async ackFeedback(input: {
     receipt: string
     resolveIds?: readonly string[]

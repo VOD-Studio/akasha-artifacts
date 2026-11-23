@@ -22,7 +22,10 @@ const VERDICT_OPTIONS: Array<{ value: Verdict; label: string; tone: string }> = 
   { value: 'waive', label: 'Waive', tone: 'border-amber-300 bg-amber-50 text-amber-800' },
 ]
 
-// 评审动作区：提供全局批准/请求修改按钮（携带 version），并渲染当前评审轮次的方案单选与 Pass/Reject/Waive 验收项。
+/**
+ * 评审动作区：提供全局的批准与请求修改按钮（都带上当前版本号），
+ * 并渲染当前评审轮次里的方案单选与 Pass / Reject / Waive 验收项。
+ */
 export function ReviewActionsBar({
   artifactId,
   projectId,

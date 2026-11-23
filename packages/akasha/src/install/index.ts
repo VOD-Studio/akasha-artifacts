@@ -14,6 +14,7 @@ import {
   resolveAkashaHome,
 } from '../daemon/state.js'
 
+/** 安装器支持的全部宿主。 */
 export const SUPPORTED_HARNESSES: readonly HarnessId[] = [
   'claude-code',
   'antigravity',
@@ -23,19 +24,26 @@ export const SUPPORTED_HARNESSES: readonly HarnessId[] = [
 
 export interface HarnessPaths {
   harness: HarnessId
+  /** 该宿主的配置目录：显式传入 `targetDir` 时就是它，否则是用户目录下的默认位置。 */
   targetDir: string
+  /** Skill 文档的写入目录。 */
   skillsDir: string
   mcpConfigPath: string
+  /** MCP 配置文件的格式：codex 用 TOML，其余用 JSON。 */
   mcpFormat: 'json' | 'toml'
   hooksConfigPath: string
+  /** 安装清单的路径，`akasha doctor` 据此自检。 */
   manifestPath: string
 }
 
-// 解析各 CLI Harness 的原生配置文件路径与格式：
-// - claude-code: 用户级 MCP 在 ~/.claude.json，项目级（显式 --dir）在 <dir>/.mcp.json；Hooks 在 settings.json
-// - codex: MCP 在 ~/.codex/config.toml（TOML [mcp_servers.akasha]）；Hooks 在 hooks.json
-// - cursor: MCP 在 ~/.cursor/mcp.json；Hooks 在 ~/.cursor/hooks.json（version: 1 + hooks.<event> 数组）
-// - antigravity: MCP 在 ~/.gemini/antigravity/mcp_config.json；Hooks 在 hooks.json
+/**
+ * 解析各宿主原生配置文件的路径与格式。
+ *
+ * @remarks MCP 配置：claude-code 的用户级配置在 `~/.claude.json`，项目级（显式 `targetDir`）
+ * 在 `<dir>/.mcp.json`；codex 在 `config.toml` 的 `[mcp_servers.akasha]`；cursor 在 `mcp.json`；
+ * antigravity 在 `mcp_config.json`。
+ * Hooks 配置：claude-code 在 `settings.json`，其余在 `hooks.json`。
+ */
 export function resolveHarnessPaths(
   harness: HarnessId,
   options: { targetDir?: string; homeDir?: string } = {},
@@ -107,7 +115,7 @@ function buildAkashaCommand(commandPrefix: string, subArgs: string): string {
   return `${commandPrefix} ${subArgs}`
 }
 
-// 幂等合并 Codex 原生 TOML 配置：仅新增或更新 [mcp_servers.akasha] 表，保留用户其它表与注释。
+/** 幂等合并 Codex 的 TOML 配置：只新增或替换 `[mcp_servers.akasha]` 表，其余内容原样保留。 */
 export function upsertCodexMcpToml(existingText: string): string {
   const block = [
     '[mcp_servers.akasha]',
@@ -253,21 +261,32 @@ function mergeSimpleHooks(
 
 export interface InstallHarnessOptions {
   harness: HarnessId
+  // 显式指定宿主的配置目录；对 claude-code 表示项目级安装
   targetDir?: string
+  // 用户目录，用来定位各宿主的默认配置目录；缺省取系统的 home 目录
   homeDir?: string
+  // 写进配置里的 Akasha 启动命令前缀，缺省 npx -y akasha-artifacts
   commandPrefix?: string
 }
 
 export interface InstallHarnessResult {
   harness: HarnessId
   targetDir: string
+  /** 本次写入的全部文件。 */
   writtenFiles: string[]
+  /** 已安装的 Skill id。 */
   skillsInstalled: string[]
   mcpConfigPath: string
   hooksConfigPath: string
 }
 
-// 为指定 CLI Harness 幂等安装 Akasha 原生格式 MCP 配置、Hook 挂载与轻量化 Skills（绝不覆盖用户既有条目）。
+/**
+ * 为指定宿主安装 Akasha：Skill 文档、MCP 配置、Hook 挂载与安装清单。
+ *
+ * @remarks 幂等：重复执行不会产生重复条目，也不覆盖用户已有的其他 MCP 与 Hook。
+ * 现有配置文件不是合法 JSON 时中止且不写入，避免覆盖。
+ * @throws {Error} 待合并的配置文件不是合法 JSON，或根节点不是对象。
+ */
 export function installHarnessPlugin(options: InstallHarnessOptions): InstallHarnessResult {
   const paths = resolveHarnessPaths(options.harness, {
     targetDir: options.targetDir,
@@ -347,6 +366,7 @@ export type DoctorCheckStatus = 'ok' | 'warn' | 'error'
 
 export interface DoctorCheck {
   id: string
+  /** `error` 使整体报告不通过；`warn` 只提示。 */
   status: DoctorCheckStatus
   message: string
   details?: Record<string, unknown>
@@ -414,7 +434,11 @@ function verifyHarnessHooksInstalled(harness: HarnessId, hooksPath: string): boo
   }
 }
 
-// 运行环境、安装完整性、Daemon 连通性与候选端口冲突自检。
+/**
+ * 自检：Node 版本、Daemon 连通性、候选端口冲突、构建产物，以及指定宿主的安装完整性。
+ *
+ * @returns `ok` 表示没有任何 `error` 级的检查项。
+ */
 export async function runDoctor(options: DoctorOptions = {}): Promise<DoctorReport> {
   const checks: DoctorCheck[] = []
   const host = options.host ?? '127.0.0.1'

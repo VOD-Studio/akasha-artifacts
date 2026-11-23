@@ -16,6 +16,7 @@ import { AkashaApiError, type AkashaClientOptions, AkashaHttpClient } from './cl
 
 export interface AkashaMcpServerOptions extends AkashaClientOptions {
   version?: string
+  // 某制品首次发布（得到 v1）后回调其链接与 publicId
   onFirstPublish?: (url: string, publicId: string) => void | Promise<void>
 }
 
@@ -35,7 +36,11 @@ function errText(err: unknown) {
   return { content: [{ type: 'text' as const, text }], isError: true }
 }
 
-// 构造无状态 Akasha MCP Server：工具描述保持精简，引导增量优先、先 check 后分享、按需拉取 spec 与冲突合并。
+/**
+ * 构造无状态的 Akasha MCP Server：工具描述保持精简，引导增量优先、先 `check` 后分享、按需拉取规范。
+ *
+ * @remarks 工具执行出错时不抛出，而是返回带 `isError` 的文本结果。
+ */
 export function createAkashaMcpServer(options: AkashaMcpServerOptions): McpServer {
   const client = new AkashaHttpClient(options)
   const server = new McpServer({

@@ -1,13 +1,22 @@
 import type { Feedback, ReviewRound } from '@akasha/protocol'
 
+/** 活跃评审轮次的进度摘要。 */
 export interface RoundProgressSummary {
+  /** 轮次里的分组总数。 */
   totalGroups: number
+  /** 已做出选择的分组数。 */
   decidedGroups: number
+  /** 未做选择、但 Agent 给了推荐项的分组数。 */
   undecidedWithRecommended: number
+  /** 该轮次下仍是草稿的评论数。 */
   draftCommentCount: number
 }
 
-// 汇总当前活跃评审轮次的决策进度与草稿评论数量，供底部提交栏与防打断提示展示。
+/**
+ * 汇总一轮的决策进度与草稿评论数，供底部提交栏与防打断提示使用。
+ *
+ * @returns 没有轮次时各项为 0。
+ */
 export function summarizeRoundProgress(
   round: ReviewRound | null,
   feedbacks: readonly Feedback[],
@@ -42,6 +51,11 @@ export function summarizeRoundProgress(
   }
 }
 
+/**
+ * 选出当前活跃的轮次：优先最新的 `drafting`，其次是最新的 `submitted`。
+ *
+ * @returns 没有未关闭的轮次时返回 `null`。
+ */
 export function selectActiveRound(rounds: readonly ReviewRound[]): ReviewRound | null {
   const drafting = [...rounds].reverse().find((r) => r.status === 'drafting')
   if (drafting) return drafting

@@ -186,7 +186,12 @@ function applySingleOp(doc: Record<string, unknown>, op: JsonPatchOp): Record<st
   }
 }
 
-// 原子应用 RFC 6902 补丁序列：在深拷贝上执行，任意一步失败时原快照完全不受影响。
+/**
+ * 在入参快照的深拷贝上按序应用补丁，返回新快照。
+ *
+ * @returns 应用了全部补丁的新对象；入参 `snapshot` 不被修改。
+ * @throws {StatePatchError} 任一步失败即抛出，`details` 含 `opIndex` 与出错的 `op`。
+ */
 export function applyJsonPatch(
   snapshot: Readonly<Record<string, unknown>>,
   ops: readonly JsonPatchOp[],
@@ -208,7 +213,14 @@ export function applyJsonPatch(
   return working
 }
 
-// 按单调 seq 回放到任意时刻，验证状态流可完整重放。
+/**
+ * 从空对象起按 `seq` 顺序回放补丁，得到指定时刻的状态。
+ *
+ * @param upToSeq - 回放截止的补丁序号（含）；省略时回放全部。
+ * @returns `seq` 为最后一条已回放补丁的序号，没有可回放的补丁时为 0。
+ *
+ * @remarks 不对 `entries` 排序，调用方须按 `seq` 升序传入。
+ */
 export function replayStateStream(
   entries: readonly StatePatchEntry[],
   upToSeq?: number,

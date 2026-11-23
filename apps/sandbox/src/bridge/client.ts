@@ -5,6 +5,7 @@ import {
   ShellToSandboxMessageSchema,
 } from '@akasha/protocol'
 
+/** 发往外壳的消息载荷：信封字段 `v` 与 `nonce` 由客户端补齐。 */
 export type SandboxOutgoingPayload<T = SandboxToShellMessage> = T extends unknown
   ? Omit<T, 'v' | 'nonce'>
   : never
@@ -14,7 +15,12 @@ export interface SandboxHashParams {
   nonce: string
 }
 
-// 从 URL hash（#origin=...&nonce=...）读取外壳 origin 与会话 nonce，避免经 query 泄漏到日志或 Referer。
+/**
+ * 从 URL hash（`#origin=...&nonce=...`）读取外壳 origin 与会话 nonce。
+ *
+ * @remarks 放在 hash 而不是 query 里，避免经请求行泄漏到日志或 Referer。
+ * @returns 缺少任一参数，或 origin 不是 HTTP(S) 地址时返回 `null`。
+ */
 export function parseSandboxHash(hash: string): SandboxHashParams | null {
   const raw = hash.startsWith('#') ? hash.slice(1) : hash
   if (!raw) return null
@@ -36,13 +42,20 @@ export interface PostMessageTarget {
 }
 
 export interface SandboxBridgeClientOptions {
+  // 只接受这个 origin 发来的消息，也只向它发送
   expectedOrigin: string
   nonce: string
+  // 发送目标，缺省为父窗口
   hostWindow?: PostMessageTarget
+  // 监听 message 事件的目标，缺省为当前窗口
   listenTarget?: Pick<Window, 'addEventListener' | 'removeEventListener'>
 }
 
-// 沙盒侧 Bridge 客户端：严格校验消息来源 origin、zod 结构与 nonce，拒收一切伪造或跨源指令。
+/**
+ * 沙盒侧的 Bridge 客户端。
+ *
+ * @remarks 收到的消息依次校验来源 origin、发送窗口、结构与 nonce，任何一步不符都静默丢弃。
+ */
 export class SandboxBridgeClient {
   private readonly listeners = new Set<(msg: ShellToSandboxMessage) => void>()
   private readonly expectedOrigin: string
@@ -71,6 +84,7 @@ export class SandboxBridgeClient {
     }
   }
 
+  /** 开始监听，并向外壳发出 `ready`。 */
   start(): void {
     if (this.started) return
     this.started = true
@@ -91,6 +105,7 @@ export class SandboxBridgeClient {
     }
   }
 
+  /** 给载荷补上 `v` 与 `nonce` 后发往外壳。 */
   send(payload: SandboxOutgoingPayload): void {
     const message: SandboxToShellMessage = {
       ...payload,

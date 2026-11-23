@@ -47,7 +47,9 @@ function writeElementValue(el: PersistableElement, value: unknown): void {
   el.value = String(value)
 }
 
-// 热更新视图与控件保态管理器：收集用户调整过的滑块/输入值与滚动位置，在 render 重绘时无感恢复。
+/**
+ * 热更新时的视图与控件保态管理器：收集用户调过的控件值与滚动位置，在 `render` 重绘时恢复。
+ */
 export class PreservedStateManager {
   private state: PreservedViewState = { controls: {} }
   private readonly listeners = new Set<() => void>()
@@ -56,7 +58,9 @@ export class PreservedStateManager {
   private readonly debounceMs: number
 
   constructor(options?: {
+    // 快照上报的回调
     onSnapshot?: (state: PreservedViewState) => void
+    // 快照上报的防抖间隔（毫秒），缺省 80
     debounceMs?: number
   }) {
     this.onSnapshot = options?.onSnapshot
@@ -136,7 +140,7 @@ export class PreservedStateManager {
     this.scheduleReport()
   }
 
-  // 立即刷新防抖队列，便于测试与卸载前上报最终快照。
+  /** 立即上报当前快照并跳过防抖；卸载前调用以交出最终状态。 */
   flush(): void {
     if (this.debounceTimer !== undefined) {
       clearTimeout(this.debounceTimer)
@@ -145,7 +149,9 @@ export class PreservedStateManager {
     this.onSnapshot?.(structuredClone(this.state))
   }
 
-  // 绑定 DOM 内所有带 data-ak-persist 的控件：先按保存值回填，再代理监听后续用户修改。
+  /**
+   * 绑定根节点内所有带 `data-ak-persist` 的控件：先按已保存的值回填，再监听后续的用户修改。
+   */
   bindDomPersistence(rootEl: HTMLElement, scrollTarget?: HTMLElement | Window): () => void {
     const controls = this.state.controls ?? {}
     const persistedNodes = rootEl.querySelectorAll('[data-ak-persist]')
@@ -233,7 +239,7 @@ export const PreservedStateContext = createContext<PreservedStateManager>(
   defaultPreservedStateManager,
 )
 
-// 暴露给 React Artifact 的保态控件 Hook：组件重绘后自动恢复用户调整过的数值。
+/** 供 Artifact 源码使用的保态控件 Hook：重绘后自动恢复用户调过的值。 */
 export function usePersistentControl<T>(
   key: string,
   defaultValue: T,

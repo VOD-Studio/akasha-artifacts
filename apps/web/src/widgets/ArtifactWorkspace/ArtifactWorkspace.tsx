@@ -27,22 +27,30 @@ import {
 
 const EMPTY_FEEDBACKS: readonly Feedback[] = []
 
+/** 画布工作区的输入。 */
 export interface ArtifactWorkspaceProps {
   detail: ArtifactDetailResponse
   versions: readonly ArtifactDetailResponse['version'][]
   feedbacks?: readonly Feedback[]
   rounds?: readonly ReviewRound[]
   sandboxOrigin: string
+  /** 链接里的定位；画布据此只定位一次。 */
   address?: string
+  /** 固定查看的版本；省略时跟随头版本。 */
   fixedVersion?: number
   onClearAddress?: () => void
+  /** 登记把状态补丁转发给各画板沙盒的函数；传 `null` 表示注销。 */
   onRegisterStateForwarder?: (forwarder: ((seq: number, ops: JsonPatchOp[]) => void) | null) => void
   onVersionSaved?: (version: ArtifactDetailResponse['version']) => void
   onVersionAdopted?: (version: ArtifactDetailResponse['version']) => void
 }
 
-// Artifact 主画布工作区：通过独立 Origin + sandbox="allow-scripts"（严禁 allow-same-origin）隔离沙盒，
-// 外壳叠层负责元素选中框与图钉绘制，支持 L1 批注评审、L2 属性面板与 L3 CodeMirror 分栏实时编辑。
+/**
+ * Artifact 的主画布工作区。
+ *
+ * @remarks 沙盒经独立 origin 与 `sandbox="allow-scripts"` 隔离，严禁 `allow-same-origin`。
+ * 外壳叠层负责选中框与图钉的绘制；支持 L1 批注评审、L2 属性面板与 L3 分栏代码编辑。
+ */
 export function ArtifactWorkspace({
   detail,
   versions,

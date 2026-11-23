@@ -1,6 +1,7 @@
 import type { SandboxBridgeClient } from './bridge/client'
 import { buildElementRef } from './inspector/index'
 
+/** 可视化直改的选取器：激活后拦截沙盒内的第一次真实点击，把命中元素上报给外壳。 */
 export class SandboxVisualInspector {
   private active = false
 
@@ -10,6 +11,7 @@ export class SandboxVisualInspector {
     private readonly getVersion: () => number,
   ) {}
 
+  /** 开关点击拦截；重复设置同一状态无效果。 */
   setActive(active: boolean): void {
     if (active === this.active) return
     this.active = active

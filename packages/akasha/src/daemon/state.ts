@@ -3,30 +3,58 @@ import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 
+/**
+ * 外壳与服务端的候选端口，按顺序取第一个空闲的。
+ *
+ * @remarks 固定在高端口段，让浏览器书签跨会话有效；可用 `AKASHA_PORTS` 覆盖。
+ */
 export const DEFAULT_SHELL_PORTS = [24321, 24322, 24323] as const
+
+/**
+ * 沙盒静态服务的候选端口。
+ *
+ * @remarks 与外壳端口段分开，保证沙盒是不同的 origin；可用 `AKASHA_SANDBOX_PORTS` 覆盖。
+ */
 export const DEFAULT_SANDBOX_PORTS = [24331, 24332, 24333] as const
 
+/**
+ * 写在 `~/.akasha/daemon.json` 里的 Daemon 运行信息，是 CLI、Hook 与外壳定位本机 Daemon 的依据。
+ *
+ * @remarks 含访问令牌，文件权限为 0600。
+ */
 export interface DaemonStateFile {
+  /** 收到停止请求或升级替换时据此发信号。 */
   pid: number
+  /** 监听地址，缺省 127.0.0.1。 */
   host: string
+  /** 实际绑定的外壳与服务端端口。 */
   port: number
+  /** 实际绑定的沙盒端口。 */
   sandboxPort: number
+  /** 写接口的 Bearer 令牌，每次启动随机生成。 */
   token: string
+  /** 启动时的包版本；与当前 CLI 版本不同时触发平滑替换。 */
   version: string
+  /** 启动时间，ISO 8601。 */
   startedAt: string
+  /** SQLite 库路径；替换旧 Daemon 时沿用它。 */
   dbPath: string
 }
 
+/** 本机项目登记表 `~/.akasha/projects.json` 里的一条。 */
 export interface ProjectRegistryEntry {
+  /** 规范化后的绝对路径，是登记表的唯一键。 */
   rootPath: string
   name: string
   lastActiveAt: string
 }
 
+/** 解析 Akasha 的 home 目录：入参优先，其次 `AKASHA_HOME` 环境变量，最后 `~/.akasha`。 */
 export function resolveAkashaHome(override?: string): string {
   return path.resolve(override ?? process.env.AKASHA_HOME ?? path.join(os.homedir(), '.akasha'))
 }
 
+/** 解析逗号分隔的端口列表；非法项被丢弃，全部非法时回退到 `fallback`。 */
 export function parsePortList(envValue: string | undefined, fallback: readonly number[]): number[] {
   if (!envValue) return [...fallback]
   const parsed = envValue
@@ -54,7 +82,14 @@ function isPidAlive(pid: number): boolean {
   }
 }
 
-// 基于 O_CREAT | O_EXCL 的整机单例锁：防止并发或重复启动多个 Daemon 争用同一 SQLite。
+/**
+ * 获取整机单例锁，防止多个 Daemon 争用同一个 SQLite 库。
+ *
+ * @returns 释放函数；只删除自己写入的锁文件，重复调用无效果。
+ *
+ * @throws {Error} 另一个存活进程已持锁，或锁文件正在写入、已损坏。
+ * 锁的持有者已经退出时，清掉过期锁后重试一次。
+ */
 export function acquireDaemonLock(homeDir: string): { release: () => void } {
   fs.mkdirSync(homeDir, { recursive: true, mode: 0o700 })
   const lockFile = daemonLockPath(homeDir)
@@ -113,6 +148,7 @@ export function projectsRegistryPath(homeDir: string): string {
   return path.join(homeDir, 'projects.json')
 }
 
+/** 读取 Daemon 状态；文件不存在、不是合法 JSON 或必填字段缺失时返回 `null`。 */
 export function readDaemonState(homeDir: string): DaemonStateFile | null {
   const file = daemonStatePath(homeDir)
   if (!fs.existsSync(file)) return null
@@ -134,7 +170,7 @@ export function readDaemonState(homeDir: string): DaemonStateFile | null {
   }
 }
 
-// 原子写入 daemon.json 并限制权限为 0600，避免同机其它用户读取访问令牌
+/** 原子写入 `daemon.json`，并把权限收紧为 0600，避免同机其他用户读到访问令牌。 */
 export function writeDaemonState(homeDir: string, state: DaemonStateFile): void {
   fs.mkdirSync(homeDir, { recursive: true, mode: 0o700 })
   const file = daemonStatePath(homeDir)
@@ -144,6 +180,7 @@ export function writeDaemonState(homeDir: string, state: DaemonStateFile): void 
   fs.renameSync(tmp, file)
 }
 
+/** 删除 `daemon.json`；给出 `expectedPid` 且文件记录的是别的进程时不删除。 */
 export function removeDaemonState(homeDir: string, expectedPid?: number): void {
   const file = daemonStatePath(homeDir)
   if (!fs.existsSync(file)) return
@@ -165,6 +202,7 @@ export function readProjectsRegistry(homeDir: string): ProjectRegistryEntry[] {
   }
 }
 
+/** 登记或刷新一个项目，并把登记表按最近活跃时间降序写回。 */
 export function upsertProjectRegistry(
   homeDir: string,
   rootPath: string,
@@ -199,6 +237,12 @@ function isPortAvailable(port: number, host: string): Promise<boolean> {
   })
 }
 
+/**
+ * 按顺序在候选端口里找第一个可绑定的。
+ *
+ * @returns 选中的端口；候选里有 `0` 时直接返回 `0`，交给系统分配。
+ * @throws {Error} 候选端口全部被占用。
+ */
 export async function findAvailablePort(
   candidates: readonly number[],
   host: string,

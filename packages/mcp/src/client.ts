@@ -18,6 +18,12 @@ import {
   VersionConflictDetailsSchema,
 } from '@akasha/protocol'
 
+/**
+ * 服务端的非 2xx 响应，或响应不是合法 JSON。
+ *
+ * @remarks `code` 是协议错误码；响应体不是错误信封时为 `HTTP_ERROR`，
+ * 不是 JSON 时为 `INVALID_RESPONSE`。
+ */
 export class AkashaApiError extends Error {
   readonly status: number
   readonly code: string
@@ -31,7 +37,9 @@ export class AkashaApiError extends Error {
     this.details = details
   }
 
-  // 把 409 版本冲突转换为对模型清晰可执行的合并重试说明
+  /**
+   * 转成给模型看的说明；`VERSION_CONFLICT` 会展开成「先读最新版本、按 diff 合并、再提交」的指引。
+   */
   toAgentMessage(): string {
     if (this.code === 'VERSION_CONFLICT') {
       const parsed = VersionConflictDetailsSchema.safeParse(this.details)
@@ -55,16 +63,25 @@ export class AkashaApiError extends Error {
 }
 
 export interface AkashaClientOptions {
+  // 服务端根地址，结尾的 / 会被去掉
   baseUrl: string
+  // 以 Bearer 头随每个请求发送
   token?: string
+  // 各方法 `project` 参数的缺省值
   defaultProject?: string
+  // 写入版本时的作者，缺省 agent:mcp
   defaultAuthor?: Author
   fetchImpl?: typeof fetch
   // 共享 Daemon 平滑升级更换 token/端口后，遇 401 或连接断开时回调刷新凭据并自动重试一次
   resolveConnection?: () => Promise<{ baseUrl: string; token?: string }>
 }
 
-// 无状态 HTTP 客户端：供 MCP Server 与 CLI 复用，对接本地 Daemon 或云端 Hub 的同一套 /api/v1 协议。
+/**
+ * 无状态 HTTP 客户端，供 MCP Server 与 CLI 复用，对接本地 Daemon 或云端 Hub 的同一套 `/api/v1`。
+ *
+ * @remarks 连接失败或收到 401 时，若配置了 `resolveConnection`，刷新地址与令牌后重试一次。
+ * 非 2xx 响应一律抛 `AkashaApiError`。
+ */
 export class AkashaHttpClient {
   baseUrl: string
   private token?: string
@@ -149,6 +166,7 @@ export class AkashaHttpClient {
     return json as T
   }
 
+  /** 制品页面地址：`<baseUrl>/a/<publicId>`。 */
   artifactUrl(publicId: string): string {
     return `${this.baseUrl}/a/${publicId}`
   }
@@ -272,6 +290,7 @@ export class AkashaHttpClient {
     })
   }
 
+  // 固定以 Agent 身份回写，因此允许改写非 drafting 的轮次
   async recordVerdict(input: ArtifactRecordVerdictInput): Promise<ArtifactRecordVerdictOutput> {
     const { id, ...rest } = input
     return this.request<ArtifactRecordVerdictOutput>(

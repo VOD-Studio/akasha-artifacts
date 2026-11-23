@@ -2,8 +2,16 @@ import { PublicIdSchema } from '@akasha/protocol'
 import { useEffect, useState } from 'react'
 import { isCloudHub } from './runtime'
 
+// 本机 Daemon 的固定端口段，与 `@akasha/akasha` 的默认值一致
 const LOCAL_DAEMON_PORTS = [24321, 24322, 24323] as const
 
+/**
+ * 探测本机 Daemon 是否已有该制品或该版本。
+ *
+ * @returns 命中时返回本机工作台的页面地址；没有 Daemon 应答或都未命中时返回 `null`。
+ *
+ * @remarks 同时探测全部候选端口，取最先应答的结果，整体 900 毫秒超时。
+ */
 export async function findLocalArtifact(
   publicId: string,
   version?: number,
@@ -37,7 +45,13 @@ export async function findLocalArtifact(
   }
 }
 
-// 先完成本机探测再启用 Hub 实时连接；本机命中时用本机工作台的同源 API 和 WebSocket。
+/**
+ * 在 Hub 上打开制品时，先探测本机 Daemon；命中就跳转到本机工作台。
+ *
+ * @returns 是否仍在探测；探测期间调用方应暂缓启用 Hub 的实时连接。
+ *
+ * @remarks 只在 Hub 上对合法的 `publicId` 探测。跳转时带上当前的 `page` 与 `board` 定位。
+ */
 export function useLocalArtifactRedirect(publicId: string, version?: number): boolean {
   const shouldProbe = isCloudHub() && PublicIdSchema.safeParse(publicId).success
   const key = `${publicId}:${version ?? ''}`

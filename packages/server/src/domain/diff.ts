@@ -1,4 +1,10 @@
-// 基于 LCS 的轻量行级统一 diff，用于在 409 版本冲突响应中向 Agent 展示人类改动。
+/**
+ * 基于 LCS 的行级统一 diff，用于在 409 版本冲突响应中向 Agent 展示人类改动。
+ *
+ * @returns 统一 diff 文本；`before` 与 `after` 没有差异时返回空串。
+ *
+ * @remarks 时间与空间均为两侧行数之积。
+ */
 export function computeUnifiedDiff(
   before: string,
   after: string,

@@ -17,12 +17,18 @@ const MIME_TYPES: Record<string, string> = {
 export interface SandboxServerOptions {
   host: string
   port: number
+  // 允许嵌入沙盒的外壳 origin，写入 CSP 的 frame-ancestors
   shellOrigins: readonly string[]
+  // 沙盒静态产物目录；省略或不存在时返回占位页
   sandboxDir?: string
 }
 
-// 独立 Origin 沙盒静态服务器：严格下发隔离 CSP（connect-src 'none'、frame-ancestors 仅外壳 origin），
-// 杜绝不可信 AI 生成代码外传数据或被第三方页面嵌套。
+/**
+ * 独立 origin 的沙盒静态服务器，只响应 GET 与 HEAD。
+ *
+ * @remarks 每个响应都带隔离 CSP：`connect-src 'none'`，`frame-ancestors` 只列出外壳 origin，
+ * 使不可信的生成代码既不能外传数据，也不能被第三方页面嵌入。
+ */
 export async function startSandboxServer(options: SandboxServerOptions) {
   const frameAncestors = options.shellOrigins.join(' ')
   const csp = [

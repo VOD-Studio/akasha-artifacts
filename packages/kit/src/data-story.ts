@@ -21,6 +21,7 @@ interface StoryColumn {
   kind: 'text' | 'number'
 }
 
+/** 数据集里的一行；`values` 以列 `id` 为键。 */
 export interface StoryRow {
   id: string
   values: ReadonlyMap<string, StoryValue>
@@ -35,6 +36,7 @@ interface StoryDataset {
   tables: StoryTable[]
 }
 
+/** 图表；`category` 与 `value` 是所用的列。 */
 export interface StoryChart {
   id: string
   title: string
@@ -42,12 +44,14 @@ export interface StoryChart {
   value: StoryColumn
 }
 
+/** 明细表；`columns` 是展示的列。 */
 export interface StoryTable {
   id: string
   title: string
   columns: StoryColumn[]
 }
 
+/** `data-story` 模板的数据：若干数据集，每个带图表与明细表。 */
 export interface DataStoryData {
   title: string
   summary?: string

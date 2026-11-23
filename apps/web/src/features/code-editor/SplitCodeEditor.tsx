@@ -19,7 +19,9 @@ import { ConflictResolutionBanner, type EditorConflictState } from './ConflictRe
 export interface SplitCodeEditorProps {
   artifact: Artifact
   version: Version
+  /** 远端最新的版本；与 `version` 不同时提示冲突。 */
   latestVersion?: Version
+  /** 草稿变化时通知父级更新右侧的沙盒预览；传 `null` 表示清除预览。 */
   onLivePreviewChange?: (source: string | null) => void
   // 测试或外层可注入自定义保存实现，默认调用 useSaveHumanVersionMutation（落盘 author=human + kind=edit 反馈）
   onSaveOverride?: (input: { source: string; baseVersion: number }) => Promise<{ version: Version }>
@@ -44,8 +46,13 @@ function languageExtensionFor(type: ArtifactType, source: string): Extension {
   }
 }
 
-// L3 CodeMirror 6 分栏代码编辑器：实时同步草稿到右侧沙盒预览、Cmd/Ctrl+S 保存人类版本并写入 kind=edit 反馈、
-// 当 Agent 或协作者并发推送新版本或触发 409 时保留用户未保存草稿并展示双方差异与合并入口。
+/**
+ * L3 的 CodeMirror 6 分栏代码编辑器。
+ *
+ * @remarks 草稿实时同步到右侧沙盒预览；Cmd/Ctrl+S 保存人类版本并写入一条 `kind=edit` 的反馈。
+ * Agent 或协作者并发推送新版本、或保存触发 409 时，保留用户未保存的草稿，
+ * 并展示双方的差异与合并入口。
+ */
 export function SplitCodeEditor({
   artifact,
   version,

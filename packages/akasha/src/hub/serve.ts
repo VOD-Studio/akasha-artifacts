@@ -10,6 +10,7 @@ function envRequired(name: string): string {
   return value
 }
 
+// 从环境变量读取配置并启动 Hub 与沙盒；收到 SIGINT 或 SIGTERM 时先关服务再退出
 async function serveCloudHub(): Promise<void> {
   const origin = parseHubOrigin(envRequired('AKASHA_HUB_ORIGIN'))
   const sandboxOrigin = parseHubOrigin(envRequired('AKASHA_SANDBOX_ORIGIN'))

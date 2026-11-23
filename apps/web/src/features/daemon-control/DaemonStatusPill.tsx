@@ -25,7 +25,11 @@ const RELAY_LABELS: Record<
   rate_limited: { label: '中继限流', tone: 'danger' },
 }
 
-// 顶栏 Daemon 运维胶囊：展示守护进程版本、连接数、中继状态与按项目过滤的实时日志，支持受保护的停止/重连。
+/**
+ * 顶栏的 Daemon 运维胶囊：展示守护进程的版本、连接数与中继状态，以及按项目过滤的实时日志。
+ *
+ * @remarks 停止与重连操作需要二次确认。
+ */
 export function DaemonStatusPill() {
   const [open, setOpen] = useState(false)
   const [logProjectId, setLogProjectId] = useState<string>('')
