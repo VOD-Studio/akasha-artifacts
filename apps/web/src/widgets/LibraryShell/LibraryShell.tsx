@@ -13,19 +13,20 @@ import {
 } from '@akasha/ui/dropdown-menu'
 import { Empty } from '@akasha/ui/empty'
 import { ScrollArea } from '@akasha/ui/scroll-area'
-import { ChevronDown, FolderGit2, Star, Trash2 } from 'lucide-react'
-import { useLayoutEffect, useMemo, useRef } from 'react'
+import { Archive, ChevronDown, FolderGit2, Star, Trash2 } from 'lucide-react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useArtifactFavoritesQuery, useArtifactsQuery } from '../../entities/artifact/queries'
 import { useProjectsQuery, useRemoveProjectMutation } from '../../entities/project/queries'
 import { useWorkspaceStore } from '../../entities/workspace/store'
 import { DaemonStatusPill } from '../../features/daemon-control/DaemonStatusPill'
-import { HubAccountButton } from '../../features/hub/HubActions'
+import { HubAccountButton, useHubSession } from '../../features/hub/HubActions'
 import { isCloudHub } from '../../shared/config/runtime'
 import { ARTIFACT_TYPE_LABELS, formatRelativeTime } from '../../shared/lib/format'
 import { LibraryArtwork } from './LibraryArtwork'
 import { LibraryToolbar } from './LibraryToolbar'
 import { useLibraryView } from './library-view'
+import { WithdrawnArtifactsDialog } from './WithdrawnArtifactsDialog'
 
 const LIBRARY_REFRESH_MS = 10_000
 
@@ -45,6 +46,8 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const restored = useRef(false)
   const cloudHub = isCloudHub()
+  const hubSession = useHubSession()
+  const [showWithdrawn, setShowWithdrawn] = useState(false)
   const projectsQuery = useProjectsQuery(LIBRARY_REFRESH_MS)
   const artifactsQuery = useArtifactsQuery(undefined, LIBRARY_REFRESH_MS)
   const favoritesQuery = useArtifactFavoritesQuery()
@@ -101,6 +104,16 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
           <h1 className="text-lg font-semibold">制品</h1>
           <div className="flex flex-wrap items-center gap-2">
             {projects?.length ? <ProjectDirectoryMenu projects={projects} /> : null}
+            {!cloudHub || hubSession?.member ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                leftIcon={<Archive size={14} />}
+                onClick={() => setShowWithdrawn(true)}
+              >
+                已撤下
+              </Button>
+            ) : null}
             {cloudHub ? <HubAccountButton /> : <DaemonStatusPill />}
           </div>
         </div>
@@ -215,6 +228,12 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
           </div>
         </ScrollArea>
       </main>
+      {showWithdrawn ? (
+        <WithdrawnArtifactsDialog
+          onOpenArtifact={onOpenArtifact}
+          onClose={() => setShowWithdrawn(false)}
+        />
+      ) : null}
     </div>
   )
 }

@@ -13,6 +13,7 @@ import type {
   StatePatchEntry,
   StateStreamSnapshot,
   Version,
+  WithdrawnArtifact,
 } from '@akasha/protocol'
 
 /** 项目登记表的仓储端口；同一 `rootPath` 只对应一条记录。 */
@@ -39,8 +40,19 @@ export interface ArtifactRelocation {
   updatedAt: string
 }
 
+/** 撤下保留记录与唯一键，清除撤下状态不清除分享代数。 */
+export interface ArtifactLifecycleRepository {
+  /** 活动转撤下时递增分享代数；`null` 只恢复当前已撤下的制品。 */
+  setWithdrawal(id: PublicId, at: string | null): Promise<boolean>
+  findWithdrawn(id: PublicId): Promise<WithdrawnArtifact | undefined>
+  listWithdrawn(): Promise<readonly WithdrawnArtifact[]>
+  /** 只为活动制品返回代数，未撤下过的制品为 0。 */
+  activeShareGeneration(id: PublicId): Promise<number | undefined>
+}
+
 /** 制品与其不可变版本历史的仓储端口。 */
 export interface ArtifactRepository {
+  readonly lifecycle: ArtifactLifecycleRepository
   /** 按 `publicId` 插入或更新；已有制品的项目归属只能经 `relocate` 更改。 */
   saveArtifact(artifact: Artifact): Promise<void>
   /** 单独更新展示标题与更新时间，不重写源码、版本或项目归属。 */

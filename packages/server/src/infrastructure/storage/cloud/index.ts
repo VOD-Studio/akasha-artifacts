@@ -20,12 +20,16 @@ import type {
 } from '../../../domain/ports.js'
 import { annotationStatements, createSqlAnnotationRepository } from '../annotation-records.js'
 import { rethrowArtifactStoreError } from '../artifact-conflict.js'
+import {
+  activeArtifactOnly,
+  artifactColumns,
+  artifactLifecycleTable,
+  createSqlArtifactLifecycle,
+} from '../artifact-lifecycle.js'
 import { schema } from './schema.js'
 import type { SqlDriver, SqlStatement, SqlValue, SqlWriteLock, VersionBlobs } from './types.js'
 
 const projectColumns = 'id, root_path AS "rootPath", name, last_active_at AS "lastActiveAt"'
-const artifactColumns =
-  'public_id AS "publicId", project_id AS "projectId", slug, title, type, visibility, head_version AS "headVersion", created_at AS "createdAt", updated_at AS "updatedAt"'
 const versionColumns =
   'artifact_id AS "artifactId", version, parent_version AS "parentVersion", author, title, source_json, blob_key, created_at AS "createdAt"'
 const roundColumns =
@@ -76,7 +80,9 @@ async function versionBlobKey(version: Readonly<Version>): Promise<string> {
  * 表里只保留对象键。返回的版本对象一律递归冻结。
  */
 export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
-  const ready = driver.batch([...schema, ...annotationStatements], 'schema').then(() => {})
+  const ready = driver
+    .batch([...schema, [artifactLifecycleTable], ...annotationStatements], 'schema')
+    .then(() => {})
   async function query<Row>(sql: string, ...params: SqlValue[]): Promise<Row[]> {
     await ready
     return driver.execute<Row>([sql, ...params])
@@ -125,6 +131,7 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
   }
 
   const artifacts: ArtifactRepository = {
+    lifecycle: createSqlArtifactLifecycle(([sql, ...args]) => query(sql, ...args)),
     async saveArtifact(artifact) {
       await query(
         `INSERT INTO artifacts (public_id, project_id, slug, title, type, visibility, head_version, created_at, updated_at)
@@ -145,7 +152,7 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
     },
     renameTitle: (id, title, updatedAt) =>
       first<Artifact>(
-        `UPDATE artifacts SET title = ?, updated_at = ? WHERE public_id = ? RETURNING ${artifactColumns}`,
+        `UPDATE artifacts SET title = ?, updated_at = ? WHERE public_id = ? AND ${activeArtifactOnly} RETURNING ${artifactColumns}`,
         title,
         updatedAt,
         id,
@@ -153,7 +160,7 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
     relocate: ({ publicId, sourceProjectId, targetProjectId, updatedAt }) =>
       first<Artifact>(
         `UPDATE artifacts SET project_id = ?, updated_at = ?
-         WHERE public_id = ? AND project_id = ? AND EXISTS (SELECT 1 FROM projects WHERE id = ?)
+         WHERE public_id = ? AND project_id = ? AND EXISTS (SELECT 1 FROM projects WHERE id = ?) AND ${activeArtifactOnly}
          RETURNING ${artifactColumns}`,
         targetProjectId,
         updatedAt,
@@ -162,18 +169,23 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
         targetProjectId,
       ).catch(rethrowArtifactStoreError),
     findByPublicId: (id) =>
-      first<Artifact>(`SELECT ${artifactColumns} FROM artifacts WHERE public_id = ?`, id),
+      first<Artifact>(
+        `SELECT ${artifactColumns} FROM artifacts WHERE public_id = ? AND ${activeArtifactOnly}`,
+        id,
+      ),
     findBySlug: (projectId, slug) =>
       first<Artifact>(
-        `SELECT ${artifactColumns} FROM artifacts WHERE project_id = ? AND slug = ?`,
+        `SELECT ${artifactColumns} FROM artifacts WHERE project_id = ? AND slug = ? AND ${activeArtifactOnly}`,
         projectId,
         slug,
       ),
     listByProject: (projectId) =>
       projectId === undefined
-        ? query<Artifact>(`SELECT ${artifactColumns} FROM artifacts ORDER BY updated_at DESC`)
+        ? query<Artifact>(
+            `SELECT ${artifactColumns} FROM artifacts WHERE ${activeArtifactOnly} ORDER BY updated_at DESC`,
+          )
         : query<Artifact>(
-            `SELECT ${artifactColumns} FROM artifacts WHERE project_id = ? ORDER BY updated_at DESC`,
+            `SELECT ${artifactColumns} FROM artifacts WHERE project_id = ? AND ${activeArtifactOnly} ORDER BY updated_at DESC`,
             projectId,
           ),
     // 先写对象再写表行，表行指向的对象一定已经存在

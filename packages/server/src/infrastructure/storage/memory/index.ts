@@ -16,6 +16,7 @@ import { PROTOCOL_VERSION } from '@akasha/protocol'
 import { DomainError } from '../../../domain/errors.js'
 import type {
   AnnotationRepository,
+  ArtifactLifecycleRepository,
   ArtifactRelocation,
   ArtifactRepository,
   Clock,
@@ -100,6 +101,44 @@ export class InMemoryArtifactRepository implements ArtifactRepository {
   private readonly artifacts = new Map<PublicId, Artifact>()
   private readonly slugIndex = new Map<string, PublicId>()
   private readonly versions = new Map<PublicId, Readonly<Version>[]>()
+  private readonly withdrawals = new Map<PublicId, { at: string | null; generation: number }>()
+
+  readonly lifecycle: ArtifactLifecycleRepository = {
+    setWithdrawal: async (id, at) => {
+      if (!this.artifacts.has(id)) return false
+      const previous = this.withdrawals.get(id)
+      if (at === null) {
+        if (!previous?.at) return false
+        this.withdrawals.set(id, { at: null, generation: previous.generation })
+      } else {
+        if (previous?.at) return false
+        this.withdrawals.set(id, { at, generation: (previous?.generation ?? 0) + 1 })
+      }
+      return true
+    },
+    findWithdrawn: async (id) => {
+      const artifact = this.artifacts.get(id)
+      const withdrawnAt = this.withdrawals.get(id)?.at
+      return artifact && withdrawnAt
+        ? { artifact: structuredClone(artifact), withdrawnAt }
+        : undefined
+    },
+    listWithdrawn: async () => {
+      const items = []
+      for (const [id, { at }] of this.withdrawals) {
+        if (!at) continue
+        const artifact = this.artifacts.get(id)
+        if (artifact) items.push({ artifact: structuredClone(artifact), withdrawnAt: at })
+      }
+      items.sort((a, b) => b.withdrawnAt.localeCompare(a.withdrawnAt))
+      return items
+    },
+    activeShareGeneration: async (id) => {
+      const status = this.withdrawals.get(id)
+      if (!this.artifacts.has(id) || status?.at) return
+      return status?.generation ?? 0
+    },
+  }
 
   private slugKey(projectId: string, slug: Slug): string {
     return `${projectId}::${slug}`
@@ -129,7 +168,7 @@ export class InMemoryArtifactRepository implements ArtifactRepository {
 
   async renameTitle(id: PublicId, title: string, updatedAt: string): Promise<Artifact | undefined> {
     const artifact = this.artifacts.get(id)
-    if (!artifact) return undefined
+    if (!artifact || this.withdrawals.get(id)?.at) return undefined
     const renamed = { ...artifact, title, updatedAt }
     this.artifacts.set(id, renamed)
     return structuredClone(renamed)
@@ -137,7 +176,8 @@ export class InMemoryArtifactRepository implements ArtifactRepository {
 
   async relocate({ publicId, sourceProjectId, targetProjectId, updatedAt }: ArtifactRelocation) {
     const artifact = this.artifacts.get(publicId)
-    if (!artifact || artifact.projectId !== sourceProjectId) return
+    if (!artifact || artifact.projectId !== sourceProjectId || this.withdrawals.get(publicId)?.at)
+      return
     const moved = { ...artifact, projectId: targetProjectId, updatedAt }
     this.storeArtifact(moved)
     return moved
@@ -145,7 +185,7 @@ export class InMemoryArtifactRepository implements ArtifactRepository {
 
   async findByPublicId(publicId: PublicId): Promise<Artifact | undefined> {
     const hit = this.artifacts.get(publicId)
-    return hit ? structuredClone(hit) : undefined
+    return hit && !this.withdrawals.get(publicId)?.at ? structuredClone(hit) : undefined
   }
 
   async findBySlug(projectId: string, slug: Slug): Promise<Artifact | undefined> {
@@ -156,7 +196,7 @@ export class InMemoryArtifactRepository implements ArtifactRepository {
   async listByProject(projectId?: string): Promise<readonly Artifact[]> {
     const items: Artifact[] = []
     for (const a of this.artifacts.values()) {
-      if (!projectId || a.projectId === projectId) {
+      if ((!projectId || a.projectId === projectId) && !this.withdrawals.get(a.publicId)?.at) {
         items.push(structuredClone(a))
       }
     }

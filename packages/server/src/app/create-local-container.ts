@@ -170,6 +170,13 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
         },
         onExternalFileChange: async (evt) => {
           if (containerClosed) return
+          if (
+            evt.existingPublicId &&
+            (await artifacts.lifecycle.findWithdrawn(evt.existingPublicId))
+          ) {
+            // 撤下不会移动原生文件；重启扫描与外部编辑都不能把这份设计重新发布。
+            return
+          }
           // 1. 优先按 .artifact-id 定位既有 Artifact（支持目录重命名/移动后保持稳定 publicId）
           let existing = evt.existingPublicId
             ? await artifacts.findByPublicId(evt.existingPublicId)

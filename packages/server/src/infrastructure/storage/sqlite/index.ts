@@ -24,6 +24,7 @@ import type {
 import type { ArtifactStorageRepository } from '../../../domain/artifact-storage.js'
 import { deepFreeze } from '../../../domain/freeze.js'
 import type {
+  ArtifactLifecycleRepository,
   ArtifactRelocation,
   ArtifactRepository,
   FeedbackRepository,
@@ -34,6 +35,11 @@ import type {
 } from '../../../domain/ports.js'
 import { annotationStatements, createSqlAnnotationRepository } from '../annotation-records.js'
 import { rethrowArtifactStoreError } from '../artifact-conflict.js'
+import {
+  activeArtifactOnly,
+  artifactLifecycleTable,
+  createSqlArtifactLifecycle,
+} from '../artifact-lifecycle.js'
 import type { SqlStatement } from '../cloud/types.js'
 import { createSqliteArtifactStorage } from './artifact-kv.js'
 import { migrateFeedbackAudience } from './feedback-migration.js'
@@ -163,6 +169,7 @@ export class SqliteStorage {
     this.db.exec('PRAGMA busy_timeout = 5000;')
     runInTx(this.db, () => {
       this.db.exec(SCHEMA_SQL)
+      this.db.exec(artifactLifecycleTable)
       for (const [sql] of annotationStatements) this.db.exec(sql)
       migrateFeedbackAudience(this.db)
     })
@@ -334,7 +341,13 @@ function mapVersion(row: VersionRow): Readonly<Version> {
 
 /** `ArtifactRepository` 的 SQLite 实现；`FsArtifactRepository` 在其之上叠加文件落盘。 */
 export class SqliteArtifactRepository implements ArtifactRepository {
-  constructor(private readonly db: DatabaseSync) {}
+  readonly lifecycle: ArtifactLifecycleRepository
+
+  constructor(private readonly db: DatabaseSync) {
+    this.lifecycle = createSqlArtifactLifecycle(
+      async <Row>([sql, ...values]: SqlStatement) => db.prepare(sql).all(...values) as Row[],
+    )
+  }
 
   private upsertArtifactSync(artifact: Artifact): void {
     try {
@@ -401,7 +414,9 @@ export class SqliteArtifactRepository implements ArtifactRepository {
 
   async renameTitle(id: PublicId, title: string, updatedAt: string): Promise<Artifact | undefined> {
     const row = this.db
-      .prepare('UPDATE artifacts SET title = ?, updated_at = ? WHERE public_id = ? RETURNING *')
+      .prepare(
+        `UPDATE artifacts SET title = ?, updated_at = ? WHERE public_id = ? AND ${activeArtifactOnly} RETURNING *`,
+      )
       .get(title, updatedAt, id) as ArtifactRow | undefined
     return row ? mapArtifact(row) : undefined
   }
@@ -410,7 +425,7 @@ export class SqliteArtifactRepository implements ArtifactRepository {
     try {
       const row = this.db
         .prepare(`UPDATE artifacts SET project_id = ?, updated_at = ?
-          WHERE public_id = ? AND project_id = ? AND EXISTS (SELECT 1 FROM projects WHERE id = ?)
+          WHERE public_id = ? AND project_id = ? AND EXISTS (SELECT 1 FROM projects WHERE id = ?) AND ${activeArtifactOnly}
           RETURNING *`)
         .get(
           input.targetProjectId,
@@ -426,31 +441,36 @@ export class SqliteArtifactRepository implements ArtifactRepository {
   }
 
   async findByPublicId(publicId: PublicId): Promise<Artifact | undefined> {
-    const row = this.db.prepare('SELECT * FROM artifacts WHERE public_id = ?').get(publicId) as
-      | ArtifactRow
-      | undefined
+    const row = this.db
+      .prepare(`SELECT * FROM artifacts WHERE public_id = ? AND ${activeArtifactOnly}`)
+      .get(publicId) as ArtifactRow | undefined
     return row ? mapArtifact(row) : undefined
   }
 
   async findBySlug(projectId: string, slug: Slug): Promise<Artifact | undefined> {
     const row = this.db
-      .prepare('SELECT * FROM artifacts WHERE project_id = ? AND slug = ?')
+      .prepare(
+        `SELECT * FROM artifacts WHERE project_id = ? AND slug = ? AND ${activeArtifactOnly}`,
+      )
       .get(projectId, slug) as ArtifactRow | undefined
     return row ? mapArtifact(row) : undefined
   }
 
   async listByProject(projectId?: string): Promise<readonly Artifact[]> {
-    return this.listByProjectSync(projectId)
+    return this.listByProjectSync(projectId, false)
   }
 
-  // 以下 Sync 方法与对应的异步版本等价，供文件存储在没有 await 间隙的校验与提交里调用
-  listByProjectSync(projectId?: string): readonly Artifact[] {
+  // 文件存储的目录占用校验需要保留撤下记录，公开列表则过滤。
+  listByProjectSync(projectId?: string, includeWithdrawn = true): readonly Artifact[] {
+    const active = includeWithdrawn ? 'TRUE' : activeArtifactOnly
     const rows = projectId
       ? (this.db
-          .prepare('SELECT * FROM artifacts WHERE project_id = ? ORDER BY updated_at DESC')
+          .prepare(
+            `SELECT * FROM artifacts WHERE project_id = ? AND ${active} ORDER BY updated_at DESC`,
+          )
           .all(projectId) as unknown as ArtifactRow[])
       : (this.db
-          .prepare('SELECT * FROM artifacts ORDER BY updated_at DESC')
+          .prepare(`SELECT * FROM artifacts WHERE ${active} ORDER BY updated_at DESC`)
           .all() as unknown as ArtifactRow[])
     return rows.map(mapArtifact)
   }

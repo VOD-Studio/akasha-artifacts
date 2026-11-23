@@ -186,6 +186,14 @@ export function mountHubGuard(
     const defaultProject = principal ? `${hubProjectPrefix(principal)}default` : undefined
     const projectQuery = url.searchParams.get('projectId') ?? undefined
 
+    if (path === '/api/v1/withdrawn-artifacts' && read) {
+      if (principal?.kind !== 'session' || !principal.member) return forbidden(c, principal)
+      const items = (await repositories.artifacts.lifecycle.listWithdrawn()).filter(
+        ({ artifact }) => ownsHubProject(principal, artifact.projectId),
+      )
+      return c.json({ items })
+    }
+
     async function coreFeedback(scope: string, body?: Record<string, unknown>) {
       const response = await core.fetch(rewrite(request, url, body))
       if (!response.ok || request.method === 'HEAD') return response
@@ -393,12 +401,19 @@ export function mountHubGuard(
     const id = decodeSegment(match[1])
     const suffix = match[2]
     if (!ArtifactIdentifierSchema.safeParse(id).success) return hidden(c)
+    if (method === 'POST' && suffix === '/restore') {
+      if (principal?.kind !== 'session' || !PublicIdSchema.safeParse(id).success) return hidden(c)
+      const item = await repositories.artifacts.lifecycle.findWithdrawn(id)
+      if (!item || !ownsHubProject(principal, item.artifact.projectId)) return hidden(c)
+      return core.fetch(rewrite(request, url))
+    }
     const writeMode = writeSuffixes[suffix]
     const discussion = discussionAction.exec(suffix)
     if (
       read
         ? !Object.hasOwn(readSuffixes, suffix)
         : !(method === 'PATCH' && (suffix === '' || suffix === '/metadata')) &&
+          !(method === 'DELETE' && suffix === '') &&
           !(method === 'PUT' && suffix === '/favorite') &&
           !(
             method === 'POST' &&
@@ -411,7 +426,7 @@ export function mountHubGuard(
           )
     )
       return hidden(c)
-    const acceptsBody = !read && !roundAction.test(suffix)
+    const acceptsBody = !read && method !== 'DELETE' && !roundAction.test(suffix)
     const body = acceptsBody ? await readJson(request) : undefined
     if (acceptsBody && !body) return invalid(c)
     const project = typeof body?.project === 'string' ? body.project : projectQuery
@@ -499,6 +514,8 @@ export function mountHubGuard(
     }
 
     const canManage = role === 'owner' && principal?.kind === 'session'
+    if (method === 'DELETE')
+      return canManage ? core.fetch(rewrite(request, url)) : forbidden(c, principal)
     if (suffix === '/management') return c.json({ canManage })
     if (suffix === '/metadata') {
       return canManage ? core.fetch(rewrite(request, url, body)) : forbidden(c, principal)
@@ -530,7 +547,8 @@ export function mountHubGuard(
         if (!version || (entry.kind === 'play' && !matchesShareBoard(artifact, version, entry)))
           return hidden(c)
       }
-      return c.json(await auth.createShare(artifact.publicId, parsed.data), 201)
+      const signed = await auth.createShare(artifact.publicId, parsed.data)
+      return signed ? c.json(signed, 201) : hidden(c)
     }
     if (suffix === '/storage') {
       const operation = storageAccess.safeParse(body)
