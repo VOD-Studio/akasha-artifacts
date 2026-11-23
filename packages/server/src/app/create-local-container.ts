@@ -2,6 +2,7 @@ import path from 'node:path'
 import { ArtifactService } from '../application/artifact-service.js'
 import { CheckService } from '../application/check-service.js'
 import { SpecRegistry } from '../application/spec-registry.js'
+import { DomainError } from '../domain/errors.js'
 import type { Clock, IdGenerator } from '../domain/ports.js'
 import { LogStore } from '../infrastructure/logging/log-store.js'
 import { RealtimeEventHub } from '../infrastructure/realtime/event-hub.js'
@@ -187,15 +188,20 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
               let metadataUpdated = false
               if (dirMoved && (fresh.slug !== evt.slug || typeChanged)) {
                 const conflictBySlug = await artifacts.findBySlug(fresh.projectId, evt.slug)
-                if (!conflictBySlug || conflictBySlug.publicId === fresh.publicId) {
-                  fresh = await fsStorage.artifacts.updateIndexOnly({
-                    ...fresh,
-                    slug: evt.slug,
-                    type: evt.type,
-                    updatedAt: clock.now(),
-                  })
-                  metadataUpdated = true
+                if (conflictBySlug && conflictBySlug.publicId !== fresh.publicId) {
+                  throw new DomainError(
+                    'BAD_REQUEST',
+                    `外部目录移动目标 slug "${evt.slug}" 已被 Artifact "${conflictBySlug.publicId}" 占用，拒绝同步以避免分裂出重复目录`,
+                    { conflictingPublicId: conflictBySlug.publicId, slug: evt.slug },
+                  )
                 }
+                fresh = await fsStorage.artifacts.updateIndexOnly({
+                  ...fresh,
+                  slug: evt.slug,
+                  type: evt.type,
+                  updatedAt: clock.now(),
+                })
+                metadataUpdated = true
               }
               const headVer = await artifacts.getVersion(fresh.publicId, fresh.headVersion)
               return { fresh, headVer, typeChanged, metadataUpdated }

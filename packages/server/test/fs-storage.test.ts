@@ -1384,4 +1384,54 @@ describe('.artifacts/ 原生文件存储适配器与外部编辑监听', () => {
     expect(cardV2.artifact.headVersion).toBe(2)
     expect(otherV2.artifact.headVersion).toBe(2)
   })
+
+  it('外部移动目录目标 slug 已被另一 Artifact 占用时直接拒绝同步，绝不按旧 slug 重建分裂目录', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-move-slug-conflict-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    const container = createLocalContainer({
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_slug_col',
+      fsWatchDebounceMs: 30,
+    })
+    closers.push(container.close)
+    await container.ready
+
+    const cardPub = await container.service.publish({
+      projectId: 'proj_slug_col',
+      slug: 'card',
+      title: 'Card A',
+      type: 'html',
+      source: '<div>card A v1</div>',
+      author: 'agent:cli',
+    })
+    // 另一不同类型的 Artifact 占用了 slug='html/moved'
+    await container.service.publish({
+      projectId: 'proj_slug_col',
+      slug: 'html/moved',
+      title: 'React B',
+      type: 'react',
+      source: 'export default function App() { return <div>react B</div> }',
+      author: 'agent:cli',
+    })
+
+    // 将 A 从 html/card 移至 html/moved 并修改内容：目标 slug 'html/moved' 与 B 冲突，必须直接拒绝且绝不重建 html/card
+    const origDir = path.join(artifactsDir, 'html', 'card')
+    const movedDir = path.join(artifactsDir, 'html', 'moved')
+    fs.renameSync(origDir, movedDir)
+    const movedFile = path.join(movedDir, 'index.html')
+    fs.writeFileSync(movedFile, '<div>card A edited in conflicting dir</div>', 'utf8')
+
+    await expect(container.fsWatcher?.syncFile(movedFile)).rejects.toThrow(
+      /目标 slug "html\/moved" 已被 Artifact/,
+    )
+
+    // 绝不能把旧目录 html/card 重建出来，也不能在未解决冲突前推进版本
+    expect(fs.existsSync(origDir)).toBe(false)
+    const cardState = await container.service.getArtifact({ id: cardPub.artifact.publicId })
+    expect(cardState.artifact.slug).toBe('card')
+    expect(cardState.artifact.headVersion).toBe(1)
+  })
 })
