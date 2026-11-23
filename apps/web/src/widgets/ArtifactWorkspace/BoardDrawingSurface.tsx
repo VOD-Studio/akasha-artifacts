@@ -75,8 +75,14 @@ export function BoardDrawingSurface({ board, tool, version, onCreate }: SurfaceP
   function sample(points: Point[], point: Point, final = false) {
     const last = points[points.length - 1]
     if (Math.hypot(last.x - point.x, last.y - point.y) < (final ? Number.EPSILON : 0.75)) return
-    if (points.length < INK_LIMIT) points.push(point)
-    else points[INK_LIMIT - 1] = point
+    if (points.length === INK_LIMIT) {
+      // 压缩已经走过的路径，保留两端，给后续转折留出采样空间。
+      let write = 1
+      for (let read = 2; read < points.length - 1; read += 2) points[write++] = points[read]
+      points[write++] = last
+      points.length = write
+    }
+    points.push(point)
   }
 
   function cancel() {

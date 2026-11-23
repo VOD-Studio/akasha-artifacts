@@ -1069,3 +1069,33 @@ it('拖出矩形只预览，松开按画板固有坐标保存并可撤销重做'
   await waitFor(() => expect(editor.current.version.version).toBe(4))
   expect(layers()[0]).toMatchObject({ kind: 'rectangle', x: 40, y: 60, width: 140, height: 120 })
 })
+
+it('长笔迹达到采样上限后仍保存新转折', async () => {
+  stubResizeObserver()
+  vi.stubGlobal('PointerEvent', MouseEvent)
+  const editor = showEditableWorkspace(detailFor())
+  fireEvent.click(screen.getByRole('button', { name: '画笔' }))
+  const surface = screen.getByRole('button', { name: '在宽屏首页画笔标记' })
+  vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 1440, 900))
+  fireEvent.pointerDown(surface, { clientX: 10, clientY: 10 })
+  act(() => {
+    for (let i = 0; i < 2050; i += 1) {
+      fireEvent.pointerMove(surface, { clientX: i % 2 ? 10 : 20, clientY: 10 })
+    }
+    fireEvent.pointerMove(surface, { clientX: 90, clientY: 220 })
+    fireEvent.pointerUp(surface, { clientX: 120, clientY: 50 })
+  })
+  await waitFor(() => expect(editor.current.version.version).toBe(2))
+  const [stroke] = JSON.parse(editor.current.version.source).boards[0].designLayers
+  expect(stroke.points.length).toBeLessThanOrEqual(2048)
+  const tail = stroke.points
+    .slice(-2)
+    .map(([x, y]: [number, number]) => [
+      Math.round(stroke.x + x * stroke.width),
+      Math.round(stroke.y + y * stroke.height),
+    ])
+  expect(tail).toEqual([
+    [90, 220],
+    [120, 50],
+  ])
+})
