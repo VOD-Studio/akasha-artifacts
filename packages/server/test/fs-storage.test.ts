@@ -1496,4 +1496,112 @@ describe('.artifacts/ 原生文件存储适配器与外部编辑监听', () => {
       '<div>v2 in moved dir</div>',
     )
   })
+
+  it('带 .artifact-id 的目录复制不被误判为移动，原目录仍存在时拒绝重复身份劫持', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-copy-dup-id-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    const container = createLocalContainer({
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_copy_dup',
+      fsWatchDebounceMs: 30,
+    })
+    closers.push(container.close)
+    await container.ready
+
+    const pub = await container.service.publish({
+      projectId: 'proj_copy_dup',
+      slug: 'html/card',
+      title: 'Original Card',
+      type: 'html',
+      source: '<div>original v1</div>',
+      author: 'agent:cli',
+    })
+
+    // 完整复制目录（含 .artifact-id）到 html/copied，原目录 html/card 仍存在
+    const origDir = path.join(artifactsDir, 'html', 'card')
+    const copiedDir = path.join(artifactsDir, 'html', 'copied')
+    fs.cpSync(origDir, copiedDir, { recursive: true })
+    fs.writeFileSync(path.join(copiedDir, 'index.html'), '<div>copied edit</div>', 'utf8')
+
+    await expect(container.fsWatcher?.syncFile(path.join(copiedDir, 'index.html'))).rejects.toThrow(
+      /检测到重复的 \.artifact-id/,
+    )
+
+    // 原 Artifact 的 slug 与版本不受复制目录劫持
+    const state = await container.service.getArtifact({ id: pub.artifact.publicId })
+    expect(state.artifact.slug).toBe('html/card')
+    expect(state.artifact.headVersion).toBe(1)
+    expect(state.version.source).toBe('<div>original v1</div>')
+  })
+
+  it('过时的 agent:fs 监听快照在较新 API 版本已落盘后被拒绝，不会静默回滚最新版本', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-stale-watcher-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    const container = createLocalContainer({
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_stale_watch',
+      fsWatchDebounceMs: 5000,
+    })
+    closers.push(container.close)
+    await container.ready
+
+    const pub = await container.service.publish({
+      projectId: 'proj_stale_watch',
+      slug: 'html/card',
+      title: 'Card',
+      type: 'html',
+      source: '<div>v1</div>',
+      author: 'agent:cli',
+    })
+    const cardFile = path.join(artifactsDir, 'html', 'card', 'index.html')
+
+    // 1. 外部编辑产生 v2，并由 API 冲突对账补录为 v2，随后 API 成功合并发布 v3
+    fs.writeFileSync(cardFile, '<div>external v2</div>', 'utf8')
+    await expect(
+      container.service.publish({
+        projectId: 'proj_stale_watch',
+        slug: 'html/card',
+        title: 'Card API stale',
+        type: 'html',
+        source: '<div>api v2 conflict</div>',
+        baseVersion: 1,
+        author: 'agent:cli',
+      }),
+    ).rejects.toThrow(/版本冲突/)
+
+    await container.service.publish({
+      projectId: 'proj_stale_watch',
+      slug: 'html/card',
+      title: 'Card API v3',
+      type: 'html',
+      source: '<div>api merged v3</div>',
+      baseVersion: 2,
+      author: 'agent:cli',
+    })
+
+    // 2. 模拟迟到的过时监听快照（仍携带旧内容 '<div>external v2</div>'）试图基于 headVersion=3 回写
+    await expect(
+      container.service.publish({
+        projectId: 'proj_stale_watch',
+        slug: 'html/card',
+        title: 'Card',
+        type: 'html',
+        source: '<div>external v2</div>',
+        baseVersion: 3,
+        author: 'agent:fs',
+      }),
+    ).rejects.toThrow(/快照已过时/)
+
+    // 必须保留 v3，绝不被旧监听快照回滚为 v4
+    const latest = await container.service.getArtifact({ id: pub.artifact.publicId })
+    expect(latest.artifact.headVersion).toBe(3)
+    expect(latest.version.source).toBe('<div>api merged v3</div>')
+    expect(fs.readFileSync(cardFile, 'utf8')).toBe('<div>api merged v3</div>')
+  })
 })

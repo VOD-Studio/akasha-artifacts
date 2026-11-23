@@ -283,6 +283,25 @@ export class FsArtifactRepository implements ArtifactRepository {
     return found
   }
 
+  // 检查索引记录指向的原物理目录是否仍存在有效规范源文件（且未被其它 publicId 接管），
+  // 用于区分“真实目录移动”与“带 .artifact-id 的目录复制”，防止复制目录劫持原 Artifact 身份。
+  hasLiveIndexedLayout(artifact: Artifact): boolean {
+    const entries = this.findExistingDiskEntries(artifact)
+    if (entries.length === 0) return false
+    const layout = resolveArtifactFileLayout(this.artifactsRoot, artifact.type, artifact.slug)
+    if (fs.existsSync(layout.idFile)) {
+      try {
+        const rawId = fs.readFileSync(layout.idFile, 'utf8').trim()
+        if (rawId && rawId !== artifact.publicId) {
+          return false
+        }
+      } catch {
+        // 忽略瞬时读取异常
+      }
+    }
+    return true
+  }
+
   // 在 .artifacts/ 根目录内查找持有指定 publicId 的其它 .artifact-id 所在目录（跳过 .state 与符号链接），
   // 用于在旧目录已缺失时识别防抖窗口内尚未同步的目录移动，防止服务端在旧路径重建第二份同 ID 目录。
   private findRelocatedDirByPublicId(publicId: PublicId, excludeDir: string): string | null {
@@ -364,7 +383,17 @@ export class FsArtifactRepository implements ArtifactRepository {
       }
     }
 
-    if (modifiedEntries.length === 0) return
+    if (modifiedEntries.length === 0) {
+      // 即使磁盘与 prevHeadVer 一致，若本次是过时的 agent:fs 监听快照（其内容已不同于当前磁盘文件），也拒绝回写以防覆盖较新版本
+      if (stagedForHead.author === 'agent:fs' && stagedForHead.source !== prevHeadVer.source) {
+        throw new DomainError(
+          'VERSION_CONFLICT',
+          '外部文件监听快照已过时，磁盘已包含更新版本内容，已放弃回写',
+          { artifactId: previous.publicId, headVersion: previous.headVersion },
+        )
+      }
+      return
+    }
 
     // 若本次写入正是监听器针对唯一变更磁盘快照的同步请求，直接放行
     if (

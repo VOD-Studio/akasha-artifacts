@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import path from 'node:path'
 import { ArtifactService } from '../application/artifact-service.js'
 import { CheckService } from '../application/check-service.js'
@@ -187,6 +188,18 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
                 typeChanged
               let metadataUpdated = false
               if (dirMoved && (fresh.slug !== evt.slug || typeChanged)) {
+                // 若原索引目录仍存在有效源文件与同 .artifact-id，说明这是复制目录而非移动，必须拒绝以避免双目录争抢同一身份
+                if (fsStorage.artifacts.hasLiveIndexedLayout(fresh)) {
+                  throw new DomainError(
+                    'BAD_REQUEST',
+                    `检测到重复的 .artifact-id "${fresh.publicId}"：原目录 "${existingLayout.normalizedRelativeDir}" 仍然存在，拒绝将复制目录 "${evt.slug}" 视为移动`,
+                    {
+                      publicId: fresh.publicId,
+                      originalDir: existingLayout.normalizedRelativeDir,
+                      duplicateDir: evt.slug,
+                    },
+                  )
+                }
                 const conflictBySlug = await artifacts.findBySlug(fresh.projectId, evt.slug)
                 if (conflictBySlug && conflictBySlug.publicId !== fresh.publicId) {
                   throw new DomainError(
@@ -203,14 +216,22 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
                 })
                 metadataUpdated = true
               }
+              // 在写锁内重新读取磁盘当前源码，防止在读取与入锁间隙已被较新 API 更新替换后，旧监听快照误挂到最新 headVersion 造成静默回滚
+              if (!fs.existsSync(evt.entryFile)) return null
+              let currentDiskSource: string
+              try {
+                currentDiskSource = fs.readFileSync(evt.entryFile, 'utf8')
+              } catch {
+                return null
+              }
               const headVer = await artifacts.getVersion(fresh.publicId, fresh.headVersion)
-              return { fresh, headVer, typeChanged, metadataUpdated }
+              return { fresh, headVer, typeChanged, metadataUpdated, currentDiskSource }
             })
             if (!reconciled) return
 
-            const { fresh, headVer, typeChanged, metadataUpdated } = reconciled
-            if (!typeChanged && headVer && headVer.source === evt.source) {
-              fsStorage.artifacts.recordSyncedContent(evt.entryFile, evt.source)
+            const { fresh, headVer, typeChanged, metadataUpdated, currentDiskSource } = reconciled
+            if (!typeChanged && headVer && headVer.source === currentDiskSource) {
+              fsStorage.artifacts.recordSyncedContent(evt.entryFile, currentDiskSource)
               if (metadataUpdated) {
                 // 目录改名但源码未变时主动通知在线客户端刷新缓存中的 slug/元数据
                 await realtime.publish(
@@ -229,11 +250,11 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
               slug: fresh.slug,
               title: fresh.title,
               type: evt.type,
-              source: evt.source,
+              source: currentDiskSource,
               baseVersion: fresh.headVersion,
               author: 'agent:fs',
             })
-            fsStorage.artifacts.recordSyncedContent(evt.entryFile, evt.source)
+            fsStorage.artifacts.recordSyncedContent(evt.entryFile, currentDiskSource)
             return
           }
 
