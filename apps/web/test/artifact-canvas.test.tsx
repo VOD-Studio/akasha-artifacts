@@ -344,25 +344,28 @@ it('从独立检查器选择其他页面的画板并查看固定版本的真实�
     },
   )
   const fixed = detailFor()
-  const live = { ...fixed.artifact, headVersion: 2 }
+  const next = detailFor(2)
+  const live = next.artifact
+  const versions = [fixed.version, next.version]
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
+  const tree = (number: 1 | 2) => (
     <QueryClientProvider client={client}>
       <TopBar
         artifact={live}
-        version={fixed.version}
-        versions={[fixed.version]}
+        version={number === 1 ? fixed.version : next.version}
+        versions={versions}
         onBackToLibrary={() => {}}
         onSelectVersion={() => {}}
       />
       <ArtifactWorkspace
-        detail={{ ...fixed, artifact: live }}
-        versions={[fixed.version]}
-        fixedVersion={1}
+        detail={{ ...(number === 1 ? fixed : next), artifact: live }}
+        versions={versions}
+        fixedVersion={number}
         sandboxOrigin="http://127.0.0.1:24331"
       />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   )
+  const view = render(tree(1))
   fireEvent.click(screen.getByRole('button', { name: '检查器' }))
   const inspector = screen.getByRole('dialog', { name: '检查器' })
   expect(within(inspector).getByText('从树中选择画板以查看属性')).toBeTruthy()
@@ -381,6 +384,11 @@ it('从独立检查器选择其他页面的画板并查看固定版本的真实�
   expect(
     within(canvas).getByRole('button', { name: '预约完成' }).getAttribute('aria-pressed'),
   ).toBe('true')
+
+  view.rerender(tree(2))
+  const otherVersion = screen.getByRole('region', { name: '制品画布' })
+  expect(within(otherVersion).getByTitle('宽屏首页 隔离沙盒')).toBeTruthy()
+  expect(within(otherVersion).queryByTitle('预约完成 隔离沙盒')).toBeNull()
 })
 
 it('旧制品没有显式 ID 时，重排后仍选中原标题的画板', () => {

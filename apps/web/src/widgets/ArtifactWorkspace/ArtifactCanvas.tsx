@@ -41,6 +41,7 @@ interface ArtifactCanvasProps {
   pageEditing?: CanvasPageEditing
   /** 抽屉选板后定位；换工具不消费尚不可见的请求。 */
   reveal?: CanvasLocation | null
+  onRevealHandled: () => void
   onLocationChange: (location: CanvasLocation | null) => void
   renderBoard: (board: CanvasBoard, purpose: BoardFramePurpose) => ReactNode
   canPlay: (board: CanvasBoard) => boolean
@@ -104,6 +105,7 @@ export function ArtifactCanvas({
   pageLink,
   pageEditing,
   reveal,
+  onRevealHandled,
   onLocationChange,
   renderBoard,
   canPlay,
@@ -111,7 +113,6 @@ export function ArtifactCanvas({
 }: ArtifactCanvasProps) {
   const viewportRef = useRef<HTMLElement>(null)
   const pendingFocus = useRef<{ pageId: string; boardId: string } | null>(null)
-  const handledReveal = useRef<CanvasLocation | null>(null)
   const pointers = useRef(new Map<number, Point>())
   const wasPinching = useRef(false)
   const [view, setView] = useState(() => readView(storageKey))
@@ -290,10 +291,10 @@ export function ArtifactCanvas({
     navigate(page, target.boardId)
   })
   useEffect(() => {
-    if (!visible || !reveal || handledReveal.current === reveal) return
-    handledReveal.current = reveal
+    if (!visible || !reveal) return
+    onRevealHandled()
     revealFromInspector(reveal)
-  }, [reveal, visible])
+  }, [onRevealHandled, reveal, visible])
 
   const selectBoard = (boardId: string | null) => {
     if (!page || invalidAddress) return

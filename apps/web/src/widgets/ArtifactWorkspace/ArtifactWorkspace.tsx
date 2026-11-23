@@ -71,6 +71,7 @@ export function ArtifactWorkspace({
   const [liveEditSource, setLiveEditSource] = useState<string | null>(null)
   const [canvasLocation, setCanvasLocation] = useState<CanvasLocation | null>(null)
   const [inspectorReveal, setInspectorReveal] = useState<CanvasLocation | null>(null)
+  const clearInspectorReveal = useCallback(() => setInspectorReveal(null), [])
   const latestVersion = useMemo(() => {
     if (versions.length === 0) return version
     return versions.reduce(
@@ -320,6 +321,7 @@ export function ArtifactWorkspace({
             onClearAddress={onClearAddress}
             pageLink={pageLink}
             reveal={inspectorReveal}
+            onRevealHandled={clearInspectorReveal}
             onLocationChange={setCanvasLocation}
             pageEditing={
               artifact.type === 'artboard' &&
