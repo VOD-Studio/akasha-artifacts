@@ -51,6 +51,24 @@ export function writeAnnotationDraft(artifactId: string, draft: AnnotationDraft 
   } catch {}
 }
 
+/** 回复草稿只属于此次讨论，不替换同制品正在撰写的根批注。 */
+export function readReplyDraft(artifactId: string, feedbackId: string): string {
+  try {
+    return sessionStorage.getItem(`${prefix}reply:${artifactId}/${feedbackId}`) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+/** 回复成功或清空正文时移除该线程的本地草稿。 */
+export function writeReplyDraft(artifactId: string, feedbackId: string, body: string): void {
+  try {
+    const key = `${prefix}reply:${artifactId}/${feedbackId}`
+    if (body) sessionStorage.setItem(key, body)
+    else sessionStorage.removeItem(key)
+  } catch {}
+}
+
 /** 此标签页切换 Hub 身份前清理旧用户未提交的正文。 */
 export function clearAnnotationDrafts(): void {
   try {

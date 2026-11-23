@@ -1,6 +1,7 @@
 import type { ReviewGroup } from '@akasha/protocol'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  type AnnotationThreadAction,
   fetchArtifactFeedback,
   openReviewRound,
   type RecordHumanDecisionInput,
@@ -8,6 +9,7 @@ import {
   type SubmitFeedbackInput,
   submitArtifactFeedback,
   submitReviewRound,
+  updateAnnotationThread,
   withdrawReviewRound,
 } from '../../shared/api/client'
 import { artifactKeys } from '../artifact/queries'
@@ -34,6 +36,14 @@ export function useSubmitFeedbackMutation(artifactId: string) {
       void queryClient.invalidateQueries({ queryKey: feedbackKeys.list(artifactId) })
       void queryClient.invalidateQueries({ queryKey: artifactKeys.detailPrefix(artifactId) })
     },
+  })
+}
+
+export function useAnnotationThreadMutation(artifactId: string, id: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (action: AnnotationThreadAction) => updateAnnotationThread(artifactId, id, action),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: feedbackKeys.list(artifactId) }),
   })
 }
 

@@ -31,6 +31,8 @@ import type {
   RoundRepository,
   StateRepository,
 } from '../../../domain/ports.js'
+import { annotationStatements, createSqlAnnotationRepository } from '../annotation-records.js'
+import type { SqlStatement } from '../cloud/types.js'
 import { createSqliteArtifactStorage } from './artifact-kv.js'
 import { migrateFeedbackAudience } from './feedback-migration.js'
 
@@ -159,6 +161,7 @@ export class SqliteStorage {
     this.db.exec('PRAGMA busy_timeout = 5000;')
     runInTx(this.db, () => {
       this.db.exec(SCHEMA_SQL)
+      for (const [sql] of annotationStatements) this.db.exec(sql)
       migrateFeedbackAudience(this.db)
     })
 
@@ -646,7 +649,13 @@ function mapFeedback(row: FeedbackRow): Feedback {
  * @remarks 最大值加一没有行级保护，并发转正靠 `BEGIN IMMEDIATE` 串行化。
  */
 export class SqliteFeedbackRepository implements FeedbackRepository {
-  constructor(private readonly db: DatabaseSync) {}
+  readonly annotations
+
+  constructor(private readonly db: DatabaseSync) {
+    this.annotations = createSqlAnnotationRepository(
+      async <Row>([sql, ...params]: SqlStatement) => this.db.prepare(sql).all(...params) as Row[],
+    )
+  }
 
   async save(feedback: Feedback): Promise<void> {
     runInTx(this.db, () => {

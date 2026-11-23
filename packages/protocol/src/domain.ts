@@ -285,6 +285,42 @@ export const FeedbackSchema = z.object({
 })
 export type Feedback = z.infer<typeof FeedbackSchema>
 
+/** 讨论回复属于根批注，永远不会进入 Agent 投递队列。 */
+export const AnnotationReplySchema = z.object({
+  // 由服务端生成，同一线程内唯一
+  id: z.string().min(1),
+  // 由请求的浏览器身份确定
+  author: AuthorSchema,
+  // 纯文本回复
+  body: z.string().min(1),
+  // 创建回复的服务端时间
+  createdAt: ISODateTimeSchema,
+})
+export type AnnotationReply = z.infer<typeof AnnotationReplySchema>
+
+/** 人工解决线程的记录，与 Agent 消费回执相互独立。 */
+export const AnnotationResolutionSchema = z.object({
+  // 将线程设为已解决的操作者
+  author: AuthorSchema,
+  // 当前解决记录的服务端时间
+  resolvedAt: ISODateTimeSchema,
+})
+export type AnnotationResolution = z.infer<typeof AnnotationResolutionSchema>
+
+/** 根批注之外的浏览器讨论记录；按 `Feedback.id` 关联。 */
+export const AnnotationThreadSchema = z.object({
+  // 回复按创建时间升序展示
+  replies: z.array(AnnotationReplySchema),
+  // null 表示未解决或重新打开
+  resolution: AnnotationResolutionSchema.nullable(),
+})
+export type AnnotationThread = z.infer<typeof AnnotationThreadSchema>
+
+/** 划分可继续讨论的批注与独立的评审裁决、运行事件。 */
+export function isAnnotationKind(kind: FeedbackKind): boolean {
+  return kind === 'comment' || kind === 'request_changes'
+}
+
 /**
  * 读取回执：拉取完整反馈证据时签发，凭它确认消费。
  *

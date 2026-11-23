@@ -1,9 +1,11 @@
-import type {
-  ElementRef,
-  Feedback,
-  JsonPatchOp,
-  ReviewRound,
-  SandboxToShellMessage,
+import {
+  type AnnotationThread,
+  type ElementRef,
+  type Feedback,
+  isAnnotationKind,
+  type JsonPatchOp,
+  type ReviewRound,
+  type SandboxToShellMessage,
 } from '@akasha/protocol'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { selectionForVersion, useSelectionStore } from '../../entities/selection/store'
@@ -22,6 +24,7 @@ import { BoardInspector } from './BoardInspector'
 import {
   type CanvasBoard,
   type CanvasLocation,
+  type CanvasPage,
   createCanvasDocument,
   createCanvasElementResolver,
   STANDALONE_BOARD_ID,
@@ -38,6 +41,7 @@ export interface ArtifactWorkspaceProps {
   detail: ArtifactDetailResponse
   versions: readonly ArtifactDetailResponse['version'][]
   feedbacks?: readonly Feedback[]
+  threads?: Readonly<Record<string, AnnotationThread>>
   rounds?: readonly ReviewRound[]
   sandboxOrigin: string
   /** 链接里的定位；画布据此只定位一次。 */
@@ -45,6 +49,8 @@ export interface ArtifactWorkspaceProps {
   /** 固定查看的版本；省略时跟随头版本。 */
   fixedVersion?: number
   onClearAddress?: () => void
+  /** 将当前讨论定位写入路由，刷新后仍回到相同线程。 */
+  onRememberThread?: (id: string) => void
   /** 只导出当前已保存快照中的画板，编辑器临时预览不提供出口。 */
   onExportBoard?: (boardId: string) => void
   /** 登记把状态补丁转发给各画板沙盒的函数；传 `null` 表示注销。 */
@@ -63,11 +69,13 @@ export function ArtifactWorkspace({
   detail,
   versions,
   feedbacks = EMPTY_FEEDBACKS,
+  threads,
   rounds: roundsOverride,
   sandboxOrigin,
   address = '',
   fixedVersion,
   onClearAddress,
+  onRememberThread,
   onExportBoard,
   onRegisterStateForwarder,
   onVersionSaved,
@@ -226,18 +234,34 @@ export function ArtifactWorkspace({
     onVersionSaved,
   })
   const resolveElement = useMemo(
-    () => (artifact.type === 'artboard' ? createCanvasElementResolver(canvas) : null),
-    [artifact.type, canvas],
+    () => (artifact.type === 'artboard' ? createCanvasElementResolver(savedCanvas) : null),
+    [artifact.type, savedCanvas],
   )
-  const versionPins = useMemo(
-    () =>
-      feedbacks.flatMap((feedback) => {
-        if (feedback.version !== version.version || !feedback.element) return []
-        const element = resolveElement?.(feedback.element) ?? feedback.element
-        return [element === feedback.element ? feedback : { ...feedback, element }]
-      }),
-    [feedbacks, resolveElement, version.version],
-  )
+  const versionPins = useMemo(() => {
+    if (canvas !== savedCanvas) return EMPTY_FEEDBACKS
+    const pins: Feedback[] = []
+    for (const feedback of feedbacks) {
+      if (
+        feedback.version !== version.version ||
+        !feedback.element ||
+        !isAnnotationKind(feedback.kind)
+      )
+        continue
+      const element = resolveElement?.(feedback.element) ?? feedback.element
+      pins.push(element === feedback.element ? feedback : { ...feedback, element })
+    }
+    return pins
+  }, [canvas, savedCanvas, feedbacks, resolveElement, version.version])
+  const pageFeedbackIds = useMemo(() => {
+    const page = savedCanvas.pages.find((entry) => entry.id === canvasLocation?.pageId)
+    const ids = new Set<string>()
+    if (!page) return ids
+    const boards = new Set(page.boards.map((board) => board.id))
+    for (const pin of versionPins) {
+      if (boards.has(pin.element?.boardId ?? STANDALONE_BOARD_ID)) ids.add(pin.id)
+    }
+    return ids
+  }, [canvasLocation?.pageId, savedCanvas.pages, versionPins])
   const pageLink = useCallback(
     (id: string) => {
       const path = `/a/${encodeURIComponent(artifact.publicId)}${fixedVersion === undefined ? '' : `/v/${fixedVersion}`}`
@@ -275,6 +299,59 @@ export function ArtifactWorkspace({
     useWorkspaceStore.getState().setViewMode('preview')
     setInspectorReveal(location)
   }, [])
+  const restoredThread = useRef<string | null>(null)
+  const focusThread = useCallback(
+    (feedback: Feedback, reveal: boolean) => {
+      if (feedback.artifactId !== artifact.publicId) return
+      useSelectionStore.getState().setFocusedFeedbackId(feedback.id)
+      setInspectorTab('review')
+      if (!reveal || !feedback.element || feedback.version !== version.version) return
+      const target = resolveElement?.(feedback.element) ?? feedback.element
+      const boardId = target.boardId ?? STANDALONE_BOARD_ID
+      const active = savedCanvas.pages.find((page) => page.id === canvasLocation?.pageId)
+      const includesBoard = (page: CanvasPage) => page.boards.some((board) => board.id === boardId)
+      const page = active && includesBoard(active) ? active : savedCanvas.pages.find(includesBoard)
+      if (page) revealBoard({ pageId: page.id, boardId })
+    },
+    [
+      artifact.publicId,
+      canvasLocation?.pageId,
+      resolveElement,
+      revealBoard,
+      savedCanvas.pages,
+      setInspectorTab,
+      version.version,
+    ],
+  )
+
+  const focusAndRemember = useCallback(
+    (feedback: Feedback, reveal: boolean) => {
+      restoredThread.current = `${version.version}:${feedback.id}`
+      focusThread(feedback, reveal)
+      onRememberThread?.(feedback.id)
+    },
+    [focusThread, onRememberThread, version.version],
+  )
+
+  const linkedThread = useMemo(
+    () => new URLSearchParams(address.replace(/^#/, '')).get('thread'),
+    [address],
+  )
+  useEffect(() => {
+    if (!linkedThread) {
+      restoredThread.current = null
+      return
+    }
+    const key = `${version.version}:${linkedThread}`
+    if (restoredThread.current === key) return
+    const feedback = feedbacks.find(
+      (entry) => entry.id === linkedThread && isAnnotationKind(entry.kind),
+    )
+    if (feedback) {
+      restoredThread.current = key
+      focusThread(feedback, true)
+    }
+  }, [feedbacks, focusThread, linkedThread, version.version])
   const handleHighlightElement = useCallback(
     (element: ElementRef) => {
       const resolved = resolveElement?.(element) ?? element
@@ -322,6 +399,7 @@ export function ArtifactWorkspace({
         state={state}
         sandboxOrigin={sandboxOrigin}
         pins={purpose.type === 'overview' ? versionPins : EMPTY_FEEDBACKS}
+        onFocusPin={(feedback) => focusAndRemember(feedback, false)}
         purpose={purpose}
         register={
           purpose.type === 'overview'
@@ -344,6 +422,7 @@ export function ArtifactWorkspace({
       state,
       sandboxOrigin,
       versionPins,
+      focusAndRemember,
       registerFrame,
       registerFocusedFrame,
       onPlayable,
@@ -437,7 +516,9 @@ export function ArtifactWorkspace({
         activeVersion={version.version}
         activeRound={activeRound}
         feedbacks={feedbacks}
-        onHighlightElement={handleHighlightElement}
+        threads={threads}
+        pageFeedbackIds={pageFeedbackIds}
+        onFocusThread={(feedback) => focusAndRemember(feedback, true)}
       />
       <BoardInspector
         artifact={artifact}

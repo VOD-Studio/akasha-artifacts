@@ -1,4 +1,4 @@
-import type { JsonPatchOp } from '@akasha/protocol'
+import { isAnnotationKind, type JsonPatchOp } from '@akasha/protocol'
 import { Alert } from '@akasha/ui/alert'
 import { Button } from '@akasha/ui/button'
 import { Spinner } from '@akasha/ui/indicator'
@@ -19,6 +19,7 @@ import { useArtifactDetailQuery, useArtifactVersionsQuery } from '../entities/ar
 import { useDaemonStatusQuery } from '../entities/daemon/queries'
 import { readAnnotationDraft } from '../entities/feedback/annotation-draft'
 import { useArtifactFeedbackQuery } from '../entities/feedback/queries'
+import { useSelectionStore } from '../entities/selection/store'
 import { useWorkspaceStore } from '../entities/workspace/store'
 import { ArtifactCommandPalette } from '../features/command-palette/ArtifactCommandPalette'
 import { HubAccountButton } from '../features/hub/HubActions'
@@ -69,8 +70,33 @@ function ArtifactRouteView({
   const address = useLocation({ select: (location) => location.hash })
   const [exportTarget, setExportTarget] = useState<DesignExportTarget | null>(null)
   const clearAddress = useCallback(() => {
-    void navigate({ hash: '', search: true, replace: true, resetScroll: false })
+    void navigate({
+      hash: (previous) => {
+        const location = new URLSearchParams(previous)
+        location.delete('page')
+        location.delete('board')
+        return location.toString()
+      },
+      search: true,
+      replace: true,
+      resetScroll: false,
+    })
   }, [navigate])
+  const rememberThread = useCallback(
+    (id: string) => {
+      void navigate({
+        hash: (previous) => {
+          const location = new URLSearchParams(previous)
+          location.set('thread', id)
+          return location.toString()
+        },
+        search: true,
+        replace: true,
+        resetScroll: false,
+      })
+    },
+    [navigate],
+  )
   const probingLocal = useLocalArtifactRedirect(identifier, requestedVersion)
   const { data: daemonStatus } = useDaemonStatusQuery()
   const detailQuery = useArtifactDetailQuery(identifier, requestedVersion)
@@ -83,6 +109,7 @@ function ArtifactRouteView({
     if (!publicId) return
     const workspace = useWorkspaceStore.getState()
     workspace.openArtifactView(publicId)
+    useSelectionStore.getState().setFocusedFeedbackId(null)
     if (readAnnotationDraft(publicId)) workspace.setInspectorTab('review')
   }, [publicId])
 
@@ -176,7 +203,10 @@ function ArtifactRouteView({
         artifact={detail.artifact}
         version={detail.version}
         versions={versions}
-        feedbackCount={feedbacks.length}
+        feedbackCount={feedbacks.reduce(
+          (count, feedback) => count + Number(isAnnotationKind(feedback.kind)),
+          0,
+        )}
         hasActiveRound={rounds.some((round) => round.status !== 'closed')}
         onExport={() => openExport()}
         onBackToLibrary={() => void navigate({ to: '/' })}
@@ -203,11 +233,13 @@ function ArtifactRouteView({
         detail={detail}
         versions={versions}
         feedbacks={feedbacks}
+        threads={feedbackQuery.data?.threads}
         rounds={rounds}
         sandboxOrigin={sandboxOrigin}
         address={address}
         fixedVersion={requestedVersion}
         onClearAddress={clearAddress}
+        onRememberThread={rememberThread}
         onExportBoard={openExport}
         onRegisterStateForwarder={registerStateForwarder}
         onVersionSaved={() => {

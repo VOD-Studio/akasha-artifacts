@@ -1,6 +1,7 @@
 import {
   ArtifactAwaitFeedbackOutputSchema,
   ArtifactSchema,
+  FeedbackSchema,
   ReviewRoundSchema,
   VersionSchema,
 } from '@akasha/protocol'
@@ -337,13 +338,34 @@ describe('Cloud Hub 身份与制品权限', () => {
       cookie,
     )
     expect(feedback.status).toBe(201)
+    const { feedback: agentRoot } = z
+      .object({ feedback: FeedbackSchema })
+      .parse(await feedback.json())
+    const threadPath = `${path}/feedback/${agentRoot.id}`
+    expect((await post(`${threadPath}/replies`, { body: '作者私下回复' }, alice)).status).toBe(201)
+    expect(
+      (await post(`${threadPath}/replies`, { body: '不能读取草稿', includeDrafts: true }, cookie))
+        .status,
+    ).toBe(404)
     const preflight = await send(`/api/v1/feedback?id=${id}&includeDrafts=true`, {
       headers: { cookie: alice },
     })
     expect(await preflight.json()).toMatchObject({ items: [], cursor: '' })
     const shareDrafts = await send(reviewPath, { headers: { cookie } })
-    expect(await shareDrafts.json()).toEqual({ items: [] })
+    expect(await shareDrafts.json()).toEqual({ items: [], threads: {} })
     expect((await post(`${path}/rounds/${round.id}/submit`, {}, alice)).status).toBe(200)
+    advance(1)
+    expect(
+      (
+        await post(
+          `${threadPath}/replies`,
+          { body: '分享审阅回复', author: 'human:forged' },
+          cookie,
+        )
+      ).status,
+    ).toBe(201)
+    expect((await post(`${threadPath}/resolve`, { resolved: true }, bob)).status).toBe(404)
+    expect((await post(`${threadPath}/resolve`, { resolved: true }, alice)).status).toBe(200)
     const review = await send(reviewPath, { headers: { cookie } })
     expect(review.headers.get('cache-control')).toBe('private, no-store')
     expect(await review.json()).toMatchObject({
@@ -351,8 +373,18 @@ describe('Cloud Hub 身份与制品权限', () => {
         { body: '只供讨论', draft: false },
         { body: '离线意见', draft: false },
       ],
+      threads: {
+        [agentRoot.id]: {
+          replies: [{ body: '作者私下回复' }, { body: '分享审阅回复', author: 'human:share' }],
+          resolution: { resolvedAt: expect.any(String) },
+        },
+      },
     })
     expect((await send(reviewPath, { headers: { cookie: bob } })).status).toBe(404)
+    expect((await post(`${threadPath}/resolve`, { resolved: false }, alice)).status).toBe(200)
+    expect(await (await send(reviewPath, { headers: { cookie: alice } })).json()).toMatchObject({
+      threads: { [agentRoot.id]: { resolution: null } },
+    })
     const pull = await post('/api/v1/feedback/await', { id, timeoutSec: 1 }, alice)
     expect(pull.status).toBe(200)
     const delivered = ArtifactAwaitFeedbackOutputSchema.parse(await pull.json())

@@ -1,5 +1,7 @@
 import { applyVisualEdit, inspectVisualTarget, VisualEditError } from '@akasha/jsx-source/edit'
 import type {
+  AnnotationReply,
+  AnnotationThread,
   Artifact,
   ArtifactIdentifier,
   ArtifactType,
@@ -20,7 +22,7 @@ import type {
   Version,
   Visibility,
 } from '@akasha/protocol'
-import { PublicIdSchema, stabilizeArtboardSource } from '@akasha/protocol'
+import { isAnnotationKind, PublicIdSchema, stabilizeArtboardSource } from '@akasha/protocol'
 import {
   applyTextEdits,
   assertBaseVersion,
@@ -82,6 +84,14 @@ interface VisualEditBase {
 }
 
 type VisualEditCommand = { op: EditOp; boardId?: string } | { undoVersion: number }
+
+interface DiscussionActionInput {
+  id: ArtifactIdentifier
+  projectId?: string
+  feedbackId: string
+  includeDrafts: boolean
+  author: Author
+}
 
 /**
  * 制品用例编排：发布、增量更新、回退、状态流、评审轮次与反馈队列。
@@ -836,9 +846,59 @@ export class ArtifactService {
     id: ArtifactIdentifier
     projectId?: string
     includeDrafts: boolean
-  }): Promise<readonly Feedback[]> {
+  }): Promise<{ items: readonly Feedback[]; threads: Record<string, AnnotationThread> }> {
     const artifact = await this.resolveArtifact(input.id, input.projectId)
-    return this.deps.feedbacks.listForReview(artifact.publicId, input.includeDrafts)
+    const { feedbacks } = this.deps
+    const [items, threads] = await Promise.all([
+      feedbacks.listForReview(artifact.publicId, input.includeDrafts),
+      feedbacks.annotations.list(artifact.publicId, input.includeDrafts),
+    ])
+    return { items, threads }
+  }
+
+  private async resolveDiscussionArtifact(input: DiscussionActionInput): Promise<Artifact> {
+    const artifact = await this.resolveArtifact(input.id, input.projectId)
+    const root = await this.deps.feedbacks.findById(input.feedbackId)
+    if (
+      !root ||
+      root.artifactId !== artifact.publicId ||
+      !isAnnotationKind(root.kind) ||
+      (root.draft && !input.includeDrafts)
+    )
+      throw new NotFoundError('未找到可访问的批注线程')
+    return artifact
+  }
+
+  /** 回复保持根批注的版本与定位，不单独投递给 Agent。 */
+  async replyToAnnotation(
+    input: DiscussionActionInput & { body: string },
+  ): Promise<AnnotationReply> {
+    const artifact = await this.resolveDiscussionArtifact(input)
+    const reply: AnnotationReply = {
+      id: this.deps.ids.id('reply'),
+      author: input.author,
+      body: input.body,
+      createdAt: this.deps.clock.now(),
+    }
+    await this.deps.feedbacks.annotations.reply(input.feedbackId, reply)
+    await this.deps.realtime.publish(
+      { type: 'annotation.changed', artifactId: artifact.publicId },
+      { projectId: artifact.projectId },
+    )
+    return reply
+  }
+
+  /** 人工解决或重新打开讨论，不改变该批注的 Agent 投递状态。 */
+  async resolveAnnotation(input: DiscussionActionInput & { resolved: boolean }): Promise<void> {
+    const artifact = await this.resolveDiscussionArtifact(input)
+    await this.deps.feedbacks.annotations.setResolution(
+      input.feedbackId,
+      input.resolved ? { author: input.author, resolvedAt: this.deps.clock.now() } : null,
+    )
+    await this.deps.realtime.publish(
+      { type: 'annotation.changed', artifactId: artifact.publicId },
+      { projectId: artifact.projectId },
+    )
   }
 
   /**

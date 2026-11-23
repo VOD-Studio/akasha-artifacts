@@ -72,6 +72,7 @@ const writeSuffixes: Readonly<Record<string, 'write' | 'authored'>> = {
   '/edits/preview': 'authored',
 }
 const roundAction = /^\/rounds\/[^/]+\/(?:submit|withdraw)$/
+const discussionAction = /^\/feedback\/[^/]+\/(?:replies|resolve)$/
 const artifactPath = /^\/api\/v1\/artifacts\/([^/]+)(.*)$/
 
 // 无权访问与不存在统一返回 404，不泄露制品是否存在
@@ -348,13 +349,18 @@ export function mountHubGuard(
     const suffix = match[2]
     if (!ArtifactIdentifierSchema.safeParse(id).success) return hidden(c)
     const writeMode = writeSuffixes[suffix]
+    const writesDiscussion = discussionAction.test(suffix)
     if (
       read
         ? !Object.hasOwn(readSuffixes, suffix)
         : !(method === 'PATCH' && suffix === '') &&
           !(
             method === 'POST' &&
-            (writeMode || roundAction.test(suffix) || suffix === '/share' || suffix === '/storage')
+            (writeMode ||
+              writesDiscussion ||
+              roundAction.test(suffix) ||
+              suffix === '/share' ||
+              suffix === '/storage')
           )
     )
       return hidden(c)
@@ -404,12 +410,14 @@ export function mountHubGuard(
         ? response
         : hidden(c)
     }
-    if (suffix === '/feedback') {
-      if (!principal && role !== 'share') return forbidden(c)
+    if (suffix === '/feedback' || writesDiscussion) {
+      if ((!principal && role !== 'share') || (writesDiscussion && principal?.kind === 'cli'))
+        return forbidden(c, principal)
       return core.fetch(
         rewrite(request, url, {
           ...body,
           author: principal ? hubAuthor(principal) : 'human:share',
+          ...(writesDiscussion && { includeDrafts: writer }),
         }),
       )
     }
