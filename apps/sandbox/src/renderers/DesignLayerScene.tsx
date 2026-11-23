@@ -41,14 +41,15 @@ function layerStyle(layer: DesignLayer, interactive: boolean): CSSProperties {
   }
 }
 
-/** 原生设计数据与作者 HTML 为独立同级树，不改变已有 HTML 批注或源码的结构路径。 */
-export function DesignLayerScene({
-  layers,
-  interactive,
-}: {
+interface SceneProps {
+  /** 从底到顶渲染；坐标相对裁剪容器，而不是作者内容的滚动区域。 */
   layers: readonly DesignLayer[]
+  /** 关闭后不截取点击、不登记沙盒内的定位标识；用于试玩或整板总览。 */
   interactive: boolean
-}) {
+}
+
+/** 原生设计数据与作者 HTML 为独立同级树，不改变已有 HTML 批注或源码的结构路径。 */
+export function DesignLayerScene({ layers, interactive }: SceneProps) {
   return (
     <aside
       data-ak-renderer="design"

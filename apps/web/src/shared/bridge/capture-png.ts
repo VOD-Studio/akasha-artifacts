@@ -12,6 +12,7 @@ interface PngBoard {
   scoped: boolean
   type: ArtifactType
   source: string
+  /** 原生绘制的数据属于同一版本，必须随作者源码一起栅格化。 */
   designLayers?: DesignLayer[]
   width: number
   height: number

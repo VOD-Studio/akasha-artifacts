@@ -11,14 +11,15 @@ export function sameGeometry(a: CanvasBounds, b: CanvasBounds) {
   return keys.every((field) => a[field] === b[field])
 }
 
-/** 四个值都以固有 CSS 像素计；空输入保持待填，不会被转为零。 */
-export function CanvasGeometryFields({
-  value,
-  onChange,
-}: {
+interface GeometryFieldsProps {
+  /** 固有 CSS 像素坐标；NaN 表示该字段清空或输入未完成。 */
   value: CanvasBounds
+  /** 只更新本地表单；调用方须等显式提交再保存整组值。 */
   onChange: (bounds: CanvasBounds) => void
-}) {
+}
+
+/** 四个值都以固有 CSS 像素计；空输入保持待填，不会被转为零。 */
+export function CanvasGeometryFields({ value, onChange }: GeometryFieldsProps) {
   const prefix = useId()
   const { coordinate, viewport } = ARTBOARD_GEOMETRY_LIMITS
   return (

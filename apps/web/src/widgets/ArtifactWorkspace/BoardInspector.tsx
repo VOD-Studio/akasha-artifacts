@@ -31,10 +31,12 @@ interface BoardInspectorProps {
   document: CanvasDocument
   location: CanvasLocation | null
   readOnly: boolean
+  /** 缺省时仍可读取图层源码；只为可改的头版本提供布局编辑器。 */
   editing?: CanvasBoardEditing
   layers: { layers: readonly CanvasLayer[]; truncated: boolean } | null
   layersAvailable: boolean
   selectedLayerId?: string
+  /** 树选区包含运行时节点 id；传 null 清除已有图层选区。 */
   onSelectLayer: (layer: CanvasLayer | null) => void
   onStartPicking: () => void
   onNavigate: (location: CanvasLocation) => void

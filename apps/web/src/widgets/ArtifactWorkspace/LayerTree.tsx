@@ -4,18 +4,18 @@ import { useEffect, useMemo, useRef } from 'react'
 
 interface LayerTreeProps {
   layers: readonly CanvasLayer[]
+  /** 主选区用于展开其父级并滚动定位。 */
   selectedId?: string
+  /** 额外高亮的图层不触发滚动，也不取代主选区。 */
   selectedIds?: ReadonlySet<string>
+  /** Shift 代表在当前选区中切换，是否支持多选由调用方决定。 */
   onSelect: (layer: CanvasLayer, additive: boolean) => void
 }
 
-interface LayerNodeProps {
+interface LayerNodeProps extends Omit<LayerTreeProps, 'layers'> {
   layer: CanvasLayer
   groups: ReadonlyMap<string, CanvasLayer[]>
   opened: ReadonlySet<string>
-  selectedId?: string
-  selectedIds?: ReadonlySet<string>
-  onSelect: (layer: CanvasLayer, additive: boolean) => void
 }
 
 /** 图层树只展开 DOM 真正的父子关系，选择用按钮的原生键盘语义。 */

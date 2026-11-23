@@ -7,9 +7,13 @@ import type { CanvasBounds } from './canvas-camera'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
 
 interface LayoutProps {
+  /** 图层 id 只在该画板中唯一，不能与其他画板的选择混用。 */
   boardId: string
+  /** 主选中的图层；宽高只修改它，位置变化带动整个选区。 */
   layer: DesignLayer
+  /** 包含主图层及展开后的同组成员，由检查器限定在同一画板内。 */
   selected: readonly DesignLayer[]
+  /** 首次更改时捕获这里的源码版本作为提交基准；不能改用更新后的头版本。 */
   editing: CanvasBoardEditing
 }
 
