@@ -456,7 +456,8 @@ export function ArtifactCanvas({
     const viewport = viewportRef.current
     if (!viewport || !event.deltaY || pageId === undefined || invalidAddress) return
     event.preventDefault()
-    if (boardGesture.preview?.phase === 'dragging') return
+    // 绘制工具用按下时的坐标映射；退出该工具前不让滚轮改变相机。
+    if (drawingTool || boardGesture.preview?.phase === 'dragging') return
     const rect = viewport.getBoundingClientRect()
     const anchor = { x: event.clientX - rect.left, y: event.clientY - rect.top }
     const delta =

@@ -1040,6 +1040,9 @@ it('拖出矩形只预览，松开按画板固有坐标保存并可撤销重做'
   const surface = screen.getByRole('button', { name: '在宽屏首页绘制矩形' })
   vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 50, 720, 450))
   fireEvent.pointerDown(surface, { button: 0, pointerId: 1, clientX: 120, clientY: 80 })
+  const scale = screen.getByLabelText('画布缩放比例').textContent
+  fireEvent.wheel(screen.getByRole('region', { name: '制品画布' }), { deltaY: -300 })
+  expect(screen.getByLabelText('画布缩放比例').textContent).toBe(scale)
   fireEvent.pointerMove(surface, { pointerId: 1, clientX: 190, clientY: 140 })
   expect(editor.current.version.version).toBe(1)
   fireEvent.pointerUp(surface, { pointerId: 1, clientX: 190, clientY: 140 })

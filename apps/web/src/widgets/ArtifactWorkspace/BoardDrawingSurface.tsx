@@ -35,10 +35,13 @@ function boundsOf(start: Point, end: Point): CanvasBounds {
 }
 
 interface SurfaceProps {
+  /** 固有宽高用于把外壳的缩放视口映射到版内坐标。 */
   board: CanvasBoard
+  /** 切换工具时调用方重建命中层，取消未完成的手势。 */
   tool: DrawingTool
   /** 画笔或拖拽只以按下时的版本为基准。 */
   version: Version
+  /** 每个完成的几何只回报一次；取消不进入保存。 */
   onCreate(layer: DesignLayer, base: Version): void
 }
 
