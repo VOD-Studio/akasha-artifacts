@@ -4,9 +4,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
+import { useWorkspaceStore } from '../src/entities/workspace/store'
 import { createAppRouter } from '../src/routes/router'
 import type { ArtifactDetailResponse } from '../src/shared/api/client'
 import { ArtifactWorkspace } from '../src/widgets/ArtifactWorkspace/ArtifactWorkspace'
+import { TopBar } from '../src/widgets/TopBar/TopBar'
 
 const artifact: Artifact = {
   publicId: 'CanvasExamplePublicId1',
@@ -111,6 +113,7 @@ afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+  useWorkspaceStore.setState({ inspectorTab: null })
   sessionStorage.clear()
 })
 
@@ -329,6 +332,55 @@ it('必须显式播放，按声明的边跨页导航，再返回未改动的聚�
   expect(screen.getByRole('region', { name: '画板聚焦' })).toBe(focus)
   expect(within(focus).getByLabelText('画板缩放比例').textContent).toBe('100%')
   expect(document.activeElement).toBe(play)
+})
+
+it('从独立检查器选择其他页面的画板并查看固定版本的真实源码', () => {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
+  const fixed = detailFor()
+  const live = { ...fixed.artifact, headVersion: 2 }
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={client}>
+      <TopBar
+        artifact={live}
+        version={fixed.version}
+        versions={[fixed.version]}
+        onBackToLibrary={() => {}}
+        onSelectVersion={() => {}}
+      />
+      <ArtifactWorkspace
+        detail={{ ...fixed, artifact: live }}
+        versions={[fixed.version]}
+        fixedVersion={1}
+        sandboxOrigin="http://127.0.0.1:24331"
+      />
+    </QueryClientProvider>,
+  )
+  fireEvent.click(screen.getByRole('button', { name: '检查器' }))
+  const inspector = screen.getByRole('dialog', { name: '检查器' })
+  expect(within(inspector).getByText('从树中选择画板以查看属性')).toBeTruthy()
+  fireEvent.click(within(inspector).getByText('状态'))
+  fireEvent.click(within(inspector).getByRole('button', { name: '预约完成' }))
+
+  const canvas = screen.getByRole('region', { name: '制品画布' })
+  expect(within(canvas).getByTitle('预约完成 隔离沙盒')).toBeTruthy()
+  expect(within(inspector).getByText('1280 × 800')).toBeTruthy()
+  fireEvent.keyDown(within(inspector).getByRole('tab', { name: '源码' }), { key: 'Enter' })
+  expect(within(inspector).getByText(/"description":"已确认时段"/)).toBeTruthy()
+  expect(within(inspector).getByText('历史版本 · 只读')).toBeTruthy()
+
+  fireEvent.click(within(inspector).getByRole('button', { name: '关闭' }))
+  expect(screen.queryByRole('dialog', { name: '检查器' })).toBeNull()
+  expect(
+    within(canvas).getByRole('button', { name: '预约完成' }).getAttribute('aria-pressed'),
+  ).toBe('true')
 })
 
 it('旧制品没有显式 ID 时，重排后仍选中原标题的画板', () => {

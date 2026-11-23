@@ -58,6 +58,12 @@ export function useBoardPresentation(document: CanvasDocument, visible: boolean)
     closePlay() {
       setPlay(null)
     },
+    dismiss() {
+      focusTrigger.current = null
+      playTrigger.current = null
+      setFocus(null)
+      setPlay(null)
+    },
     navigate(rawTarget: string) {
       setPlay((current) => {
         if (!current || current !== play) return current

@@ -26,6 +26,8 @@ export interface PropsPanelProps {
   artifactType: ArtifactType
   source: string
   stateSnapshot: Record<string, unknown>
+  /** 历史快照只展示声明的值，不允许改写当前状态流。 */
+  readOnly?: boolean
   // 允许测试或外层直接注入 schema，默认从服务端 GET /api/v1/specs/:type 获取
   specOverride?: ArtifactSpecOutput | null
   onPushPatch?: (patch: JsonPatchOp[]) => Promise<unknown>
@@ -111,6 +113,7 @@ export function PropsPanel({
   artifactType,
   source,
   stateSnapshot,
+  readOnly = false,
   specOverride,
   onPushPatch,
   onFallbackToL1,
@@ -158,6 +161,7 @@ export function PropsPanel({
     optimisticKey?: string,
     optimisticVal?: unknown,
   ) => {
+    if (readOnly) return
     if (optimisticKey !== undefined) {
       setOptimisticValues((prev) => ({ ...prev, [optimisticKey]: optimisticVal }))
     }
@@ -213,10 +217,12 @@ export function PropsPanel({
   const hasOverrides = Object.keys(currentPropsOverlay).length > 0
 
   return (
-    <div
+    <fieldset
+      disabled={readOnly}
       data-testid="props-panel"
-      className="space-y-3 rounded-xl border border-border bg-surface p-3"
+      className="min-w-0 space-y-3 rounded-xl border border-border bg-surface p-3"
     >
+      <legend className="sr-only">运行参数</legend>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 text-xs font-semibold text-ink">
           <SlidersHorizontal size={13} />
@@ -358,6 +364,6 @@ export function PropsPanel({
           )
         })}
       </div>
-    </div>
+    </fieldset>
   )
 }

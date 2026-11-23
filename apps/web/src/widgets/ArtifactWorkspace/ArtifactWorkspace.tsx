@@ -18,8 +18,10 @@ import { syncProjectSelection } from '../../shared/api/client'
 import { InspectorPanel } from '../InspectorPanel/InspectorPanel'
 import { ArtifactCanvas } from './ArtifactCanvas'
 import { ArtifactFrame, type BoardFramePurpose, type FrameConnection } from './ArtifactFrame'
+import { BoardInspector } from './BoardInspector'
 import {
   type CanvasBoard,
+  type CanvasLocation,
   createCanvasDocument,
   createCanvasElementResolver,
   STANDALONE_BOARD_ID,
@@ -67,6 +69,8 @@ export function ArtifactWorkspace({
   const { artifact, version, state } = detail
   const rounds = roundsOverride ?? detail.rounds
   const [liveEditSource, setLiveEditSource] = useState<string | null>(null)
+  const [canvasLocation, setCanvasLocation] = useState<CanvasLocation | null>(null)
+  const [inspectorReveal, setInspectorReveal] = useState<CanvasLocation | null>(null)
   const latestVersion = useMemo(() => {
     if (versions.length === 0) return version
     return versions.reduce(
@@ -165,16 +169,38 @@ export function ArtifactWorkspace({
 
   const effectivePreviewSource =
     viewMode === 'edit' && liveEditSource !== null ? liveEditSource : version.source
-  const canvas = useMemo(
+  const canvasProps = fixedVersion === undefined ? state.snapshot.props : undefined
+  const savedCanvas = useMemo(
     () =>
       createCanvasDocument(
         artifact.type,
         version.title,
-        effectivePreviewSource,
+        version.source,
         version.version,
-        state.snapshot.props,
+        canvasProps,
       ),
-    [artifact.type, version.title, effectivePreviewSource, version.version, state.snapshot.props],
+    [artifact.type, version.title, version.source, version.version, canvasProps],
+  )
+  const canvas = useMemo(
+    () =>
+      effectivePreviewSource === version.source
+        ? savedCanvas
+        : createCanvasDocument(
+            artifact.type,
+            version.title,
+            effectivePreviewSource,
+            version.version,
+            canvasProps,
+          ),
+    [
+      artifact.type,
+      version.title,
+      effectivePreviewSource,
+      version.source,
+      version.version,
+      canvasProps,
+      savedCanvas,
+    ],
   )
   const resolveElement = useMemo(
     () => (artifact.type === 'artboard' ? createCanvasElementResolver(canvas) : null),
@@ -293,6 +319,8 @@ export function ArtifactWorkspace({
             address={address}
             onClearAddress={onClearAddress}
             pageLink={pageLink}
+            reveal={inspectorReveal}
+            onLocationChange={setCanvasLocation}
             pageEditing={
               artifact.type === 'artboard' &&
               fixedVersion === undefined &&
@@ -341,13 +369,23 @@ export function ArtifactWorkspace({
       <InspectorPanel
         artifactId={artifact.publicId}
         projectId={artifact.projectId}
-        artifactType={artifact.type}
-        source={version.source}
-        stateSnapshot={state.snapshot}
         activeVersion={version.version}
         activeRound={activeRound}
         feedbacks={feedbacks}
         onHighlightElement={handleHighlightElement}
+      />
+      <BoardInspector
+        artifact={artifact}
+        version={version}
+        stateSnapshot={state.snapshot}
+        document={savedCanvas}
+        location={canvasLocation}
+        readOnly={fixedVersion !== undefined || version.version !== artifact.headVersion}
+        onNavigate={(location) => {
+          setSelectedElement(artifact.publicId, null)
+          useWorkspaceStore.getState().setViewMode('preview')
+          setInspectorReveal(location)
+        }}
       />
       <VisualEditPanel controller={visual} />
     </div>

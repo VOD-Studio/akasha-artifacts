@@ -8,7 +8,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@akasha/ui/dropdown-menu'
-import { ArrowLeft, Code2, Ellipsis, GitCompare, MessageSquare, Pencil, Search } from 'lucide-react'
+import {
+  ArrowLeft,
+  Code2,
+  Ellipsis,
+  GitCompare,
+  MessageSquare,
+  Pencil,
+  ScanLine,
+  Search,
+} from 'lucide-react'
 import { useState } from 'react'
 import { useSelectionStore } from '../../entities/selection/store'
 import { useWorkspaceStore, type WorkspaceViewMode } from '../../entities/workspace/store'
@@ -38,7 +47,8 @@ export function TopBar({
   const [shareLink, setShareLink] = useState<string | null>(null)
   const viewMode = useWorkspaceStore((s) => s.viewMode)
   const setViewMode = useWorkspaceStore((s) => s.setViewMode)
-  const inspectorOpen = useWorkspaceStore((s) => s.inspectorTab !== null)
+  const inspectorOpen = useWorkspaceStore((s) => s.inspectorTab === 'inspect')
+  const reviewOpen = useWorkspaceStore((s) => s.inspectorTab === 'review')
   const setInspectorTab = useWorkspaceStore((s) => s.setInspectorTab)
   const setCommandPaletteOpen = useWorkspaceStore((s) => s.setCommandPaletteOpen)
   const wsStatus = useWorkspaceStore((s) => s.wsStatus)
@@ -101,11 +111,24 @@ export function TopBar({
         <Button
           variant={inspectorOpen ? 'secondary' : 'ghost'}
           size="sm"
-          leftIcon={<MessageSquare size={14} />}
+          iconOnly
+          aria-label="检查器"
+          title="检查器"
           aria-expanded={inspectorOpen}
           aria-haspopup="dialog"
+          aria-controls="design-inspector"
+          onClick={() => setInspectorTab(inspectorOpen ? null : 'inspect')}
+        >
+          <ScanLine size={15} />
+        </Button>
+        <Button
+          variant={reviewOpen ? 'secondary' : 'ghost'}
+          size="sm"
+          leftIcon={<MessageSquare size={14} />}
+          aria-expanded={reviewOpen}
+          aria-haspopup="dialog"
           aria-controls="artifact-inspector"
-          onClick={() => setInspectorTab(inspectorOpen ? null : 'review')}
+          onClick={() => setInspectorTab(reviewOpen ? null : 'review')}
         >
           {reviewLabel}
           {feedbackCount > 0 ? ` ${feedbackCount}` : ''}

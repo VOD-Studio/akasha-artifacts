@@ -25,8 +25,8 @@ export interface SandboxErrorRecord {
 export interface WorkspaceStoreState {
   selectedProjectId: string | null
   commandPaletteOpen: boolean
-  // 右侧抽屉当前打开的页签；null 表示关闭
-  inspectorTab: 'review' | 'props' | null
+  // 两个非模态抽屉互斥；关闭抽屉不清除选区和草稿
+  inspectorTab: 'review' | 'inspect' | null
   artifactViewId: string | null
   viewMode: WorkspaceViewMode
   wsStatus: WsConnectionStatus
