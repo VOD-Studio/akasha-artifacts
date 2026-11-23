@@ -7,30 +7,39 @@ import {
 import type { ArtifactRepository } from '../../domain/ports.js'
 import { type HubPrincipal, sameHubOrigin } from './hub-auth.js'
 
+/** 实时订阅或单条事件的授权范围：项目、制品，或两者。 */
 export interface HubRealtimeScope {
   artifactId?: string
   projectId?: string
 }
 
+// 角色由高到低：owner 项目所有者，editor 团队协作者，share 持分享链接者，reader 只读
 type HubArtifactRole = 'owner' | 'editor' | 'reader' | 'share' | 'none'
 export interface HubAccess {
+  /** 凭 cookie 或 Bearer 解析调用方；无法识别时返回 `undefined`。 */
   authenticate(request: Request): Promise<HubPrincipal | undefined>
+  /** 请求是否持有某制品的有效分享链接。 */
   hasShare(request: Request, artifactId: string): Promise<boolean>
 }
 
 export interface HubArtifactAccess {
+  /** 综合可见性与分享链接，得出调用方对某制品的角色。 */
   role(
     request: Request,
     artifact: Artifact,
     principal: HubPrincipal | undefined,
   ): Promise<HubArtifactRole>
+  /** 把路径里的标识解析为调用方可见的制品；不可见时返回 `undefined`。 */
   resolve(
     id: string,
     projectId: string | undefined,
     principal: HubPrincipal | undefined,
   ): Promise<Artifact | undefined>
+  /** 同源校验之后，判断调用方对某制品能否读或写。 */
   authorizeArtifact(request: Request, publicId: string, action: 'read' | 'write'): Promise<boolean>
+  /** 判断调用方能否订阅给定范围。 */
   authorizeRealtime(request: Request, scope: HubRealtimeScope): Promise<boolean>
+  /** 逐条判断某范围内的事件能否下发给该连接；草稿反馈只给 `owner` 与 `editor`。 */
   authorizeRealtimeEvent(
     request: Request,
     scope: HubRealtimeScope,
@@ -38,18 +47,25 @@ export interface HubArtifactAccess {
   ): Promise<boolean>
 }
 
+/** Hub 上项目 id 的命名空间前缀，形如 `github-<userId>:`。 */
 export function hubProjectPrefix(principal: HubPrincipal): string {
   return `github-${principal.userId}:`
 }
 
+/** 把调用方转成反馈作者：CLI 令牌为 `agent:`，浏览器会话为 `human:`。 */
 export function hubAuthor(principal: HubPrincipal): string {
   return `${principal.kind === 'cli' ? 'agent' : 'human'}:github-${principal.userId}`
 }
 
+/** 项目是否落在调用方自己的命名空间内；非成员一律为 false。 */
 export function ownsHubProject(principal: HubPrincipal | undefined, projectId: string): boolean {
   return !!principal?.member && projectId.startsWith(hubProjectPrefix(principal))
 }
 
+/**
+ * 不考虑分享链接时的角色：项目所有者为 `owner`，成员对 `team` 制品为 `editor`，
+ * `public` 制品对任何人为 `reader`，其余为 `none`。
+ */
 export function baseArtifactRole(
   artifact: Artifact,
   principal: HubPrincipal | undefined,
@@ -60,6 +76,7 @@ export function baseArtifactRole(
   return artifact.visibility === 'public' ? 'reader' : 'none'
 }
 
+/** 组装 Hub 的制品访问控制；`origin` 用于同源校验。 */
 export function createHubAccess(
   artifacts: ArtifactRepository,
   auth: HubAccess,

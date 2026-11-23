@@ -4,9 +4,13 @@ import type { Hono } from 'hono'
 import type { RealtimeSubscriber } from '../../domain/ports.js'
 import type { HubRealtimeScope } from '../http/hub-access.js'
 
+// 三道授权钩子，全部可省略；本地 Daemon 不传
 interface NodeWebSocketAuthorization {
+  // 是否允许把请求升级为 WebSocket
   authorizeUpgrade?: (request: Request) => Promise<boolean>
+  // 是否允许订阅某个范围
   authorizeSubscription?: (request: Request, scope: HubRealtimeScope) => Promise<boolean>
+  // 每条事件下发前再判断一次
   authorizeEvent?: (
     request: Request,
     scope: HubRealtimeScope,
@@ -14,7 +18,12 @@ interface NodeWebSocketAuthorization {
   ) => Promise<boolean>
 }
 
-// 在 Node Hono 应用上挂载 /api/v1/ws 实时通道，并校验每条客户端订阅消息。
+/**
+ * 在 Node Hono 应用上挂载 `/api/v1/ws` 实时通道，并校验每条客户端订阅消息。
+ *
+ * @remarks 解析失败的消息静默丢弃；同一连接重复订阅同一范围时先取消旧订阅。
+ * 异步授权积压超过 1024 条事件时以 1013 关闭连接，让客户端重连。
+ */
 export function attachNodeWebSocket(
   app: Hono,
   realtime: RealtimeSubscriber,

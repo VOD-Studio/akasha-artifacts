@@ -23,16 +23,24 @@ interface ActiveSubscriber {
 
 export interface EventHubOptions {
   clock: Clock
+  // 内存中保留的事件条数，缺省 500；超出后旧游标只能收到 resync
   maxHistory?: number
   // 持久化后端重启后传入上次 seq + 1，使所有携带旧游标的重连客户端必定收到 resync
   initialSeq?: number
+  // 序号每次前进时回调，供持久化后端落库
   onSeqAdvance?: (seq: number) => void
+  // 改由数据库分配序号；设置后发布按队列串行，保证分配与投递同序
   allocateSeq?: () => Promise<number>
+  // 发布时未带项目且总线未知该制品时，用来反查所属项目
   resolveArtifactProject?: (artifactId: PublicId) => string | undefined
 }
 
-// 统一实时事件总线：支持按项目/Artifact 订阅、基于单调 seq 的断线补发、重启/超窗触发 resync，
-// 以及页面在线人数（presence）与 Agent 活跃状态追踪。
+/**
+ * 统一实时事件总线：按项目或 Artifact 订阅，基于单调 `seq` 断线补发，
+ * 并维护页面在线人数与 Agent 活跃状态。
+ *
+ * @remarks 事件已超出保留窗口或服务端重启后，携带旧游标的重连收到的是 `resync` 而不是补发。
+ */
 export class RealtimeEventHub implements RealtimePublisher, RealtimeSubscriber {
   private seq: number
   private readonly minAvailableSeq: number
@@ -53,6 +61,7 @@ export class RealtimeEventHub implements RealtimePublisher, RealtimeSubscriber {
     this.minAvailableSeq = this.seq + 1
   }
 
+  /** 当前已分配的最大事件序号。 */
   getLatestSeq(): number {
     return this.seq
   }
@@ -61,6 +70,7 @@ export class RealtimeEventHub implements RealtimePublisher, RealtimeSubscriber {
     return this.subscribers.size
   }
 
+  /** 订阅了该制品的连接数。 */
   getViewerCount(artifactId: PublicId): number {
     let count = 0
     for (const sub of this.subscribers.values()) {
@@ -69,6 +79,7 @@ export class RealtimeEventHub implements RealtimePublisher, RealtimeSubscriber {
     return count
   }
 
+  /** 某项目最近一次上报的 Agent 活跃状态；从未上报时为 `offline`。 */
   getAgentActivity(projectId: string): {
     state: AgentActivityState
     summary?: string
@@ -82,6 +93,7 @@ export class RealtimeEventHub implements RealtimePublisher, RealtimeSubscriber {
     )
   }
 
+  /** 以 `agent.activity` 事件的形式广播 Agent 活跃状态。 */
   async reportAgentActivity(input: {
     projectId: string
     artifactId?: PublicId
@@ -100,6 +112,7 @@ export class RealtimeEventHub implements RealtimePublisher, RealtimeSubscriber {
     )
   }
 
+  /** 发布一条事件，并同步投递给所有匹配的订阅者。 */
   async publish(payload: RealtimeEventPayload, meta?: RealtimePublishMeta): Promise<void> {
     const allocateSeq = this.options.allocateSeq
     if (!allocateSeq) {
@@ -113,6 +126,7 @@ export class RealtimeEventHub implements RealtimePublisher, RealtimeSubscriber {
     await publish
   }
 
+  /** 等待由数据库分配序号的发布全部完成；关闭存储之前调用。 */
   async waitForPendingPublishes(): Promise<void> {
     await this.publishQueue
   }
@@ -165,6 +179,12 @@ export class RealtimeEventHub implements RealtimePublisher, RealtimeSubscriber {
     }
   }
 
+  /**
+   * 订阅一个范围，返回取消订阅的函数。
+   *
+   * @remarks 给出 `lastSeq` 时先补发其后的事件；游标超前于服务端或已超出保留窗口时改发 `resync`。
+   * 订阅或取消订阅制品后会广播一次 `presence.changed`。
+   */
   subscribe(opts: RealtimeSubscriptionOptions): () => void {
     const id = ++this.nextSubId
     const sub: ActiveSubscriber = {
