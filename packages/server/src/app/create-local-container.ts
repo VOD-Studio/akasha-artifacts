@@ -1,8 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { AgentSessions } from '../application/agent-sessions.js'
 import { ArtifactService } from '../application/artifact-service.js'
 import { CheckService } from '../application/check-service.js'
 import { SpecRegistry } from '../application/spec-registry.js'
+import type { AgentRunner } from '../domain/agent-runner.js'
 import { DomainError } from '../domain/errors.js'
 import type { Clock, IdGenerator } from '../domain/ports.js'
 import { LogStore } from '../infrastructure/logging/log-store.js'
@@ -52,6 +54,10 @@ export interface LocalContainerOptions {
   onShutdown?: () => void
   clock?: Clock
   ids?: IdGenerator
+  // 仅本机 Daemon 装配真实 CLI；Hub 不构造 Agent 会话服务。
+  agentRunner?: AgentRunner
+  // CLI 通过同一监听回环地址访问限轮次工具。
+  agentHost?: string
 }
 
 function generateSecureToken(): string {
@@ -353,6 +359,17 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
     requestShutdown: options.onShutdown,
   }
 
+  const agentSessions = options.agentRunner
+    ? new AgentSessions({
+        runner: options.agentRunner,
+        store: artifactStorage,
+        projects,
+        artifacts,
+        service,
+        baseUrl: () => `http://${options.agentHost ?? '127.0.0.1'}:${daemonState.port}`,
+      })
+    : undefined
+
   const app = createHttpApp({
     service,
     checks,
@@ -364,6 +381,7 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
     daemon: daemonState,
     security,
     artifactStorage,
+    agentSessions,
   })
 
   const syncBoundPort = (actualPort: number) => {
@@ -393,6 +411,7 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
     repositories: { projects, artifacts, states, rounds, feedbacks, receipts },
     close: () => {
       containerClosed = true
+      agentSessions?.close()
       fsWatcher?.close()
       fsStorage?.close()
       sqlite?.close()

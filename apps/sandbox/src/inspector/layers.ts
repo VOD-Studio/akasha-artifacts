@@ -1,4 +1,4 @@
-import type { CanvasLayer } from '@akasha/protocol'
+import { type CanvasLayer, DESIGN_LAYER_BLOCK_PREFIX } from '@akasha/protocol'
 
 const SKIP = 'script, style, link, meta, title, template, noscript, defs'
 const MAX_DEPTH = 14
@@ -64,10 +64,26 @@ function layerLabel(element: Element): string | undefined {
   return undefined
 }
 
+function declaredBlock(element: Element) {
+  const id = element.getAttribute('data-ak-block')?.trim()
+  return id && id.length <= 512 && !id.startsWith(DESIGN_LAYER_BLOCK_PREFIX) ? id : undefined
+}
+
+/** 只认可节点自身的唯一声明，不把命中子节点提升为父节点的业务身份。 */
+export function uniqueLayerBlock(target: Element, root: Element) {
+  const block = declaredBlock(target)
+  if (!block || target.closest('[data-ak-dynamic]')) return undefined
+  for (const node of root.querySelectorAll('[data-ak-block]')) {
+    if (node !== target && declaredBlock(node) === block) return undefined
+  }
+  return block
+}
+
 /** 只给具备唯一静态标记的节点关联源码；重复判断包括未展示的节点。 */
 export function readCanvasLayers(root: HTMLElement) {
   const layers: CanvasLayer[] = []
   const locations: Array<{ layer: CanvasLayer; location: string }> = []
+  const blocks = new Map<string, { layer: CanvasLayer; count: number }>()
   let visited = 0
   let truncated = false
 
@@ -110,6 +126,9 @@ export function readCanvasLayers(root: HTMLElement) {
       }
       layers.push(layer)
       if (designId) continue
+      const block = declaredBlock(element)
+      if (block && !element.closest('[data-ak-dynamic]') && !blocks.has(block))
+        blocks.set(block, { layer, count: 0 })
       const loc = element.getAttribute('data-ak-loc')
       if (loc && /^\d{1,8}:\d{1,8}$/.test(loc) && !element.closest('[data-ak-dynamic]')) {
         locations.push({ layer, location: loc })
@@ -127,6 +146,17 @@ export function readCanvasLayers(root: HTMLElement) {
     }
     for (const { layer, location } of locations) {
       if (counts.get(location) === 1) layer.sourceLoc = location
+    }
+  }
+  if (blocks.size) {
+    // 完整根树计数，树被截断或隐藏的重复节点也不能获得稳定身份。
+    for (const element of root.querySelectorAll('[data-ak-block]')) {
+      const block = declaredBlock(element)
+      const match = block && blocks.get(block)
+      if (match) match.count += 1
+    }
+    for (const [blockId, { layer, count }] of blocks) {
+      if (count === 1) layer.blockId = blockId
     }
   }
   return { layers, truncated }

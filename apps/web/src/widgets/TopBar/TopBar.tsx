@@ -5,7 +5,7 @@ import type {
   Version,
 } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
-import { ArrowLeft, MessageSquare, ScanLine } from 'lucide-react'
+import { ArrowLeft, Bot, MessageSquare, ScanLine } from 'lucide-react'
 import { useSelectionStore } from '../../entities/selection/store'
 import { useWorkspaceStore, type WorkspaceViewMode } from '../../entities/workspace/store'
 import { HubAccountButton } from '../../features/hub/HubActions'
@@ -24,6 +24,8 @@ export interface TopBarProps {
   /** 打开基于当前允许读取版本的整份制品导出。 */
   onExport?: () => void
   onHandoff?: () => void
+  agentOpen?: boolean
+  onToggleAgent?: () => void
   shareAccess?: ArtifactSharedAccess
   onShare?: () => void
   onTransfer?: (kind: ArtifactTransferInput['kind']) => void
@@ -40,6 +42,8 @@ export function TopBar({
   onBackToLibrary,
   onExport,
   onHandoff,
+  agentOpen = false,
+  onToggleAgent,
   shareAccess,
   onShare,
   onTransfer,
@@ -59,9 +63,11 @@ export function TopBar({
     ? `分享权限：${shareAccess.role === 'view' ? '仅查看' : shareAccess.role === 'edit' && shareAccess.version === undefined ? '可编辑' : '可批注'}`
     : editing
       ? 'Agent 正在修改'
-      : agentActivity?.state === 'idle' || wsStatus === 'open'
-        ? 'Agent 空闲待命'
-        : '离线快照'
+      : agentActivity?.state === 'idle'
+        ? 'Agent 空闲'
+        : wsStatus === 'open'
+          ? '工作区已连接'
+          : '离线快照'
   const reviewLabel = hasActiveRound ? '评审' : '批注'
 
   const showTool = (mode: WorkspaceViewMode) => {
@@ -120,6 +126,19 @@ export function TopBar({
         {viewMode !== 'preview' ? (
           <Button variant="ghost" size="sm" onClick={() => showTool('preview')}>
             返回画布
+          </Button>
+        ) : null}
+        {onToggleAgent ? (
+          <Button
+            variant={agentOpen ? 'secondary' : 'ghost'}
+            size="sm"
+            leftIcon={<Bot size={16} />}
+            aria-label="Agent 对话"
+            aria-expanded={agentOpen}
+            aria-controls={agentOpen ? 'artifact-agent-conversation' : undefined}
+            onClick={onToggleAgent}
+          >
+            <span className="hidden sm:inline">Agent 对话</span>
           </Button>
         ) : null}
         <Button

@@ -49,6 +49,7 @@ interface BoardInspectorProps {
   layersAvailable: boolean
   selectedLayerId?: string
   onHandoff?: BoardInspectorHandoff
+  onAskAgent?: BoardInspectorHandoff
   /** 树选区包含运行时节点 id；传 null 清除已有图层选区。 */
   onSelectLayer: (layer: CanvasLayer | null) => void
   onStartPicking: () => void
@@ -72,6 +73,7 @@ export function BoardInspector({
   layersAvailable,
   selectedLayerId,
   onHandoff,
+  onAskAgent,
   onSelectLayer,
   onStartPicking,
   onNavigate,
@@ -93,7 +95,6 @@ export function BoardInspector({
       (target.boardId ?? STANDALONE_BOARD_ID) !== board?.id
     )
       return undefined
-    // 仅复制可重定位的标识，不携带 DOM 文本、几何或输入值。
     return target
   })
   const selectedBlock = useSelectionStore((state) => {
@@ -328,6 +329,27 @@ export function BoardInspector({
                         }
                       >
                         {handoffElement ? '移交所选对象' : '移交当前画板'}
+                      </Button>
+                    ) : null}
+                    {onAskAgent && page && handoffElement ? (
+                      <Button
+                        className="mt-3 ml-1"
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          onAskAgent(`${page.title} / ${board.title}`, {
+                            pageId: page.id,
+                            boardId: board.id,
+                            element: {
+                              blockId: handoffElement.blockId,
+                              selector: handoffElement.selector,
+                              loc: handoffElement.loc,
+                              textPreview: handoffElement.textPreview,
+                            },
+                          })
+                        }
+                      >
+                        问 Agent
                       </Button>
                     ) : null}
                   </>

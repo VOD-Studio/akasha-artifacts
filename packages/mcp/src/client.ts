@@ -73,6 +73,8 @@ export interface AkashaClientOptions {
   // 写入版本时的作者，缺省 agent:mcp
   defaultAuthor?: Author
   fetchImpl?: typeof fetch
+  // 本机托管 CLI 用独立的限轮次工具路径，不持有普通 Daemon 会话凭证。
+  scopedAgentTurn?: boolean
   // 共享 Daemon 平滑升级更换 token/端口后，遇 401 或连接断开时回调刷新凭据并自动重试一次
   resolveConnection?: () => Promise<{ baseUrl: string; token?: string }>
 }
@@ -90,6 +92,7 @@ export class AkashaHttpClient {
   private readonly defaultAuthor: Author
   private readonly fetchFn: typeof fetch
   private readonly resolveConnection?: () => Promise<{ baseUrl: string; token?: string }>
+  private readonly scopedAgentTurn: boolean
 
   constructor(options: AkashaClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '')
@@ -98,6 +101,7 @@ export class AkashaHttpClient {
     this.defaultAuthor = options.defaultAuthor ?? 'agent:mcp'
     this.fetchFn = options.fetchImpl ?? fetch
     this.resolveConnection = options.resolveConnection
+    this.scopedAgentTurn = options.scopedAgentTurn ?? false
   }
 
   private async request<T>(
@@ -113,9 +117,12 @@ export class AkashaHttpClient {
     if (body !== undefined) {
       headers['content-type'] = 'application/json'
     }
+    const endpoint = this.scopedAgentTurn
+      ? `/api/v1/agent/tool${path.slice('/api/v1'.length)}`
+      : path
     let res: Response
     try {
-      res = await this.fetchFn(`${this.baseUrl}${path}`, {
+      res = await this.fetchFn(`${this.baseUrl}${endpoint}`, {
         method,
         headers,
         ...(body !== undefined ? { body: JSON.stringify(body) } : {}),

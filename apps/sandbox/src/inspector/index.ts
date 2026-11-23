@@ -5,7 +5,7 @@ import {
   type ShellToSandboxMessage,
 } from '@akasha/protocol'
 import type { SandboxBridgeClient } from '../bridge/client'
-import { layerElementId, layerSelector, readDesignLayerId } from './layers'
+import { layerElementId, layerSelector, readDesignLayerId, uniqueLayerBlock } from './layers'
 
 function escapeCssIdent(value: string): string {
   if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
@@ -276,10 +276,12 @@ export class SandboxInspector {
   private emitSelection(target: Element, root: HTMLElement, reason: 'click' | 'sync') {
     const selector = layerSelector(target, root)
     const version = this.getVersion()
+    const layerBlockId = reason === 'click' ? uniqueLayerBlock(target, root) : undefined
     this.bridge.send({
       type: 'inspect.select',
       element: buildElementRef(target, root),
       reason,
+      ...(layerBlockId ? { layerBlockId } : {}),
       ...(version > 0 ? { version } : {}),
       ...(selector && selector.length <= 1024
         ? { layerId: layerElementId(target), layerSelector: selector }

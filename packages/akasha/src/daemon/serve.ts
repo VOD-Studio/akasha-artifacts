@@ -3,6 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PublicIdSchema } from '@akasha/protocol'
 import { buildLoopbackOrigins, startNodeServer } from '@akasha/server'
+import { createCodexRunner } from '../agent/codex.js'
 import { readHubLogin } from '../hub/login.js'
 import { startSandboxServer } from './sandbox-server.js'
 import {
@@ -129,6 +130,8 @@ export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
       fsProjectRoot:
         options.projectRoot ?? (options.storageMode === 'fs' ? process.cwd() : undefined),
       version,
+      agentRunner: createCodexRunner(fileURLToPath(new URL('../cli.js', import.meta.url))),
+      agentHost: host === '::1' ? '[::1]' : host === 'localhost' ? host : '127.0.0.1',
       onShutdown: () => {
         void closeAll?.()
       },

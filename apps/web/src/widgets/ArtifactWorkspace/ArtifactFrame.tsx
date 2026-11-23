@@ -308,6 +308,7 @@ export function ArtifactFrame({
                     ? { blockId: element.blockId }
                     : {}),
                   ...(scoped ? { boardId: id } : {}),
+                  ...(message.layerBlockId ? { blockId: message.layerBlockId } : {}),
                 },
                 { id: message.layerId, version: activeVersion },
               )

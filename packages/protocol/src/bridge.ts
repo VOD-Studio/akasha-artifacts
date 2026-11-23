@@ -16,6 +16,8 @@ const CanvasLayerSchema = z.object({
   height: z.number().nonnegative(),
   // 仅由实际的原生图层渲染器发出；不是作者 HTML 中的选择器
   designId: z.string().min(1).max(96).optional(),
+  // 作者为本节点声明、在同一画板内唯一的 data-ak-block；不会回退到祖先。
+  blockId: z.string().min(1).max(512).optional(),
   // 仅确定静态节点时给出，行列相对该画板的源码片段
   sourceLoc: z
     .string()
@@ -246,6 +248,8 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
     layerId: LayerIdSchema.optional(),
     // 图层定位和坐标同步使用精确选择器，不回退到祖先的块标识
     layerSelector: z.string().min(1).max(1024).optional(),
+    // 点击节点自身经唯一性检查的声明块；祖先块只属于普通批注定位。
+    layerBlockId: z.string().min(1).max(512).optional(),
     version: z.number().int().min(1).optional(),
   }),
   z.object({

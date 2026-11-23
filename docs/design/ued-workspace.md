@@ -48,7 +48,9 @@
 
 [#65](https://github.com/VOD-Studio/akasha-artifacts/issues/65) 同一个导出面板提供单板「可试玩 HTML ZIP」和整份「离线试玩 HTML」。打开解压后的 `index.html` 或独立 HTML 不需要 Daemon 或网络；整份保留已声明路径，离线沙盒复用 HTML、React 和原生图层等现有渲染。导出只重读指定版本的授权内容，不带反馈、会话、登录信息或运行存储。外链资源请改为内嵌 `data:`；导出预检失败不会下载部分产物。仅在后续交互中才出现的不可用动态依赖，会在离线页明确报错。
 
-Agent 会话仍是下文的设计目标。
+本机托管 Codex 会话由终端显式授权：先登录 `codex`，再运行 `akasha agent connect --project <项目路径>`；可用 `akasha agent design --project <项目路径> --prompt '<需求>'` 启动真实会话并发布。`akasha agent disconnect --project <项目路径>` 撤掉执行授权，保留历史；Daemon 重启后须重新连接。未通过此入口实际发布的旧制品没有可推断的会话绑定。自托管 Hub 和签名分享不会驱动本机 CLI。
+
+[#61](https://github.com/VOD-Studio/akasha-artifacts/issues/61) 工作区顶栏「Agent 对话」与检查器选中对象后的「问 Agent」打开同一个发布会话。对象引用保留制品、版本、画板和对象标识。桌面并列显示，窄屏可返回画布；未发送文字单独保存在当前标签页。新版本按唯一 `data-ak-block` 或原生图层标识重新定位；不会拿旧选择器猜测新版对象。CLI 最终文字和这一轮实际发布的版本分别呈现，离线不排队。
 
 ## 改版前的问题
 
