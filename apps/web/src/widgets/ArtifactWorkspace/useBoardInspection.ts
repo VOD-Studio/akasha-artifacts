@@ -88,12 +88,15 @@ export function useBoardInspection({
         blockId !== selected.blockId
       ) {
         const layer = { id: currentLayer.id, version: activeVersion }
-        const element = {
-          ...selected,
-          blockId,
-          selector: currentLayer.selector,
-          ...(sameVersion && currentLayer.id === oldScope.id ? {} : { rect: undefined }),
-        }
+        const element =
+          sameVersion && currentLayer.id === oldScope.id
+            ? { ...selected, blockId, selector: currentLayer.selector }
+            : {
+                boardId: selected.boardId,
+                blockId,
+                selector: currentLayer.selector,
+                loc: currentLayer.sourceLoc,
+              }
         store.setSelectedElement(artifactId, element, layer)
         highlight(boardId, { type: 'highlight', element, layer })
       }

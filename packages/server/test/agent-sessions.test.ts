@@ -1,7 +1,10 @@
 import type { AgentConnection, AgentConversation, AgentConversationStatus } from '@akasha/protocol'
 import { expect, it, vi } from 'vitest'
 import { createLocalContainer } from '../src/app/create-local-container.js'
+import { AgentSessions } from '../src/application/agent-sessions.js'
 import type { AgentRunnerLaunch } from '../src/domain/agent-runner.js'
+import { InMemoryArtifactStorage } from '../src/infrastructure/storage/memory/artifact-kv.js'
+import { CryptoIdGenerator } from '../src/infrastructure/storage/memory/index.js'
 
 it('只续接实际发布该制品的 CLI 线程，不跨项目、不以发布回执冒充回复', async () => {
   const launch: { request: AgentRunnerLaunch; reply: (text: string) => void }[] = []
@@ -150,6 +153,72 @@ it('只续接实际发布该制品的 CLI 线程，不跨项目、不以发布�
     expect((await request(route, 'POST', browser, message)).status).toBe(409)
     expect(launch).toHaveLength(2)
   } finally {
+    container.close()
+  }
+})
+
+it('首版落库后会话日志不能再写时，重启仍按真实 v1 找回原发布会话', async () => {
+  const container = createLocalContainer({ dbPath: 'memory' })
+  const { projects, artifacts } = container.repositories
+  const persisted = new InMemoryArtifactStorage()
+  const write = persisted.compareAndSet.bind(persisted)
+  vi.spyOn(persisted, 'compareAndSet').mockImplementation(async (key, revision, json) => {
+    if (await artifacts.findBySlug('drafting', 'durable-first'))
+      throw new Error('首版后无法写入会话日志')
+    return write(key, revision, json)
+  })
+  let task: AgentRunnerLaunch | undefined
+  const makeSessions = () =>
+    new AgentSessions({
+      ids: new CryptoIdGenerator(),
+      store: persisted,
+      projects,
+      artifacts,
+      service: container.service,
+      baseUrl: () => 'http://127.0.0.1:24321',
+      runner: {
+        check: async () => undefined,
+        run: (request) => {
+          task = request
+          request.onThread('e2ca1c56-6344-4432-a922-348fbe729545')
+          return new Promise<string>((_resolve, reject) => {
+            request.signal.addEventListener('abort', () => reject(request.signal.reason), {
+              once: true,
+            })
+          })
+        },
+      },
+    })
+  const before = makeSessions()
+  const recovered = makeSessions()
+  try {
+    await container.service.registerProject({
+      id: 'drafting',
+      name: '预约',
+      rootPath: '/tmp/drafting',
+    })
+    await before.connect('drafting')
+    const initial = await before.startDesign('drafting', '制作首版')
+    if (!task) throw new Error('未启动 CLI 轮次')
+    const { artifact, version } = await before.publish(task.token, {
+      slug: 'durable-first',
+      title: '预约',
+      type: 'html',
+      source: '<h1>有来源的首版</h1>',
+    })
+    expect(version.author).toBe(`agent:${initial.id}`)
+    before.close()
+    const status = await recovered.forArtifact(artifact.publicId)
+    expect(status.availability).toBe('offline')
+    expect(status.session?.id).toBe(initial.id)
+    expect(status.session?.turns[0]).toMatchObject({
+      status: 'failed',
+      publications: [{ artifactId: artifact.publicId, version: 1 }],
+    })
+    expect((await recovered.conversation(initial.id)).artifactId).toBe(artifact.publicId)
+  } finally {
+    before.close()
+    recovered.close()
     container.close()
   }
 })

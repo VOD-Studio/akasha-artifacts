@@ -180,7 +180,7 @@ export class ArtifactService {
     baseVersion?: number
     visibility?: Visibility
     author: Author
-    // 仅供本地文件存储重建索引时沿用 .artifact-id 既有稳定 publicId，不对外部 HTTP/MCP 协议暴露
+    // 仅用于本机 `.artifact-id` 对账和 CLI 首发预留，不向 HTTP/MCP 公开。
     preferredPublicId?: PublicId
     // 复制不允许对命中的制品写入新版本。
     createOnly?: true
@@ -199,6 +199,8 @@ export class ArtifactService {
         let publicId: PublicId
         if (input.preferredPublicId && PublicIdSchema.safeParse(input.preferredPublicId).success) {
           const taken = await this.deps.artifacts.findByPublicId(input.preferredPublicId)
+          if (taken && input.createOnly)
+            throw new DomainError('RESOURCE_CONFLICT', '指定的发布地址已被占用，未发布制品')
           if (
             !taken &&
             (await this.deps.artifacts.lifecycle.findWithdrawn(input.preferredPublicId))
