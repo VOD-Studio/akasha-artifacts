@@ -175,10 +175,12 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
               existing.type,
               existing.slug,
             )
+            const typeChanged = existing.type !== evt.type
             const dirMoved =
               path.resolve(existingLayout.artifactDir) !== path.resolve(evt.artifactDir) ||
-              existing.type !== evt.type
-            if (dirMoved && existing.slug !== evt.slug) {
+              typeChanged
+            let metadataUpdated = false
+            if (dirMoved && (existing.slug !== evt.slug || typeChanged)) {
               const conflictBySlug = await artifacts.findBySlug(existing.projectId, evt.slug)
               if (!conflictBySlug || conflictBySlug.publicId === existing.publicId) {
                 existing = {
@@ -188,11 +190,23 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
                   updatedAt: clock.now(),
                 }
                 await fsStorage.artifacts.updateIndexOnly(existing)
+                metadataUpdated = true
               }
             }
             const headVer = await artifacts.getVersion(existing.publicId, existing.headVersion)
-            if (headVer && headVer.source === evt.source) {
+            if (!typeChanged && headVer && headVer.source === evt.source) {
               fsStorage.artifacts.recordSyncedContent(evt.entryFile, evt.source)
+              if (metadataUpdated) {
+                // 目录改名但源码未变时主动通知在线客户端刷新缓存中的 slug/元数据
+                await realtime.publish(
+                  {
+                    type: 'version.created',
+                    artifactId: existing.publicId,
+                    version: headVer,
+                  },
+                  { projectId: existing.projectId },
+                )
+              }
               return
             }
             await service.publish({

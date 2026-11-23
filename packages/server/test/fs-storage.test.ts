@@ -1191,4 +1191,67 @@ describe('.artifacts/ 原生文件存储适配器与外部编辑监听', () => {
     expect(latest.version.source).toContain('tsx edit')
     expect(latest.version.author).toBe('agent:fs')
   })
+
+  it('外部移动目录改变 Artifact 类型或 slug（源码未变）时主动向在线客户端广播刷新事件', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-move-notify-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    const container = createLocalContainer({
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_notify',
+      fsWatchDebounceMs: 30,
+    })
+    closers.push(container.close)
+    await container.ready
+
+    const pub = await container.service.publish({
+      projectId: 'proj_notify',
+      slug: 'html/card',
+      title: 'Move Notify Card',
+      type: 'html',
+      source: '<article><p>same html</p></article>',
+      author: 'agent:cli',
+    })
+
+    const events: RealtimeServerEvent[] = []
+    container.realtime.subscribe({
+      projectId: 'proj_notify',
+      onEvent: (evt) => events.push(evt),
+    })
+
+    // 1. 仅改名（html/card -> html/renamed，源码未变）应广播 version.created 通知前端刷新 slug
+    const origDir = path.join(artifactsDir, 'html', 'card')
+    const renamedDir = path.join(artifactsDir, 'html', 'renamed')
+    fs.renameSync(origDir, renamedDir)
+    await container.fsWatcher?.syncFile(path.join(renamedDir, 'index.html'))
+
+    expect(
+      events.some((e) => e.type === 'version.created' && e.artifactId === pub.artifact.publicId),
+    ).toBe(true)
+    const afterRename = await container.service.getArtifact({ id: pub.artifact.publicId })
+    expect(afterRename.artifact.slug).toBe('html/renamed')
+    expect(afterRename.artifact.headVersion).toBe(1)
+
+    // 2. 跨类型移动（html/renamed -> document/card，源码未变）应生成 v2 并广播 version.created 使前端切换渲染器
+    events.length = 0
+    const docDir = path.join(artifactsDir, 'document', 'card')
+    fs.mkdirSync(path.dirname(docDir), { recursive: true })
+    fs.renameSync(renamedDir, docDir)
+    await container.fsWatcher?.syncFile(path.join(docDir, 'index.html'))
+
+    const afterTypeMove = await container.service.getArtifact({ id: pub.artifact.publicId })
+    expect(afterTypeMove.artifact.type).toBe('document')
+    expect(afterTypeMove.artifact.slug).toBe('document/card')
+    expect(afterTypeMove.artifact.headVersion).toBe(2)
+    expect(
+      events.some(
+        (e) =>
+          e.type === 'version.created' &&
+          e.artifactId === pub.artifact.publicId &&
+          e.version.version === 2,
+      ),
+    ).toBe(true)
+  })
 })
