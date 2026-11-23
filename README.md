@@ -117,15 +117,17 @@ flowchart TB
 
 > Akasha is under active development. See the [Architecture Design](docs/design/architecture.md), [Domain Glossary](CONTEXT.md), [ADR-0001](docs/adr/0001-server-runtime-typescript-hono.md), and [v1 PRD (#5)](https://github.com/VOD-Studio/akasha-artifacts/issues/5) for the full specification.
 
-| Milestone | Scope                                                                                                                                                        | Status          |
-| :-------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------- |
-| **M0**    | Monorepo workspace, `@akasha/ui` shell kit, `@akasha/protocol` (zod + JSON Schema), immutable versions & RFC 6902 StateStream                                | Completed       |
-| **M1**    | Machine-wide Local Daemon (Hono + SQLite), WebSocket resync, MCP tools, `check` gate, isolated sandbox with view-state preservation, multi-project web shell | Completed       |
-| **M2**    | L1 element picker & overlay, `ReviewRound` draft/submit anti-interruption loop, `receipt/ack`, multi-harness Hooks & Skills, runtime error fix loop          | Completed       |
-| **M3**    | `@akasha/kit` schema engine & L2 props panel, `artboard` / `document` / `verify`, L3 split code editor, `.artifacts/` native file storage                    | Completed       |
-| **M4**    | L4 visual direct editing (AST rewrite and undo), scoped storage, PR walkthrough and data story templates                                                     | Completed       |
-| **M5**    | Self-hosted Docker Cloud Hub (OAuth, visibility scopes, offline queue, local-daemon direct fallback)                                                         | Completed       |
-| **M6**    | Cloudflare Workers (D1 + R2 + Durable Objects) & multi-user CRDT collaboration                                                                               | Not implemented |
+| Milestone | Scope                                                                                                                                                        | Status    |
+| :-------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------- |
+| **M0**    | Monorepo workspace, `@akasha/ui` shell kit, `@akasha/protocol` (zod + JSON Schema), immutable versions & RFC 6902 StateStream                                | Completed |
+| **M1**    | Machine-wide Local Daemon (Hono + SQLite), WebSocket resync, MCP tools, `check` gate, isolated sandbox with view-state preservation, multi-project web shell | Completed |
+| **M2**    | L1 element picker & overlay, `ReviewRound` draft/submit anti-interruption loop, `receipt/ack`, multi-harness Hooks & Skills, runtime error fix loop          | Completed |
+| **M3**    | `@akasha/kit` schema engine & L2 props panel, `artboard` / `document` / `verify`, L3 split code editor, `.artifacts/` native file storage                    | Completed |
+| **M4**    | L4 visual direct editing (AST rewrite and undo), scoped storage, PR walkthrough and data story templates                                                     | Completed |
+| **M5**    | Self-hosted Docker Cloud Hub (OAuth, visibility scopes, offline queue, local-daemon direct fallback)                                                         | Completed |
+| **M6**    | Optional Cloudflare Workers deployment ([#29](https://github.com/VOD-Studio/akasha-artifacts/issues/29))                                                     | Deferred  |
+
+Simultaneous multi-user editing is not implemented and is separate from how the Hub is hosted.
 
 ---
 
@@ -171,7 +173,7 @@ claude mcp add akasha -- npx -y akasha-artifacts mcp
 
 ### 2. Cloud Hub Deployment (Docker)
 
-Follow the [single-image deployment guide](deploy/docker/README.md) and configure [environment variables](deploy/docker/.env.example). SQLite is the default; PostgreSQL and S3-compatible blob storage are optional. The shell and sandbox require separate registrable domains in production.
+Docker is the default Cloud Hub deployment and does not require Cloudflare. Follow the [single-image deployment guide](deploy/docker/README.md) and configure [environment variables](deploy/docker/.env.example). SQLite is the default; PostgreSQL and S3-compatible blob storage are optional. The shell and sandbox require separate registrable domains in production.
 
 Sign in, then connect the MCP process to your team's Hub:
 
