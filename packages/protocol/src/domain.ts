@@ -145,7 +145,7 @@ export const DATA_POINT_SELECTION_LIMITS = { points: 64, id: 96, label: 240 } as
  */
 export const ElementRefSchema = z
   .object({
-    // 画板 id；HTML 画板的整段内容作为一个块，不注入 `loc`
+    // 画板 id；片段内的源码行列只供检查器使用，不是制品源码的编辑坐标
     boardId: z.string().min(1).optional(),
     // 稳定块标识：来自 `data-ak-block` 或 `id`，源码增删行时不漂移
     blockId: z.string().min(1).optional(),

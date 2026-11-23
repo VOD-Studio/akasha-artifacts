@@ -3,6 +3,26 @@ import { EditOpSchema, ElementRectSchema, ElementRefSchema, JsonPatchOpSchema } 
 import { ArtifactTypeSchema, PROTOCOL_VERSION } from './primitives.js'
 import { ArtifactStorageOperationSchema } from './storage.js'
 
+const LayerIdSchema = z.string().min(1).max(1024)
+const CanvasLayerSchema = z.object({
+  // 同一沙盒的 DOM 节点标识；重排时不会指向占据旧位置的其他节点
+  id: LayerIdSchema,
+  parentId: LayerIdSchema.optional(),
+  selector: z.string().min(1).max(1024),
+  tag: z.string().min(1).max(80),
+  label: z.string().max(120).optional(),
+  width: z.number().nonnegative(),
+  height: z.number().nonnegative(),
+  // 仅确定静态节点时给出，行列相对该画板的源码片段
+  sourceLoc: z
+    .string()
+    .regex(/^\d{1,8}:\d{1,8}$/)
+    .optional(),
+})
+
+/** 检查器可见的渲染节点。几何量以固有画板视口 CSS 像素计。 */
+export type CanvasLayer = z.infer<typeof CanvasLayerSchema>
+
 /**
  * 外壳与沙盒热更新时共享的视图与控件保态快照。
  *
@@ -64,6 +84,9 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('highlight'),
     // null 表示清除高亮
     element: ElementRefSchema.nullable(),
+    // 用户显式从树或批注定位时，允许沙盒把目标滚入视口
+    reveal: z.literal(true).optional(),
+    layer: z.object({ id: LayerIdSchema, version: z.number().int().min(1) }).optional(),
   }),
   z.object({
     ...BridgeEnvelopeBase,
@@ -112,6 +135,12 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
     width: z.number().int().min(1).max(8192),
     height: z.number().int().min(1).max(8192),
     scale: z.number().positive().max(1),
+  }),
+  z.object({
+    ...BridgeEnvelopeBase,
+    type: z.literal('inspect.layers.watch'),
+    // 关闭检查器或换板即停止；只订阅本帧
+    active: z.boolean(),
   }),
 ])
 export type ShellToSandboxMessage = z.infer<typeof ShellToSandboxMessageSchema>
@@ -201,6 +230,17 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
     element: ElementRefSchema,
     // 区分用户真实点击选中（click）与滚动/缩放/高亮触发的几何坐标同步（sync）
     reason: z.enum(['click', 'sync']).optional(),
+    layerId: LayerIdSchema.optional(),
+    // 图层定位和坐标同步使用精确选择器，不回退到祖先的块标识
+    layerSelector: z.string().min(1).max(1024).optional(),
+    version: z.number().int().min(1).optional(),
+  }),
+  z.object({
+    ...BridgeEnvelopeBase,
+    type: z.literal('inspect.layers.snapshot'),
+    version: z.number().int().min(1),
+    layers: z.array(CanvasLayerSchema).max(240),
+    truncated: z.boolean(),
   }),
   z.object({
     ...BridgeEnvelopeBase,

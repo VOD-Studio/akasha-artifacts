@@ -2,7 +2,7 @@ import type { ElementRef, Feedback, ReviewRound } from '@akasha/protocol'
 import { Badge } from '@akasha/ui/badge'
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@akasha/ui/sheet'
 import { Target } from 'lucide-react'
-import { useSelectionStore } from '../../entities/selection/store'
+import { selectionForVersion, useSelectionStore } from '../../entities/selection/store'
 import { useWorkspaceStore } from '../../entities/workspace/store'
 import { AnnotationComposer } from '../../features/annotations/AnnotationComposer'
 import { ReviewActionsBar } from '../../features/review-actions/ReviewActionsBar'
@@ -59,7 +59,9 @@ function InspectorContent({
   feedbacks,
   onHighlightElement,
 }: InspectorPanelProps) {
-  const selectedElement = useSelectionStore((s) => s.selectedByArtifact[artifactId] ?? null)
+  const selectedElement = useSelectionStore((s) =>
+    selectionForVersion(s, artifactId, activeVersion),
+  )
   const focusedFeedbackId = useSelectionStore((s) => s.focusedFeedbackId)
   const setFocusedFeedbackId = useSelectionStore((s) => s.setFocusedFeedbackId)
 

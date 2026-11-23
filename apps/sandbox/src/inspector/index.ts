@@ -1,5 +1,6 @@
-import type { ElementRect, ElementRef } from '@akasha/protocol'
+import type { ElementRect, ElementRef, ShellToSandboxMessage } from '@akasha/protocol'
 import type { SandboxBridgeClient } from '../bridge/client'
+import { layerElementId, layerSelector } from './layers'
 
 function escapeCssIdent(value: string): string {
   if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
@@ -163,6 +164,7 @@ export class SandboxInspector {
   constructor(
     private readonly getRootEl: () => HTMLElement | null,
     private readonly bridge: Pick<SandboxBridgeClient, 'send'>,
+    private readonly getVersion: () => number = () => 0,
   ) {}
 
   private ensureViewportListeners(): void {
@@ -217,15 +219,26 @@ export class SandboxInspector {
   private readonly handleClick = (event: MouseEvent) => {
     if (!this.active) return
     const target = this.resolveTarget(event.target)
-    if (!target) return
+    const root = this.getRootEl()
+    if (!target || !root) return
     event.preventDefault()
     event.stopPropagation()
     this.selectedEl = target
     this.ensureViewportListeners()
+    this.emitSelection(target, root, 'click')
+  }
+
+  private emitSelection(target: Element, root: HTMLElement, reason: 'click' | 'sync') {
+    const selector = layerSelector(target, root)
+    const version = this.getVersion()
     this.bridge.send({
       type: 'inspect.select',
-      element: buildElementRef(target, this.getRootEl()),
-      reason: 'click',
+      element: buildElementRef(target, root),
+      reason,
+      ...(version > 0 ? { version } : {}),
+      ...(selector && selector.length <= 1024
+        ? { layerId: layerElementId(target), layerSelector: selector }
+        : {}),
     })
   }
 
@@ -243,13 +256,7 @@ export class SandboxInspector {
           element: buildElementRef(this.hoveredEl, root),
         })
       }
-      if (this.selectedEl?.isConnected) {
-        this.bridge.send({
-          type: 'inspect.select',
-          element: buildElementRef(this.selectedEl, root),
-          reason: 'sync',
-        })
-      }
+      if (root && this.selectedEl?.isConnected) this.emitSelection(this.selectedEl, root, 'sync')
       this.emitPinRects()
     }
 
@@ -280,22 +287,25 @@ export class SandboxInspector {
     this.ensureViewportListeners()
   }
 
-  highlight(ref: ElementRef | null): void {
+  highlight(
+    ref: ElementRef | null,
+    reveal?: true,
+    layer?: Extract<ShellToSandboxMessage, { type: 'highlight' }>['layer'],
+  ): void {
     const root = this.getRootEl()
     if (!ref || !root) {
       this.selectedEl = null
       this.ensureViewportListeners()
       return
     }
+    if (layer && this.getVersion() !== layer.version) return
     const found = findElementByRef(root, ref)
+    if (layer && (!found || layerElementId(found) !== layer.id)) return
     this.selectedEl = found
     this.ensureViewportListeners()
     if (found) {
-      this.bridge.send({
-        type: 'inspect.select',
-        element: buildElementRef(found, root),
-        reason: 'sync',
-      })
+      if (reveal) found.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+      this.emitSelection(found, root, 'sync')
     }
   }
 
@@ -314,13 +324,7 @@ export class SandboxInspector {
         element: buildElementRef(this.hoveredEl, root),
       })
     }
-    if (this.selectedEl?.isConnected) {
-      this.bridge.send({
-        type: 'inspect.select',
-        element: buildElementRef(this.selectedEl, root),
-        reason: 'sync',
-      })
-    }
+    if (root && this.selectedEl?.isConnected) this.emitSelection(this.selectedEl, root, 'sync')
     this.emitPinRects()
   }
 

@@ -288,6 +288,7 @@ export function ArtifactCanvas({
     const page = document.pages.find((item) => item.id === target.pageId)
     if (!page || (target.boardId && !page.boards.some((item) => item.id === target.boardId))) return
     presentation.dismiss()
+    if (target.pageId === pageId && target.boardId === selected) return
     navigate(page, target.boardId)
   })
   useEffect(() => {

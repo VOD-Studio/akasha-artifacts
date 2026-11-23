@@ -6,7 +6,7 @@ import type {
   SandboxToShellMessage,
 } from '@akasha/protocol'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSelectionStore } from '../../entities/selection/store'
+import { selectionForVersion, useSelectionStore } from '../../entities/selection/store'
 import { useWorkspaceStore } from '../../entities/workspace/store'
 import { SplitCodeEditor } from '../../features/code-editor/SplitCodeEditor'
 import { selectActiveRound } from '../../features/review-rounds/round-utils'
@@ -26,6 +26,7 @@ import {
   createCanvasElementResolver,
   STANDALONE_BOARD_ID,
 } from './canvas-model'
+import { useBoardInspection } from './useBoardInspection'
 
 const EMPTY_FEEDBACKS: readonly Feedback[] = []
 
@@ -92,7 +93,9 @@ export function ArtifactWorkspace({
   const inspectorOpen = useWorkspaceStore((s) => s.inspectorTab !== null)
   const unsentDraft = useWorkspaceStore((s) => s.unsentDraftsByArtifact[artifact.publicId] ?? '')
 
-  const selectedElement = useSelectionStore((s) => s.selectedByArtifact[artifact.publicId] ?? null)
+  const selectedElement = useSelectionStore((s) =>
+    selectionForVersion(s, artifact.publicId, version.version),
+  )
   const setSelectedElement = useSelectionStore((s) => s.setSelectedElement)
 
   const activeRound = useMemo(() => selectActiveRound(rounds), [rounds])
@@ -249,6 +252,28 @@ export function ArtifactWorkspace({
     },
     [artifact.publicId],
   )
+  const revealBoard = useCallback((location: CanvasLocation) => {
+    useWorkspaceStore.getState().setViewMode('preview')
+    setInspectorReveal(location)
+  }, [])
+  const handleHighlightElement = useCallback(
+    (element: ElementRef) => {
+      const resolved = resolveElement?.(element) ?? element
+      setSelectedElement(artifact.publicId, resolved)
+      const frameId = resolved.boardId ?? STANDALONE_BOARD_ID
+      frames.current.get(frameId)?.send({ type: 'highlight', element: resolved })
+    },
+    [artifact.publicId, resolveElement, setSelectedElement],
+  )
+  const inspection = useBoardInspection({
+    artifactId: artifact.publicId,
+    version: version.version,
+    document: savedCanvas,
+    current: canvasLocation,
+    reveal: revealBoard,
+    highlight: (boardId, message) => frames.current.get(boardId)?.send(message),
+  })
+  const watchBoard = inspection.open && canvas === savedCanvas ? canvasLocation?.boardId : undefined
   const renderBoard = useCallback(
     (board: CanvasBoard, purpose: BoardFramePurpose) => (
       <ArtifactFrame
@@ -267,6 +292,9 @@ export function ArtifactWorkspace({
               : undefined
         }
         onPlayable={onPlayable}
+        watchLayers={purpose.type === 'overview' && watchBoard === board.id}
+        onLayers={inspection.onLayers}
+        onLayerPicked={inspection.onLayerPicked}
         onVisualSelect={onVisualSelect}
       />
     ),
@@ -279,18 +307,11 @@ export function ArtifactWorkspace({
       registerFrame,
       registerFocusedFrame,
       onPlayable,
+      watchBoard,
+      inspection.onLayers,
+      inspection.onLayerPicked,
       onVisualSelect,
     ],
-  )
-
-  const handleHighlightElement = useCallback(
-    (element: ElementRef) => {
-      const resolved = resolveElement?.(element) ?? element
-      setSelectedElement(artifact.publicId, resolved)
-      const frameId = resolved.boardId ?? STANDALONE_BOARD_ID
-      frames.current.get(frameId)?.send({ type: 'highlight', element: resolved })
-    },
-    [artifact.publicId, resolveElement, setSelectedElement],
   )
 
   return (
@@ -383,10 +404,18 @@ export function ArtifactWorkspace({
         document={savedCanvas}
         location={canvasLocation}
         readOnly={fixedVersion !== undefined || version.version !== artifact.headVersion}
+        layers={watchBoard ? inspection.layers : null}
+        selectedLayerId={inspection.selectedId}
+        layersAvailable={canvas === savedCanvas}
+        onSelectLayer={inspection.onSelect}
+        onStartPicking={() => {
+          if (canvasLocation) revealBoard(canvasLocation)
+          else useWorkspaceStore.getState().setViewMode('preview')
+        }}
         onNavigate={(location) => {
-          setSelectedElement(artifact.publicId, null)
-          useWorkspaceStore.getState().setViewMode('preview')
-          setInspectorReveal(location)
+          if (canvasLocation?.boardId !== location.boardId)
+            setSelectedElement(artifact.publicId, null)
+          revealBoard(location)
         }}
       />
       <VisualEditPanel controller={visual} />

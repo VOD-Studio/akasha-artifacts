@@ -1,12 +1,14 @@
-import type { Artifact, Version } from '@akasha/protocol'
+import type { Artifact, CanvasLayer, Version } from '@akasha/protocol'
 import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@akasha/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@akasha/ui/tabs'
 import { useWorkspaceStore } from '../../entities/workspace/store'
+import { ElementPickerButton } from '../../features/element-picker/ElementPickerButton'
 import { PropsPanel } from '../../features/props-panel/PropsPanel'
 import { ARTIFACT_TYPE_LABELS } from '../../shared/lib/format'
 import type { CanvasDocument, CanvasLocation } from './canvas-model'
+import { LayerTree } from './LayerTree'
 
 interface BoardInspectorProps {
   artifact: Artifact
@@ -15,6 +17,11 @@ interface BoardInspectorProps {
   document: CanvasDocument
   location: CanvasLocation | null
   readOnly: boolean
+  layers: { layers: readonly CanvasLayer[]; truncated: boolean } | null
+  layersAvailable: boolean
+  selectedLayerId?: string
+  onSelectLayer: (layer: CanvasLayer) => void
+  onStartPicking: () => void
   onNavigate: (location: CanvasLocation) => void
 }
 
@@ -28,6 +35,11 @@ export function BoardInspector({
   document,
   location,
   readOnly,
+  layers,
+  layersAvailable,
+  selectedLayerId,
+  onSelectLayer,
+  onStartPicking,
   onNavigate,
 }: BoardInspectorProps) {
   const open = useWorkspaceStore((state) => state.inspectorTab === 'inspect')
@@ -35,6 +47,8 @@ export function BoardInspector({
   const page = document.pages.find((item) => item.id === location?.pageId)
   const board = page?.boards.find((item) => item.id === location?.boardId)
   const source = board && !board.generated ? board.source : version.source
+  const layer = layers?.layers.find((entry) => entry.id === selectedLayerId)
+  const excerpt = !board?.generated && layer ? locateSource(source, layer) : null
 
   return (
     <Sheet modal={false} open={open} onOpenChange={(next) => setDrawer(next ? 'inspect' : null)}>
@@ -50,12 +64,15 @@ export function BoardInspector({
         </SheetHeader>
         <SheetBody>
           <div className="space-y-4">
-            <section aria-label="页面与画板树" className="border-b border-border pb-3">
+            <section aria-label="页面、画板与图层树" className="border-b border-border pb-3">
               <div className="mb-2 flex items-center justify-between gap-2 text-sm font-medium">
-                <h2>画板</h2>
-                <Badge tone="neutral">v{version.version}</Badge>
+                <h2>页面、画板与图层</h2>
+                <div className="flex items-center gap-1.5">
+                  {layersAvailable ? <ElementPickerButton onStart={onStartPicking} /> : null}
+                  <Badge tone="neutral">v{version.version}</Badge>
+                </div>
               </div>
-              <div className="max-h-48 space-y-1 overflow-auto">
+              <div className="max-h-[min(20rem,42dvh)] space-y-1 overflow-auto">
                 {document.pages.map((entry) => (
                   <details key={entry.id} open={entry.id === page?.id || undefined}>
                     <summary className="cursor-pointer rounded px-2 py-1 text-sm text-ink">
@@ -76,6 +93,30 @@ export function BoardInspector({
                               >
                                 <span className="truncate">{item.title}</span>
                               </Button>
+                              {current ? (
+                                <div className="ml-2 border-l border-border pl-2">
+                                  {layers?.layers.length ? (
+                                    <LayerTree
+                                      layers={layers.layers}
+                                      selectedId={selectedLayerId}
+                                      onSelect={onSelectLayer}
+                                    />
+                                  ) : (
+                                    <p className="px-2 py-1 text-xs text-ink-muted">
+                                      {!layersAvailable
+                                        ? '未保存的预览不能定位到此版本的源码。'
+                                        : layers
+                                          ? '此画板没有可检查的图层'
+                                          : '等候画板的图层…'}
+                                    </p>
+                                  )}
+                                  {layers?.truncated ? (
+                                    <p className="px-2 py-1 text-xs text-ink-muted">
+                                      仅显示前 240 个图层和可用层级
+                                    </p>
+                                  ) : null}
+                                </div>
+                              ) : null}
                             </li>
                           )
                         })}
@@ -96,29 +137,94 @@ export function BoardInspector({
               </TabsList>
               <TabsContent value="properties" className="pt-3">
                 {board ? (
-                  <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-2 text-sm">
-                    <dt className="text-ink-muted">页面</dt>
-                    <dd>{page?.title}</dd>
-                    <dt className="text-ink-muted">画板</dt>
-                    <dd>{board.title}</dd>
-                    <dt className="text-ink-muted">视口</dt>
-                    <dd>
-                      {board.width} × {board.height}
-                    </dd>
-                    <dt className="text-ink-muted">内容</dt>
-                    <dd>{ARTIFACT_TYPE_LABELS[board.type]}</dd>
-                  </dl>
+                  <>
+                    <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-2 text-sm">
+                      <dt className="text-ink-muted">页面</dt>
+                      <dd>{page?.title}</dd>
+                      <dt className="text-ink-muted">画板</dt>
+                      <dd>{board.title}</dd>
+                      <dt className="text-ink-muted">视口</dt>
+                      <dd>
+                        {board.width} × {board.height}
+                      </dd>
+                      <dt className="text-ink-muted">内容</dt>
+                      <dd>{ARTIFACT_TYPE_LABELS[board.type]}</dd>
+                      {layer ? (
+                        <>
+                          <dt className="text-ink-muted">图层</dt>
+                          <dd>{layer.label || `<${layer.tag}>`}</dd>
+                          <dt className="text-ink-muted">尺寸</dt>
+                          <dd>
+                            {layer.width} × {layer.height} px
+                          </dd>
+                          <dt className="text-ink-muted">定位</dt>
+                          <dd>{excerpt ? `源码 ${layer.sourceLoc}` : '运行节点 · 只读，可批注'}</dd>
+                        </>
+                      ) : null}
+                    </dl>
+                    {layer ? (
+                      <Button
+                        className="mt-3"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setDrawer('review')}
+                      >
+                        批注该图层
+                      </Button>
+                    ) : null}
+                  </>
                 ) : (
                   <p className="py-2 text-sm text-ink-muted">从树中选择画板以查看属性</p>
                 )}
               </TabsContent>
               <TabsContent value="source" className="space-y-2 pt-3">
-                <p className="text-xs text-ink-muted">
-                  {board && !board.generated ? '当前画板的源码' : '当前版本的制品源码'}
-                </p>
-                <pre className="max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs leading-5">
-                  <code>{source}</code>
-                </pre>
+                {excerpt ? (
+                  <>
+                    <p className="text-xs text-ink-muted">源码位置 {layer?.sourceLoc}</p>
+                    <pre className="max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs leading-5">
+                      {excerpt.lines.map((text, index) => {
+                        const line = excerpt.firstLine + index
+                        return (
+                          <code
+                            className={`block ${line === excerpt.line ? 'bg-accent/10' : ''}`}
+                            key={line}
+                          >
+                            <span
+                              aria-hidden="true"
+                              className="mr-3 inline-block min-w-6 text-right text-ink-muted"
+                            >
+                              {line}
+                            </span>
+                            {line === excerpt.line ? (
+                              <>
+                                {excerpt.before}
+                                <mark className="rounded bg-accent/20 text-inherit">
+                                  {excerpt.tag}
+                                </mark>
+                                {excerpt.after}
+                              </>
+                            ) : (
+                              text || ' '
+                            )}
+                          </code>
+                        )
+                      })}
+                    </pre>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs text-ink-muted">
+                      {layer
+                        ? '此图层没有可唯一定位的源码，以下是该快照的源码。'
+                        : board && !board.generated
+                          ? '当前画板的源码'
+                          : '当前版本的制品源码'}
+                    </p>
+                    <pre className="max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs leading-5">
+                      <code>{source}</code>
+                    </pre>
+                  </>
+                )}
               </TabsContent>
               <TabsContent value="runtime" className="space-y-2 pt-3">
                 <p className="text-xs text-ink-muted">运行参数只更新状态流，不写入设计版本。</p>
@@ -138,4 +244,28 @@ export function BoardInspector({
       </SheetContent>
     </Sheet>
   )
+}
+
+function locateSource(source: string, layer: CanvasLayer) {
+  if (!layer.sourceLoc) return null
+  const [rawLine, rawColumn] = layer.sourceLoc.split(':')
+  const line = Number(rawLine)
+  const column = Number(rawColumn)
+  if (line < 1 || column < 1) return null
+  const all = source.split(/\r?\n/)
+  const sourceLine = all[line - 1]
+  const match = sourceLine?.slice(column - 1).match(/^<([\w:-]+)/)
+  if (!sourceLine || match?.[1]?.toLowerCase() !== layer.tag.toLowerCase()) return null
+  const firstLine = Math.max(1, line - 3)
+  const start = column - 1
+  const end = start + match[0].length
+  const after = sourceLine.slice(end, end + 160)
+  return {
+    line,
+    firstLine,
+    lines: all.slice(firstLine - 1, line + 3),
+    before: start > 18 ? `…${sourceLine.slice(start - 18, start)}` : sourceLine.slice(0, start),
+    tag: match[0],
+    after: end + after.length < sourceLine.length ? `${after}…` : after,
+  }
 }

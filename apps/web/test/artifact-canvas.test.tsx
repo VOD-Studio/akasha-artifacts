@@ -2,8 +2,9 @@
 import { type Artifact, type Feedback, PROTOCOL_VERSION, type Version } from '@akasha/protocol'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
+import { useSelectionStore } from '../src/entities/selection/store'
 import { useWorkspaceStore } from '../src/entities/workspace/store'
 import { createAppRouter } from '../src/routes/router'
 import type { ArtifactDetailResponse } from '../src/shared/api/client'
@@ -113,7 +114,8 @@ afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
-  useWorkspaceStore.setState({ inspectorTab: null })
+  useSelectionStore.getState().clearSelection(artifact.publicId)
+  useWorkspaceStore.setState({ inspectorTab: null, unsentDraftsByArtifact: {} })
   sessionStorage.clear()
 })
 
@@ -334,7 +336,7 @@ it('必须显式播放，按声明的边跨页导航，再返回未改动的聚�
   expect(document.activeElement).toBe(play)
 })
 
-it('从独立检查器选择其他页面的画板并查看固定版本的真实源码', () => {
+function stubResizeObserver() {
   vi.stubGlobal(
     'ResizeObserver',
     class {
@@ -343,6 +345,10 @@ it('从独立检查器选择其他页面的画板并查看固定版本的真实�
       disconnect() {}
     },
   )
+}
+
+it('从独立检查器选择其他页面的画板并查看固定版本的真实源码', () => {
+  stubResizeObserver()
   const fixed = detailFor()
   const next = detailFor(2)
   const live = next.artifact
@@ -389,6 +395,111 @@ it('从独立检查器选择其他页面的画板并查看固定版本的真实�
   const otherVersion = screen.getByRole('region', { name: '制品画布' })
   expect(within(otherVersion).getByTitle('宽屏首页 隔离沙盒')).toBeTruthy()
   expect(within(otherVersion).queryByTitle('预约完成 隔离沙盒')).toBeNull()
+})
+
+it('图层双向定位只在该画板与版本生效，悬停和旧坐标不改选区', () => {
+  stubResizeObserver()
+  const detail = detailFor()
+  const view = showWorkspace(detail)
+  act(() => useWorkspaceStore.getState().setUnsentDraft(artifact.publicId, '保留未发送的批注'))
+  const desktop = sandbox(screen.getByTitle<HTMLIFrameElement>('宽屏首页 隔离沙盒'))
+  const mobile = sandbox(screen.getByTitle<HTMLIFrameElement>('手机首页 隔离沙盒'))
+  desktop.receive({ type: 'ready' })
+  mobile.receive({ type: 'ready' })
+
+  fireEvent.click(screen.getByRole('button', { name: '宽屏首页' }))
+  act(() => useWorkspaceStore.getState().setInspectorTab('inspect'))
+  const inspector = screen.getByRole('dialog', { name: '检查器' })
+  const selector = ':scope > div:nth-of-type(1) > h1:nth-of-type(1)'
+  const desktopLayer = {
+    id: 'desktop:1',
+    tag: 'h1',
+    selector,
+    sourceLoc: '1:1',
+    label: '重复标题',
+    width: 160,
+    height: 35,
+  }
+  const mobileLayer = {
+    id: 'mobile:1',
+    tag: 'h1',
+    selector,
+    label: '重复标题',
+    width: 140,
+    height: 25,
+  }
+  const report = (layers: object[], version = 1) => ({
+    type: 'inspect.layers.snapshot',
+    version,
+    layers,
+    truncated: false,
+  })
+  expect(desktop.post).toHaveBeenCalledWith(
+    expect.objectContaining({ type: 'inspect.layers.watch', active: true }),
+    '*',
+  )
+  mobile.receive(report([mobileLayer]))
+  expect(within(inspector).queryByRole('button', { name: '重复标题' })).toBeNull()
+  desktop.receive(report([desktopLayer]))
+  const desktopChoice = within(inspector).getByRole('button', { name: '重复标题' })
+  fireEvent.click(desktopChoice)
+  expect(desktop.post).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: 'highlight',
+      layer: { id: 'desktop:1', version: 1 },
+      element: { boardId: 'desktop', selector },
+    }),
+    '*',
+  )
+  expect(within(inspector).getByText('160 × 35 px')).toBeTruthy()
+  fireEvent.keyDown(within(inspector).getByRole('tab', { name: '源码' }), { key: 'Enter' })
+  expect(within(inspector).getByText('源码位置 1:1')).toBeTruthy()
+  expect(
+    within(inspector).getByText('<h1', { selector: 'mark' }).closest('code')?.textContent,
+  ).toContain('<h1>桌面预约</h1>')
+
+  fireEvent.click(within(inspector).getByRole('button', { name: '指认元素' }))
+  const element = { selector, rect: { x: 14, y: 7, width: 140, height: 25 } }
+  mobile.receive({ type: 'inspect.hover', element })
+  expect(desktopChoice.getAttribute('aria-pressed')).toBe('true')
+  mobile.receive({
+    type: 'inspect.select',
+    reason: 'click',
+    element,
+    version: 1,
+    layerId: mobileLayer.id,
+    layerSelector: selector,
+  })
+  mobile.receive(report([mobileLayer]))
+  expect(within(inspector).getByRole('button', { name: '手机首页', pressed: true })).toBeTruthy()
+  expect(within(inspector).getByRole('button', { name: '重复标题', pressed: true })).toBeTruthy()
+  const selectedBox = screen.getByTestId('overlay-select-box')
+  const originalRect = selectedBox.getAttribute('style')
+  mobile.receive({
+    type: 'inspect.select',
+    reason: 'sync',
+    version: 1,
+    layerId: 'mobile:old',
+    layerSelector: selector,
+    element: { selector, rect: { x: 50, y: 60, width: 20, height: 12 } },
+  })
+  expect(selectedBox.getAttribute('style')).toBe(originalRect)
+  expect(
+    within(inspector).getByText('此图层没有可唯一定位的源码，以下是该快照的源码。'),
+  ).toBeTruthy()
+
+  fireEvent.keyDown(within(inspector).getByRole('tab', { name: '属性' }), { key: 'Enter' })
+  expect(within(inspector).getByText('140 × 25 px')).toBeTruthy()
+  fireEvent.click(within(inspector).getByRole('button', { name: '批注该图层' }))
+  const review = screen.getByRole('dialog', { name: '批注与评审' })
+  expect(within(review).getByText('针对选中元素批注')).toBeTruthy()
+  expect((within(review).getByLabelText('批注内容') as HTMLTextAreaElement).value).toBe(
+    '保留未发送的批注',
+  )
+
+  view.update(workspace(detailFor(2)))
+  expect(within(review).getByText('全局批注')).toBeTruthy()
+  expect(screen.queryByTestId('overlay-select-box')).toBeNull()
 })
 
 it('旧制品没有显式 ID 时，重排后仍选中原标题的画板', () => {

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { SandboxBridgeClient } from './bridge/client'
 import { captureSandboxPng } from './capture-png'
 import { SandboxInspector } from './inspector/index'
+import { readCanvasLayers } from './inspector/layers'
 import { bindPrototype, hasPlayableControls } from './prototype'
 import { registerBuiltinRenderers } from './renderers/builtins'
 import { getRenderer } from './renderers/registry'
@@ -57,6 +58,8 @@ export function SandboxApp({
   const [payload, setPayload] = useState<RenderPayload | null>(initialRender)
   const committedPayloadRef = useRef<RenderPayload | null>(initialRender)
   const renderedVisualVersionRef = useRef(0)
+  const [watchLayers, setWatchLayers] = useState(false)
+  const refreshLayers = useRef<(() => void) | null>(null)
   const lastPlayable = useRef<boolean | undefined>(undefined)
   const rootRef = useRef<HTMLDivElement>(null)
   const inspectorRef = useRef<SandboxInspector | null>(null)
@@ -78,7 +81,11 @@ export function SandboxApp({
       bridge.send({ type: 'viewState.snapshot', state: snapshot })
     })
 
-    const inspector = new SandboxInspector(() => rootRef.current, bridge)
+    const inspector = new SandboxInspector(
+      () => rootRef.current,
+      bridge,
+      () => renderedVisualVersionRef.current,
+    )
     inspectorRef.current = inspector
     const visualInspector = new SandboxVisualInspector(
       () => rootRef.current,
@@ -143,8 +150,10 @@ export function SandboxApp({
         inspector.startInspecting()
       } else if (msg.type === 'inspect.stop') {
         inspector.stopInspecting()
+      } else if (msg.type === 'inspect.layers.watch') {
+        setWatchLayers(msg.active)
       } else if (msg.type === 'highlight') {
-        inspector.highlight(msg.element)
+        inspector.highlight(msg.element, msg.reveal, msg.layer)
       } else if (msg.type === 'pins.track') {
         inspector.trackPins(msg.pins)
       }
@@ -233,6 +242,36 @@ export function SandboxApp({
     return () => observer.disconnect()
   }, [bridge, playbackVersion, supportsPrototype])
 
+  useEffect(() => {
+    const root = rootRef.current
+    if (!bridge || !root || !watchLayers || playbackVersion) return
+    let pending: number | undefined
+    const schedule = () => {
+      if (pending !== undefined) return
+      // 把一次 DOM 更新的多个 mutation 合并，限制动画或图表持续变化时的桥流量。
+      pending = window.setTimeout(() => {
+        pending = undefined
+        const version = renderedVisualVersionRef.current
+        if (!version || version !== versionRef.current) return
+        bridge.send({ type: 'inspect.layers.snapshot', version, ...readCanvasLayers(root) })
+      }, 100)
+    }
+    refreshLayers.current = schedule
+    const observer = new MutationObserver(schedule)
+    observer.observe(root, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+    })
+    schedule()
+    return () => {
+      refreshLayers.current = null
+      observer.disconnect()
+      window.clearTimeout(pending)
+    }
+  }, [bridge, playbackVersion, watchLayers])
+
   // 自动向外壳上报容器尺寸变化，便于外壳自适应高度或视口定位
   useEffect(() => {
     if (!bridge || !rootRef.current || typeof ResizeObserver === 'undefined') return
@@ -247,6 +286,7 @@ export function SandboxApp({
       })
       // 容器回流（例如外壳侧边面板展开/收起导致宽度变化）时同步刷新选中框与图钉坐标
       inspectorRef.current?.syncRects()
+      refreshLayers.current?.()
     })
     observer.observe(el)
     return () => observer.disconnect()
@@ -281,6 +321,7 @@ export function SandboxApp({
         playable: lastPlayable.current,
         ...(height !== undefined ? { height } : {}),
       })
+      refreshLayers.current?.()
     },
     [bridge],
   )
