@@ -4,7 +4,12 @@ import {
   RealtimeServerEventSchema,
 } from '@akasha/protocol'
 
-// feedback：有新反馈；round.submitted：评审轮次已提交；resync：游标失效，需要对账
+/**
+ * 唤醒原因。
+ *
+ * @remarks `feedback`：有新反馈；`round.submitted`：评审轮次已提交；
+ * `resync`：游标失效，需要对账。
+ */
 export type WakeupReason = 'feedback' | 'round.submitted' | 'resync'
 
 export interface WakeupBatch {
