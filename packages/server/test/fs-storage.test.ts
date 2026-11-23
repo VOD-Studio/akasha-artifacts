@@ -1254,4 +1254,65 @@ describe('.artifacts/ 原生文件存储适配器与外部编辑监听', () => {
       ),
     ).toBe(true)
   })
+
+  it('目录改名元数据同步即使持过期快照也不会回退并发发布推进后的 headVersion', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-rename-concurrent-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    const container = createLocalContainer({
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_conc_rename',
+      fsWatchDebounceMs: 30,
+    })
+    closers.push(container.close)
+    await container.ready
+
+    const pub1 = await container.service.publish({
+      projectId: 'proj_conc_rename',
+      slug: 'html/card',
+      title: 'Card',
+      type: 'html',
+      source: '<div>v1</div>',
+      author: 'agent:cli',
+    })
+    const staleV1Snapshot = { ...pub1.artifact }
+
+    // 模拟并发 API 已成功发布 v2
+    await container.service.publish({
+      projectId: 'proj_conc_rename',
+      slug: 'html/card',
+      title: 'Card v2',
+      type: 'html',
+      source: '<div>v2 from api</div>',
+      baseVersion: 1,
+      author: 'agent:cli',
+    })
+
+    // 即使 updateIndexOnly 收到的是过期 v1 快照，也必须严格保留数据库最新 headVersion=2
+    const origDir = path.join(artifactsDir, 'html', 'card')
+    const movedDir = path.join(artifactsDir, 'html', 'moved')
+    fs.renameSync(origDir, movedDir)
+    const updated = await container.fsStorage?.artifacts.updateIndexOnly({
+      ...staleV1Snapshot,
+      slug: 'html/moved',
+      updatedAt: new Date().toISOString(),
+    })
+    expect(updated?.headVersion).toBe(2)
+    expect(updated?.slug).toBe('html/moved')
+
+    // 后续基于 headVersion=2 发布 v3 必须顺利成功，不会因 headVersion 回退触发 versions 主键冲突
+    const pub3 = await container.service.publish({
+      projectId: 'proj_conc_rename',
+      slug: 'html/moved',
+      title: 'Card v3',
+      type: 'html',
+      source: '<div>v3 ok</div>',
+      baseVersion: 2,
+      author: 'agent:cli',
+    })
+    expect(pub3.artifact.headVersion).toBe(3)
+    expect(fs.readFileSync(path.join(movedDir, 'index.html'), 'utf8')).toBe('<div>v3 ok</div>')
+  })
 })

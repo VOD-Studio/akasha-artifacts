@@ -169,31 +169,40 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
           }
 
           if (existing) {
-            // 仅当物理目录确实迁移或类型变更时才视为重命名；单段 slug（如 card → html/card/）物理目录未变时必须保留原 slug
-            const existingLayout = resolveArtifactFileLayout(
-              fsStorage.artifactsRoot,
-              existing.type,
-              existing.slug,
-            )
-            const typeChanged = existing.type !== evt.type
-            const dirMoved =
-              path.resolve(existingLayout.artifactDir) !== path.resolve(evt.artifactDir) ||
-              typeChanged
-            let metadataUpdated = false
-            if (dirMoved && (existing.slug !== evt.slug || typeChanged)) {
-              const conflictBySlug = await artifacts.findBySlug(existing.projectId, evt.slug)
-              if (!conflictBySlug || conflictBySlug.publicId === existing.publicId) {
-                existing = {
-                  ...existing,
-                  slug: evt.slug,
-                  type: evt.type,
-                  updatedAt: clock.now(),
+            // 在与 publish/update/revert 相同的 Artifact 写锁内重读最新记录并完成目录改名元数据对账，
+            // 确保 headVersion 单调不回退；退出锁后再按需调用 service.publish 避免嵌套死锁。
+            const reconciled = await service.withArtifactLock(existing.publicId, async () => {
+              let fresh = await artifacts.findByPublicId(existing.publicId)
+              if (!fresh) return null
+
+              const existingLayout = resolveArtifactFileLayout(
+                fsStorage.artifactsRoot,
+                fresh.type,
+                fresh.slug,
+              )
+              const typeChanged = fresh.type !== evt.type
+              const dirMoved =
+                path.resolve(existingLayout.artifactDir) !== path.resolve(evt.artifactDir) ||
+                typeChanged
+              let metadataUpdated = false
+              if (dirMoved && (fresh.slug !== evt.slug || typeChanged)) {
+                const conflictBySlug = await artifacts.findBySlug(fresh.projectId, evt.slug)
+                if (!conflictBySlug || conflictBySlug.publicId === fresh.publicId) {
+                  fresh = await fsStorage.artifacts.updateIndexOnly({
+                    ...fresh,
+                    slug: evt.slug,
+                    type: evt.type,
+                    updatedAt: clock.now(),
+                  })
+                  metadataUpdated = true
                 }
-                await fsStorage.artifacts.updateIndexOnly(existing)
-                metadataUpdated = true
               }
-            }
-            const headVer = await artifacts.getVersion(existing.publicId, existing.headVersion)
+              const headVer = await artifacts.getVersion(fresh.publicId, fresh.headVersion)
+              return { fresh, headVer, typeChanged, metadataUpdated }
+            })
+            if (!reconciled) return
+
+            const { fresh, headVer, typeChanged, metadataUpdated } = reconciled
             if (!typeChanged && headVer && headVer.source === evt.source) {
               fsStorage.artifacts.recordSyncedContent(evt.entryFile, evt.source)
               if (metadataUpdated) {
@@ -201,21 +210,21 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
                 await realtime.publish(
                   {
                     type: 'version.created',
-                    artifactId: existing.publicId,
+                    artifactId: fresh.publicId,
                     version: headVer,
                   },
-                  { projectId: existing.projectId },
+                  { projectId: fresh.projectId },
                 )
               }
               return
             }
             await service.publish({
-              projectId: existing.projectId,
-              slug: existing.slug,
-              title: existing.title,
+              projectId: fresh.projectId,
+              slug: fresh.slug,
+              title: fresh.title,
               type: evt.type,
               source: evt.source,
-              baseVersion: existing.headVersion,
+              baseVersion: fresh.headVersion,
               author: 'agent:fs',
             })
             fsStorage.artifacts.recordSyncedContent(evt.entryFile, evt.source)

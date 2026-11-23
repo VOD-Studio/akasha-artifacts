@@ -80,6 +80,11 @@ export class ArtifactService {
     return this.deps.projects.upsert(project)
   }
 
+  // 供本地存储适配层在执行元数据对账（如目录重命名）时与 publish/update/revert 共用同一把 Artifact 写锁，避免并发回写过期 headVersion。
+  withArtifactLock<T>(publicId: PublicId, fn: () => Promise<T>): Promise<T> {
+    return this.writeLocks.run(`artifact:${publicId}`, fn)
+  }
+
   async resolveArtifact(identifier: ArtifactIdentifier, projectId?: string): Promise<Artifact> {
     if (PublicIdSchema.safeParse(identifier).success) {
       const byPublic = await this.deps.artifacts.findByPublicId(identifier)

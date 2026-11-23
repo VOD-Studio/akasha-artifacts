@@ -571,11 +571,20 @@ export class FsArtifactRepository implements ArtifactRepository {
     this.lastWrittenContent.set(path.resolve(filePath), content)
   }
 
-  // 仅更新 .state/ 索引元数据而不改写磁盘源文件（用于外部目录重命名保 ID 同步）
-  async updateIndexOnly(artifact: Artifact): Promise<void> {
+  // 仅更新 .state/ 索引中的目录元数据（slug/type/updatedAt）而不改写磁盘源文件；
+  // 内部同步重读最新记录并严格保留既有 headVersion，防止与并发 publish/update 交错时回退版本号。
+  async updateIndexOnly(artifact: Artifact): Promise<Artifact> {
     this.assertOwnedProject(artifact.projectId)
     const nextLayout = resolveArtifactFileLayout(this.artifactsRoot, artifact.type, artifact.slug)
     const previous = this.inner.findByPublicIdSync(artifact.publicId)
+    const merged: Artifact = previous
+      ? {
+          ...previous,
+          slug: artifact.slug,
+          type: artifact.type,
+          updatedAt: artifact.updatedAt,
+        }
+      : artifact
     if (previous) {
       const prevLayout = resolveArtifactFileLayout(this.artifactsRoot, previous.type, previous.slug)
       for (const filename of CANONICAL_ENTRY_FILENAMES[previous.type]) {
@@ -586,8 +595,9 @@ export class FsArtifactRepository implements ArtifactRepository {
         this.reservedDirs.delete(prevDir)
       }
     }
-    this.reservedDirs.set(resolveRealPathAllowMissing(nextLayout.artifactDir), artifact.publicId)
-    await this.inner.saveArtifact(artifact)
+    this.reservedDirs.set(resolveRealPathAllowMissing(nextLayout.artifactDir), merged.publicId)
+    await this.inner.saveArtifact(merged)
+    return merged
   }
 
   private retireObsoleteLayout(previous: Artifact, nextArtifactDir: string): void {
