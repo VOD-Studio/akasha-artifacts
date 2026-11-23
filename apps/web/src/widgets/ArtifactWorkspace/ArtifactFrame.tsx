@@ -1,5 +1,6 @@
 import type {
   Artifact,
+  CanvasLayer,
   ElementRect,
   ElementRef,
   Feedback,
@@ -9,7 +10,7 @@ import type {
   Version,
 } from '@akasha/protocol'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useSelectionStore } from '../../entities/selection/store'
+import { selectionForVersion, useSelectionStore } from '../../entities/selection/store'
 import { type SandboxErrorRecord, useWorkspaceStore } from '../../entities/workspace/store'
 import { RuntimeErrorPanel } from '../../features/error-recovery/RuntimeErrorPanel'
 import { submitArtifactFeedback } from '../../shared/api/client'
@@ -49,6 +50,9 @@ interface ArtifactFrameProps {
   /** 只有设计视图登记；试玩不接收设计视图的指认或编辑指令。 */
   register?: (id: string, frame: FrameConnection | null) => void
   onPlayable: (board: CanvasBoard, version: number, playable: boolean) => void
+  watchLayers: boolean
+  onLayers: (id: string, version: number, layers: CanvasLayer[], truncated: boolean) => void
+  onLayerPicked: (id: string) => void
   /** 直改模式下沙盒上报选中元素时调用。 */
   onVisualSelect: (message: Extract<SandboxToShellMessage, { type: 'visual.select' }>) => void
 }
@@ -81,6 +85,9 @@ export function ArtifactFrame({
   purpose,
   register,
   onPlayable,
+  watchLayers,
+  onLayers,
+  onLayerPicked,
   onVisualSelect,
 }: ArtifactFrameProps) {
   const artifactId = artifact.publicId
@@ -125,7 +132,7 @@ export function ArtifactFrame({
   const [hovered, setHovered] = useState<ElementRef | null>(null)
   const [livePinRects, setLivePinRects] = useState<Record<string, ElementRect | null>>({})
   const pickerActive = useSelectionStore((s) => s.pickerActive)
-  const selection = useSelectionStore((s) => s.selectedByArtifact[artifactId] ?? null)
+  const selection = useSelectionStore((s) => selectionForVersion(s, artifactId, versionNumber))
   const selected =
     !playback && selection && belongsToBoard(selection, id, scoped) ? selection : null
   const focusedFeedbackId = useSelectionStore((s) => s.focusedFeedbackId)
@@ -147,6 +154,7 @@ export function ArtifactFrame({
     render: typeof render
     pins: readonly Feedback[]
     inspecting: boolean
+    watchingLayers: boolean
   } | null>(null)
   const latest = useRef({
     state,
@@ -157,6 +165,9 @@ export function ArtifactFrame({
     purpose,
     board,
     onPlayable,
+    watchLayers,
+    onLayers,
+    onLayerPicked,
   })
   latest.current = {
     state,
@@ -167,6 +178,9 @@ export function ArtifactFrame({
     purpose,
     board,
     onPlayable,
+    watchLayers,
+    onLayers,
+    onLayerPicked,
   }
 
   useEffect(() => {
@@ -208,34 +222,66 @@ export function ArtifactFrame({
           setError(null)
           if (playback) break
           latest.current.onPlayable(latest.current.board, activeVersion, message.playable === true)
-          const currentSelection = selectionStore.selectedByArtifact[artifactId]
-          if (currentSelection) send({ type: 'highlight', element: currentSelection })
+          const currentSelection = selectionForVersion(selectionStore, artifactId, activeVersion)
+          const layer = selectionStore.layersByArtifact[artifactId]
+          if (currentSelection) {
+            send({ type: 'highlight', element: currentSelection, ...(layer ? { layer } : {}) })
+          }
           trackPins(host, latest.current.versionPins)
           break
         }
+        case 'inspect.layers.snapshot':
+          if (!isolated && latest.current.watchLayers && message.version === activeVersion) {
+            latest.current.onLayers(id, activeVersion, message.layers, message.truncated)
+          }
+          break
         case 'inspect.hover':
           if (isolated || !latest.current.interactive || !selectionStore.pickerActive) break
           setHovered(message.element ? bindSandboxReference(message.element, id, scoped) : null)
           break
         case 'inspect.select': {
           if (isolated) break
+          if (message.version !== undefined && message.version !== activeVersion) break
           const element = bindSandboxReference(message.element, id, scoped)
           if (!element) break
           if (message.reason === 'sync') {
-            const currentSelection = selectionStore.selectedByArtifact[artifactId]
-            if (currentSelection && belongsToBoard(currentSelection, id, scoped)) {
-              // 只刷新视口坐标，不覆盖批注携带的数据点、代码行等业务定位。
-              selectionStore.setSelectedElement(artifactId, {
+            const currentSelection = selectionForVersion(selectionStore, artifactId, activeVersion)
+            const layer = selectionStore.layersByArtifact[artifactId]
+            if (!currentSelection || !belongsToBoard(currentSelection, id, scoped)) break
+            if (layer && (layer.id !== message.layerId || message.version !== activeVersion)) break
+            // 保留业务定位；运行节点重排后只跟踪同一个节点的新选择器。
+            selectionStore.setSelectedElement(
+              artifactId,
+              {
                 ...currentSelection,
+                ...(layer && message.layerSelector ? { selector: message.layerSelector } : {}),
                 rect: element.rect,
-              })
+              },
+              layer,
+            )
+          } else if (latest.current.interactive && selectionStore.pickerActive) {
+            const workspace = useWorkspaceStore.getState()
+            if (
+              workspace.inspectorTab === 'inspect' &&
+              message.layerId &&
+              message.layerSelector &&
+              message.version === activeVersion
+            ) {
+              selectionStore.setSelectedElement(
+                artifactId,
+                {
+                  selector: message.layerSelector,
+                  rect: element.rect,
+                  ...(scoped ? { boardId: id } : {}),
+                },
+                { id: message.layerId, version: activeVersion },
+              )
+              latest.current.onLayerPicked(id)
+            } else {
+              selectionStore.setSelectedElement(artifactId, element)
+              if (workspace.inspectorTab !== 'inspect') workspace.setInspectorTab('review')
             }
-          } else if (latest.current.interactive) {
-            selectionStore.setSelectedElement(artifactId, element)
-            if (selectionStore.pickerActive) {
-              selectionStore.setPickerActive(false)
-              useWorkspaceStore.getState().setInspectorTab('review')
-            }
+            selectionStore.setPickerActive(false)
           }
           break
         }
@@ -335,6 +381,10 @@ export function ArtifactFrame({
       setHovered(null)
       setLivePinRects({})
     }
+    const watchingLayers = !isolated && watchLayers
+    if ((needsRender && watchingLayers) || watchingLayers !== (previous?.watchingLayers ?? false)) {
+      host.send({ type: 'inspect.layers.watch', active: watchingLayers })
+    }
     if (!playback && (needsRender || previous?.pins !== versionPins)) trackPins(host, versionPins)
     const inspecting = !isolated && pickerActive && interactive
     if (inspecting && (needsRender || !previous?.inspecting)) {
@@ -343,7 +393,7 @@ export function ArtifactFrame({
       host.send({ type: 'inspect.stop' })
       setHovered(null)
     }
-    applied.current = { render, pins: versionPins, inspecting }
+    applied.current = { render, pins: versionPins, inspecting, watchingLayers }
   }, [
     host,
     interactive,
@@ -354,6 +404,7 @@ export function ArtifactFrame({
     versionNumber,
     versionPins,
     viewKey,
+    watchLayers,
   ])
 
   // 切换板或清除批注引用时，让原板的沙盒退出对旧元素的坐标跟踪。

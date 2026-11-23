@@ -110,13 +110,13 @@ function HtmlRenderer({ source, boardId, version, preserved, onRendered }: Rende
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
-    // 拆出的 HTML 片段不对应原版本源码的行列。
-    const instrumented = boardId ? source : injectHtmlLocations(source).code
+    // 对画板使用片段内行列；外壳不把它当成整份 artboard JSON 的编辑坐标。
+    const instrumented = injectHtmlLocations(source).code
     el.innerHTML = sanitizeMarkup(instrumented, 'html')
     const cleanup = preserved.bindDomPersistence(el, window)
     onRenderedRef.current(version)
     return cleanup
-  }, [source, boardId, version, preserved])
+  }, [source, version, preserved])
 
   return (
     <div
