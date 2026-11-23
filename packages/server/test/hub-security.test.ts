@@ -173,7 +173,7 @@ describe('Cloud Hub 身份与制品权限', () => {
     const projectId: string = hidden.artifact.projectId
     const path = `/api/v1/artifacts/${id}`
     for (const cookie of [bob, eve, '']) {
-      for (const suffix of ['', '/versions', '/state', '/visual-edit']) {
+      for (const suffix of ['', '?version=1', '/versions', '/state', '/visual-edit']) {
         expect((await send(`${path}${suffix}`, { headers: { cookie } })).status).toBe(404)
       }
       expect((await send(`/api/v1/feedback?id=${id}`, { headers: { cookie } })).status).toBe(404)

@@ -123,9 +123,15 @@ export async function fetchArtifacts(projectId?: string): Promise<{ artifacts: A
 export async function fetchArtifactDetail(
   id: string,
   version?: number,
+  signal?: AbortSignal,
 ): Promise<ArtifactDetailResponse> {
   const query = version !== undefined ? `?version=${version}` : ''
-  return requestJson<ArtifactDetailResponse>(`/api/v1/artifacts/${encodeURIComponent(id)}${query}`)
+  return requestJson<ArtifactDetailResponse>(
+    `/api/v1/artifacts/${encodeURIComponent(id)}${query}`,
+    {
+      signal,
+    },
+  )
 }
 
 export async function fetchArtifactVersions(id: string): Promise<{ versions: Version[] }> {

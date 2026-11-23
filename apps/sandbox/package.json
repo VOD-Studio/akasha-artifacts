@@ -19,6 +19,7 @@
     "@akasha/protocol": "workspace:*",
     "@tailwindcss/browser": "^4.3.5",
     "@violetjs/inkline": "^0.3.0",
+    "html-to-image": "^1.11.13",
     "lucide-react": "^1.23.0",
     "marked": "^18.2.1",
     "mermaid": "^12.3.0",

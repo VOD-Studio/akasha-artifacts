@@ -1,6 +1,7 @@
 import type { ArtifactType, PreservedViewState } from '@akasha/protocol'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { SandboxBridgeClient } from './bridge/client'
+import { captureSandboxPng } from './capture-png'
 import { SandboxInspector } from './inspector/index'
 import { bindPrototype, hasPlayableControls } from './prototype'
 import { registerBuiltinRenderers } from './renderers/builtins'
@@ -85,6 +86,7 @@ export function SandboxApp({
       () => renderedVisualVersionRef.current,
     )
 
+    let capturing = false
     const off = bridge.onMessage((msg) => {
       if (msg.type === 'render') {
         renderedVisualVersionRef.current = 0
@@ -100,6 +102,25 @@ export function SandboxApp({
         }
         committedPayloadRef.current = next
         setPayload(next)
+      } else if (msg.type === 'capture.png') {
+        const root = rootRef.current
+        if (!root || capturing || msg.version !== renderedVisualVersionRef.current) return
+        capturing = true
+        void captureSandboxPng(root, msg.width, msg.height, msg.scale)
+          .then((png) => {
+            if (png.size > 32 * 1024 * 1024) throw new Error('画板 PNG 超出传输上限')
+            bridge.send({ type: 'capture.png.result', version: msg.version, png })
+          })
+          .catch((error: unknown) =>
+            bridge.send({
+              type: 'capture.png.failure',
+              version: msg.version,
+              message: error instanceof Error && error.message ? error.message : '画板不能生成 PNG',
+            }),
+          )
+          .finally(() => {
+            capturing = false
+          })
       } else if (msg.type === 'apply.preview') {
         const committed = committedPayloadRef.current
         if (committed?.version === msg.version) setPayload({ ...committed, source: msg.source })

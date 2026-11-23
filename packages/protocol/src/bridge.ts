@@ -104,6 +104,15 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
     value: z.unknown().optional(),
     error: z.string().optional(),
   }),
+  z.object({
+    ...BridgeEnvelopeBase,
+    type: z.literal('capture.png'),
+    version: z.number().int().min(1),
+    // 保持固有 CSS 视口；scale 只决定输出位图大小
+    width: z.number().int().min(1).max(8192),
+    height: z.number().int().min(1).max(8192),
+    scale: z.number().positive().max(1),
+  }),
 ])
 export type ShellToSandboxMessage = z.infer<typeof ShellToSandboxMessageSchema>
 
@@ -141,6 +150,23 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
     version: z.number().int().min(1),
     // 当前渲染 DOM 的可用控件变化；不代表整份源码重绘
     playable: z.boolean(),
+  }),
+  z.object({
+    ...BridgeEnvelopeBase,
+    type: z.literal('capture.png.result'),
+    version: z.number().int().min(1),
+    // 通过结构化克隆发送 Blob，不把 PNG 放进 JSON 或源码
+    png: z
+      .instanceof(Blob)
+      .refine(
+        (blob) => blob.type === 'image/png' && blob.size > 0 && blob.size <= 32 * 1024 * 1024,
+      ),
+  }),
+  z.object({
+    ...BridgeEnvelopeBase,
+    type: z.literal('capture.png.failure'),
+    version: z.number().int().min(1),
+    message: z.string().min(1),
   }),
   z.object({
     ...BridgeEnvelopeBase,

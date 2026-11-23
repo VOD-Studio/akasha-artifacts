@@ -73,15 +73,20 @@ export async function startNodeHub(options: NodeHubOptions) {
       authorizeEvent: hub.authorizeRealtimeEvent,
     })
     app.get('/assets/*', serveStatic({ root: options.webDir }))
+    const sandboxOrigin = new URL(options.sandboxOrigin).origin
     const shell = index.replace(
       '</head>',
       `<script>window.__AKASHA_CONFIG__=${JSON.stringify({
-        sandboxOrigin: new URL(options.sandboxOrigin).origin,
+        sandboxOrigin,
         hub: true,
       })};</script></head>`,
     )
-    app.get('/', (c) => c.html(shell, 200, { 'Cache-Control': 'no-store' }))
-    app.get('/a/*', (c) => c.html(shell, 200, { 'Cache-Control': 'no-store' }))
+    const headers = {
+      'Cache-Control': 'no-store',
+      'Content-Security-Policy': `frame-src ${sandboxOrigin}`,
+    }
+    app.get('/', (c) => c.html(shell, 200, headers))
+    app.get('/a/*', (c) => c.html(shell, 200, headers))
 
     const server = serve({ fetch: app.fetch, hostname: options.host, port: options.port })
     injectWebSocket(server)
