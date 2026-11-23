@@ -148,11 +148,19 @@ export async function runCli(argv: string[]): Promise<number> {
 
   switch (command) {
     case 'serve': {
+      const rawStorage = strFlag('storage')
+      if (rawStorage && rawStorage !== 'sqlite' && rawStorage !== 'fs') {
+        console.error(`不支持的存储模式 "${rawStorage}"（可选：sqlite | fs）`)
+        return 2
+      }
       const daemon = await startAkashaDaemon({
         host: strFlag('host'),
         port: numFlag('port'),
         sandboxPort: numFlag('sandbox-port'),
         dbPath: strFlag('db'),
+        storageMode: rawStorage as 'sqlite' | 'fs' | undefined,
+        artifactsDir: strFlag('artifacts-dir'),
+        projectRoot: strFlag('project-dir') ?? (rawStorage === 'fs' ? process.cwd() : undefined),
         idleTimeoutSec: numFlag('idle-timeout'),
       })
       console.log(`Akasha Daemon v${daemon.state.version} 已启动`)

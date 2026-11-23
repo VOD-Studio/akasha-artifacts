@@ -80,6 +80,11 @@ export class ArtifactService {
     return this.deps.projects.upsert(project)
   }
 
+  // 供本地存储适配层在执行元数据对账（如目录重命名）时与 publish/update/revert 共用同一把 Artifact 写锁，避免并发回写过期 headVersion。
+  withArtifactLock<T>(publicId: PublicId, fn: () => Promise<T>): Promise<T> {
+    return this.writeLocks.run(`artifact:${publicId}`, fn)
+  }
+
   async resolveArtifact(identifier: ArtifactIdentifier, projectId?: string): Promise<Artifact> {
     if (PublicIdSchema.safeParse(identifier).success) {
       const byPublic = await this.deps.artifacts.findByPublicId(identifier)
@@ -113,6 +118,8 @@ export class ArtifactService {
     baseVersion?: number
     visibility?: Visibility
     author: Author
+    // 仅供本地文件存储重建索引时沿用 .artifact-id 既有稳定 publicId，不对外部 HTTP/MCP 协议暴露
+    preferredPublicId?: PublicId
   }): Promise<{ artifact: Artifact; version: Readonly<Version> }> {
     const projectId = input.projectId ?? DEFAULT_PROJECT_ID
     const slugLockKey = `slug:${projectId}::${input.slug}`
@@ -122,7 +129,13 @@ export class ArtifactService {
       const now = this.deps.clock.now()
 
       if (!existing) {
-        const publicId = this.deps.ids.publicId()
+        let publicId: PublicId
+        if (input.preferredPublicId && PublicIdSchema.safeParse(input.preferredPublicId).success) {
+          const taken = await this.deps.artifacts.findByPublicId(input.preferredPublicId)
+          publicId = taken ? this.deps.ids.publicId() : input.preferredPublicId
+        } else {
+          publicId = this.deps.ids.publicId()
+        }
         const version = createImmutableVersion({
           artifactId: publicId,
           version: 1,

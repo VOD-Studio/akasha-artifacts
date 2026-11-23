@@ -307,7 +307,7 @@ function mapVersion(row: VersionRow): Readonly<Version> {
 export class SqliteArtifactRepository implements ArtifactRepository {
   constructor(private readonly db: DatabaseSync) {}
 
-  async saveArtifact(artifact: Artifact): Promise<void> {
+  private upsertArtifactSync(artifact: Artifact): void {
     this.db
       .prepare(
         `INSERT INTO artifacts (public_id, project_id, slug, title, type, visibility, head_version, created_at, updated_at)
@@ -334,32 +334,7 @@ export class SqliteArtifactRepository implements ArtifactRepository {
       )
   }
 
-  async findByPublicId(publicId: PublicId): Promise<Artifact | undefined> {
-    const row = this.db.prepare('SELECT * FROM artifacts WHERE public_id = ?').get(publicId) as
-      | ArtifactRow
-      | undefined
-    return row ? mapArtifact(row) : undefined
-  }
-
-  async findBySlug(projectId: string, slug: Slug): Promise<Artifact | undefined> {
-    const row = this.db
-      .prepare('SELECT * FROM artifacts WHERE project_id = ? AND slug = ?')
-      .get(projectId, slug) as ArtifactRow | undefined
-    return row ? mapArtifact(row) : undefined
-  }
-
-  async listByProject(projectId?: string): Promise<readonly Artifact[]> {
-    const rows = projectId
-      ? (this.db
-          .prepare('SELECT * FROM artifacts WHERE project_id = ? ORDER BY updated_at DESC')
-          .all(projectId) as unknown as ArtifactRow[])
-      : (this.db
-          .prepare('SELECT * FROM artifacts ORDER BY updated_at DESC')
-          .all() as unknown as ArtifactRow[])
-    return rows.map(mapArtifact)
-  }
-
-  async appendVersion(version: Readonly<Version>): Promise<void> {
+  private insertVersionSync(version: Readonly<Version>): void {
     this.db
       .prepare(
         `INSERT INTO versions (artifact_id, version, parent_version, author, title, source, created_at)
@@ -376,6 +351,60 @@ export class SqliteArtifactRepository implements ArtifactRepository {
       )
   }
 
+  // 在单个同步 SQLite 事务内原子写入版本与 Artifact 元数据，防止后续校验失败遗留孤儿版本。
+  saveArtifactWithVersionSync(artifact: Artifact, version?: Readonly<Version>): void {
+    runInTx(this.db, () => {
+      if (version) {
+        this.insertVersionSync(version)
+      }
+      this.upsertArtifactSync(artifact)
+    })
+  }
+
+  async saveArtifact(artifact: Artifact): Promise<void> {
+    this.upsertArtifactSync(artifact)
+  }
+
+  async findByPublicId(publicId: PublicId): Promise<Artifact | undefined> {
+    const row = this.db.prepare('SELECT * FROM artifacts WHERE public_id = ?').get(publicId) as
+      | ArtifactRow
+      | undefined
+    return row ? mapArtifact(row) : undefined
+  }
+
+  async findBySlug(projectId: string, slug: Slug): Promise<Artifact | undefined> {
+    const row = this.db
+      .prepare('SELECT * FROM artifacts WHERE project_id = ? AND slug = ?')
+      .get(projectId, slug) as ArtifactRow | undefined
+    return row ? mapArtifact(row) : undefined
+  }
+
+  async listByProject(projectId?: string): Promise<readonly Artifact[]> {
+    return this.listByProjectSync(projectId)
+  }
+
+  listByProjectSync(projectId?: string): readonly Artifact[] {
+    const rows = projectId
+      ? (this.db
+          .prepare('SELECT * FROM artifacts WHERE project_id = ? ORDER BY updated_at DESC')
+          .all(projectId) as unknown as ArtifactRow[])
+      : (this.db
+          .prepare('SELECT * FROM artifacts ORDER BY updated_at DESC')
+          .all() as unknown as ArtifactRow[])
+    return rows.map(mapArtifact)
+  }
+
+  findByPublicIdSync(publicId: PublicId): Artifact | undefined {
+    const row = this.db.prepare('SELECT * FROM artifacts WHERE public_id = ?').get(publicId) as
+      | ArtifactRow
+      | undefined
+    return row ? mapArtifact(row) : undefined
+  }
+
+  async appendVersion(version: Readonly<Version>): Promise<void> {
+    this.insertVersionSync(version)
+  }
+
   async getVersions(artifactId: PublicId): Promise<readonly Readonly<Version>[]> {
     const rows = this.db
       .prepare('SELECT * FROM versions WHERE artifact_id = ? ORDER BY version ASC')
@@ -384,6 +413,10 @@ export class SqliteArtifactRepository implements ArtifactRepository {
   }
 
   async getVersion(artifactId: PublicId, version: number): Promise<Readonly<Version> | undefined> {
+    return this.getVersionSync(artifactId, version)
+  }
+
+  getVersionSync(artifactId: PublicId, version: number): Readonly<Version> | undefined {
     const row = this.db
       .prepare('SELECT * FROM versions WHERE artifact_id = ? AND version = ?')
       .get(artifactId, version) as VersionRow | undefined

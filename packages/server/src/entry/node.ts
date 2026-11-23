@@ -11,6 +11,12 @@ export async function startNodeServer(options: NodeServerOptions = {}) {
   const host = options.host ?? '127.0.0.1'
   const requestedPort = options.port ?? 24321
   const container = createLocalContainer(options)
+  try {
+    await container.ready
+  } catch (err) {
+    container.close()
+    throw err
+  }
   const { injectWebSocket } = attachNodeWebSocket(container.app, container.realtime)
 
   const server = await new Promise<ReturnType<typeof serve>>((resolve, reject) => {

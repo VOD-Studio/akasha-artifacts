@@ -122,7 +122,7 @@ flowchart TB
 | **M0** | Monorepo 骨架、`@akasha/ui` 外壳组件库、`@akasha/protocol`（zod + JSON Schema）、不可变版本模型与 RFC 6902 状态流        | 已完成 |
 | **M1** | 整机单例 Local Daemon（Hono + SQLite）、WS 断线补齐、MCP 工具、`check` 校验门禁、热更新保态沙盒、多项目外壳工作台        | 已完成 |
 | **M2** | L1 元素指认与选中框、`ReviewRound` 草稿/整轮提交防打断回路、`receipt/ack`、多 Harness Hooks 与 Skills、运行报错修复回路  | 已完成 |
-| **M3** | `@akasha/kit` schema 引擎与 L2 属性面板、`artboard` / `document` / `verify`、L3 分栏代码编辑、`.artifacts/` 原生文件模式 | 计划中 |
+| **M3** | `@akasha/kit` schema 引擎与 L2 属性面板、`artboard` / `document` / `verify`、L3 分栏代码编辑、`.artifacts/` 原生文件模式 | 已完成 |
 | **M4** | L4 可视化直改（AST 回写与撤销）与 `window.akasha.storage` 作用域存储                                                     | 计划中 |
 | **M5** | Docker 单容器 Cloud Hub 自托管（OAuth、可见性权限、离线反馈队列、本机访问优先直连 Daemon）                               | 计划中 |
 | **M6** | Cloudflare Workers（D1 + R2 + Durable Objects）与多人 CRDT 协同编辑                                                      | 计划中 |
@@ -132,7 +132,7 @@ flowchart TB
 ## 快速开始
 
 > [!NOTE]
-> 本地守护进程（`akasha serve`）、完整 MCP 服务（`akasha mcp`）、隔离沙盒运行时、L1 元素指认与评审轮次闭环以及多端插件安装器（`akasha install` / `akasha doctor`）现已可用（**M2**）；团队 Cloud Hub 容器部署计划在 **M5** 交付。
+> 本地守护进程（`akasha serve`，同时支持默认 SQLite 与 `--storage fs` 项目内 `.artifacts/` 原生文件模式）、完整 MCP 服务（`akasha mcp`）、隔离沙盒运行时、`@akasha/kit` 工程与决策模板（`artboard`、`document`、`verify`、`live-timeline`、`option-compare`）、L1/L2/L3 协同编辑以及多端插件安装器（`akasha install` / `akasha doctor`）现已可用（**M3**）；团队 Cloud Hub 容器部署计划在 **M5** 交付。
 
 ### 1. 接入你的编程 Agent（MCP 与 Hooks — M1/M2）
 
@@ -214,9 +214,14 @@ npx akasha-artifacts login --hub https://akasha.your-team.dev
 ```bash
 make install   # 安装锁定依赖
 make lint      # 运行 Biome 检查、架构依赖方向检查、TypeScript 类型检查与提交规范校验
+make typecheck # 单独运行 TypeScript 类型检查
 make test      # 运行工作区 Vitest 单元测试
 make build     # 构建全部工作区包并导出协议 JSON Schema
+make serve     # 构建并启动工作台、后端和沙盒
+make dev       # 启动前端和沙盒热更新，不启动后端
 ```
+
+运行 `make serve` 后，打开 [http://127.0.0.1:24321](http://127.0.0.1:24321)，或使用守护进程输出的工作台端口。启动 `make serve` 前请停止 `make dev`，避免端口冲突。
 
 ---
 
