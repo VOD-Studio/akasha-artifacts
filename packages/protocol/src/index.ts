@@ -1,4 +1,5 @@
 export * from './artboard.js'
+export * from './artboard-edit.js'
 export * from './artboard-layers.js'
 export * from './bridge.js'
 export * from './contract.js'

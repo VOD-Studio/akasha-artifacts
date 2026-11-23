@@ -1,4 +1,5 @@
-import { readEditableCanvasSource, removeCanvasBoards } from './canvas-edit-source'
+import { readEditableArtboardSource } from '@akasha/protocol'
+import { removeCanvasBoards } from './canvas-edit-source'
 
 /** 对指定制品基准版本中页面的整次变更。 */
 export type CanvasPageEdit =
@@ -8,7 +9,7 @@ export type CanvasPageEdit =
 
 /** 保留未知源码字段；修改同时固化旧源码中推断出的标识，避免定位链接随改名或删除漂移。 */
 export function editCanvasPages(source: string, baseVersion: number, edit: CanvasPageEdit): string {
-  const draft = readEditableCanvasSource(source, baseVersion)
+  const draft = readEditableArtboardSource(source, baseVersion)
   const { raw, pages, boards } = draft
   const entries: unknown[] = Array.isArray(raw.pages) ? raw.pages : []
   const target = pages.get(edit.id)

@@ -1,6 +1,11 @@
-import { ARTBOARD_GEOMETRY_LIMITS, type DesignLayer, DesignLayersSchema } from '@akasha/protocol'
+import {
+  ARTBOARD_GEOMETRY_LIMITS,
+  type DesignLayer,
+  DesignLayersSchema,
+  readEditableArtboardSource,
+} from '@akasha/protocol'
 import type { CanvasBounds } from './canvas-camera'
-import { readEditableCanvasSource, removeCanvasBoards } from './canvas-edit-source'
+import { removeCanvasBoards } from './canvas-edit-source'
 
 /** 一次画板编辑只产生一个新快照。几何不包含相机状态。 */
 export type CanvasBoardEdit =
@@ -45,7 +50,7 @@ export function editCanvasBoards(
   version: number,
   edit: CanvasBoardEdit,
 ): CanvasSourceChange {
-  const draft = readEditableCanvasSource(source, version)
+  const draft = readEditableArtboardSource(source, version)
   const { raw, boards, pages } = draft
   const before = draft.stabilized ? JSON.stringify(raw, null, 2) : source
   switch (edit.kind) {

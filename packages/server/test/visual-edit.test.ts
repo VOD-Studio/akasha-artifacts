@@ -200,4 +200,46 @@ describe('可视化直改版本与反馈', () => {
       await close()
     }
   })
+
+  it('首次编辑旧画板文字及撤销时保留旧定位、页面归属与流程边', async () => {
+    const legacy = JSON.stringify({
+      pages: [{ title: 'page-1' }],
+      boards: [
+        { title: '同名画板', pageId: 'page-1', html: '<p>第一板</p>' },
+        { title: '同名画板', pageId: 'page-1', html: '<p>第二板</p>' },
+      ],
+      flows: [{ from: 'board-1', to: 'board-2' }],
+    })
+    const { request, path, close } = await createFixture(legacy, 'artboard')
+    const readVersion = z.object({ version: z.object({ version: z.number(), source: z.string() }) })
+    const boardId = 'legacy-board:v1:board-2'
+    const pageId = 'legacy-page:v1:page-1'
+    try {
+      const saved = await request(path, {
+        baseVersion: 1,
+        boardId,
+        op: { kind: 'text', loc: '1:1', value: '新文案' },
+      })
+      expect(saved.status).toBe(200)
+      const { version: updated } = readVersion.parse(await saved.json())
+      expect(updated.version).toBe(2)
+      const parsed = JSON.parse(updated.source)
+      expect(parsed).toMatchObject({
+        pages: [{ id: pageId, title: 'page-1' }],
+        boards: [
+          { id: 'legacy-board:v1:board-1', legacyId: 'board-1', pageId, html: '<p>第一板</p>' },
+          { id: boardId, legacyId: 'board-2', pageId, html: '<p>新文案</p>' },
+        ],
+        flows: [{ from: 'legacy-board:v1:board-1', to: boardId }],
+      })
+      const undo = await request(path, { baseVersion: 2, undoVersion: 2 })
+      expect(undo.status).toBe(200)
+      const { version: undone } = readVersion.parse(await undo.json())
+      expect(undone.version).toBe(3)
+      parsed.boards[1].html = '<p>第二板</p>'
+      expect(JSON.parse(undone.source)).toEqual(parsed)
+    } finally {
+      await close()
+    }
+  })
 })

@@ -1,4 +1,4 @@
-import type { Artifact, Version } from '@akasha/protocol'
+import { type Artifact, stabilizeArtboardSource, type Version } from '@akasha/protocol'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 import { artifactKeys, notifyHumanVersionEdit } from '../../entities/artifact/queries'
@@ -170,7 +170,11 @@ export function useCanvasBoardEditing({
       }
     },
     replaceSource(source, base) {
-      return stage({ before: base.source, after: source }, base)
+      const before =
+        artifact.type === 'artboard' && source !== base.source
+          ? stabilizeArtboardSource(base.source, base.version)
+          : base.source
+      return stage({ before, after: source }, base)
     },
     dismissDraft() {
       if (inFlight.current) return

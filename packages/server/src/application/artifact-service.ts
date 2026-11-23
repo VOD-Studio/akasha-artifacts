@@ -20,7 +20,7 @@ import type {
   Version,
   Visibility,
 } from '@akasha/protocol'
-import { PublicIdSchema } from '@akasha/protocol'
+import { PublicIdSchema, stabilizeArtboardSource } from '@akasha/protocol'
 import {
   applyTextEdits,
   assertBaseVersion,
@@ -448,14 +448,16 @@ export class ArtifactService {
     }
     const parent = await this.deps.artifacts.getVersion(artifact.publicId, edited.parentVersion)
     if (!parent) throw new NotFoundError(`缺少基准版本 v${edited.parentVersion}`)
-    return parent.source
+    return artifact.type === 'artboard'
+      ? stabilizeArtboardSource(parent.source, parent.version)
+      : parent.source
   }
 
   private async findVisualUndo(
     artifact: Artifact,
     head: Readonly<Version>,
   ): Promise<Readonly<Version> | undefined> {
-    if (!head.parentVersion || (artifact.type !== 'react' && artifact.type !== 'html'))
+    if (!head.parentVersion || !['react', 'html', 'artboard'].includes(artifact.type))
       return undefined
     const { items } = await this.deps.feedbacks.list({ artifactId: artifact.publicId })
     const editNotes = new Map<number, string>()
