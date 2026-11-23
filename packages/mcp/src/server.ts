@@ -141,23 +141,6 @@ export function createAkashaMcpServer(options: AkashaMcpServerOptions): McpServe
   )
 
   server.registerTool(
-    'artifact_push_state',
-    {
-      description:
-        '向 Artifact 的独立 StateStream 推送 RFC 6902 JSON Patch，页面零闪烁更新且不生成代码版本，适合排障时间线与实时看板。',
-      inputSchema: ArtifactPushStateInputSchema.shape,
-    },
-    async (args) => {
-      try {
-        const res = await client.pushState(args)
-        return okText(res, `已推送状态补丁 seq=${res.seq}`)
-      } catch (err) {
-        return errText(err)
-      }
-    },
-  )
-
-  server.registerTool(
     'artifact_get',
     {
       description:
@@ -185,6 +168,25 @@ export function createAkashaMcpServer(options: AkashaMcpServerOptions): McpServe
       try {
         const { artifact, version } = await client.getHandoffVersion(handoff)
         return okText(describeHandoff(artifact, version, handoff))
+      } catch (err) {
+        return errText(err)
+      }
+    },
+  )
+
+  if (options.scopedAgentTurn) return server
+
+  server.registerTool(
+    'artifact_push_state',
+    {
+      description:
+        '向 Artifact 的独立 StateStream 推送 RFC 6902 JSON Patch，页面零闪烁更新且不生成代码版本，适合排障时间线与实时看板。',
+      inputSchema: ArtifactPushStateInputSchema.shape,
+    },
+    async (args) => {
+      try {
+        const res = await client.pushState(args)
+        return okText(res, `已推送状态补丁 seq=${res.seq}`)
       } catch (err) {
         return errText(err)
       }

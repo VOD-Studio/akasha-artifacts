@@ -21,6 +21,10 @@ import { readAnnotationDraft } from '../entities/feedback/annotation-draft'
 import { useArtifactFeedbackQuery } from '../entities/feedback/queries'
 import { useSelectionStore } from '../entities/selection/store'
 import { useWorkspaceStore } from '../entities/workspace/store'
+import {
+  AgentConversationPane,
+  type ConversationTarget,
+} from '../features/agent-conversation/AgentConversationPane'
 import { ArtifactCommandPalette } from '../features/command-palette/ArtifactCommandPalette'
 import { HubAccountButton } from '../features/hub/HubActions'
 import { useLiveSync } from '../features/live-sync/useLiveSync'
@@ -84,6 +88,11 @@ function ArtifactRouteView({
   const [shareTarget, setShareTarget] = useState<DesignExportTarget | null>(null)
   const [transferTarget, setTransferTarget] = useState<ArtifactTransferTarget | null>(null)
   const [expiredShare, setExpiredShare] = useState<string | null>(null)
+  const [agentPanel, setAgentPanel] = useState<{
+    artifactId: string
+    open: boolean
+    target?: ConversationTarget
+  } | null>(null)
   const clearAddress = useCallback(() => {
     void navigate({
       hash: (previous) => {
@@ -250,6 +259,19 @@ function ArtifactRouteView({
         ...scope,
       },
     })
+  const agent =
+    !shareAccess && agentPanel?.artifactId === detail.artifact.publicId ? agentPanel : null
+  function openAgent(target?: ConversationTarget) {
+    useWorkspaceStore.getState().setInspectorTab(null)
+    setAgentPanel({
+      artifactId: detail.artifact.publicId,
+      open: true,
+      target: target ?? agent?.target,
+    })
+  }
+  function closeAgent() {
+    setAgentPanel((current) => current && { ...current, open: false })
+  }
 
   return (
     <div className="flex h-dvh flex-col bg-canvas text-ink">
@@ -278,6 +300,8 @@ function ArtifactRouteView({
         hasActiveRound={rounds.some((round) => round.status !== 'closed')}
         onExport={() => openExport()}
         onHandoff={() => openHandoff(detail.version.title)}
+        agentOpen={Boolean(agent?.open)}
+        onToggleAgent={shareAccess ? undefined : () => (agent?.open ? closeAgent() : openAgent())}
         onBackToLibrary={() => void navigate({ to: '/' })}
         onSelectVersion={(ver) => {
           if (ver === undefined) {
@@ -297,42 +321,74 @@ function ArtifactRouteView({
           }
         }}
       />
-      <ArtifactWorkspace
-        key={detail.artifact.publicId}
-        detail={detail}
-        versions={versions}
-        feedbacks={feedbacks}
-        threads={feedbackQuery.data?.threads}
-        rounds={rounds}
-        sandboxOrigin={sandboxOrigin}
-        address={address}
-        fixedVersion={viewingFixedVersion}
-        onClearAddress={clearAddress}
-        onRememberThread={rememberThread}
-        onExportBoard={openExport}
-        onHandoff={openHandoff}
-        onRegisterStateForwarder={registerStateForwarder}
-        onVersionSaved={() => {
-          if (requestedVersion !== undefined) {
-            void navigate({
-              to: '/a/$publicId',
-              params: { publicId: detail.artifact.publicId },
-              hash: address,
-              search: true,
-            })
-          }
-        }}
-        onVersionAdopted={() => {
-          if (requestedVersion !== undefined) {
-            void navigate({
-              to: '/a/$publicId',
-              params: { publicId: detail.artifact.publicId },
-              hash: address,
-              search: true,
-            })
-          }
-        }}
-      />
+      <div className="relative flex min-h-0 min-w-0 flex-1">
+        <div className={`flex min-h-0 min-w-0 flex-1 ${agent?.open ? 'max-lg:invisible' : ''}`}>
+          <ArtifactWorkspace
+            key={detail.artifact.publicId}
+            detail={detail}
+            versions={versions}
+            feedbacks={feedbacks}
+            threads={feedbackQuery.data?.threads}
+            rounds={rounds}
+            sandboxOrigin={sandboxOrigin}
+            address={address}
+            fixedVersion={viewingFixedVersion}
+            onClearAddress={clearAddress}
+            onRememberThread={rememberThread}
+            onExportBoard={openExport}
+            onHandoff={openHandoff}
+            onAskAgent={
+              shareAccess
+                ? undefined
+                : (label, scope) =>
+                    openAgent({
+                      label,
+                      reference: {
+                        artifactId: detail.artifact.publicId,
+                        projectId: detail.artifact.projectId,
+                        version: detail.version.version,
+                        ...scope,
+                      },
+                    })
+            }
+            onRegisterStateForwarder={registerStateForwarder}
+            onVersionSaved={() => {
+              if (requestedVersion !== undefined) {
+                void navigate({
+                  to: '/a/$publicId',
+                  params: { publicId: detail.artifact.publicId },
+                  hash: address,
+                  search: true,
+                })
+              }
+            }}
+            onVersionAdopted={() => {
+              if (requestedVersion !== undefined) {
+                void navigate({
+                  to: '/a/$publicId',
+                  params: { publicId: detail.artifact.publicId },
+                  hash: address,
+                  search: true,
+                })
+              }
+            }}
+          />
+        </div>
+        {agent ? (
+          <AgentConversationPane
+            key={`${detail.artifact.projectId}:${detail.artifact.publicId}`}
+            artifactId={detail.artifact.publicId}
+            projectId={detail.artifact.projectId}
+            open={agent.open}
+            hub={isCloudHub()}
+            target={agent.target}
+            onClose={closeAgent}
+            onClearTarget={() =>
+              setAgentPanel((current) => current && { ...current, target: undefined })
+            }
+          />
+        ) : null}
+      </div>
       {exportTarget?.artifact.publicId === detail.artifact.publicId ? (
         <ArtifactExportDialog target={exportTarget} onClose={() => setExportTarget(null)} />
       ) : null}

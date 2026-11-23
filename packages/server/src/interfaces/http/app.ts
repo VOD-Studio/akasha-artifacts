@@ -23,6 +23,7 @@ import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { z } from 'zod'
+import type { AgentSessions } from '../../application/agent-sessions.js'
 import { listArtifactFavorites, setArtifactFavorite } from '../../application/artifact-favorites.js'
 import type { ArtifactService } from '../../application/artifact-service.js'
 import {
@@ -39,6 +40,7 @@ import type {
   ProjectRepository,
   RealtimeSubscriber,
 } from '../../domain/ports.js'
+import { LOCAL_AGENT_TOOL_PATH, mountLocalAgentRoutes } from './local-agent.js'
 
 /** 本地 Daemon 的安全边界配置；Hub 不传，改由 `mountHubGuard` 做同源与角色校验。 */
 export interface HttpSecurityConfig {
@@ -87,6 +89,8 @@ export interface HttpAppDeps {
   storagePrincipal?: (request: Request) => Promise<string | null>
   // 收藏保留用户意愿，但列出时仍须检查当前权限；本地只验证制品仍存在。
   canReadFavorite?: (request: Request, artifactId: string) => Promise<boolean>
+  // 仅装配本机 CLI 的容器提供。
+  agentSessions?: AgentSessions
 }
 
 const RegisterProjectBodySchema = z.object({
@@ -304,7 +308,12 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
           )
         }
       }
-      if ((isMutation || c.req.path === '/api/v1/withdrawn-artifacts') && sec.token) {
+      const scopedTool = deps.agentSessions && c.req.path.startsWith(`${LOCAL_AGENT_TOOL_PATH}/`)
+      if (
+        !scopedTool &&
+        (isMutation || c.req.path === '/api/v1/withdrawn-artifacts') &&
+        sec.token
+      ) {
         const auth = c.req.header('authorization')
         const bearerOk = auth === `Bearer ${sec.token}`
         const cookieName = sec.cookieName ?? 'akasha_session'
@@ -344,6 +353,28 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
       500,
     )
   })
+
+  const localToken = deps.security?.token
+  if (deps.agentSessions && localToken) {
+    mountLocalAgentRoutes(app, {
+      sessions: deps.agentSessions,
+      daemonToken: localToken,
+      checks: deps.checks,
+      specs: deps.specs,
+      readBody: parseJsonBody,
+      authorizeRead(request) {
+        const origin = request.headers.get('Origin')
+        if (origin && !deps.security?.allowedOrigins?.includes(origin))
+          throw new DomainError('FORBIDDEN', '拒绝跨站读取本机 Agent 会话')
+        const name = deps.security?.cookieName ?? 'akasha_session'
+        if (
+          request.headers.get('Authorization') !== `Bearer ${localToken}` &&
+          parseCookies(request.headers.get('Cookie') ?? undefined)[name] !== localToken
+        )
+          throw new DomainError('UNAUTHORIZED', '请先通过本机 Akasha 终端登录')
+      },
+    })
+  }
 
   app.get('/api/v1/health', (c) => {
     return c.json({ ok: true as const, version: deps.daemon.version })

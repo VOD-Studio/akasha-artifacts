@@ -535,6 +535,51 @@ it('图层双向定位只在该画板与版本生效，悬停和旧坐标不改�
   expect(screen.queryByTestId('overlay-select-box')).toBeNull()
 })
 
+it('新版到达时将同板稳定块重绑到新节点，不捡起占用旧选择器的新对象', () => {
+  stubResizeObserver()
+  const view = showWorkspace()
+  const mobile = sandbox(screen.getByTitle('手机首页 隔离沙盒'))
+  mobile.receive({ type: 'ready' })
+  fireEvent.click(screen.getByRole('button', { name: '手机首页' }))
+  act(() => useWorkspaceStore.getState().setInspectorTab('inspect'))
+  const inspector = screen.getByRole('dialog', { name: '检查器' })
+  const original = {
+    id: 'old-heading',
+    blockId: 'mobile-details',
+    tag: 'h1',
+    label: '手机预约',
+    selector: 'h1:first-child',
+    width: 200,
+    height: 34,
+  }
+  const report = (version: number, layers: object[]) =>
+    mobile.receive({ type: 'inspect.layers.snapshot', version, layers, truncated: false })
+  report(1, [original])
+  fireEvent.click(within(inspector).getByRole('button', { name: '手机预约' }))
+  act(() => useWorkspaceStore.getState().setInspectorTab(null))
+  view.update(workspace(detailFor(2)))
+  const fresh = { ...original, id: 'new-heading', selector: 'section > h1', label: '新版手机预约' }
+  const replacement = { ...original, id: 'different', blockId: 'other', label: '占旧路径' }
+  report(2, [replacement, fresh])
+  expect(mobile.post).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: 'highlight',
+      layer: { id: 'new-heading', version: 2 },
+      element: expect.objectContaining({
+        boardId: 'mobile',
+        selector: 'section > h1',
+        blockId: 'mobile-details',
+      }),
+    }),
+    '*',
+  )
+  act(() => useWorkspaceStore.getState().setInspectorTab('inspect'))
+  report(2, [replacement, fresh])
+  const reopened = screen.getByRole('dialog', { name: '检查器' })
+  expect(within(reopened).getByRole('button', { name: '新版手机预约', pressed: true })).toBeTruthy()
+  expect(within(reopened).getByRole('button', { name: '占旧路径', pressed: false })).toBeTruthy()
+})
+
 it('旧制品没有显式 ID 时，重排后仍选中原标题的画板', () => {
   const home = { title: '旧的预约页' }
   const other = { title: '旧的结果页' }

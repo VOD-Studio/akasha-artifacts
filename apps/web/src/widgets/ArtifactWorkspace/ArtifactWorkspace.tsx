@@ -55,6 +55,8 @@ export interface ArtifactWorkspaceProps {
   onExportBoard?: (boardId: string) => void
   /** 未保存的预览不能移交画板或对象。 */
   onHandoff?: BoardInspectorHandoff
+  /** 从已保存且带版本的对象定位进入同一个发布会话。 */
+  onAskAgent?: BoardInspectorHandoff
   /** 登记把状态补丁转发给各画板沙盒的函数；传 `null` 表示注销。 */
   onRegisterStateForwarder?: (forwarder: ((seq: number, ops: JsonPatchOp[]) => void) | null) => void
   onVersionSaved?: (version: ArtifactDetailResponse['version']) => void
@@ -80,6 +82,7 @@ export function ArtifactWorkspace({
   onRememberThread,
   onExportBoard,
   onHandoff,
+  onAskAgent,
   onRegisterStateForwarder,
   onVersionSaved,
   onVersionAdopted,
@@ -381,6 +384,7 @@ export function ArtifactWorkspace({
   const inspection = useBoardInspection({
     artifactId: artifact.publicId,
     version: version.version,
+    followHead: fixedVersion === undefined && !access,
     document: savedCanvas,
     current: canvasLocation,
     reveal: revealBoard,
@@ -399,7 +403,12 @@ export function ArtifactWorkspace({
     },
   })
   const onTextTarget = inlineText.onTextTarget
-  const watchBoard = inspection.open && canvas === savedCanvas ? canvasLocation?.boardId : undefined
+  const watchBoard =
+    canvas === savedCanvas
+      ? inspection.open
+        ? canvasLocation?.boardId
+        : inspection.pendingBoardId
+      : undefined
   const renderBoard = useCallback(
     (board: CanvasBoard, purpose: BoardFramePurpose) => (
       <ArtifactFrame
@@ -549,6 +558,7 @@ export function ArtifactWorkspace({
         selectedLayerId={inspection.selectedId}
         layersAvailable={canvas === savedCanvas}
         onHandoff={canvas === savedCanvas ? onHandoff : undefined}
+        onAskAgent={canvas === savedCanvas ? onAskAgent : undefined}
         onSelectLayer={inspection.onSelect}
         onStartPicking={() => {
           if (canvasLocation) revealBoard(canvasLocation)

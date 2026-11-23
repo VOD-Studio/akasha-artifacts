@@ -396,7 +396,7 @@ export class ArtifactService {
     const resolved = await this.resolveArtifact(input.id, input.projectId)
     return this.writeLocks.run(`artifact:${resolved.publicId}`, async () => {
       const existing = await this.deps.artifacts.findByPublicId(resolved.publicId)
-      if (!existing) {
+      if (!existing || (input.projectId !== undefined && input.projectId !== existing.projectId)) {
         throw new NotFoundError(`未找到 Artifact "${resolved.publicId}"`)
       }
       const versions = await this.deps.artifacts.getVersions(existing.publicId)

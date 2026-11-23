@@ -1,6 +1,10 @@
 import {
+  type AgentConnection,
+  type AgentConversation,
+  type AgentConversationStatus,
   type AnnotationThread,
   type Artifact,
+  type ArtifactHandoffReference,
   type ArtifactSharedAccess,
   type ArtifactShareInput,
   type ArtifactSpecOutput,
@@ -193,6 +197,44 @@ export async function removeProject(id: string): Promise<{ ok: true; id: string 
 export async function fetchArtifacts(projectId?: string): Promise<{ artifacts: Artifact[] }> {
   const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''
   return requestJson<{ artifacts: Artifact[] }>(`/api/v1/artifacts${query}`)
+}
+
+/** CLI 回复、连接状态和可验证的发布回执由同一个本机会话读取。 */
+export async function fetchArtifactConversation(id: string, signal?: AbortSignal) {
+  return requestJson<AgentConversationStatus>(
+    `/api/v1/artifacts/${encodeURIComponent(id)}/agent-session`,
+    { signal },
+  )
+}
+
+export async function sendArtifactConversation(
+  id: string,
+  input: { message: string; target?: ArtifactHandoffReference },
+) {
+  return requestJson<AgentConversation>(
+    `/api/v1/artifacts/${encodeURIComponent(id)}/agent-session`,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  )
+}
+
+export async function fetchAgentConnections(signal?: AbortSignal) {
+  return requestJson<{ connections: AgentConnection[] }>('/api/v1/agent/connections', { signal })
+}
+
+export async function startAgentDesign(projectId: string, message: string) {
+  return requestJson<AgentConversation>('/api/v1/agent/design', {
+    method: 'POST',
+    body: JSON.stringify({ projectId, message }),
+  })
+}
+
+export async function fetchAgentDesignSession(id: string, signal?: AbortSignal) {
+  return requestJson<AgentConversation>(`/api/v1/agent/sessions/${encodeURIComponent(id)}`, {
+    signal,
+  })
 }
 
 export async function fetchArtifactDetail(

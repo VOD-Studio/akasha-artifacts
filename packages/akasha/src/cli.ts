@@ -14,6 +14,7 @@ import {
 import { runStdioMcpServer } from '@akasha/mcp'
 import { ArtifactTypeSchema } from '@akasha/protocol'
 import { CheckService, SpecRegistry } from '@akasha/server'
+import { readScopedAgentEnvironment, runAgentCommand } from './agent/commands.js'
 import { ensureDaemon, probeDaemon, stopDaemon } from './daemon/lifecycle.js'
 import { AKASHA_VERSION, startAkashaDaemon } from './daemon/serve.js'
 import { DEFAULT_SHELL_PORTS, resolveAkashaHome } from './daemon/state.js'
@@ -120,6 +121,7 @@ function printHelp(): void {
   serve    启动整机单例 Local Daemon（默认端口 24321，沙盒 24331）
   login    登录团队 Cloud Hub（akasha login --hub <origin>）
   mcp      启动 stdio MCP Server（本地目标自动拉起并复用 Daemon）
+  agent    授权本机 Codex 接收设计请求（akasha agent connect --project <路径>）
   status   查看运行中 Daemon 的状态与端口
   stop     平滑停止整机 Daemon
   logs     查看 Daemon 运行日志（支持 --project <id>）
@@ -196,7 +198,19 @@ export async function runCli(argv: string[]): Promise<number> {
       return 0
     }
 
+    case 'agent':
+      return runAgentCommand({
+        action: positional[0],
+        projectDir: strFlag('project') ?? process.cwd(),
+        homeDir: strFlag('home'),
+        message: strFlag('prompt'),
+      })
+
     case 'mcp': {
+      if (flags['agent-turn']) {
+        await runStdioMcpServer({ ...readScopedAgentEnvironment(), version: AKASHA_VERSION })
+        return 0
+      }
       const hubInput = strFlag('hub') ?? process.env.AKASHA_HUB_URL
       const hubUrl = hubInput ? new URL(parseHubOrigin(hubInput)) : null
       const homeDir = resolveAkashaHome(strFlag('home'))

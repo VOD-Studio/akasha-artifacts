@@ -1,3 +1,4 @@
+export * from './agent.js'
 export * from './artboard.js'
 export * from './artboard-edit.js'
 export * from './artboard-layers.js'

@@ -12,6 +12,7 @@ import type { CanvasDocument, CanvasLocation } from './canvas-model'
 interface BoardInspectionInput {
   artifactId: string
   version: number
+  followHead: boolean
   document: CanvasDocument
   current: CanvasLocation | null
   reveal: (target: CanvasLocation) => void
@@ -31,6 +32,7 @@ interface Scope {
 export function useBoardInspection({
   artifactId,
   version,
+  followHead,
   document,
   current,
   reveal,
@@ -44,6 +46,13 @@ export function useBoardInspection({
     const element = selectionForVersion(state, artifactId, version)
     return element && (element.boardId ?? STANDALONE_BOARD_ID) === current?.boardId
       ? state.layersByArtifact[artifactId]?.id
+      : undefined
+  })
+  const pendingBoardId = useSelectionStore((state) => {
+    const element = state.selectedByArtifact[artifactId]
+    const scope = state.layersByArtifact[artifactId]
+    return followHead && scope && scope.version < version && element?.blockId
+      ? (element.boardId ?? STANDALONE_BOARD_ID)
       : undefined
   })
   const layers =
@@ -61,23 +70,27 @@ export function useBoardInspection({
       const oldScope = store.layersByArtifact[artifactId]
       if (!oldScope || !selected || (selected.boardId ?? STANDALONE_BOARD_ID) !== boardId) return
       const sameVersion = oldScope.version === activeVersion
-      // 只有版本源码声明的设计对象可以用稳定标识重绑，普通 DOM 路径不能跨版本。
+      const rebind =
+        (sameVersion || (followHead && activeVersion > oldScope.version)) && selected.blockId
+      // 新版只能按明确稳定身份重绑；占用旧 CSS 路径的对象与此选区无关。
       const currentLayer =
         (sameVersion ? layers.find((entry) => entry.id === oldScope.id) : undefined) ??
-        layers.find(
-          (entry) =>
-            entry.designId && selected.blockId === `${DESIGN_LAYER_BLOCK_PREFIX}${entry.designId}`,
-        )
+        (rebind ? layers.find((entry) => layerBlock(entry) === selected.blockId) : undefined)
       if (!currentLayer) {
-        if (!truncated && sameVersion) store.clearSelection(artifactId)
-      } else if (
+        if (!truncated && (sameVersion || rebind)) store.clearSelection(artifactId)
+        return
+      }
+      const blockId = layerBlock(currentLayer)
+      if (
         !sameVersion ||
         currentLayer.id !== oldScope.id ||
-        currentLayer.selector !== selected.selector
+        currentLayer.selector !== selected.selector ||
+        blockId !== selected.blockId
       ) {
         const layer = { id: currentLayer.id, version: activeVersion }
         const element = {
           ...selected,
+          blockId,
           selector: currentLayer.selector,
           ...(sameVersion && currentLayer.id === oldScope.id ? {} : { rect: undefined }),
         }
@@ -85,7 +98,7 @@ export function useBoardInspection({
         highlight(boardId, { type: 'highlight', element, layer })
       }
     },
-    [artifactId, highlight],
+    [artifactId, followHead, highlight],
   )
 
   const onLayerPicked = useCallback(
@@ -106,6 +119,7 @@ export function useBoardInspection({
     open,
     layers,
     selectedId,
+    pendingBoardId,
     onLayers,
     onLayerPicked,
     onSelect(layer: CanvasLayer | null) {
@@ -122,7 +136,11 @@ export function useBoardInspection({
       const element = {
         selector: layer.selector,
         ...(board.scoped ? { boardId: board.id } : {}),
-        ...(native ? { blockId: `${DESIGN_LAYER_BLOCK_PREFIX}${layer.designId}` } : {}),
+        ...(native
+          ? { blockId: `${DESIGN_LAYER_BLOCK_PREFIX}${layer.designId}` }
+          : layer.blockId
+            ? { blockId: layer.blockId }
+            : {}),
       }
       const target = { id: layer.id, version }
       useSelectionStore.getState().setSelectedElement(artifactId, element, target)
@@ -130,4 +148,8 @@ export function useBoardInspection({
       highlight(board.id, { type: 'highlight', element, reveal: true, layer: target })
     },
   }
+}
+
+function layerBlock(layer: CanvasLayer) {
+  return layer.designId ? `${DESIGN_LAYER_BLOCK_PREFIX}${layer.designId}` : layer.blockId
 }
