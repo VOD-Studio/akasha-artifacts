@@ -458,20 +458,36 @@ describe('Local singleton Daemon lifecycle & security', () => {
       },
       body: JSON.stringify({ rootPath: projDir, name: 'hook-cli-proj' }),
     })
+    expect(regRes.status).toBe(201)
     const { project } = (await regRes.json()) as { project: { id: string } }
 
-    await fetch(`${daemon.baseUrl}/api/v1/projects/${project.id}/selection`, {
+    const headers = {
+      'content-type': 'application/json',
+      authorization: `Bearer ${daemon.token}`,
+    }
+    const published = await fetch(`${daemon.baseUrl}/api/v1/artifacts`, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${daemon.token}`,
-      },
+      headers,
       body: JSON.stringify({
-        artifactId: 'AbCdEfGhIjKlMnOpQrStU',
+        project: project.id,
+        slug: 'hook-hero',
+        title: 'Hook 选区',
+        type: 'html',
+        source: '<h1 data-ak-id="hero-title">欢迎使用 Akasha</h1>',
+      }),
+    })
+    expect(published.status).toBe(201)
+    const { artifact } = (await published.json()) as { artifact: { publicId: string } }
+    const selection = await fetch(`${daemon.baseUrl}/api/v1/projects/${project.id}/selection`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        artifactId: artifact.publicId,
         element: { blockId: 'hero-title', textPreview: '欢迎使用 Akasha' },
         draftText: '标题改短一些',
       }),
     })
+    expect(selection.ok).toBe(true)
 
     const logs: string[] = []
     const logSpy = vi.spyOn(console, 'log').mockImplementation((msg) => {
