@@ -27,6 +27,7 @@ import {
   STANDALONE_BOARD_ID,
 } from './canvas-model'
 import { useBoardInspection } from './useBoardInspection'
+import { useCanvasBoardEditing } from './useCanvasBoardEditing'
 
 const EMPTY_FEEDBACKS: readonly Feedback[] = []
 
@@ -206,6 +207,18 @@ export function ArtifactWorkspace({
       savedCanvas,
     ],
   )
+  const canEditBoards =
+    artifact.type === 'artboard' &&
+    fixedVersion === undefined &&
+    version.version === artifact.headVersion &&
+    viewMode === 'preview' &&
+    savedCanvas.pages.every((page) => page.boards.every((board) => board.scoped))
+  const boardEditing = useCanvasBoardEditing({
+    artifact,
+    version,
+    enabled: canEditBoards,
+    onVersionSaved,
+  })
   const resolveElement = useMemo(
     () => (artifact.type === 'artboard' ? createCanvasElementResolver(canvas) : null),
     [artifact.type, canvas],
@@ -351,11 +364,9 @@ export function ArtifactWorkspace({
             reveal={inspectorReveal}
             onRevealHandled={clearInspectorReveal}
             onLocationChange={setCanvasLocation}
+            boardEditing={canEditBoards ? boardEditing : undefined}
             pageEditing={
-              artifact.type === 'artboard' &&
-              fixedVersion === undefined &&
-              version.version === artifact.headVersion &&
-              viewMode === 'preview'
+              canEditBoards && !boardEditing.draft
                 ? { artifact, version, onVersionSaved }
                 : undefined
             }

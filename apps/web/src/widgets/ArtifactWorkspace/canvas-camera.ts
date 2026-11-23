@@ -11,7 +11,8 @@ interface Size {
   height: number
 }
 
-type Bounds = Point & Size
+/** 画板或页面在画布坐标系中的包围盒。 */
+export type CanvasBounds = Point & Size
 
 /**
  * 画布相机：描述画布相对视口的平移与缩放。
@@ -33,14 +34,17 @@ const MIN_ZOOM = 0.001
 const MAX_ZOOM = 4
 
 /**
- * 按每行 `columns` 个排布画板，返回每块画板在画布上的位置与整页的包围盒。
+ * 保留显式位置，按每行 `columns` 个为旧画板提供自动位置。
  *
- * @remarks 行高取该行最高的画板，画板之间留固定间距。
+ * @remarks 网格及画板固有尺寸不随相机变化，整页包围盒可以跨越负坐标。
  */
 export function layoutBoards(boards: readonly CanvasBoard[], columns: number) {
-  const bounds = new Map<string, Bounds>()
+  const bounds = new Map<string, CanvasBounds>()
   const count = Math.max(1, columns)
-  let width = 0
+  let left = Infinity
+  let top = Infinity
+  let right = -Infinity
+  let bottom = -Infinity
   let y = 0
   for (let start = 0; start < boards.length; start += count) {
     let x = 0
@@ -48,14 +52,21 @@ export function layoutBoards(boards: readonly CanvasBoard[], columns: number) {
     for (let index = start, end = Math.min(start + count, boards.length); index < end; index += 1) {
       const board = boards[index]
       if (!board) continue
-      bounds.set(board.id, { x, y, width: board.width, height: board.height })
-      width = Math.max(width, x + board.width)
+      const position = board.position ?? { x, y }
+      bounds.set(board.id, { ...position, width: board.width, height: board.height })
+      left = Math.min(left, position.x)
+      top = Math.min(top, position.y)
+      right = Math.max(right, position.x + board.width)
+      bottom = Math.max(bottom, position.y + board.height)
       height = Math.max(height, board.height)
       x += board.width + GUTTER
     }
     y += height + GUTTER
   }
-  return { bounds, page: { x: 0, y: 0, width, height: Math.max(0, y - GUTTER) } }
+  const page = bounds.size
+    ? { x: left, y: top, width: right - left, height: bottom - top }
+    : { x: 0, y: 0, width: 0, height: 0 }
+  return { bounds, page }
 }
 
 /**
@@ -63,7 +74,7 @@ export function layoutBoards(boards: readonly CanvasBoard[], columns: number) {
  *
  * @returns 带 `fit` 标记的相机，标记表示这次适配的范围。
  */
-export function fitCamera(bounds: Bounds, viewport: Size, fit: Camera['fit']): Camera {
+export function fitCamera(bounds: CanvasBounds, viewport: Size, fit: Camera['fit']): Camera {
   const widthScale = Math.max(1, viewport.width - 32) / Math.max(1, bounds.width)
   const heightScale = Math.max(1, viewport.height - 136) / Math.max(1, bounds.height)
   const scale = Math.max(MIN_ZOOM, Math.min(1, widthScale, heightScale))
