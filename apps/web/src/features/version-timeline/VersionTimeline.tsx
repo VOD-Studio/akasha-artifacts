@@ -9,7 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@akasha/ui/dropdown-menu'
-import { ChevronDown, History, RotateCcw } from 'lucide-react'
+import { ChevronDown, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRevertArtifactMutation } from '../../entities/artifact/queries'
 import { formatRelativeTime } from '../../shared/lib/format'
@@ -47,63 +47,61 @@ export function VersionTimeline({
   }
 
   return (
-    <div className="flex items-center gap-1.5">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="outline"
-            size="sm"
-            leftIcon={<History size={13} />}
-            rightIcon={<ChevronDown size={13} />}
-          >
-            v{activeVersion}
-            {isHistorical ? ` / v${headVersion}` : ''}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-72">
-          <DropdownMenuLabel>版本历史（共 {headVersion} 版）</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {ordered.map((v) => {
-            const isHead = v.version === headVersion
-            const isCurrent = v.version === activeVersion
-            return (
-              <DropdownMenuItem
-                key={v.version}
-                onSelect={() => onSelectVersion(isHead ? undefined : v.version)}
-                className="flex items-center justify-between gap-2"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-mono text-xs font-semibold">v{v.version}</span>
-                    {isHead ? <Badge tone="ok">最新</Badge> : null}
-                    {isCurrent && !isHead ? <Badge tone="accent">当前</Badge> : null}
-                  </div>
-                  <div className="truncate text-[11px] text-ink-muted">
-                    {v.author} · {formatRelativeTime(v.createdAt)}
-                  </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={`版本历史，当前 v${activeVersion}`}
+          title={isHistorical ? `历史版本 v${activeVersion}` : '版本历史'}
+          rightIcon={<ChevronDown size={12} />}
+        >
+          v{activeVersion}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-72">
+        <DropdownMenuLabel>版本历史（共 {headVersion} 版）</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {ordered.map((v) => {
+          const isHead = v.version === headVersion
+          const isCurrent = v.version === activeVersion
+          return (
+            <DropdownMenuItem
+              key={v.version}
+              onSelect={() => onSelectVersion(isHead ? undefined : v.version)}
+              className="flex items-center justify-between gap-2"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono text-xs font-semibold">v{v.version}</span>
+                  {isHead ? <Badge tone="ok">最新</Badge> : null}
+                  {isCurrent && !isHead ? <Badge tone="accent">当前</Badge> : null}
                 </div>
+                <div className="truncate text-[11px] text-ink-muted">
+                  {v.author} · {formatRelativeTime(v.createdAt)}
+                </div>
+              </div>
+            </DropdownMenuItem>
+          )
+        })}
+        {isHistorical ? (
+          <>
+            <DropdownMenuSeparator />
+            {!ordered.some((v) => v.version === headVersion) ? (
+              <DropdownMenuItem onSelect={() => onSelectVersion(undefined)}>
+                回到最新
               </DropdownMenuItem>
-            )
-          })}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      {isHistorical ? (
-        <>
-          <Button variant="ghost" size="sm" onClick={() => onSelectVersion(undefined)}>
-            回到最新
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            leftIcon={<RotateCcw size={13} />}
-            loading={revertMutation.isPending}
-            onClick={() => void handleRevert()}
-          >
-            回退到 v{activeVersion}
-          </Button>
-        </>
-      ) : null}
-    </div>
+            ) : null}
+            <DropdownMenuItem
+              disabled={revertMutation.isPending}
+              onSelect={() => void handleRevert()}
+            >
+              <RotateCcw size={14} />
+              回退到 v{activeVersion}
+            </DropdownMenuItem>
+          </>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

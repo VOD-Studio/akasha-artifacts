@@ -16,8 +16,7 @@ export interface RoundSubmitBarProps {
   onWithdrawRound?: (roundId: string) => Promise<unknown>
 }
 
-// 底部固定评审提交栏：防打断草稿机制的核心入口——展示本轮已选 X/Y、草稿评论数、推荐项提示，
-// 点「提交本轮」后才打包送达 Agent，提交后可随时「撤回修改」。
+// 只在评审面板展示轮次动作；除提交轮次外，草稿不会唤醒 Agent。
 export function RoundSubmitBar({
   artifactId,
   projectId,
@@ -26,8 +25,6 @@ export function RoundSubmitBar({
   onSubmitRound,
   onWithdrawRound,
 }: RoundSubmitBarProps) {
-  const unsentDraft = useWorkspaceStore((s) => s.unsentDraftsByArtifact[artifactId] ?? '')
-  const setUnsentDraft = useWorkspaceStore((s) => s.setUnsentDraft)
   const agentActivity = useWorkspaceStore((s) => s.agentActivityByProject[projectId])
   const submitRoundMutation = useSubmitRoundMutation(artifactId, projectId)
   const withdrawRoundMutation = useWithdrawRoundMutation(artifactId, projectId)
@@ -124,23 +121,5 @@ export function RoundSubmitBar({
     )
   }
 
-  return (
-    <div
-      data-testid="round-submit-bar"
-      className="flex shrink-0 items-center gap-2 border-t border-border bg-surface px-4 py-2"
-    >
-      <span className="shrink-0 text-xs font-medium text-ink-muted">批注草稿</span>
-      <input
-        type="text"
-        aria-label="未提交批注草稿"
-        value={unsentDraft}
-        onChange={(e) => setUnsentDraft(artifactId, e.target.value)}
-        placeholder="记录批注草稿（版本热更新重绘时自动保留，也可在右侧面板精准批注选中元素）…"
-        className="flex-1 rounded-lg border border-border bg-surface px-3 py-1 text-xs text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none"
-      />
-      {unsentDraft ? (
-        <span className="shrink-0 text-[11px] text-ink-muted">已本地暂存（未发送）</span>
-      ) : null}
-    </div>
-  )
+  return null
 }

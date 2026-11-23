@@ -1,14 +1,14 @@
 import type { ArtifactType, ElementRef, Feedback, ReviewRound } from '@akasha/protocol'
 import { Badge } from '@akasha/ui/badge'
-import { Empty } from '@akasha/ui/empty'
 import { ScrollArea } from '@akasha/ui/scroll-area'
-import { MessageSquare, SlidersHorizontal, Target, X } from 'lucide-react'
-import { useState } from 'react'
+import { SlidersHorizontal, Target, X } from 'lucide-react'
 import { useSelectionStore } from '../../entities/selection/store'
+import { useWorkspaceStore } from '../../entities/workspace/store'
 import { AnnotationComposer } from '../../features/annotations/AnnotationComposer'
 import { PropsPanel } from '../../features/props-panel/PropsPanel'
 import { ReviewActionsBar } from '../../features/review-actions/ReviewActionsBar'
 import { formatRelativeTime } from '../../shared/lib/format'
+import { RoundSubmitBar } from '../RoundSubmitBar/RoundSubmitBar'
 
 export interface InspectorPanelProps {
   artifactId: string
@@ -71,7 +71,8 @@ export function InspectorPanel({
   onHighlightElement,
   onClose,
 }: InspectorPanelProps) {
-  const [tab, setTab] = useState<'review' | 'props'>('review')
+  const tab = useWorkspaceStore((s) => s.inspectorTab ?? 'review')
+  const setTab = useWorkspaceStore((s) => s.setInspectorTab)
   const selectedElement = useSelectionStore((s) => s.selectedByArtifact[artifactId] ?? null)
   const focusedFeedbackId = useSelectionStore((s) => s.focusedFeedbackId)
   const setFocusedFeedbackId = useSelectionStore((s) => s.setFocusedFeedbackId)
@@ -80,11 +81,12 @@ export function InspectorPanel({
 
   return (
     <aside
+      id="artifact-inspector"
       aria-label="批注与评审面板"
       data-testid="inspector-panel"
-      className="flex w-[348px] shrink-0 flex-col border-l border-border bg-surface-subtle"
+      className="flex max-h-[45%] min-h-0 shrink-0 flex-col border-t border-border bg-surface md:max-h-none md:w-80 md:border-t-0 md:border-l"
     >
-      <div className="flex items-center justify-between border-b border-border bg-surface px-3 py-2">
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
         <div className="flex items-center gap-1" role="tablist" aria-label="右侧面板切换">
           <button
             type="button"
@@ -95,9 +97,8 @@ export function InspectorPanel({
               tab === 'review' ? 'bg-muted text-ink' : 'text-ink-muted hover:text-ink'
             }`}
           >
-            <MessageSquare size={13} />
             <span>批注与评审</span>
-            <Badge tone="neutral">{feedbacks.length}</Badge>
+            {feedbacks.length > 0 ? <span>{feedbacks.length}</span> : null}
           </button>
           {artifactType ? (
             <button
@@ -124,7 +125,7 @@ export function InspectorPanel({
         </button>
       </div>
 
-      <ScrollArea aria-label="批注与评审详情" className="flex-1 p-3">
+      <ScrollArea aria-label="批注与评审详情" className="min-h-0 flex-1 p-3">
         {tab === 'props' && artifactType ? (
           <PropsPanel
             artifactId={artifactId}
@@ -157,11 +158,7 @@ export function InspectorPanel({
               </div>
 
               {ordered.length === 0 ? (
-                <Empty
-                  variant="compact"
-                  title="暂无批注与反馈"
-                  description="点击顶栏「指认元素」或直接在此输入批注。"
-                />
+                <p className="py-2 text-xs text-ink-muted">暂无批注与反馈。</p>
               ) : (
                 ordered.map((fb) => {
                   const statusMeta = feedbackStatusBadge(fb)
@@ -225,6 +222,14 @@ export function InspectorPanel({
           </div>
         )}
       </ScrollArea>
+      {activeRound && tab === 'review' ? (
+        <RoundSubmitBar
+          artifactId={artifactId}
+          projectId={projectId}
+          activeRound={activeRound}
+          feedbacks={feedbacks}
+        />
+      ) : null}
     </aside>
   )
 }

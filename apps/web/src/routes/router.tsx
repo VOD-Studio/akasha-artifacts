@@ -13,10 +13,11 @@ import {
   useNavigate,
   useParams,
 } from '@tanstack/react-router'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { useArtifactDetailQuery, useArtifactVersionsQuery } from '../entities/artifact/queries'
 import { useDaemonStatusQuery } from '../entities/daemon/queries'
 import { useArtifactFeedbackQuery } from '../entities/feedback/queries'
+import { useWorkspaceStore } from '../entities/workspace/store'
 import { ArtifactCommandPalette } from '../features/command-palette/ArtifactCommandPalette'
 import { useLiveSync } from '../features/live-sync/useLiveSync'
 import { resolveSandboxOrigin } from '../shared/config/runtime'
@@ -38,6 +39,9 @@ function RootLayout() {
 function LibraryPage() {
   const navigate = useNavigate()
   useLiveSync({})
+  useLayoutEffect(() => {
+    useWorkspaceStore.getState().openArtifactView(null)
+  }, [])
   return (
     <LibraryShell
       onOpenArtifact={(publicId) => void navigate({ to: '/a/$publicId', params: { publicId } })}
@@ -55,9 +59,14 @@ function ArtifactRouteView({
   const navigate = useNavigate()
   const { data: daemonStatus } = useDaemonStatusQuery()
   const detailQuery = useArtifactDetailQuery(identifier, requestedVersion)
-  const resolvedPublicId = detailQuery.data?.artifact.publicId ?? identifier
+  const publicId = detailQuery.data?.artifact.publicId
+  const resolvedPublicId = publicId ?? identifier
   const versionsQuery = useArtifactVersionsQuery(resolvedPublicId)
   const feedbackQuery = useArtifactFeedbackQuery(resolvedPublicId)
+
+  useLayoutEffect(() => {
+    if (publicId) useWorkspaceStore.getState().openArtifactView(publicId)
+  }, [publicId])
 
   const stateForwarderRef = useRef<((seq: number, ops: JsonPatchOp[]) => void) | null>(null)
   const registerStateForwarder = useCallback(
@@ -137,12 +146,13 @@ function ArtifactRouteView({
   const sandboxOrigin = resolveSandboxOrigin(daemonStatus?.sandboxPort)
 
   return (
-    <div className="flex h-screen flex-col bg-canvas text-ink">
+    <div className="flex h-dvh flex-col bg-canvas text-ink">
       <TopBar
         artifact={detail.artifact}
         version={detail.version}
         versions={versions}
         feedbackCount={feedbacks.length}
+        hasActiveRound={rounds.some((round) => round.status !== 'closed')}
         onBackToLibrary={() => void navigate({ to: '/' })}
         onSelectVersion={(ver) => {
           if (ver === undefined) {
@@ -159,6 +169,7 @@ function ArtifactRouteView({
         }}
       />
       <ArtifactWorkspace
+        key={detail.artifact.publicId}
         detail={detail}
         versions={versions}
         feedbacks={feedbacks}

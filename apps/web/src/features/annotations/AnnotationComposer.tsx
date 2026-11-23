@@ -1,7 +1,7 @@
 import type { ElementRef, FeedbackKind, ReviewRound } from '@akasha/protocol'
 import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
-import { Send, Sparkles, Target, X } from 'lucide-react'
+import { Send, Target, X } from 'lucide-react'
 import { useRef } from 'react'
 import { toast } from 'sonner'
 import { useSubmitFeedbackMutation } from '../../entities/feedback/queries'
@@ -119,7 +119,7 @@ export function AnnotationComposer({
         placeholder={
           selectedElement
             ? '说明希望 Agent 对这个元素做什么修改…'
-            : '输入评审意见，或先点击顶栏「指认元素」精准框选页面元素…'
+            : '给这一版留批注，或先在画布工具栏指认元素…'
         }
         className="w-full resize-none rounded-lg border border-border bg-surface p-2 text-xs text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none"
       />
@@ -129,7 +129,6 @@ export function AnnotationComposer({
           <Button
             variant="outline"
             size="sm"
-            leftIcon={<Sparkles size={12} />}
             loading={submitMutation.isPending}
             onClick={() => {
               if (!draftText.trim()) {

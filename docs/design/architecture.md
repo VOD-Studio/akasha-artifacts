@@ -325,6 +325,8 @@ sequenceDiagram
 
 ### 7.2 渲染流水线与 Artifact 形态
 
+制品页默认直接进入画布，项目库另作导航入口。外壳在画布上为制品提供独立画板与缩放、适应视口、放大后平移；网页预览和元素批注叠层使用同一画板坐标，缩放不改变沙盒内的视口尺寸。指认和批注是画布上的入口；评审与属性面板按需打开，源码、版本对比、代码编辑和导出放在更多操作中。
+
 ```mermaid
 flowchart LR
     S["源码"] --> P["解析<br/>@babel/parser / parse5 / 块解析器"]
@@ -518,8 +520,8 @@ packages/server/src/
 ```
 apps/web/src/
 ├── routes/      # 文件路由：/（多项目库）、/a/$publicId、/a/$publicId/v/$version
-├── widgets/     # 页面级组合：LibraryShell（左侧项目栏+⌘K）、ArtifactWorkspace、TopBar（含运维胶囊）、
-│                #   InspectorPanel、RoundSubmitBar
+├── widgets/     # 页面级组合：LibraryShell（项目库、运维与 ⌘K）、ArtifactWorkspace（交互画布）、TopBar、
+│                #   InspectorPanel（批注、属性与轮次提交）
 ├── features/    # 用户能力切片：live-sync、daemon-control、command-palette、version-timeline、version-diff、
 │                #   element-picker、annotations、review-rounds、review-actions、props-panel、code-editor、
 │                #   visual-edit、export-html

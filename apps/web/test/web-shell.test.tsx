@@ -41,6 +41,7 @@ import { ArtifactWorkspace } from '../src/widgets/ArtifactWorkspace/ArtifactWork
 import { InspectorPanel } from '../src/widgets/InspectorPanel/InspectorPanel'
 import { LibraryShell } from '../src/widgets/LibraryShell/LibraryShell'
 import { RoundSubmitBar } from '../src/widgets/RoundSubmitBar/RoundSubmitBar'
+import { TopBar } from '../src/widgets/TopBar/TopBar'
 
 const SAMPLE_ARTIFACT: Artifact = {
   publicId: 'AbCdEfGhIjKlMnOpQrStU',
@@ -81,7 +82,8 @@ afterEach(() => {
   useWorkspaceStore.setState({
     selectedProjectId: null,
     commandPaletteOpen: false,
-    inspectorOpen: false,
+    inspectorTab: null,
+    artifactViewId: null,
     viewMode: 'preview',
     wsStatus: 'closed',
     agentActivityByProject: {},
@@ -259,7 +261,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     client.close()
   })
 
-  it('ArtifactWorkspace 在 Agent 发布新版本重绘时保留视图/控件快照与未发草稿', () => {
+  it('制品默认打开交互画布，切换工具和 Agent 热更新保留视角、控件与批注草稿', () => {
     const posted: ShellToSandboxMessage[] = []
     const detailV1: ArtifactDetailResponse = {
       artifact: SAMPLE_ARTIFACT,
@@ -277,19 +279,40 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       defaultOptions: { queries: { retry: false } },
     })
 
-    const { container, rerender } = render(
+    const workspace = (detail: ArtifactDetailResponse, versions: readonly Version[]) => (
       <QueryClientProvider client={queryClient}>
+        <TopBar
+          artifact={detail.artifact}
+          version={detail.version}
+          versions={versions}
+          onBackToLibrary={() => {}}
+          onSelectVersion={() => {}}
+        />
         <ArtifactWorkspace
-          detail={detailV1}
-          versions={[SAMPLE_V1]}
+          detail={detail}
+          versions={versions}
           sandboxOrigin="http://127.0.0.1:24331"
         />
-      </QueryClientProvider>,
+      </QueryClientProvider>
     )
+    const { container, rerender } = render(workspace(detailV1, [SAMPLE_V1]))
 
     const iframe = container.querySelector('iframe')
     expect(iframe).toBeTruthy()
     expect(iframe?.getAttribute('sandbox')).toBe('allow-scripts')
+    expect(screen.getByRole('region', { name: '制品画布' }).contains(iframe)).toBe(true)
+    expect(screen.queryByRole('complementary', { name: '批注与评审面板' })).toBeNull()
+    expect(screen.queryByText('导出 HTML')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '放大画布' }))
+    expect(screen.getByLabelText('画布缩放比例').textContent).toBe('125%')
+    fireEvent.keyDown(screen.getByRole('button', { name: '更多操作' }), { key: 'Enter' })
+    expect(screen.getByRole('menuitem', { name: '导出 HTML' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('menuitem', { name: '查看源码' }))
+    expect(screen.queryByRole('region', { name: '制品画布' })).toBeNull()
+    expect(screen.getByText(SAMPLE_V1.source)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '返回画布' }))
+    expect(container.querySelector('iframe')).toBe(iframe)
 
     const iframeWin = iframe?.contentWindow
     expect(iframeWin).toBeTruthy()
@@ -325,10 +348,11 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       )
     })
 
-    // 用户在底栏输入未提交批注草稿
-    const draftInput = screen.getByLabelText('未提交批注草稿') as HTMLInputElement
+    fireEvent.click(screen.getByRole('button', { name: '批注' }))
+    const draftInput = screen.getByLabelText('批注内容') as HTMLTextAreaElement
     fireEvent.change(draftInput, { target: { value: '请把按钮改成次要描边样式' } })
     expect(draftInput.value).toBe('请把按钮改成次要描边样式')
+    fireEvent.click(screen.getByRole('button', { name: '收起批注面板' }))
 
     // 模拟 WS 推送 version.created 写入 Query 缓存并触发工作区重绘 v2
     queryClient.setQueryData(artifactKeys.detail(SAMPLE_ARTIFACT.publicId, undefined), detailV1)
@@ -345,15 +369,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     )
     expect(updatedDetail?.version.version).toBe(2)
 
-    rerender(
-      <QueryClientProvider client={queryClient}>
-        <ArtifactWorkspace
-          detail={updatedDetail as ArtifactDetailResponse}
-          versions={[SAMPLE_V1, SAMPLE_V2]}
-          sandboxOrigin="http://127.0.0.1:24331"
-        />
-      </QueryClientProvider>,
-    )
+    rerender(workspace(updatedDetail as ArtifactDetailResponse, [SAMPLE_V1, SAMPLE_V2]))
 
     const v2Render = posted.find((m) => m.type === 'render' && m.version === 2)
     expect(v2Render).toBeTruthy()
@@ -361,8 +377,10 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       controls: { threshold: 64 },
       scrollY: 180,
     })
-    // 重绘后未提交草稿完好保留
-    expect((screen.getByLabelText('未提交批注草稿') as HTMLInputElement).value).toBe(
+    expect(container.querySelector('iframe')).toBe(iframe)
+    expect(screen.getByLabelText('画布缩放比例').textContent).toBe('125%')
+    fireEvent.click(screen.getByRole('button', { name: '批注' }))
+    expect((screen.getByLabelText('批注内容') as HTMLTextAreaElement).value).toBe(
       '请把按钮改成次要描边样式',
     )
 
@@ -377,15 +395,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
         updatedAt: '2026-11-22T09:10:00.000Z',
       },
     }
-    rerender(
-      <QueryClientProvider client={queryClient}>
-        <ArtifactWorkspace
-          detail={resyncedDetail}
-          versions={[SAMPLE_V1, SAMPLE_V2]}
-          sandboxOrigin="http://127.0.0.1:24331"
-        />
-      </QueryClientProvider>,
-    )
+    rerender(workspace(resyncedDetail, [SAMPLE_V1, SAMPLE_V2]))
     // 不应重发 render 触发重挂载，而应以 state 根路径 replace 同步最新快照
     expect(posted.filter((m) => m.type === 'render')).toHaveLength(renderCountBeforeResync)
     const syncStateMsg = posted.find((m) => m.type === 'state' && m.seq === 12)
@@ -670,7 +680,6 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       rounds: [draftingRound],
     }
 
-    useWorkspaceStore.setState({ inspectorOpen: true })
     const { container } = render(
       <QueryClientProvider client={queryClient}>
         <ArtifactWorkspace
@@ -807,8 +816,11 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       queryClient.getQueryData<ArtifactDetailResponse>(versionDetailKey)
     expect(refreshedVersionDetail?.rounds[0]?.status).toBe('submitted')
 
-    // 底部提交栏展示本轮进度：已决策 1 / 2、草稿评论 2 条
+    // 选中画布元素打开评审面板，轮次动作随面板出现。
     const roundBar = screen.getByTestId('round-submit-bar')
+    expect(screen.getByRole('complementary', { name: '批注与评审面板' }).contains(roundBar)).toBe(
+      true,
+    )
     expect(roundBar.textContent).toContain('已决策 1 / 2')
     expect(roundBar.textContent).toContain('草稿评论 2 条')
     expect(screen.getByRole('button', { name: '提交本轮' })).toBeTruthy()
@@ -871,11 +883,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
           artifactId={SAMPLE_ARTIFACT.publicId}
           projectId={SAMPLE_ARTIFACT.projectId}
           activeVersion={2}
-          activeRound={{
-            ...draftingRound,
-            status: 'submitted',
-            submittedAt: '2026-11-22T09:05:00.000Z',
-          }}
+          activeRound={null}
           feedbacks={[{ ...currentVersionPin, draft: false, status: 'resolved' }]}
           onClose={() => {}}
         />

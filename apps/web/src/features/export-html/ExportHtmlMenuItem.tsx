@@ -1,9 +1,9 @@
 import type { Artifact, Version } from '@akasha/protocol'
-import { Button } from '@akasha/ui/button'
+import { DropdownMenuItem } from '@akasha/ui/dropdown-menu'
 import { Download } from 'lucide-react'
 import { toast } from 'sonner'
 
-export interface ExportHtmlButtonProps {
+interface ExportHtmlMenuItemProps {
   artifact: Artifact
   version: Version
 }
@@ -17,7 +17,7 @@ function escapeHtml(text: string): string {
 }
 
 // 生成自包含的离线单文件 HTML 快照，便于归档或邮件/IM 分享。
-export function buildStandaloneHtml(artifact: Artifact, version: Version): string {
+function buildStandaloneHtml(artifact: Artifact, version: Version): string {
   const safeTitle = escapeHtml(`${artifact.title} (v${version.version})`)
   if (artifact.type === 'html' || artifact.type === 'document') {
     if (/<html\b/i.test(version.source)) {
@@ -74,7 +74,7 @@ ${version.source}
 </html>`
 }
 
-export function ExportHtmlButton({ artifact, version }: ExportHtmlButtonProps) {
+export function ExportHtmlMenuItem({ artifact, version }: ExportHtmlMenuItemProps) {
   const handleExport = () => {
     const html = buildStandaloneHtml(artifact, version)
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
@@ -90,8 +90,9 @@ export function ExportHtmlButton({ artifact, version }: ExportHtmlButtonProps) {
   }
 
   return (
-    <Button variant="outline" size="sm" leftIcon={<Download size={13} />} onClick={handleExport}>
+    <DropdownMenuItem onSelect={handleExport}>
+      <Download size={14} />
       导出 HTML
-    </Button>
+    </DropdownMenuItem>
   )
 }

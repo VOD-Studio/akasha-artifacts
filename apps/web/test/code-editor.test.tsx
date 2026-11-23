@@ -44,7 +44,7 @@ beforeAll(() => {
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
-  useWorkspaceStore.setState({ viewMode: 'preview', inspectorOpen: false })
+  useWorkspaceStore.setState({ viewMode: 'preview', inspectorTab: null })
 })
 
 const SAMPLE_ARTIFACT: Artifact = {
@@ -238,7 +238,7 @@ describe('apps/web L3 CodeMirror 6 分栏代码编辑与冲突处理', () => {
   })
 
   it('ArtifactWorkspace 在 edit 分栏模式下并排展示 CodeMirror 编辑器与实时隔离沙盒 iframe，切图保留草稿', async () => {
-    useWorkspaceStore.setState({ viewMode: 'edit', inspectorOpen: false })
+    useWorkspaceStore.setState({ viewMode: 'edit', inspectorTab: null })
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const { container } = render(
       <QueryClientProvider client={qc}>
@@ -263,7 +263,7 @@ describe('apps/web L3 CodeMirror 6 分栏代码编辑与冲突处理', () => {
     expect(screen.getByTestId('l3-code-editor')).toBeTruthy()
     const iframe = container.querySelector('iframe')
     expect(iframe).toBeTruthy()
-    expect(iframe?.className).toContain('block')
+    expect(screen.getByRole('region', { name: '制品画布' }).contains(iframe)).toBe(true)
 
     // 切换视图（edit -> preview -> diff -> edit）必须保留未保存草稿而不重建编辑器
     act(() => {
