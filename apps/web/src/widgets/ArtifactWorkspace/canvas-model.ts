@@ -25,6 +25,8 @@ export interface CanvasPage {
   id: string
   title: string
   boards: readonly CanvasBoard[]
+  /** 署名页面上的直属画板数；总览等虚拟页面不支持改名或删除。 */
+  ownedBoardCount?: number
 }
 
 /** 制品的画布文档：若干页面，每页若干画板。 */
@@ -47,7 +49,8 @@ function descriptionMarkup(description: string) {
   return `<p class="p-4 text-sm">${text}</p>`
 }
 
-function canvasIds(
+/** 以基准版本的可见标识定位旧对象，持久化编辑须保留该标识。 */
+export function canvasIds(
   items: readonly { id: string; title: string; inferredId?: true }[],
   kind: 'page' | 'board',
   version: number,
@@ -148,6 +151,7 @@ export function createCanvasDocument(
     pages.push({
       id: pageIds.get(id) ?? id,
       title,
+      ownedBoardCount: own?.length ?? 0,
       boards: showShared
         ? own?.length && shared.length
           ? [...own, ...shared]
@@ -182,26 +186,6 @@ export function createCanvasDocument(
         : [],
     handDrawnFlows: Boolean(overlay?.handDrawnFlows ?? data.handDrawnFlows),
   }
-}
-
-/** 追加独立空页，不改变原有画板归属和源码中的其他字段。 */
-export function addCanvasPage(source: string, page: Pick<CanvasPage, 'id' | 'title'>): string {
-  const data: unknown = JSON.parse(source)
-  if (
-    data === null ||
-    typeof data !== 'object' ||
-    Array.isArray(data) ||
-    !('boards' in data) ||
-    !Array.isArray(data.boards)
-  ) {
-    throw new Error('当前源码不是可编辑的画板制品')
-  }
-  const pages = 'pages' in data && Array.isArray(data.pages) ? data.pages : []
-  return JSON.stringify(
-    { ...data, pages: [...pages, { ...page, includeSharedBoards: false }] },
-    null,
-    2,
-  )
 }
 
 interface BlockPlacement {

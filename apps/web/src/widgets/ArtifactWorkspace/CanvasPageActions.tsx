@@ -5,7 +5,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { artifactKeys } from '../../entities/artifact/queries'
 import { type ArtifactDetailResponse, publishHumanVersion } from '../../shared/api/client'
-import { addCanvasPage, type CanvasPage } from './canvas-model'
+import type { CanvasPage } from './canvas-model'
+import { type CanvasPageEdit, editCanvasPages } from './canvas-page-source'
 
 /** 可保存页面的头版本快照。 */
 export interface CanvasPageEditing {
@@ -16,29 +17,48 @@ export interface CanvasPageEditing {
 
 interface CanvasPageActionsProps {
   editing: CanvasPageEditing
+  page: CanvasPage | undefined
+  pages: readonly CanvasPage[]
   onNavigate: (page: CanvasPage) => void
 }
 
+type PageDraft =
+  | { kind: 'create'; title: string; baseVersion: number }
+  | { kind: 'rename'; page: CanvasPage; title: string; baseVersion: number }
+  | { kind: 'delete'; page: CanvasPage; baseVersion: number }
+
 /** 只保存已确认的页面变更；基准版本过期时保留输入并给出错误。 */
-export function CanvasPageActions({ editing, onNavigate }: CanvasPageActionsProps) {
+export function CanvasPageActions({ editing, page, pages, onNavigate }: CanvasPageActionsProps) {
   const queryClient = useQueryClient()
-  const [draft, setDraft] = useState<{ title: string; baseVersion: number } | null>(null)
+  const [draft, setDraft] = useState<PageDraft | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const { artifact, version, onVersionSaved } = editing
+  const title = draft && 'title' in draft ? draft.title.trim() : ''
+  const canSave =
+    draft?.kind === 'delete' ||
+    (Boolean(title) && (draft?.kind !== 'rename' || title !== draft.page.title))
+
+  function begin(next: PageDraft) {
+    setError('')
+    setDraft(next)
+  }
 
   async function save() {
-    if (!draft || saving) return
-    const title = draft.title.trim()
-    if (!title) return
+    if (!draft || saving || !canSave) return
     setError('')
     setSaving(true)
     try {
       if (draft.baseVersion !== version.version) {
         throw new Error('制品已更新，请重新开始页面操作')
       }
-      const page = { id: crypto.randomUUID(), title, boards: [] }
-      const source = addCanvasPage(version.source, page)
+      const edit: CanvasPageEdit =
+        draft.kind === 'create'
+          ? { kind: 'create', id: crypto.randomUUID(), title }
+          : draft.kind === 'rename'
+            ? { kind: 'rename', id: draft.page.id, title }
+            : { kind: 'delete', id: draft.page.id }
+      const source = editCanvasPages(version.source, draft.baseVersion, edit)
       const saved = await publishHumanVersion({
         project: artifact.projectId,
         slug: artifact.slug,
@@ -57,7 +77,12 @@ export function CanvasPageActions({ editing, onNavigate }: CanvasPageActionsProp
       void queryClient.invalidateQueries({ queryKey: artifactKeys.all })
       onVersionSaved?.(saved.version)
       setDraft(null)
-      onNavigate(page)
+      if (edit.kind === 'create') {
+        onNavigate({ id: edit.id, title: edit.title, boards: [] })
+      } else if (edit.kind === 'delete') {
+        const fallback = pages.find((entry) => entry.id !== edit.id)
+        onNavigate(fallback ?? { id: '', title: '总览', boards: [] })
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '无法保存画布页面')
     } finally {
@@ -67,16 +92,35 @@ export function CanvasPageActions({ editing, onNavigate }: CanvasPageActionsProp
 
   if (!draft) {
     return (
-      <Button
-        size="sm"
-        variant="ghost"
-        onClick={() => {
-          setError('')
-          setDraft({ title: '', baseVersion: version.version })
-        }}
-      >
-        新建页面
-      </Button>
+      <>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => begin({ kind: 'create', title: '', baseVersion: version.version })}
+        >
+          新建页面
+        </Button>
+        {page?.ownedBoardCount !== undefined ? (
+          <>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                begin({ kind: 'rename', page, title: page.title, baseVersion: version.version })
+              }
+            >
+              重命名页面
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => begin({ kind: 'delete', page, baseVersion: version.version })}
+            >
+              删除页面
+            </Button>
+          </>
+        ) : null}
+      </>
     )
   }
 
@@ -88,14 +132,21 @@ export function CanvasPageActions({ editing, onNavigate }: CanvasPageActionsProp
         void save()
       }}
     >
-      <Input
-        aria-label="页面名称"
-        placeholder="页面名称"
-        controlSize="sm"
-        value={draft.title}
-        disabled={saving}
-        onChange={(event) => setDraft({ ...draft, title: event.target.value })}
-      />
+      {draft.kind === 'delete' ? (
+        <p className="text-sm text-ink">
+          删除「{draft.page.title}」会同时移除 {draft.page.ownedBoardCount} 张直属画板。
+          共享画板与旧版本不变。
+        </p>
+      ) : (
+        <Input
+          aria-label="页面名称"
+          placeholder="页面名称"
+          controlSize="sm"
+          value={draft.title}
+          disabled={saving}
+          onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+        />
+      )}
       {error ? (
         <p role="alert" className="text-xs text-danger">
           {error}
@@ -105,8 +156,8 @@ export function CanvasPageActions({ editing, onNavigate }: CanvasPageActionsProp
         <Button size="sm" variant="ghost" disabled={saving} onClick={() => setDraft(null)}>
           取消
         </Button>
-        <Button type="submit" size="sm" disabled={!draft.title.trim() || saving}>
-          {saving ? '保存中…' : '保存页面'}
+        <Button type="submit" size="sm" disabled={!canSave || saving}>
+          {saving ? '保存中…' : draft.kind === 'delete' ? '确认删除页面' : '保存页面'}
         </Button>
       </div>
     </form>
