@@ -12,6 +12,7 @@ import {
 } from './mcp.js'
 
 export interface ContractTestOptions {
+  // 存在时以 `Bearer <token>` 随每个请求发送
   baseUrl: string
   token?: string
   fetchImpl?: typeof fetch
@@ -31,7 +32,11 @@ export interface ContractTestReport {
   cases: ContractCaseResult[]
 }
 
-// 协议契约测试框架：仅通过 HTTP 黑盒校验任意服务端实现是否符合 @akasha/protocol 契约。
+/**
+ * 协议契约测试：只通过 HTTP 黑盒校验任意服务端实现是否符合 `@akasha/protocol`。
+ *
+ * @returns 逐用例结果；单个用例失败不中断后续用例。
+ */
 export async function runContractTests(options: ContractTestOptions): Promise<ContractTestReport> {
   const fetchFn = options.fetchImpl ?? fetch
   const baseUrl = options.baseUrl.replace(/\/+$/, '')
