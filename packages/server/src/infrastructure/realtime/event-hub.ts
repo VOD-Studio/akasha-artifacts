@@ -27,6 +27,7 @@ export interface EventHubOptions {
   // 持久化后端重启后传入上次 seq + 1，使所有携带旧游标的重连客户端必定收到 resync
   initialSeq?: number
   onSeqAdvance?: (seq: number) => void
+  allocateSeq?: () => Promise<number>
   resolveArtifactProject?: (artifactId: PublicId) => string | undefined
 }
 
@@ -38,6 +39,7 @@ export class RealtimeEventHub implements RealtimePublisher, RealtimeSubscriber {
   private nextSubId = 0
   private readonly maxHistory: number
   private readonly history: StoredEventRecord[] = []
+  private publishQueue?: Promise<void>
   private readonly subscribers = new Map<number, ActiveSubscriber>()
   private readonly artifactProjects = new Map<PublicId, string>()
   private readonly agentActivities = new Map<
@@ -99,13 +101,30 @@ export class RealtimeEventHub implements RealtimePublisher, RealtimeSubscriber {
   }
 
   async publish(payload: RealtimeEventPayload, meta?: RealtimePublishMeta): Promise<void> {
-    this.seq += 1
-    this.options.onSeqAdvance?.(this.seq)
+    const allocateSeq = this.options.allocateSeq
+    if (!allocateSeq) {
+      this.deliver(this.seq + 1, payload, meta)
+      return
+    }
+    // 数据库分配与投递必须同序，且只有已持久化的序号才能向客户端可见。
+    const send = async () => this.deliver(await allocateSeq(), payload, meta)
+    const publish = this.publishQueue ? this.publishQueue.then(send) : send()
+    this.publishQueue = publish.catch(() => {})
+    await publish
+  }
+
+  async waitForPendingPublishes(): Promise<void> {
+    await this.publishQueue
+  }
+
+  private deliver(seq: number, payload: RealtimeEventPayload, meta?: RealtimePublishMeta): void {
+    this.seq = seq
+    this.options.onSeqAdvance?.(seq)
 
     const event = {
       ...payload,
       v: PROTOCOL_VERSION,
-      seq: this.seq,
+      seq,
       timestamp: this.options.clock.now(),
     } as RealtimeServerEvent
 
@@ -191,23 +210,23 @@ export class RealtimeEventHub implements RealtimePublisher, RealtimeSubscriber {
     this.subscribers.set(id, sub)
 
     if (opts.artifactId) {
-      void this.emitPresence(opts.artifactId)
+      this.emitPresence(opts.artifactId)
     }
 
     return () => {
       const existed = this.subscribers.delete(id)
       if (existed && opts.artifactId) {
-        void this.emitPresence(opts.artifactId)
+        this.emitPresence(opts.artifactId)
       }
     }
   }
 
-  private async emitPresence(artifactId: PublicId): Promise<void> {
+  private emitPresence(artifactId: PublicId): void {
     const viewers = this.getViewerCount(artifactId)
     const agentOnline = Array.from(this.agentActivities.values()).some((a) => a.state !== 'offline')
     const projectId =
       this.artifactProjects.get(artifactId) ?? this.options.resolveArtifactProject?.(artifactId)
-    await this.publish(
+    void this.publish(
       {
         type: 'presence.changed',
         artifactId,
@@ -215,7 +234,7 @@ export class RealtimeEventHub implements RealtimePublisher, RealtimeSubscriber {
         agentOnline,
       },
       projectId ? { projectId } : undefined,
-    )
+    ).catch((error) => console.error('无法发布在线状态', error))
   }
 }
 

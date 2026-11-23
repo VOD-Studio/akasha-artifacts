@@ -1,5 +1,5 @@
 import { RealtimeClientMessageSchema, type RealtimeServerEvent } from '@akasha/protocol'
-import { createNodeWebSocket } from '@hono/node-ws'
+import { createNodeWebSocket, type NodeWebSocket } from '@hono/node-ws'
 import type { Hono } from 'hono'
 import type { RealtimeSubscriber } from '../../domain/ports.js'
 import type { HubRealtimeScope } from '../http/hub-access.js'
@@ -19,8 +19,8 @@ export function attachNodeWebSocket(
   app: Hono,
   realtime: RealtimeSubscriber,
   authorization?: NodeWebSocketAuthorization,
-) {
-  const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app })
+): Pick<NodeWebSocket, 'injectWebSocket' | 'wss'> {
+  const { injectWebSocket, upgradeWebSocket, wss } = createNodeWebSocket({ app })
 
   app.get(
     '/api/v1/ws',
@@ -129,5 +129,5 @@ export function attachNodeWebSocket(
     }),
   )
 
-  return { injectWebSocket }
+  return { injectWebSocket, wss }
 }

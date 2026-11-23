@@ -422,5 +422,26 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
     },
   }
 
-  return { projects, artifacts, states, rounds, feedbacks, receipts, artifactStorage, ready }
+  async function allocateRealtimeSeq(): Promise<number> {
+    const row = await first<{ seq: string }>(
+      `INSERT INTO hub_realtime_cursor (id, seq) VALUES (1, 0)
+       ON CONFLICT(id) DO UPDATE SET seq = hub_realtime_cursor.seq + 1
+       RETURNING CAST(seq AS TEXT) AS seq`,
+    )
+    const seq = Number(row?.seq)
+    if (!Number.isSafeInteger(seq)) throw new Error('Hub 实时序号超出安全整数范围')
+    return seq
+  }
+
+  return {
+    projects,
+    artifacts,
+    states,
+    rounds,
+    feedbacks,
+    receipts,
+    artifactStorage,
+    allocateRealtimeSeq,
+    ready,
+  }
 }

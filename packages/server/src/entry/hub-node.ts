@@ -33,7 +33,12 @@ export async function startNodeHub(options: NodeHubOptions) {
   try {
     await storage.ready
     const clock = new SystemClock()
-    const realtime = new RealtimeEventHub({ clock })
+    const realtime = new RealtimeEventHub({
+      clock,
+      // 重启占一个不投递的序号；旧游标不能将新进程的历史误当成连续事件。
+      initialSeq: await storage.allocateRealtimeSeq(),
+      allocateSeq: storage.allocateRealtimeSeq,
+    })
     const hub = createHubContainer({
       ...options,
       repositories: storage,
@@ -56,7 +61,7 @@ export async function startNodeHub(options: NodeHubOptions) {
       )
     }
 
-    const { injectWebSocket } = attachNodeWebSocket(app, realtime, {
+    const { injectWebSocket, wss } = attachNodeWebSocket(app, realtime, {
       authorizeUpgrade: canConnect,
       authorizeSubscription: hub.authorizeRealtime,
       authorizeEvent: hub.authorizeRealtimeEvent,
@@ -84,10 +89,13 @@ export async function startNodeHub(options: NodeHubOptions) {
       ...hub,
       server,
       async close() {
-        const closed = once(server, 'close')
+        // WS 断开会发布最后的在线状态；等断开和写入都结束后才能关库。
+        const closed = Promise.all([once(server, 'close'), once(wss, 'close')])
         server.close()
+        wss.close()
         for (const socket of sockets) socket.destroy()
         await closed
+        await realtime.waitForPendingPublishes()
         await storage.close()
       },
     }

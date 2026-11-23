@@ -30,6 +30,8 @@ import { HubAccountButton } from '../../features/hub/HubActions'
 import { isCloudHub } from '../../shared/config/runtime'
 import { ARTIFACT_TYPE_LABELS, formatRelativeTime } from '../../shared/lib/format'
 
+const HUB_LIBRARY_REFRESH_MS = 10_000
+
 export interface LibraryShellProps {
   onOpenArtifact: (publicId: string) => void
 }
@@ -43,8 +45,13 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
   const [showDormant, setShowDormant] = useState(false)
   const [contextProject, setContextProject] = useState<string | null>(null)
 
-  const { data: projects = [], isLoading: projectsLoading } = useProjectsQuery()
-  const { data: allArtifacts = [], isLoading: artifactsLoading } = useArtifactsQuery()
+  const cloudHub = isCloudHub()
+  const interval = cloudHub ? HUB_LIBRARY_REFRESH_MS : undefined
+  const { data: projects = [], isLoading: projectsLoading } = useProjectsQuery(interval)
+  const { data: allArtifacts = [], isLoading: artifactsLoading } = useArtifactsQuery(
+    undefined,
+    interval,
+  )
   const removeProjectMutation = useRemoveProjectMutation()
 
   const sortedProjects = useMemo(
@@ -175,7 +182,7 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
             快速跳转
             <Kbd size="sm" keys={['mod', 'K']} className="ml-1.5" />
           </Button>
-          {isCloudHub() ? <HubAccountButton /> : <DaemonStatusPill />}
+          {cloudHub ? <HubAccountButton /> : <DaemonStatusPill />}
         </div>
       </header>
 

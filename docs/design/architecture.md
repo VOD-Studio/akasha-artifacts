@@ -450,6 +450,7 @@ sequenceDiagram
 
 Docker 单容器：Node 入口 + SQLite 或 PostgreSQL，版本源码可选 S3 兼容对象存储。实时通道使用 `node-ws`。
 
+- Hub 项目库在前台每 10 秒通过权限过滤后的列表接口刷新，不使用全局 WebSocket 订阅。制品页仍按范围订阅；实时序号存入数据库，重启预留一个序号，让携带旧游标的客户端收到 `resync` 并重读制品。
 - **本机直连优先**：已用 CLI 绑定该 Hub 的机器先探测固定端口段；Daemon 仅允许该 Hub origin 查询相同制品 ID／历史版本是否已存在，不返回内容或凭据。命中后打开本机工作台，使用本机同源 API 和 WebSocket，不创建 Hub 实时连接；未命中走 Hub。两边的数据不会自动复制。
 - Hub 额外提供：鉴权（GitHub OAuth / 团队 SSO）、可见性（`private` / `team` / `public`）、离线反馈队列，以及 `akasha login` 下发的 CLI 访问令牌。
 

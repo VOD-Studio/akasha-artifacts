@@ -104,4 +104,10 @@ export const schema: SqlStatement[] = [
       json TEXT NOT NULL
     )`,
   ],
+  [
+    `CREATE TABLE IF NOT EXISTS hub_realtime_cursor (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      seq BIGINT NOT NULL
+    )`,
+  ],
 ]

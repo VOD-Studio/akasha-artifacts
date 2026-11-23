@@ -460,6 +460,58 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     expect(screen.getByText('-1')).toBeTruthy()
   })
 
+  it('Hub 项目库持续打开时会显示 Agent 新发布的项目和制品', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('__AKASHA_CONFIG__', { hub: true })
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    const project = {
+      id: 'proj_review',
+      rootPath: '/repo/review',
+      name: '新登记项目',
+      lastActiveAt: '2026-11-22T09:00:00.000Z',
+      dormant: false,
+    }
+    let published = false
+    vi.stubGlobal('fetch', async (url: string) => {
+      switch (url) {
+        case '/api/v1/projects':
+          return Response.json({ projects: published ? [project] : [] })
+        case '/api/v1/artifacts':
+          return Response.json({
+            artifacts: published
+              ? [{ ...SAMPLE_ARTIFACT, projectId: project.id, title: '新发布制品' }]
+              : [],
+          })
+        case '/api/v1/auth/session':
+          return Response.json({ user: null })
+        default:
+          throw new Error(`意外请求：${url}`)
+      }
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+    })
+    try {
+      render(
+        <QueryClientProvider client={queryClient}>
+          <LibraryShell onOpenArtifact={() => {}} />
+        </QueryClientProvider>,
+      )
+      await act(() => vi.advanceTimersByTimeAsync(20))
+      expect(screen.queryByText('新发布制品')).toBeNull()
+
+      published = true
+      await act(() => vi.advanceTimersByTimeAsync(15_000))
+      expect(screen.getByText('新发布制品')).toBeTruthy()
+      fireEvent.click(screen.getByRole('button', { name: '新登记项目' }))
+      expect(screen.getByText('新发布制品')).toBeTruthy()
+    } finally {
+      cleanup()
+      queryClient.clear()
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('反向 FSD 依赖（entities → features）会被 scripts/check-deps.mjs 拦截', () => {
     const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fsd-test-'))
     try {

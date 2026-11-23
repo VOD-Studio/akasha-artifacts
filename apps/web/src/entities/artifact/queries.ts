@@ -23,7 +23,7 @@ export const artifactKeys = {
   spec: (type: ArtifactType) => ['artifacts', 'spec', type] as const,
 }
 
-export function useArtifactsQuery(projectId?: string) {
+export function useArtifactsQuery(projectId?: string, refetchInterval?: number) {
   return useQuery({
     queryKey: artifactKeys.list(projectId),
     queryFn: async () => {
@@ -31,6 +31,7 @@ export function useArtifactsQuery(projectId?: string) {
       return res.artifacts
     },
     staleTime: 5_000,
+    refetchInterval,
   })
 }
 
