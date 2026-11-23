@@ -14,9 +14,15 @@ import {
 export interface ProbeResult {
   state: DaemonStateFile
   status: DaemonStatus
+  /** `http://<host>:<port>`，后续请求的根地址。 */
   baseUrl: string
 }
 
+/**
+ * 探测本机 Daemon 是否在运行。
+ *
+ * @returns 运行中则返回它的状态与状态文件内容；没有状态文件、请求失败或响应不合法时返回 `null`。
+ */
 export async function probeDaemon(
   homeDir?: string,
   fetchImpl: typeof fetch = fetch,
@@ -38,6 +44,13 @@ export async function probeDaemon(
   }
 }
 
+/**
+ * 请求 Daemon 退出。
+ *
+ * @remarks 先调 shutdown 接口，请求失败时改发 `SIGTERM`；随后最多等 3 秒确认它退出，
+ * 最后清掉 `daemon.json`。
+ * @returns `stopped` 表示找到了状态文件并执行了停止；没有状态文件时为 false。
+ */
 export async function stopDaemon(
   homeDir?: string,
   fetchImpl: typeof fetch = fetch,
@@ -80,7 +93,9 @@ export async function stopDaemon(
 }
 
 export interface EnsureDaemonOptions {
+  // Akasha home 目录，缺省同 `resolveAkashaHome`
   homeDir?: string
+  // 给出时顺带向 Daemon 登记该项目，返回值里带上 projectId
   projectDir?: string
   version?: string
   host?: string
@@ -98,6 +113,14 @@ export interface EnsureDaemonOptions {
   }) => Promise<void>
 }
 
+/**
+ * 确保本机有一个可用的 Daemon：没有就拉起，版本或端口不一致就平滑替换。
+ *
+ * @remarks 已运行的 Daemon 只有在版本、host 与指定端口都一致时才复用；
+ * 替换时继承旧 Daemon 的端口与数据库路径。拉起后最多等 8 秒直到它应答。
+ * @returns `reused` 表示复用了现有 Daemon，`replaced` 表示替换了旧 Daemon。
+ * @throws {Error} 8 秒内没有等到 Daemon 应答。
+ */
 export async function ensureDaemon(options: EnsureDaemonOptions = {}): Promise<{
   state: DaemonStateFile
   baseUrl: string
@@ -209,6 +232,7 @@ async function registerProjectWithDaemon(
   return data.project.id
 }
 
+// 以脱离父进程的子进程运行 akasha serve，CLI 退出后 Daemon 继续运行
 function spawnDetachedServe(opts: {
   homeDir: string
   host: string
