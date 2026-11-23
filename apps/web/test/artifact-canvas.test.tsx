@@ -2,7 +2,7 @@
 import { type Artifact, type Feedback, PROTOCOL_VERSION, type Version } from '@akasha/protocol'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createAppRouter } from '../src/routes/router'
 import type { ArtifactDetailResponse } from '../src/shared/api/client'
@@ -114,6 +114,25 @@ afterEach(() => {
   sessionStorage.clear()
 })
 
+it('聚焦报错仍用普通制品的原始链接向 Agent 投递', async () => {
+  const request = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json({}))
+  const base = detailFor(1, '<h1>预约首页</h1>')
+  showWorkspace({ ...base, artifact: { ...base.artifact, type: 'html' } })
+  fireEvent.click(screen.getByRole('button', { name: '聚焦画板：茶席预约' }))
+  const focus = screen.getByRole('region', { name: '画板聚焦' })
+  const frame = within(focus).getByTitle<HTMLIFrameElement>('茶席预约 隔离沙盒')
+  const sandboxFrame = sandbox(frame)
+  sandboxFrame.receive({ type: 'ready' })
+  sandboxFrame.receive({ type: 'error', phase: 'runtime', message: '焦点画板报错' })
+  fireEvent.click(within(focus).getByRole('button', { name: '交给 Agent 修复' }))
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith(
+      expect.stringContaining(`/api/v1/artifacts/${artifact.publicId}/feedback`),
+      expect.objectContaining({ method: 'POST' }),
+    ),
+  )
+})
+
 it('在同一画布页面比较独立视口的宽屏和手机画板', () => {
   const legacyPin: Feedback = {
     id: 'mobile-pin',
@@ -167,6 +186,12 @@ it('在同一画布页面比较独立视口的宽屏和手机画板', () => {
   mobileSandbox.receive({ type: 'error', phase: 'runtime', message: '手机画板渲染失败' })
   expect(mobile.parentElement?.contains(screen.getByText('手机画板渲染失败'))).toBe(true)
   expect(desktop.parentElement?.querySelector('[role="alert"]')).toBeNull()
+
+  fireEvent.click(screen.getByRole('button', { name: '聚焦画板：手机首页' }))
+  const focus = screen.getByRole('region', { name: '画板聚焦' })
+  expect(within(focus).queryByTitle('确认手机字号')).toBeNull()
+  fireEvent.click(within(focus).getByRole('button', { name: '返回总览' }))
+  expect(screen.getByTitle('确认手机字号')).toBeTruthy()
 })
 
 it('跨页查找、热更新和刷新都保留仍在的选板与倍率', () => {
@@ -214,6 +239,39 @@ it('跨页查找、热更新和刷新都保留仍在的选板与倍率', () => {
     'true',
   )
   expect(screen.getByLabelText('画布缩放比例').textContent).toBe(zoomed)
+})
+
+it('聚焦按画板固有视口渲染，退出恢复总览的倍率、选板和键盘焦点', () => {
+  showWorkspace()
+  const canvas = screen.getByRole('region', { name: '制品画布' })
+  const title = within(canvas).getByRole('button', { name: '手机首页' })
+  fireEvent.click(title)
+  fireEvent.click(screen.getByRole('button', { name: '放大' }))
+  const overviewZoom = screen.getByLabelText('画布缩放比例').textContent
+  const launch = within(canvas).getByRole('button', { name: '聚焦画板：手机首页' })
+  fireEvent.click(launch)
+
+  const focus = screen.getByRole('region', { name: '画板聚焦' })
+  expect(screen.queryByRole('region', { name: '制品画布' })).toBeNull()
+  const frame = within(focus).getByTitle<HTMLIFrameElement>('手机首页 隔离沙盒')
+  expect([frame.width, frame.height, frame.getAttribute('sandbox')]).toEqual([
+    '390',
+    '844',
+    'allow-scripts',
+  ])
+  expect(frame.hasAttribute('inert')).toBe(true)
+  fireEvent.click(within(focus).getByRole('button', { name: '填充宽度' }))
+  expect(within(focus).getByRole('button', { name: '填充宽度' }).getAttribute('aria-pressed')).toBe(
+    'true',
+  )
+  fireEvent.click(within(focus).getByRole('button', { name: '实际大小' }))
+  expect(within(focus).getByLabelText('画板缩放比例').textContent).toBe('100%')
+
+  fireEvent.keyDown(within(focus).getByRole('button', { name: '返回总览' }), { key: 'Escape' })
+  expect(screen.queryByRole('region', { name: '画板聚焦' })).toBeNull()
+  expect(title.getAttribute('aria-pressed')).toBe('true')
+  expect(screen.getByLabelText('画布缩放比例').textContent).toBe(overviewZoom)
+  expect(document.activeElement).toBe(launch)
 })
 
 it('旧制品没有显式 ID 时，重排后仍选中原标题的画板', () => {

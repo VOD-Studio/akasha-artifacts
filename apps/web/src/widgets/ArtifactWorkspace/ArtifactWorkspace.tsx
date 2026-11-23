@@ -92,13 +92,18 @@ export function ArtifactWorkspace({
 
   const activeRound = useMemo(() => selectActiveRound(rounds), [rounds])
   const frames = useRef(new Map<string, FrameConnection>())
+  const focusedFrame = useRef<FrameConnection | null>(null)
   const registerFrame = useCallback((id: string, frame: FrameConnection | null) => {
     if (frame) frames.current.set(id, frame)
     else frames.current.delete(id)
   }, [])
+  const registerFocusedFrame = useCallback((_id: string, frame: FrameConnection | null) => {
+    focusedFrame.current = frame
+  }, [])
   useEffect(() => {
     onRegisterStateForwarder?.((seq, ops) => {
       for (const frame of frames.current.values()) frame.forwardState(seq, ops)
+      focusedFrame.current?.forwardState(seq, ops)
     })
     return () => onRegisterStateForwarder?.(null)
   }, [onRegisterStateForwarder])
@@ -195,20 +200,30 @@ export function ArtifactWorkspace({
   )
   const canvasSessionKey = `akasha:canvas:${artifact.publicId}/${fixedVersion ?? 'head'}`
   const renderBoard = useCallback(
-    (board: CanvasBoard, interactive: boolean) => (
+    (board: CanvasBoard, interactive: boolean, focused = false) => (
       <ArtifactFrame
         artifact={artifact}
         board={board}
         version={version}
         state={state}
         sandboxOrigin={sandboxOrigin}
-        pins={versionPins}
+        pins={focused ? EMPTY_FEEDBACKS : versionPins}
         interactive={interactive}
-        register={registerFrame}
+        focused={focused}
+        register={focused ? registerFocusedFrame : registerFrame}
         onVisualSelect={onVisualSelect}
       />
     ),
-    [artifact, version, state, sandboxOrigin, versionPins, registerFrame, onVisualSelect],
+    [
+      artifact,
+      version,
+      state,
+      sandboxOrigin,
+      versionPins,
+      registerFrame,
+      registerFocusedFrame,
+      onVisualSelect,
+    ],
   )
 
   const handleHighlightElement = useCallback(
