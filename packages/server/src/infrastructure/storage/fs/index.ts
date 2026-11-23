@@ -650,12 +650,41 @@ export class FsArtifactRepository implements ArtifactRepository {
     // 以下校验、外部未同步改动对账、占位与 SQLite 原子提交全同步执行，避免并发别名碰撞或静默覆写外部编辑
     this.assertNoPhysicalDirCollisionSync(artifact, layout)
     const previous = this.inner.findByPublicIdSync(artifact.publicId)
+    const targetDir = resolveRealPathAllowMissing(layout.artifactDir)
     if (previous && stagedForHead) {
       this.reconcilePendingDiskEditBeforeWrite(previous, stagedForHead)
+      // 类型或布局迁移到新物理目录时，若目标目录已存在未入库的外部源文件，拒绝覆写以保护外部修改
+      const prevLayout = resolveArtifactFileLayout(this.artifactsRoot, previous.type, previous.slug)
+      const prevDir = resolveRealPathAllowMissing(prevLayout.artifactDir)
+      if (prevDir !== targetDir) {
+        const destDiskFile = this.findExistingDiskEntry(artifact)
+        if (destDiskFile) {
+          let destSource: string | undefined
+          try {
+            destSource = fs.readFileSync(destDiskFile, 'utf8')
+          } catch {
+            destSource = undefined
+          }
+          const isWatcherOwnMigration =
+            stagedForHead.author === 'agent:fs' && destSource === stagedForHead.source
+          const importing = this.importingExternalFiles.get(
+            resolveRealPathAllowMissing(destDiskFile),
+          )
+          if (
+            !isWatcherOwnMigration &&
+            !(importing && importing.slug === artifact.slug && importing.source === destSource)
+          ) {
+            throw new DomainError(
+              'BAD_REQUEST',
+              `目标物理目录 "${layout.normalizedRelativeDir}" 已存在尚未入库的外部源文件，拒绝迁移覆写`,
+              { destinationDir: layout.normalizedRelativeDir },
+            )
+          }
+        }
+      }
     } else if (!previous) {
       this.reconcileUnindexedDiskFileBeforeCreate(artifact, layout)
     }
-    const targetDir = resolveRealPathAllowMissing(layout.artifactDir)
     this.reservedDirs.set(targetDir, artifact.publicId)
 
     try {

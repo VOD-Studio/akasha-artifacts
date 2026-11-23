@@ -945,4 +945,58 @@ describe('.artifacts/ 原生文件存储适配器与外部编辑监听', () => {
     expect(merged.artifact.headVersion).toBe(2)
     expect(fs.readFileSync(cardFile, 'utf8')).toBe('<div>merged v2</div>')
   })
+
+  it('类型迁移目标目录已存在未入库外部源文件时拒绝迁移覆写，保留外部文件与原版本历史', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-migrate-unindexed-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    const container = createLocalContainer({
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_mig_ext',
+      fsWatchDebounceMs: 5000,
+    })
+    closers.push(container.close)
+    await container.ready
+
+    const reactCard = await container.service.publish({
+      projectId: 'proj_mig_ext',
+      slug: 'card',
+      title: 'React Card',
+      type: 'react',
+      source: 'export default function App() { return <div>react v1</div> }',
+      author: 'agent:cli',
+    })
+
+    // 外部工具在目标 html/card/ 目录新建了尚未入库的文件
+    const externalHtmlDir = path.join(artifactsDir, 'html', 'card')
+    fs.mkdirSync(externalHtmlDir, { recursive: true })
+    const externalHtmlFile = path.join(externalHtmlDir, 'index.html')
+    fs.writeFileSync(externalHtmlFile, '<div>external html must survive</div>', 'utf8')
+
+    // 尝试将 react 'card' 迁移为 html 必须被拒绝，绝不静默覆写外部 HTML 文件
+    await expect(
+      container.service.publish({
+        projectId: 'proj_mig_ext',
+        slug: 'card',
+        title: 'Migrate Card To HTML',
+        type: 'html',
+        source: '<div>overwrite attempt</div>',
+        baseVersion: 1,
+        author: 'agent:cli',
+      }),
+    ).rejects.toThrow(/尚未入库的外部源文件/)
+
+    // 外部 HTML 文件完好无损，原 React Artifact 仍停留在 v1 且无孤儿版本
+    expect(fs.readFileSync(externalHtmlFile, 'utf8')).toBe('<div>external html must survive</div>')
+    const current = await container.service.getArtifact({ id: reactCard.artifact.publicId })
+    expect(current.artifact.type).toBe('react')
+    expect(current.artifact.headVersion).toBe(1)
+    expect(
+      (await container.repositories.artifacts.getVersions(reactCard.artifact.publicId)).map(
+        (v) => v.version,
+      ),
+    ).toEqual([1])
+  })
 })
