@@ -16,7 +16,7 @@ import { VisualEditPanel } from '../../features/visual-edit/VisualEditPanel'
 import type { ArtifactDetailResponse } from '../../shared/api/client'
 import { syncProjectSelection } from '../../shared/api/client'
 import { InspectorPanel } from '../InspectorPanel/InspectorPanel'
-import { ArtifactCanvas } from './ArtifactCanvas'
+import { ArtifactCanvas, type InspectorReveal } from './ArtifactCanvas'
 import { ArtifactFrame, type BoardFramePurpose, type FrameConnection } from './ArtifactFrame'
 import { BoardInspector } from './BoardInspector'
 import {
@@ -71,7 +71,7 @@ export function ArtifactWorkspace({
   const rounds = roundsOverride ?? detail.rounds
   const [liveEditSource, setLiveEditSource] = useState<string | null>(null)
   const [canvasLocation, setCanvasLocation] = useState<CanvasLocation | null>(null)
-  const [inspectorReveal, setInspectorReveal] = useState<CanvasLocation | null>(null)
+  const [inspectorReveal, setInspectorReveal] = useState<InspectorReveal | null>(null)
   const clearInspectorReveal = useCallback(() => setInspectorReveal(null), [])
   const latestVersion = useMemo(() => {
     if (versions.length === 0) return version
@@ -252,7 +252,7 @@ export function ArtifactWorkspace({
     },
     [artifact.publicId],
   )
-  const revealBoard = useCallback((location: CanvasLocation) => {
+  const revealBoard = useCallback((location: InspectorReveal) => {
     useWorkspaceStore.getState().setViewMode('preview')
     setInspectorReveal(location)
   }, [])
@@ -422,7 +422,7 @@ export function ArtifactWorkspace({
         onNavigate={(location) => {
           if (canvasLocation?.boardId !== location.boardId)
             setSelectedElement(artifact.publicId, null)
-          revealBoard(location)
+          revealBoard({ ...location, fit: true })
         }}
       />
       <VisualEditPanel controller={visual} />

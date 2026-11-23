@@ -27,6 +27,9 @@ import type { CanvasBoard, CanvasDocument, CanvasLocation, CanvasPage } from './
 import { useBoardPresentation } from './useBoardPresentation'
 import { useViewportSize } from './useViewportSize'
 
+/** 显式选板要求适配；元素指认与图层选择只在画板不可见时移动相机。 */
+export type InspectorReveal = CanvasLocation & { fit?: true }
+
 interface ArtifactCanvasProps {
   document: CanvasDocument
   visible: boolean
@@ -40,7 +43,7 @@ interface ArtifactCanvasProps {
   /** 只在可保存画布页面的头版本传入。 */
   pageEditing?: CanvasPageEditing
   /** 抽屉选板后定位；换工具不消费尚不可见的请求。 */
-  reveal?: CanvasLocation | null
+  reveal?: InspectorReveal | null
   onRevealHandled: () => void
   onLocationChange: (location: CanvasLocation | null) => void
   renderBoard: (board: CanvasBoard, purpose: BoardFramePurpose) => ReactNode
@@ -284,11 +287,26 @@ export function ArtifactCanvas({
     })
   }
 
-  const revealFromInspector = useEffectEvent((target: CanvasLocation) => {
+  const revealFromInspector = useEffectEvent((target: InspectorReveal) => {
     const page = document.pages.find((item) => item.id === target.pageId)
     if (!page || (target.boardId && !page.boards.some((item) => item.id === target.boardId))) return
     presentation.dismiss()
-    if (target.pageId === pageId && target.boardId === selected) return
+    if (!target.fit && target.pageId === pageId && !invalidAddress) {
+      const bounds = target.boardId ? layout.bounds.get(target.boardId) : undefined
+      const left = bounds ? camera.x + bounds.x * camera.scale : 0
+      const top = bounds ? camera.y + bounds.y * camera.scale : 0
+      if (
+        !bounds ||
+        !measurable ||
+        (left < size.width &&
+          top < size.height &&
+          left + bounds.width * camera.scale > 0 &&
+          top + bounds.height * camera.scale > 0)
+      ) {
+        if (target.boardId !== selected) selectBoard(target.boardId ?? null)
+        return
+      }
+    }
     navigate(page, target.boardId)
   })
   useEffect(() => {

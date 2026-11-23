@@ -397,6 +397,36 @@ it('从独立检查器选择其他页面的画板并查看固定版本的真实�
   expect(within(otherVersion).queryByTitle('预约完成 隔离沙盒')).toBeNull()
 })
 
+it('重复从检查器选择同一画板，会找回已被移出视口的选板', () => {
+  stubResizeObserver()
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1000)
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(740)
+  sessionStorage.setItem(
+    `akasha:canvas:${artifact.publicId}/head`,
+    JSON.stringify({
+      pageId: 'reserve',
+      pages: {
+        reserve: { selected: 'desktop', camera: { x: 1800, y: 100, scale: 0.6, fit: null } },
+      },
+    }),
+  )
+  showWorkspace()
+  const board = screen
+    .getByTitle('宽屏首页 隔离沙盒')
+    .closest<HTMLElement>('.artifact-canvas-board')
+  if (!board) throw new Error('宽屏画板夹具不可用')
+  expect(Number.parseFloat(board.style.left)).toBeGreaterThan(1000)
+
+  act(() => useWorkspaceStore.getState().setInspectorTab('inspect'))
+  const inspector = screen.getByRole('dialog', { name: '检查器' })
+  expect(Number.parseFloat(board.style.left)).toBeGreaterThan(1000)
+  fireEvent.click(within(inspector).getByRole('button', { name: '宽屏首页', pressed: true }))
+  expect(Number.parseFloat(board.style.left)).toBeGreaterThanOrEqual(0)
+  expect(
+    Number.parseFloat(board.style.left) + Number.parseFloat(board.style.width),
+  ).toBeLessThanOrEqual(1000)
+})
+
 it('图层双向定位只在该画板与版本生效，悬停和旧坐标不改选区', () => {
   stubResizeObserver()
   const detail = detailFor()
