@@ -1,8 +1,8 @@
-import type { ElementRef, FeedbackKind, ReviewRound } from '@akasha/protocol'
+import type { ElementRef, Feedback, FeedbackKind, ReviewRound } from '@akasha/protocol'
 import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
 import { Send, Target, X } from 'lucide-react'
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useSubmitFeedbackMutation } from '../../entities/feedback/queries'
 import { useSelectionStore } from '../../entities/selection/store'
@@ -20,6 +20,7 @@ export interface AnnotationComposerProps {
     version: number
     roundId: string | null
     kind: FeedbackKind
+    audience?: Feedback['audience']
     element: ElementRef | null
     body: string
   }) => Promise<unknown>
@@ -37,7 +38,7 @@ function elementLabel(el: ElementRef): string {
 /**
  * L1 批注撰写器：基于选中的元素或块创建批注，或发起「让 Agent 改这里」。
  *
- * @remarks 批注所属轮次处于草稿状态时自动标为草稿，不中途唤醒 Agent。
+ * @remarks 默认只供讨论；勾选投递的轮次草稿在本轮提交后才送达 Agent。
  */
 export function AnnotationComposer({
   artifactId,
@@ -48,6 +49,7 @@ export function AnnotationComposer({
   onSubmitFeedback,
 }: AnnotationComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [sendToAgent, setSendToAgent] = useState(false)
   const draftText = useWorkspaceStore((s) => s.unsentDraftsByArtifact[artifactId] ?? '')
   const setUnsentDraft = useWorkspaceStore((s) => s.setUnsentDraft)
   const clearSelection = useSelectionStore((s) => s.clearSelection)
@@ -59,11 +61,14 @@ export function AnnotationComposer({
       textareaRef.current?.focus()
       return
     }
+    const audience: Feedback['audience'] =
+      kind === 'comment' ? (sendToAgent ? 'agent' : 'human') : undefined
     const payload = {
       project: projectId,
       version,
       roundId: activeDraftingRound ? activeDraftingRound.id : null,
       kind,
+      audience,
       element: selectedElement,
       body,
     }
@@ -74,8 +79,15 @@ export function AnnotationComposer({
         await submitMutation.mutateAsync(payload)
       }
       setUnsentDraft(artifactId, '')
+      setSendToAgent(false)
       toast.success(
-        activeDraftingRound ? '已保存为本轮草稿（提交本轮后统一送达 Agent）' : '批注已发送给 Agent',
+        audience === 'human'
+          ? activeDraftingRound
+            ? '已存为本轮讨论草稿'
+            : '已保存批注，仅供讨论'
+          : activeDraftingRound
+            ? '已存为草稿，提交本轮后送达 Agent'
+            : '批注已发送给 Agent',
       )
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '提交批注失败')
@@ -141,12 +153,20 @@ export function AnnotationComposer({
         value={draftText}
         onChange={(e) => setUnsentDraft(artifactId, e.target.value)}
         placeholder={
-          selectedElement
-            ? '说明希望 Agent 对这个元素做什么修改…'
-            : '给这一版留批注，或先在画布工具栏指认元素…'
+          selectedElement ? '对选中目标留下意见…' : '给这一版留批注，或先在画布工具栏指认元素…'
         }
         className="w-full resize-none rounded-lg border border-border bg-surface p-2 text-xs text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none"
       />
+
+      <label className="mt-2 flex items-center gap-2 text-xs text-ink">
+        <input
+          type="checkbox"
+          checked={sendToAgent}
+          disabled={submitMutation.isPending}
+          onChange={(event) => setSendToAgent(event.target.checked)}
+        />
+        同时发送给 Agent
+      </label>
 
       <div className="mt-2 flex flex-wrap items-center justify-between gap-1.5">
         {selectedElement ? (

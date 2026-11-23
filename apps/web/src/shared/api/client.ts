@@ -159,6 +159,7 @@ export interface SubmitFeedbackInput {
   roundId?: string | null
   groupId?: string | null
   kind: FeedbackKind
+  audience?: Feedback['audience']
   element?: ElementRef | null
   body: string
 }
@@ -176,17 +177,9 @@ export async function submitArtifactFeedback(
   )
 }
 
-export async function fetchArtifactFeedback(
-  id: string,
-  includeDrafts = true,
-): Promise<{ items: Feedback[]; rounds: ReviewRound[]; cursor: string }> {
-  const params = new URLSearchParams({
-    id,
-    includeDrafts: String(includeDrafts),
-    detail: 'true',
-  })
-  return requestJson<{ items: Feedback[]; rounds: ReviewRound[]; cursor: string }>(
-    `/api/v1/feedback?${params.toString()}`,
+export async function fetchArtifactFeedback(id: string): Promise<{ items: Feedback[] }> {
+  return requestJson<{ items: Feedback[] }>(
+    `/api/v1/artifacts/${encodeURIComponent(id)}/feedback?includeDrafts=true`,
   )
 }
 

@@ -588,8 +588,7 @@ it('固定版本定位到指定页面，复制的定位链接不携带分享授�
     if (url.pathname === `${endpoint}/versions`) {
       return Response.json({ versions: [fixed.version, head.version] })
     }
-    if (url.pathname === '/api/v1/feedback')
-      return Response.json({ items: [], rounds: [], cursor: '' })
+    if (url.pathname === `${endpoint}/feedback`) return Response.json({ items: [] })
     if (url.pathname === '/api/v1/daemon/status') return Response.json({ sandboxPort: 24331 })
     if (url.pathname === '/api/v1/projects') return Response.json({ projects: [] })
     if (url.pathname === '/api/v1/artifacts') return Response.json({ artifacts: [] })

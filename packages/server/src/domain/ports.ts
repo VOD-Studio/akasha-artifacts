@@ -75,9 +75,12 @@ export interface FeedbackRepository {
     artifactIds?: ReadonlySet<PublicId>
     // 上次返回的 `cursor`；只返回顺序号在它之后的反馈
     afterCursor?: string
+    // 只预览旧接口产生的草稿；显式投递的批注须等待所属轮次提交
     includeDrafts?: boolean
   }): Promise<{ items: readonly Feedback[]; cursor: string }>
-  /** 把某轮次下的草稿转为可投递并分配顺序号；返回转正的条数。 */
+  /** 审阅界面读取制品的所有批注；不产生游标或消费回执。 */
+  listForReview(artifactId: PublicId, includeDrafts: boolean): Promise<readonly Feedback[]>
+  /** 把轮次草稿转正；只为可投递的条目分配顺序号，返回转正的总条数。 */
   promoteRoundDrafts(artifactId: PublicId, roundId: string, updatedAt: string): Promise<number>
 }
 

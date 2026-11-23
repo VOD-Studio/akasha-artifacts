@@ -161,7 +161,7 @@ function ArtifactRouteView({
   const detail = detailQuery.data
   const versions = versionsQuery.data ?? [detail.version]
   const feedbacks = feedbackQuery.data?.items ?? []
-  const rounds = feedbackQuery.data?.rounds ?? detail.rounds
+  const rounds = detail.rounds
   const sandboxOrigin = resolveSandboxOrigin(daemonStatus?.sandboxPort)
   const openExport = (boardId?: string) =>
     setExportTarget({ artifact: detail.artifact, version: detail.version, boardId })

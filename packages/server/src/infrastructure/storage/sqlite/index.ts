@@ -32,10 +32,11 @@ import type {
   StateRepository,
 } from '../../../domain/ports.js'
 import { createSqliteArtifactStorage } from './artifact-kv.js'
+import { migrateFeedbackAudience } from './feedback-migration.js'
 
 // 本地 Daemon 的表结构，与 Hub 共用的 cloud/schema.ts 相互独立：
 // - versions.source 直接存源码文本，不走对象存储
-// - feedbacks.delivery_seq 是可投递顺序号（草稿为 NULL），没有 insertion_seq，并列时按 rowid 排序
+// - feedbacks.delivery_seq 在未投递（草稿或只供讨论）时为 NULL；插入顺序使用 rowid
 // - meta 表以键值形式存放实时事件序号（event_seq）
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS projects (
@@ -156,7 +157,10 @@ export class SqliteStorage {
     this.db.exec('PRAGMA journal_mode = WAL;')
     this.db.exec('PRAGMA foreign_keys = ON;')
     this.db.exec('PRAGMA busy_timeout = 5000;')
-    this.db.exec(SCHEMA_SQL)
+    runInTx(this.db, () => {
+      this.db.exec(SCHEMA_SQL)
+      migrateFeedbackAudience(this.db)
+    })
 
     this.projects = new SqliteProjectRepository(this.db)
     this.artifacts = new SqliteArtifactRepository(this.db)
@@ -609,6 +613,7 @@ interface FeedbackRow {
   element_json: string | null
   body: string
   author: string
+  audience: Feedback['audience'] | null
   draft: number
   status: string
   delivery_seq: number | null
@@ -627,6 +632,7 @@ function mapFeedback(row: FeedbackRow): Feedback {
     element: row.element_json ? (JSON.parse(row.element_json) as ElementRef) : null,
     body: row.body,
     author: row.author as Author,
+    ...(row.audience && { audience: row.audience }),
     draft: row.draft === 1,
     status: row.status as FeedbackStatus,
     createdAt: row.created_at,
@@ -649,7 +655,7 @@ export class SqliteFeedbackRepository implements FeedbackRepository {
         .get(feedback.id) as { delivery_seq: number | null } | undefined
 
       let deliverySeq = existing?.delivery_seq ?? null
-      if (!feedback.draft && deliverySeq === null) {
+      if (!feedback.draft && feedback.audience !== 'human' && deliverySeq === null) {
         const next = this.db
           .prepare('SELECT COALESCE(MAX(delivery_seq), 0) + 1 AS next_seq FROM feedbacks')
           .get() as { next_seq: number }
@@ -659,8 +665,8 @@ export class SqliteFeedbackRepository implements FeedbackRepository {
       this.db
         .prepare(
           `INSERT INTO feedbacks
-             (id, artifact_id, version, round_id, group_id, kind, element_json, body, author, draft, status, delivery_seq, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             (id, artifact_id, version, round_id, group_id, kind, element_json, body, author, audience, draft, status, delivery_seq, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
              draft = excluded.draft,
              status = excluded.status,
@@ -677,6 +683,7 @@ export class SqliteFeedbackRepository implements FeedbackRepository {
           feedback.element ? JSON.stringify(feedback.element) : null,
           feedback.body,
           feedback.author,
+          feedback.audience ?? null,
           feedback.draft ? 1 : 0,
           feedback.status,
           deliverySeq,
@@ -723,6 +730,7 @@ export class SqliteFeedbackRepository implements FeedbackRepository {
     } else {
       conditions.push('(delivery_seq IS NULL OR delivery_seq > ?)')
       params.push(afterSeq)
+      conditions.push("(audience IS NULL OR (audience = 'agent' AND draft = 0))")
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
@@ -741,7 +749,16 @@ export class SqliteFeedbackRepository implements FeedbackRepository {
     }
   }
 
-  // 转正的草稿按 rowid 顺序接在当前最大投递序号之后
+  async listForReview(artifactId: PublicId, includeDrafts: boolean): Promise<readonly Feedback[]> {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM feedbacks WHERE artifact_id = ?${includeDrafts ? '' : ' AND draft = 0'} ORDER BY rowid`,
+      )
+      .all(artifactId) as unknown as FeedbackRow[]
+    return rows.map(mapFeedback)
+  }
+
+  // 转正的可投递草稿按 rowid 顺序接在当前最大投递序号之后
   async promoteRoundDrafts(
     artifactId: PublicId,
     roundId: string,
@@ -750,9 +767,9 @@ export class SqliteFeedbackRepository implements FeedbackRepository {
     return runInTx(this.db, () => {
       const drafts = this.db
         .prepare(
-          'SELECT id FROM feedbacks WHERE artifact_id = ? AND round_id = ? AND draft = 1 ORDER BY rowid ASC',
+          'SELECT id, audience FROM feedbacks WHERE artifact_id = ? AND round_id = ? AND draft = 1 ORDER BY rowid ASC',
         )
-        .all(artifactId, roundId) as Array<{ id: string }>
+        .all(artifactId, roundId) as Array<{ id: string; audience: FeedbackRow['audience'] }>
 
       if (drafts.length === 0) return 0
 
@@ -766,8 +783,7 @@ export class SqliteFeedbackRepository implements FeedbackRepository {
         'UPDATE feedbacks SET draft = 0, delivery_seq = ?, updated_at = ? WHERE id = ?',
       )
       for (const d of drafts) {
-        seq += 1
-        stmt.run(seq, updatedAt, d.id)
+        stmt.run(d.audience === 'human' ? null : ++seq, updatedAt, d.id)
       }
       return drafts.length
     })

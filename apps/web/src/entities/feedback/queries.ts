@@ -20,7 +20,7 @@ export const feedbackKeys = {
 export function useArtifactFeedbackQuery(artifactId: string) {
   return useQuery({
     queryKey: feedbackKeys.list(artifactId),
-    queryFn: () => fetchArtifactFeedback(artifactId, true),
+    queryFn: () => fetchArtifactFeedback(artifactId),
     enabled: Boolean(artifactId),
     staleTime: 2_000,
   })

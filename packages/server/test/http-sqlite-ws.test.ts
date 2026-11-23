@@ -1,9 +1,16 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { PROTOCOL_VERSION, type RealtimeServerEvent, runContractTests } from '@akasha/protocol'
+import {
+  ArtifactPullFeedbackOutputSchema,
+  FeedbackSchema,
+  PROTOCOL_VERSION,
+  type RealtimeServerEvent,
+  runContractTests,
+} from '@akasha/protocol'
 import { afterEach, describe, expect, it } from 'vitest'
 import WebSocket from 'ws'
+import { z } from 'zod'
 import { startNodeServer } from '../src/entry/node.js'
 
 const closers: Array<() => Promise<void>> = []
@@ -420,6 +427,82 @@ describe('WebSocket realtime catch-up, project routing, resync, and long-poll aw
     const resync = await resyncPromise
     expect(resync.type).toBe('resync')
     ws3.close()
+  })
+
+  it.each(['memory', ':memory:'])('只把显式投递且已提交的批注列入回执（%s）', async (dbPath) => {
+    const srv = await startNodeServer({ dbPath, port: 0 })
+    closers.push(srv.close)
+    const { artifact } = await srv.service.publish({
+      slug: 'html/review-audience',
+      title: '讨论与投递',
+      type: 'html',
+      source: '<p id="title">标题</p>',
+      author: 'agent:review',
+    })
+    const id = artifact.publicId
+    const round = await srv.service.openRound({
+      id,
+      groups: [{ id: 'design', title: '设计', kind: 'choose', options: ['A', 'B'] }],
+    })
+    const post = (path: string, input: unknown) =>
+      fetch(`${srv.baseUrl}${path}`, {
+        method: 'POST',
+        headers: authHeaders(srv.token),
+        body: JSON.stringify(input),
+      })
+    const get = async (path: string) => {
+      const response = await fetch(`${srv.baseUrl}${path}`)
+      expect(response.status).toBe(200)
+      return response.json()
+    }
+    const readQueue = async (url: string) => ArtifactPullFeedbackOutputSchema.parse(await get(url))
+    const reviewSchema = z.object({ items: z.array(FeedbackSchema) })
+    const path = `/api/v1/artifacts/${id}/feedback`
+    const queue = `/api/v1/feedback?id=${id}&includeDrafts=true`
+    const element = { blockId: 'title' }
+    async function comment(body: string, audience: 'human' | 'agent', roundId?: string) {
+      const response = await post(path, {
+        version: 1,
+        element,
+        kind: 'comment',
+        body,
+        audience,
+        roundId,
+      })
+      expect(response.status).toBe(201)
+      return z.object({ feedback: FeedbackSchema }).parse(await response.json()).feedback
+    }
+
+    const discussion = await comment('只供讨论', 'human')
+    expect(await readQueue(queue)).toMatchObject({ items: [], cursor: '' })
+    const requested = await comment('请修改', 'agent')
+    const first = await readQueue(queue)
+    expect(first.items).toMatchObject([{ id: requested.id, element }])
+    expect(typeof first.receipt).toBe('string')
+    const { cursor } = first
+    const consume = await post('/api/v1/feedback/ack', {
+      receipt: first.receipt,
+      resolveIds: [discussion.id, requested.id],
+    })
+    expect(await consume.json()).toEqual({ acknowledged: 1, resolved: 1 })
+
+    const humanDraft = await comment('本轮人类讨论', 'human', round.id)
+    const agentDraft = await comment('本轮 Agent 修改', 'agent', round.id)
+    const resume = `${queue}&after=${encodeURIComponent(cursor)}`
+    expect(await readQueue(resume)).toMatchObject({ items: [], cursor })
+    expect(reviewSchema.parse(await get(`${path}?includeDrafts=true`))).toEqual({
+      items: expect.arrayContaining([
+        expect.objectContaining({ id: discussion.id, status: 'pending', element }),
+        expect.objectContaining({ id: requested.id, status: 'resolved', element }),
+        expect.objectContaining({ id: humanDraft.id, draft: true, element }),
+        expect.objectContaining({ id: agentDraft.id, draft: true, element }),
+      ]),
+    })
+    await srv.service.submitRound({ id, roundId: round.id })
+    expect((await readQueue(resume)).items).toMatchObject([{ id: agentDraft.id, draft: false }])
+    expect(reviewSchema.parse(await get(path)).items).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: humanDraft.id, draft: false })]),
+    )
   })
 
   it('wakes long-poll /api/v1/feedback/await immediately when feedback arrives', async () => {

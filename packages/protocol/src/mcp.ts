@@ -141,7 +141,7 @@ export const ArtifactPullFeedbackInputSchema = z.object({
   project: z.string().min(1).optional(),
   // 上次返回的 `cursor`；只返回其后的反馈
   after: z.string().optional(),
-  // 缺省不含草稿；包含时草稿排在结果末尾
+  // 只预览旧接口产生的草稿；显式投递的批注须先提交本轮
   includeDrafts: z.boolean().optional().default(false),
   // 缺省 true；false 时不签发回执
   detail: z.boolean().optional().default(true),

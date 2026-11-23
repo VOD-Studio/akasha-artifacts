@@ -57,6 +57,7 @@ const readSuffixes: Readonly<Record<string, true>> = {
   '/state': true,
   '/visual-edit': true,
   '/edits': true,
+  '/feedback': true,
 }
 // 允许转发到 core 的写路径后缀；authored 表示强制以调用方身份作为作者
 const writeSuffixes: Readonly<Record<string, 'write' | 'authored'>> = {
@@ -393,6 +394,10 @@ export function mountHubGuard(
       return core.fetch(rewrite(request, url))
     }
     if (read) {
+      if (suffix === '/feedback') {
+        if (principal?.kind === 'cli') return forbidden(c, principal)
+        if (!writer) url.searchParams.set('includeDrafts', 'false')
+      }
       const response = await core.fetch(rewrite(request, url))
       return role === 'owner' ||
         (await access.authorizeArtifact(request, artifact.publicId, 'read'))

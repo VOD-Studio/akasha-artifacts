@@ -5,7 +5,7 @@ export function isDraftFeedback(round: ReviewRound | undefined): boolean {
   return round?.status === 'drafting'
 }
 
-/** 非草稿反馈才即时唤醒 Agent。 */
+/** 只有非草稿且可投递的反馈才即时唤醒 Agent。 */
 export function shouldNotifyImmediately(feedback: Feedback): boolean {
-  return !feedback.draft
+  return !feedback.draft && feedback.audience !== 'human'
 }
