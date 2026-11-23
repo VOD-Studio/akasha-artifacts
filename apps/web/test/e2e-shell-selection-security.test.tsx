@@ -177,6 +177,7 @@ describe('Web 外壳端到端回归（iframe 安全隔离 + 选区防抖同步 +
     // 3. 在批注撰写器输入未发草稿，并模拟合法沙盒指认选中元素 → 防抖同步至 Daemon selection 接口
     const textarea = screen.getByLabelText('批注内容') as HTMLTextAreaElement
     fireEvent.change(textarea, { target: { value: '请保留这段尚未发送的评审草稿' } })
+    fireEvent.click(screen.getByRole('button', { name: '指认元素' }))
 
     act(() => {
       window.dispatchEvent(

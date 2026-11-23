@@ -156,6 +156,55 @@ describe('apps/sandbox 运行时与安全边界', () => {
     expect(posted.some((m) => m.data.type === 'rendered' && m.data.version === 4)).toBe(true)
   })
 
+  it('React 运行状态启用控件后才开放当前版本的试玩', async () => {
+    const { bridge, posted, dispatchFromHost, nonce } = createMockBridgeHarness()
+    render(
+      <SandboxApp
+        bridge={bridge}
+        stateStore={new ArtifactStateStore()}
+        preserved={new PreservedStateManager()}
+      />,
+    )
+    act(() => {
+      dispatchFromHost({
+        v: PROTOCOL_VERSION,
+        nonce,
+        type: 'render',
+        artifactType: 'react',
+        version: 4,
+        source: `
+          import { useArtifactState } from '@akasha/runtime'
+          export default function Preview() {
+            const { available } = useArtifactState()
+            return <button disabled={!available}>继续</button>
+          }
+        `,
+        state: { available: false },
+      })
+    })
+    await waitFor(() =>
+      expect(posted.map(({ data }) => data)).toContainEqual(
+        expect.objectContaining({ type: 'rendered', version: 4, playable: false }),
+      ),
+    )
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '继续' }).disabled).toBe(true)
+    act(() => {
+      dispatchFromHost({
+        v: PROTOCOL_VERSION,
+        nonce,
+        type: 'state',
+        seq: 1,
+        ops: [{ op: 'replace', path: '/available', value: true }],
+      })
+    })
+    await waitFor(() =>
+      expect(posted.map(({ data }) => data)).toContainEqual(
+        expect.objectContaining({ type: 'prototype.availability', version: 4, playable: true }),
+      ),
+    )
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '继续' }).disabled).toBe(false)
+  })
+
   it('React 渲染器连续接收 100 次 state 补丁时组件绝不重新挂载（mountCount === 1）', async () => {
     const { bridge, dispatchFromHost, nonce } = createMockBridgeHarness()
     const stateStore = new ArtifactStateStore()

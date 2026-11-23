@@ -137,6 +137,13 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     ...BridgeEnvelopeBase,
+    type: z.literal('prototype.availability'),
+    version: z.number().int().min(1),
+    // 当前渲染 DOM 的可用控件变化；不代表整份源码重绘
+    playable: z.boolean(),
+  }),
+  z.object({
+    ...BridgeEnvelopeBase,
     // 编译或运行错误
     type: z.literal('error'),
     phase: z.enum(['compile', 'runtime']),

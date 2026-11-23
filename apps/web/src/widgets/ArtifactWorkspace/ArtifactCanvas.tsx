@@ -90,6 +90,8 @@ function saveView(storageKey: string, view: CanvasView) {
   }
 }
 
+const isPrototype = (board: CanvasBoard) => board.type === 'html' || board.type === 'react'
+
 export function ArtifactCanvas({
   document,
   visible,
@@ -540,7 +542,10 @@ export function ArtifactCanvas({
                 if (!bounds) return null
                 const isSelected = selected === board.id
                 const interactive =
-                  !handActive && (pickerActive || (!board.scoped && Boolean(visualEdit?.isPicking)))
+                  !handActive &&
+                  (!isPrototype(board) ||
+                    pickerActive ||
+                    (!board.scoped && Boolean(visualEdit?.isPicking)))
                 const target = { pageId: page.id, boardId: board.id }
                 return (
                   <div
@@ -597,7 +602,7 @@ export function ArtifactCanvas({
                       >
                         <Focus size={15} />
                       </Button>
-                      {canPlay(board) ? (
+                      {isPrototype(board) && canPlay(board) ? (
                         <Button
                           size="sm"
                           variant="secondary"
@@ -687,7 +692,7 @@ export function ArtifactCanvas({
           visible={visible && !presentation.playing}
           onClose={presentation.closeFocus}
           onPlay={
-            canPlay(presentation.focused)
+            isPrototype(presentation.focused) && canPlay(presentation.focused)
               ? (event) => {
                   if (presentation.focus)
                     presentation.openPlay(presentation.focus, event.currentTarget)

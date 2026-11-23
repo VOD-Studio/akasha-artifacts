@@ -278,6 +278,11 @@ export function ArtifactFrame({
           useWorkspaceStore.getState().setInspectorTab('review')
           break
         }
+        case 'prototype.availability':
+          if (!playback && message.version === activeVersion) {
+            latest.current.onPlayable(latest.current.board, activeVersion, message.playable)
+          }
+          break
         case 'prototype.navigate': {
           const target = latest.current.purpose
           if (target.type === 'play' && message.version === activeVersion) {

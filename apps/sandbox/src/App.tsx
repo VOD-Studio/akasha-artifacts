@@ -56,6 +56,7 @@ export function SandboxApp({
   const [payload, setPayload] = useState<RenderPayload | null>(initialRender)
   const committedPayloadRef = useRef<RenderPayload | null>(initialRender)
   const renderedVisualVersionRef = useRef(0)
+  const lastPlayable = useRef<boolean | undefined>(undefined)
   const rootRef = useRef<HTMLDivElement>(null)
   const inspectorRef = useRef<SandboxInspector | null>(null)
   const versionRef = useRef<number>(initialRender?.version ?? 0)
@@ -87,6 +88,7 @@ export function SandboxApp({
     const off = bridge.onMessage((msg) => {
       if (msg.type === 'render') {
         renderedVisualVersionRef.current = 0
+        lastPlayable.current = undefined
         stateStore.replace(msg.state)
         preserved.hydrate(msg.preservedState)
         const next: RenderPayload = {
@@ -175,6 +177,41 @@ export function SandboxApp({
     })
   }, [bridge, playbackVersion])
 
+  const supportsPrototype = payload?.artifactType === 'html' || payload?.artifactType === 'react'
+  useEffect(() => {
+    const root = rootRef.current
+    if (!bridge || !root || !supportsPrototype || playbackVersion) return
+    const observer = new MutationObserver(() => {
+      const version = renderedVisualVersionRef.current
+      if (!version || version !== versionRef.current) return
+      const playable = hasPlayableControls(root)
+      if (lastPlayable.current === playable) return
+      lastPlayable.current = playable
+      bridge.send({ type: 'prototype.availability', version, playable })
+    })
+    observer.observe(root, {
+      subtree: true,
+      childList: true,
+      attributeFilter: [
+        'aria-disabled',
+        'aria-hidden',
+        'class',
+        'contenteditable',
+        'data-ak-next',
+        'disabled',
+        'hidden',
+        'href',
+        'inert',
+        'readonly',
+        'role',
+        'style',
+        'tabindex',
+        'type',
+      ],
+    })
+    return () => observer.disconnect()
+  }, [bridge, playbackVersion, supportsPrototype])
+
   // 自动向外壳上报容器尺寸变化，便于外壳自适应高度或视口定位
   useEffect(() => {
     if (!bridge || !rootRef.current || typeof ResizeObserver === 'undefined') return
@@ -216,10 +253,11 @@ export function SandboxApp({
       const height = rootRef.current
         ? Math.max(0, Math.round(rootRef.current.scrollHeight))
         : undefined
+      lastPlayable.current = rootRef.current ? hasPlayableControls(rootRef.current) : false
       bridge.send({
         type: 'rendered',
         version: ver,
-        playable: rootRef.current ? hasPlayableControls(rootRef.current) : false,
+        playable: lastPlayable.current,
         ...(height !== undefined ? { height } : {}),
       })
     },

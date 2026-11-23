@@ -290,7 +290,11 @@ it('必须显式播放，按声明的边跨页导航，再返回未改动的聚�
   const mobile = within(overview).getByTitle<HTMLIFrameElement>('手机首页 隔离沙盒')
   const mobileSandbox = sandbox(mobile)
   mobileSandbox.receive({ type: 'ready' })
-  mobileSandbox.receive({ type: 'rendered', version: 1, playable: true })
+  mobileSandbox.receive({ type: 'rendered', version: 1, playable: false })
+  expect(within(overview).queryByRole('button', { name: '播放画板：手机首页' })).toBeNull()
+  mobileSandbox.receive({ type: 'prototype.availability', version: 2, playable: true })
+  expect(within(overview).queryByRole('button', { name: '播放画板：手机首页' })).toBeNull()
+  mobileSandbox.receive({ type: 'prototype.availability', version: 1, playable: true })
   expect(mobile.hasAttribute('inert')).toBe(true)
   expect(within(overview).queryByRole('button', { name: '播放画板：宽屏首页' })).toBeNull()
 
