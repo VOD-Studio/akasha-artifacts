@@ -13,7 +13,7 @@ import {
 } from '@akasha/ui/dropdown-menu'
 import { Empty } from '@akasha/ui/empty'
 import { ScrollArea } from '@akasha/ui/scroll-area'
-import { Archive, ChevronDown, FolderGit2, Star, Trash2 } from 'lucide-react'
+import { Archive, ChevronDown, FolderGit2, Plus, Star, Trash2 } from 'lucide-react'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useArtifactFavoritesQuery, useArtifactsQuery } from '../../entities/artifact/queries'
@@ -23,6 +23,7 @@ import { DaemonStatusPill } from '../../features/daemon-control/DaemonStatusPill
 import { HubAccountButton, useHubSession } from '../../features/hub/HubActions'
 import { isCloudHub } from '../../shared/config/runtime'
 import { ARTIFACT_TYPE_LABELS, formatRelativeTime } from '../../shared/lib/format'
+import { CreateDesignDialog } from './CreateDesignDialog'
 import { LibraryArtwork } from './LibraryArtwork'
 import { LibraryToolbar } from './LibraryToolbar'
 import { useLibraryView } from './library-view'
@@ -48,6 +49,7 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
   const cloudHub = isCloudHub()
   const hubSession = useHubSession()
   const [showWithdrawn, setShowWithdrawn] = useState(false)
+  const [showCreateDesign, setShowCreateDesign] = useState(false)
   const projectsQuery = useProjectsQuery(LIBRARY_REFRESH_MS)
   const artifactsQuery = useArtifactsQuery(undefined, LIBRARY_REFRESH_MS)
   const favoritesQuery = useArtifactFavoritesQuery()
@@ -104,6 +106,15 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
           <h1 className="text-lg font-semibold">制品</h1>
           <div className="flex flex-wrap items-center gap-2">
             {projects?.length ? <ProjectDirectoryMenu projects={projects} /> : null}
+            {!cloudHub || hubSession?.member ? (
+              <Button
+                size="sm"
+                leftIcon={<Plus size={15} />}
+                onClick={() => setShowCreateDesign(true)}
+              >
+                新建设计
+              </Button>
+            ) : null}
             {!cloudHub || hubSession?.member ? (
               <Button
                 variant="ghost"
@@ -228,6 +239,18 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
           </div>
         </ScrollArea>
       </main>
+      {showCreateDesign ? (
+        <CreateDesignDialog
+          projects={projects ?? []}
+          initialProject={selectedProjectId}
+          hub={cloudHub}
+          onClose={() => setShowCreateDesign(false)}
+          onOpenArtifact={(id) => {
+            setShowCreateDesign(false)
+            onOpenArtifact(id)
+          }}
+        />
+      ) : null}
       {showWithdrawn ? (
         <WithdrawnArtifactsDialog
           onOpenArtifact={onOpenArtifact}
