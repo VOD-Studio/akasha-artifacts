@@ -58,6 +58,7 @@ const readSuffixes: Readonly<Record<string, true>> = {
   '/visual-edit': true,
   '/edits': true,
   '/feedback': true,
+  '/management': true,
 }
 // 允许转发到 core 的写路径后缀；authored 表示强制以调用方身份作为作者
 const writeSuffixes: Readonly<Record<string, 'write' | 'authored'>> = {
@@ -353,7 +354,7 @@ export function mountHubGuard(
     if (
       read
         ? !Object.hasOwn(readSuffixes, suffix)
-        : !(method === 'PATCH' && suffix === '') &&
+        : !(method === 'PATCH' && (suffix === '' || suffix === '/metadata')) &&
           !(
             method === 'POST' &&
             (writeMode ||
@@ -380,6 +381,12 @@ export function mountHubGuard(
     if (role === 'none') return hidden(c)
     const writer = role === 'owner' || role === 'editor'
     url.pathname = `/api/v1/artifacts/${artifact.publicId}${suffix}`
+
+    const canManage = role === 'owner' && principal?.kind === 'session'
+    if (suffix === '/management') return c.json({ canManage })
+    if (suffix === '/metadata') {
+      return canManage ? core.fetch(rewrite(request, url, body)) : forbidden(c, principal)
+    }
 
     if (suffix === '/share') {
       if (role !== 'owner') return forbidden(c, principal)

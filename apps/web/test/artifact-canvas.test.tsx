@@ -634,6 +634,52 @@ it('固定版本定位到指定页面，复制的定位链接不携带分享授�
   }
 })
 
+it('手动重读遇到暂时故障仍保留画布，失去读取权限时撤下已有内容', async () => {
+  vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  }))
+  const detail = detailFor()
+  const endpoint = `/api/v1/artifacts/${artifact.publicId}`
+  let status = 200
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const { pathname } = new URL(String(input), window.location.origin)
+    if (pathname === endpoint)
+      return status === 200 ? Response.json(detail) : new Response(null, { status })
+    if (pathname === `${endpoint}/versions`) return Response.json({ versions: [detail.version] })
+    if (pathname === `${endpoint}/management`) return Response.json({ canManage: true })
+    if (pathname === `${endpoint}/feedback`) return Response.json({ items: [], threads: {} })
+    if (pathname === '/api/v1/daemon/status') return Response.json({ sandboxPort: 24331 })
+    if (pathname === '/api/v1/projects') return Response.json({ projects: [] })
+    if (pathname === '/api/v1/artifacts') return Response.json({ artifacts: [artifact] })
+    return Response.json({ selection: null })
+  })
+  const router = createAppRouter(
+    createMemoryHistory({ initialEntries: [`/a/${artifact.publicId}`] }),
+  )
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  )
+  const frame = await screen.findByTitle('宽屏首页 隔离沙盒')
+  const reload = () => {
+    fireEvent.keyDown(screen.getByRole('button', { name: '制品菜单' }), { key: 'Enter' })
+    fireEvent.click(screen.getByRole('menuitem', { name: '重新加载' }))
+  }
+  status = 503
+  reload()
+  await screen.findAllByText('请求失败（HTTP 503）')
+  expect(screen.getByTitle('宽屏首页 隔离沙盒')).toBe(frame)
+  status = 403
+  reload()
+  await screen.findAllByText('请求失败（HTTP 403）')
+  expect(screen.queryByTitle('宽屏首页 隔离沙盒')).toBeNull()
+})
+
 function showEditableWorkspace(initial: ArtifactDetailResponse, address?: string) {
   const view = showWorkspace(initial)
   const editable = (detail: ArtifactDetailResponse) => (

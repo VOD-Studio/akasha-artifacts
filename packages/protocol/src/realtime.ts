@@ -26,6 +26,12 @@ export const RealtimeServerEventSchema = z.discriminatedUnion('type', [
     artifactId: PublicIdSchema,
     version: VersionSchema,
   }),
+  // 展示元数据变更；客户端重读制品，不以头版本标题替代。
+  z.object({
+    ...EventEnvelopeBase,
+    type: z.literal('artifact.metadata'),
+    artifactId: PublicIdSchema,
+  }),
   // 状态流推进后发出
   z.object({
     ...EventEnvelopeBase,

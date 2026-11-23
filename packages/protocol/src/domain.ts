@@ -36,7 +36,7 @@ export const ArtifactSchema = z.object({
   slug: SlugSchema,
   // 所属 `Project.id`
   projectId: z.string().min(1),
-  // 展示标题；发布时仅含空白则新建取 `slug`、更新沿用旧标题
+  // 制品展示标题，可独立重命名；发布标题只有空白时新建用 slug，已有制品沿用旧标题
   title: z.string().min(1),
   // 渲染器与写作规范的查找键
   type: ArtifactTypeSchema,
@@ -46,7 +46,7 @@ export const ArtifactSchema = z.object({
   headVersion: z.number().int().min(1),
   // 首次发布时间
   createdAt: ISODateTimeSchema,
-  // 最近一次写入（发布、更新、回退或目录改名）的时间
+  // 最近一次写入，包含版本推进与只修改制品元数据
   updatedAt: ISODateTimeSchema,
 })
 export type Artifact = z.infer<typeof ArtifactSchema>
@@ -61,7 +61,7 @@ export const VersionSchema = z.object({
   parentVersion: z.number().int().min(1).nullable(),
   // 产生该版本的一方
   author: AuthorSchema,
-  // 写入该版本时制品的标题
+  // 写入该快照时的标题；后来改名不回写历史
   title: z.string().min(1),
   // 完整源码，不是相对父版本的增量
   source: z.string(),

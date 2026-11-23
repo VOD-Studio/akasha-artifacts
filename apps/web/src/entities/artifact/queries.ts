@@ -3,23 +3,29 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   type ArtifactDetailResponse,
   fetchArtifactDetail,
+  fetchArtifactManagement,
   fetchArtifactSpec,
   fetchArtifacts,
   fetchArtifactVersions,
   publishHumanVersion,
   pushArtifactState,
+  renameArtifact,
   revertArtifactVersion,
   submitArtifactFeedback,
 } from '../../shared/api/client'
 import { computeLineDiff } from '../../shared/lib/diff'
 import { feedbackKeys } from '../feedback/queries'
 
+const artifactListKey = ['artifacts', 'list'] as const
+
 export const artifactKeys = {
   all: ['artifacts'] as const,
-  list: (projectId?: string) => ['artifacts', 'list', projectId ?? 'all'] as const,
+  lists: artifactListKey,
+  list: (projectId?: string) => [...artifactListKey, projectId ?? 'all'] as const,
   detailPrefix: (id: string) => ['artifacts', 'detail', id] as const,
   detail: (id: string, version?: number) => ['artifacts', 'detail', id, version ?? 'head'] as const,
   versions: (id: string) => ['artifacts', 'versions', id] as const,
+  management: (id: string) => ['artifacts', 'management', id] as const,
   spec: (type: ArtifactType) => ['artifacts', 'spec', type] as const,
 }
 
@@ -53,6 +59,53 @@ export function useArtifactVersionsQuery(id: string) {
     },
     enabled: Boolean(id),
     staleTime: 5_000,
+  })
+}
+
+export function useArtifactManagementQuery(id: string) {
+  return useQuery({
+    queryKey: artifactKeys.management(id),
+    queryFn: () => fetchArtifactManagement(id),
+    enabled: Boolean(id),
+    retry: false,
+  })
+}
+
+export function useRenameArtifactMutation(id: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (title: string) => renameArtifact(id, title),
+    onSuccess: ({ artifact }) => {
+      queryClient.setQueriesData<ArtifactDetailResponse>(
+        { queryKey: artifactKeys.detailPrefix(id) },
+        (previous) => (previous ? { ...previous, artifact } : previous),
+      )
+      void queryClient.invalidateQueries({ queryKey: artifactKeys.lists })
+    },
+  })
+}
+
+/** 重读当前制品的数据，不重载浏览器，不重置画布与输入。 */
+export function useReloadArtifactMutation(id: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries(
+          { queryKey: artifactKeys.detailPrefix(id) },
+          { throwOnError: true },
+        ),
+        queryClient.invalidateQueries(
+          { queryKey: artifactKeys.versions(id) },
+          { throwOnError: true },
+        ),
+        queryClient.invalidateQueries(
+          { queryKey: artifactKeys.management(id) },
+          { throwOnError: true },
+        ),
+        queryClient.invalidateQueries({ queryKey: feedbackKeys.list(id) }, { throwOnError: true }),
+      ])
+    },
   })
 }
 

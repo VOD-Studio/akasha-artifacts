@@ -354,7 +354,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     fireEvent.click(screen.getByRole('button', { name: '放大' }))
     const previewZoom = zoomRatio()
     expect(previewZoom).toBeGreaterThan(initialZoom)
-    fireEvent.keyDown(screen.getByRole('button', { name: '更多操作' }), { key: 'Enter' })
+    fireEvent.keyDown(screen.getByRole('button', { name: '制品菜单' }), { key: 'Enter' })
     fireEvent.click(screen.getByRole('menuitem', { name: '查看源码' }))
     expect(screen.queryByRole('region', { name: '制品画布' })).toBeNull()
     expect(screen.getByText(SAMPLE_V1.source)).toBeTruthy()

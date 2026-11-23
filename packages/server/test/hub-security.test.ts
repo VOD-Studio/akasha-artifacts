@@ -262,6 +262,26 @@ describe('Cloud Hub 身份与制品权限', () => {
       version: { author: 'human:github-202', version: 2 },
       artifact: { visibility: 'team' },
     })
+    const teamPath = `/api/v1/artifacts/${team.artifact.publicId}`
+    const rename = (cookie: string) =>
+      send(`${teamPath}/metadata`, {
+        method: 'PATCH',
+        headers: { cookie, origin, 'content-type': 'application/json' },
+        body: JSON.stringify({ title: '协作展示名' }),
+      })
+    expect(
+      await (await send(`${teamPath}/management`, { headers: { cookie: bob } })).json(),
+    ).toEqual({ canManage: false })
+    expect((await rename(bob)).status).toBe(403)
+    expect(await (await rename(alice)).json()).toMatchObject({
+      artifact: { publicId: team.artifact.publicId, title: '协作展示名', headVersion: 2 },
+    })
+    expect(
+      await (await send(`${teamPath}?version=2`, { headers: { cookie: bob } })).json(),
+    ).toMatchObject({
+      artifact: { title: '协作展示名' },
+      version: { title: '团队更新', version: 2 },
+    })
     const storage = `/api/v1/artifacts/${open.artifact.publicId}/storage`
     expect(
       (await post(storage, { action: 'set', scope: 'shared', key: 'flag', value: true }, bob))

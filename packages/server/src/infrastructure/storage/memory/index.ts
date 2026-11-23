@@ -112,6 +112,14 @@ export class InMemoryArtifactRepository implements ArtifactRepository {
     this.slugIndex.set(this.slugKey(artifact.projectId, artifact.slug), artifact.publicId)
   }
 
+  async renameTitle(id: PublicId, title: string, updatedAt: string): Promise<Artifact | undefined> {
+    const artifact = this.artifacts.get(id)
+    if (!artifact) return undefined
+    const renamed = { ...artifact, title, updatedAt }
+    this.artifacts.set(id, renamed)
+    return structuredClone(renamed)
+  }
+
   async findByPublicId(publicId: PublicId): Promise<Artifact | undefined> {
     const hit = this.artifacts.get(publicId)
     return hit ? structuredClone(hit) : undefined

@@ -130,6 +130,7 @@ describe('Artifact immutable versions & conflict detection', () => {
       author: 'agent:agy',
     })
 
+    await service.renameArtifact({ id: v1.artifact.publicId, title: '独立的管理标题' })
     const v3 = await service.revert({
       id: v1.artifact.publicId,
       targetVersion: 1,
@@ -139,6 +140,8 @@ describe('Artifact immutable versions & conflict detection', () => {
     expect(v3.version.version).toBe(3)
     expect(v3.version.parentVersion).toBe(2)
     expect(v3.version.source).toBe('<doc><p id="a">v1</p></doc>')
+    expect(v3.artifact.title).toBe('独立的管理标题')
+    expect(v3.version.title).toBe('独立的管理标题')
     expect(await service.getHistory(v1.artifact.publicId)).toHaveLength(3)
   })
 })
