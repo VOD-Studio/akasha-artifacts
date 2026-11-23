@@ -267,42 +267,74 @@ export class FsArtifactRepository implements ArtifactRepository {
     this.importingExternalFiles.delete(resolveRealPathAllowMissing(filePath))
   }
 
-  private findExistingDiskEntry(artifact: Artifact): string | null {
+  private findExistingDiskEntries(artifact: Artifact): string[] {
     const layout = resolveArtifactFileLayout(this.artifactsRoot, artifact.type, artifact.slug)
+    const found: string[] = []
     for (const filename of CANONICAL_ENTRY_FILENAMES[artifact.type]) {
       const candidate = path.join(layout.artifactDir, filename)
       if (!fs.existsSync(candidate)) continue
       try {
         assertRealPathInsideRoot(this.artifactsRoot, candidate)
-        if (fs.statSync(candidate).isFile()) return candidate
+        if (fs.statSync(candidate).isFile()) found.push(candidate)
       } catch {
         // 忽略非法或非普通文件
       }
     }
-    return null
+    return found
   }
 
-  // 在服务端写入覆写磁盘前检查是否存在尚未被防抖监听器捕获的外部磁盘改动：
-  // 若磁盘内容已领先于数据库 headVersion，则先把外部修改入库为新版本并抛出 409 VERSION_CONFLICT，绝不静默覆盖外部改动。
+  private findExistingDiskEntry(artifact: Artifact): string | null {
+    return this.findExistingDiskEntries(artifact)[0] ?? null
+  }
+
+  // 在服务端写入覆写磁盘前检查所有规范入口文件（含 document 的 index.html/index.json 与 react 的 index.tsx/index.jsx）：
+  // 若存在尚未被防抖监听器捕获的外部磁盘改动，则先把外部修改入库为新版本并抛出 409 VERSION_CONFLICT，绝不静默覆盖或误删。
   private reconcilePendingDiskEditBeforeWrite(
     previous: Artifact,
     stagedForHead: Readonly<Version>,
   ): void {
     const prevHeadVer = this.inner.getVersionSync(previous.publicId, previous.headVersion)
     if (!prevHeadVer) return
-    const diskFile = this.findExistingDiskEntry(previous)
-    if (!diskFile) return
+    const diskFiles = this.findExistingDiskEntries(previous)
+    if (diskFiles.length === 0) return
 
-    let diskSource: string
-    try {
-      diskSource = fs.readFileSync(diskFile, 'utf8')
-    } catch {
+    const modifiedEntries: Array<{ file: string; source: string }> = []
+    const unmodifiedEntries: string[] = []
+    for (const diskFile of diskFiles) {
+      let diskSource: string
+      try {
+        diskSource = fs.readFileSync(diskFile, 'utf8')
+      } catch {
+        continue
+      }
+      if (diskSource === prevHeadVer.source) {
+        unmodifiedEntries.push(diskFile)
+      } else {
+        modifiedEntries.push({ file: diskFile, source: diskSource })
+      }
+    }
+
+    if (modifiedEntries.length === 0) return
+
+    // 若本次写入正是监听器针对唯一变更磁盘快照的同步请求，直接放行
+    if (
+      modifiedEntries.length === 1 &&
+      stagedForHead.author === 'agent:fs' &&
+      modifiedEntries[0]?.source === stagedForHead.source
+    ) {
       return
     }
 
-    if (diskSource === prevHeadVer.source) return
-    // 若本次写入正是监听器针对该磁盘快照的同步请求，直接放行
-    if (stagedForHead.author === 'agent:fs' && diskSource === stagedForHead.source) return
+    // 多个规范入口文件同时存在未入库外部改动时，拒绝覆盖并不删除任何文件，交由人工清理
+    if (modifiedEntries.length > 1) {
+      throw new DomainError(
+        'BAD_REQUEST',
+        `目录中同时存在多个未入库的外部修改入口文件（${modifiedEntries.map((e) => path.basename(e.file)).join('、')}），请先合并或清理后再提交`,
+      )
+    }
+
+    const changed = modifiedEntries[0]
+    if (!changed) return
 
     const nextExternalVersion = previous.headVersion + 1
     const now = new Date().toISOString()
@@ -312,7 +344,7 @@ export class FsArtifactRepository implements ArtifactRepository {
       parentVersion: previous.headVersion,
       author: 'agent:fs',
       title: previous.title,
-      source: diskSource,
+      source: changed.source,
       createdAt: now,
     })
     const reconciledArtifact: Artifact = {
@@ -321,7 +353,16 @@ export class FsArtifactRepository implements ArtifactRepository {
       updatedAt: now,
     }
     this.inner.saveArtifactWithVersionSync(reconciledArtifact, externalVersion)
-    this.recordSyncedContent(diskFile, diskSource)
+
+    // 仅清理与已归档 prevHeadVer 完全一致的旧同伴入口文件，防止重启对账回滚，且绝不删除任何未入库外部改动
+    for (const oldFile of unmodifiedEntries) {
+      if (fs.existsSync(oldFile)) {
+        fs.rmSync(oldFile, { force: true })
+        this.lastWrittenContent.delete(path.resolve(oldFile))
+      }
+    }
+
+    this.recordSyncedContent(changed.file, changed.source)
     this.onDiskReconciled?.(reconciledArtifact, externalVersion)
 
     throw new VersionConflictError({
@@ -330,7 +371,7 @@ export class FsArtifactRepository implements ArtifactRepository {
       headVersion: nextExternalVersion,
       diff: computeUnifiedDiff(
         prevHeadVer.source,
-        diskSource,
+        changed.source,
         `v${previous.headVersion}`,
         `v${nextExternalVersion}`,
       ),

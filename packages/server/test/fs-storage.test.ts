@@ -999,4 +999,84 @@ describe('.artifacts/ 原生文件存储适配器与外部编辑监听', () => {
       ),
     ).toEqual([1])
   })
+
+  it('同目录新增未入库的备选规范入口（document index.json / react index.jsx）时，API 更新前先补录为新版本并抛出 409，绝不静默删除', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-alt-entry-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    const container = createLocalContainer({
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_alt',
+      fsWatchDebounceMs: 5000,
+    })
+    closers.push(container.close)
+    await container.ready
+
+    // 1. document 原本使用 index.html，外部新建 index.json 后立刻有 API 更新到达
+    const docPub = await container.service.publish({
+      projectId: 'proj_alt',
+      slug: 'document/spec',
+      title: 'Spec',
+      type: 'document',
+      source: '<article><h1 id="t">v1 html</h1></article>',
+      author: 'agent:cli',
+    })
+    const docDir = path.join(artifactsDir, 'document', 'spec')
+    const externalJson = JSON.stringify({
+      title: '外部新建 JSON 文档',
+      sections: [{ id: 's1', heading: '章节', paragraphs: [{ id: 'p1', text: '内容' }] }],
+    })
+    fs.writeFileSync(path.join(docDir, 'index.json'), externalJson, 'utf8')
+
+    await expect(
+      container.service.publish({
+        projectId: 'proj_alt',
+        slug: 'document/spec',
+        title: 'Spec API v2',
+        type: 'document',
+        source: '<article><h1 id="t">api overwrite</h1></article>',
+        baseVersion: 1,
+        author: 'agent:cli',
+      }),
+    ).rejects.toThrow(/版本冲突/)
+
+    expect(fs.readFileSync(path.join(docDir, 'index.json'), 'utf8')).toBe(externalJson)
+    const docLatest = await container.service.getArtifact({ id: docPub.artifact.publicId })
+    expect(docLatest.artifact.headVersion).toBe(2)
+    expect(docLatest.version.source).toBe(externalJson)
+    expect(docLatest.version.author).toBe('agent:fs')
+
+    // 2. react 原本使用 index.tsx，外部新建 index.jsx 后立刻有 API 更新到达
+    const reactPub = await container.service.publish({
+      projectId: 'proj_alt',
+      slug: 'react/widget',
+      title: 'Widget',
+      type: 'react',
+      source: 'export default function App() { return <div>v1 tsx</div> }',
+      author: 'agent:cli',
+    })
+    const reactDir = path.join(artifactsDir, 'react', 'widget')
+    const externalJsx = 'export default function App() { return <div>external jsx</div> }'
+    fs.writeFileSync(path.join(reactDir, 'index.jsx'), externalJsx, 'utf8')
+
+    await expect(
+      container.service.publish({
+        projectId: 'proj_alt',
+        slug: 'react/widget',
+        title: 'Widget API v2',
+        type: 'react',
+        source: 'export default function App() { return <div>api tsx overwrite</div> }',
+        baseVersion: 1,
+        author: 'agent:cli',
+      }),
+    ).rejects.toThrow(/版本冲突/)
+
+    expect(fs.readFileSync(path.join(reactDir, 'index.jsx'), 'utf8')).toBe(externalJsx)
+    const reactLatest = await container.service.getArtifact({ id: reactPub.artifact.publicId })
+    expect(reactLatest.artifact.headVersion).toBe(2)
+    expect(reactLatest.version.source).toBe(externalJsx)
+    expect(reactLatest.version.author).toBe('agent:fs')
+  })
 })
