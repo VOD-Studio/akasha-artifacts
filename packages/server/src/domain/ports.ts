@@ -31,6 +31,8 @@ export interface ProjectRepository {
 export interface ArtifactRepository {
   /** 按 `publicId` 插入或整体覆盖；项目或 slug 变更时须同步维护 slug 唯一索引。 */
   saveArtifact(artifact: Artifact): Promise<void>
+  /** 单独更新展示标题与更新时间，不重写源码、版本或项目归属。 */
+  renameTitle(id: PublicId, title: string, updatedAt: string): Promise<Artifact | undefined>
   findByPublicId(publicId: PublicId): Promise<Artifact | undefined>
   findBySlug(projectId: string, slug: Slug): Promise<Artifact | undefined>
   /** `projectId` 省略时跨项目列出全部。 */

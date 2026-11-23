@@ -142,6 +142,13 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
         artifact.updatedAt,
       )
     },
+    renameTitle: (id, title, updatedAt) =>
+      first<Artifact>(
+        `UPDATE artifacts SET title = ?, updated_at = ? WHERE public_id = ? RETURNING ${artifactColumns}`,
+        title,
+        updatedAt,
+        id,
+      ),
     findByPublicId: (id) =>
       first<Artifact>(`SELECT ${artifactColumns} FROM artifacts WHERE public_id = ?`, id),
     findBySlug: (projectId, slug) =>

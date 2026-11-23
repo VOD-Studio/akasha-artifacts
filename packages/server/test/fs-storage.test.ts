@@ -62,6 +62,22 @@ describe('.artifacts/ 原生文件存储适配器与外部编辑监听', () => {
     )
     expect(fs.readFileSync(idFile, 'utf8').trim()).toBe(pub.artifact.publicId)
 
+    const renamed = await container.service.renameArtifact({
+      id: pub.artifact.publicId,
+      title: '  新的展示标题  ',
+    })
+    expect(renamed).toMatchObject({
+      publicId: pub.artifact.publicId,
+      slug: pub.artifact.slug,
+      title: '新的展示标题',
+      headVersion: 1,
+    })
+    const original = await container.service.getArtifact({ id: pub.artifact.publicId, version: 1 })
+    expect(original.artifact.title).toBe('新的展示标题')
+    expect(original.version).toEqual(pub.version)
+    expect(fs.readFileSync(htmlFile, 'utf8')).toBe(pub.version.source)
+    expect(fs.readFileSync(idFile, 'utf8').trim()).toBe(pub.artifact.publicId)
+
     // 2. document 从 HTML 切换为 JSON 时，旧 index.html 应被清理，仅保留 index.json
     const jsonSource = JSON.stringify({
       title: '重试策略 v2',

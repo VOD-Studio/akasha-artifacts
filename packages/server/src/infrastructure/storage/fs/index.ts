@@ -911,6 +911,10 @@ export class FsArtifactRepository implements ArtifactRepository {
     }
   }
 
+  renameTitle(id: PublicId, title: string, updatedAt: string): Promise<Artifact | undefined> {
+    return this.inner.renameTitle(id, title, updatedAt)
+  }
+
   findByPublicId(publicId: PublicId): Promise<Artifact | undefined> {
     return this.inner.findByPublicId(publicId)
   }

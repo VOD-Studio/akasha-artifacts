@@ -52,6 +52,17 @@ export interface ArtifactDetailResponse {
   rounds: ReviewRound[]
 }
 
+export async function fetchArtifactManagement(id: string): Promise<{ canManage: boolean }> {
+  return requestJson(`/api/v1/artifacts/${encodeURIComponent(id)}/management`)
+}
+
+export async function renameArtifact(id: string, title: string): Promise<{ artifact: Artifact }> {
+  return requestJson(`/api/v1/artifacts/${encodeURIComponent(id)}/metadata`, {
+    method: 'PATCH',
+    body: JSON.stringify({ title }),
+  })
+}
+
 // 所有请求带上同源 cookie；有请求体且未指定 Content-Type 时按 JSON 发送
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${getApiBaseUrl()}${path}`

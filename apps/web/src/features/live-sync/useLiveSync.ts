@@ -63,6 +63,12 @@ export function applyRealtimeEventToCache(
       return
     }
 
+    case 'artifact.metadata': {
+      void queryClient.invalidateQueries({ queryKey: artifactKeys.lists })
+      void queryClient.invalidateQueries({ queryKey: artifactKeys.detailPrefix(event.artifactId) })
+      return
+    }
+
     case 'state.patched': {
       // 同步推进 TanStack Query 缓存中的状态快照，保证 L2 属性面板与 Agent 推送的 StateStream 实时一致
       queryClient.setQueriesData<ArtifactDetailResponse | undefined>(

@@ -200,9 +200,11 @@ function ArtifactRouteView({
   return (
     <div className="flex h-dvh flex-col bg-canvas text-ink">
       <TopBar
+        key={`topbar:${detail.artifact.publicId}`}
         artifact={detail.artifact}
         version={detail.version}
         versions={versions}
+        fixedVersion={requestedVersion}
         feedbackCount={feedbacks.reduce(
           (count, feedback) => count + Number(isAnnotationKind(feedback.kind)),
           0,

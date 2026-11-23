@@ -476,6 +476,27 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
     return c.json(data)
   })
 
+  app.get('/api/v1/artifacts/:id/management', async (c) => {
+    await deps.service.resolveArtifact(c.req.param('id'), c.req.query('projectId'))
+    return c.json({ canManage: true }, 200, { 'Cache-Control': 'private, no-store' })
+  })
+
+  app.patch('/api/v1/artifacts/:id/metadata', async (c) => {
+    const body = await parseJsonBody(
+      c.req.raw,
+      z.object({
+        title: z.string().trim().min(1).max(240),
+        project: z.string().min(1).optional(),
+      }),
+    )
+    const artifact = await deps.service.renameArtifact({
+      id: c.req.param('id'),
+      title: body.title,
+      projectId: body.project,
+    })
+    return c.json({ artifact })
+  })
+
   app.patch('/api/v1/artifacts/:id', async (c) => {
     const id = c.req.param('id')
     const body = await parseJsonBody(c.req.raw, UpdateBodySchema)

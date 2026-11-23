@@ -394,6 +394,13 @@ export class SqliteArtifactRepository implements ArtifactRepository {
     this.upsertArtifactSync(artifact)
   }
 
+  async renameTitle(id: PublicId, title: string, updatedAt: string): Promise<Artifact | undefined> {
+    const row = this.db
+      .prepare('UPDATE artifacts SET title = ?, updated_at = ? WHERE public_id = ? RETURNING *')
+      .get(title, updatedAt, id) as ArtifactRow | undefined
+    return row ? mapArtifact(row) : undefined
+  }
+
   async findByPublicId(publicId: PublicId): Promise<Artifact | undefined> {
     const row = this.db.prepare('SELECT * FROM artifacts WHERE public_id = ?').get(publicId) as
       | ArtifactRow

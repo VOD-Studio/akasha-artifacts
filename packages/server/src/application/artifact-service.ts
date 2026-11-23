@@ -274,6 +274,26 @@ export class ArtifactService {
     })
   }
 
+  /** 只修改制品展示标题，历史快照以及其 permalink 保持不变。 */
+  async renameArtifact(input: {
+    id: ArtifactIdentifier
+    projectId?: string
+    title: string
+  }): Promise<Artifact> {
+    const title = input.title.trim()
+    if (!title) throw new DomainError('BAD_REQUEST', '制品标题不能为空')
+    const { publicId } = await this.resolveArtifact(input.id, input.projectId)
+    return this.withArtifactLock(publicId, async () => {
+      const artifact = await this.deps.artifacts.renameTitle(publicId, title, this.deps.clock.now())
+      if (!artifact) throw new NotFoundError(`未找到 Artifact "${publicId}"`)
+      await this.deps.realtime.publish(
+        { type: 'artifact.metadata', artifactId: publicId },
+        { projectId: artifact.projectId },
+      )
+      return artifact
+    })
+  }
+
   /**
    * 在头版本源码上按序应用增量替换，生成新版本。
    *
@@ -381,7 +401,7 @@ export class ArtifactService {
         version: head.version + 1,
         parentVersion: head.version,
         author: input.author,
-        title: head.title,
+        title: artifact.title,
         source,
         createdAt: now,
       })
@@ -526,13 +546,12 @@ export class ArtifactService {
         version: nextNumber,
         parentVersion: existing.headVersion,
         author: input.author,
-        title: target.title,
+        title: existing.title,
         source: target.source,
         createdAt: now,
       })
       const updated: Artifact = {
         ...existing,
-        title: version.title,
         headVersion: nextNumber,
         updatedAt: now,
       }

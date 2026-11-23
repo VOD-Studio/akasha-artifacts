@@ -1,34 +1,19 @@
 import type { Artifact, Version } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@akasha/ui/dropdown-menu'
-import {
-  ArrowLeft,
-  Code2,
-  Download,
-  Ellipsis,
-  GitCompare,
-  MessageSquare,
-  Pencil,
-  ScanLine,
-  Search,
-} from 'lucide-react'
+import { ArrowLeft, MessageSquare, ScanLine } from 'lucide-react'
 import { useState } from 'react'
 import { useSelectionStore } from '../../entities/selection/store'
 import { useWorkspaceStore, type WorkspaceViewMode } from '../../entities/workspace/store'
-import { HubAccountButton, HubShareDialog, HubShareMenuItem } from '../../features/hub/HubActions'
+import { HubAccountButton, HubShareDialog } from '../../features/hub/HubActions'
 import { VersionTimeline } from '../../features/version-timeline/VersionTimeline'
+import { ArtifactTitleMenu } from './ArtifactTitleMenu'
 
 export interface TopBarProps {
   artifact: Artifact
   version: Version
   versions: readonly Version[]
+  /** 有值时普通制品链接固定到正在查看的历史版本。 */
+  fixedVersion?: number
   feedbackCount?: number
   hasActiveRound?: boolean
   onBackToLibrary: () => void
@@ -41,6 +26,7 @@ export function TopBar({
   artifact,
   version,
   versions,
+  fixedVersion,
   feedbackCount = 0,
   hasActiveRound = false,
   onBackToLibrary,
@@ -83,9 +69,15 @@ export function TopBar({
         >
           <ArrowLeft size={16} />
         </Button>
-        <h1 className="truncate text-sm font-semibold text-ink" title={artifact.title}>
-          {artifact.title}
-        </h1>
+        <ArtifactTitleMenu
+          artifact={artifact}
+          fixedVersion={fixedVersion}
+          agentStatus={agentStatus}
+          onShowTool={showTool}
+          onExport={onExport}
+          onShare={setShareLink}
+          onQuickJump={() => setCommandPaletteOpen(true)}
+        />
         <VersionTimeline
           publicId={artifact.publicId}
           activeVersion={version.version}
@@ -139,41 +131,6 @@ export function TopBar({
           {reviewLabel}
           {feedbackCount > 0 ? ` ${feedbackCount}` : ''}
         </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" iconOnly aria-label="更多操作" title="更多操作">
-              <Ellipsis size={18} />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onSelect={() => showTool('source')}>
-              <Code2 size={14} />
-              查看源码
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => showTool('edit')}>
-              <Pencil size={14} />
-              编辑代码
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => showTool('diff')}>
-              <GitCompare size={14} />
-              对比版本
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {onExport ? (
-              <DropdownMenuItem onSelect={onExport}>
-                <Download size={14} />
-                导出设计
-              </DropdownMenuItem>
-            ) : null}
-            <HubShareMenuItem publicId={artifact.publicId} onShare={setShareLink} />
-            <DropdownMenuItem onSelect={() => setCommandPaletteOpen(true)}>
-              <Search size={14} />
-              快速跳转
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>{agentStatus}</DropdownMenuLabel>
-          </DropdownMenuContent>
-        </DropdownMenu>
         <HubAccountButton />
         {shareLink ? <HubShareDialog link={shareLink} onClose={() => setShareLink(null)} /> : null}
       </div>
