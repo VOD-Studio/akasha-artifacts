@@ -35,6 +35,8 @@ export interface CanvasDocument {
   columns: number
   /** 画板之间的流程连线，两端是画板 id。 */
   flows: readonly { from: string; to: string; label?: string }[]
+  /** 只控制画布上的箭头，不影响试玩中声明的导航。 */
+  showFlows: boolean
   handDrawnFlows: boolean
 }
 
@@ -104,6 +106,7 @@ export function createCanvasDocument(
       ],
       columns: 1,
       flows: [],
+      showFlows: false,
       handDrawnFlows: false,
     }
   }
@@ -176,14 +179,12 @@ export function createCanvasDocument(
       typeof overlay?.columns === 'number' && Number.isFinite(overlay.columns)
         ? Math.min(4, Math.max(1, Math.round(overlay.columns)))
         : data.columns,
-    flows:
-      (overlay?.showFlows ?? data.showFlows)
-        ? data.flows.map(({ from, to, label }) => ({
-            from: boardIds.get(from) ?? from,
-            to: boardIds.get(to) ?? to,
-            label,
-          }))
-        : [],
+    flows: data.flows.map(({ from, to, label }) => ({
+      from: boardIds.get(from) ?? from,
+      to: boardIds.get(to) ?? to,
+      label,
+    })),
+    showFlows: Boolean(overlay?.showFlows ?? data.showFlows),
     handDrawnFlows: Boolean(overlay?.handDrawnFlows ?? data.handDrawnFlows),
   }
 }

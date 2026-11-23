@@ -2,6 +2,7 @@ import type { ArtifactType, PreservedViewState } from '@akasha/protocol'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { SandboxBridgeClient } from './bridge/client'
 import { SandboxInspector } from './inspector/index'
+import { bindPrototype, hasPlayableControls } from './prototype'
 import { registerBuiltinRenderers } from './renderers/builtins'
 import { getRenderer } from './renderers/registry'
 import {
@@ -25,6 +26,8 @@ export interface RenderPayload {
   boardId?: string
   version: number
   source: string
+  /** 允许由制品的控件发出原型导航请求。 */
+  playback?: true
 }
 
 /** 沙盒根组件的输入；多数字段用于测试或独立运行时预置。 */
@@ -91,6 +94,7 @@ export function SandboxApp({
           version: msg.version,
           source: msg.source,
           ...(msg.artifactType === 'html' && msg.boardId ? { boardId: msg.boardId } : {}),
+          ...(msg.playback ? { playback: true } : {}),
         }
         committedPayloadRef.current = next
         setPayload(next)
@@ -161,6 +165,16 @@ export function SandboxApp({
     }
   }, [bridge, stateStore, preserved])
 
+  const playbackVersion = payload?.playback ? payload.version : 0
+  useEffect(() => {
+    if (!bridge || !playbackVersion || !rootRef.current) return
+    return bindPrototype(rootRef.current, {
+      navigate: (target) =>
+        bridge.send({ type: 'prototype.navigate', version: playbackVersion, target }),
+      exit: () => bridge.send({ type: 'prototype.exit', version: playbackVersion }),
+    })
+  }, [bridge, playbackVersion])
+
   // 自动向外壳上报容器尺寸变化，便于外壳自适应高度或视口定位
   useEffect(() => {
     if (!bridge || !rootRef.current || typeof ResizeObserver === 'undefined') return
@@ -205,6 +219,7 @@ export function SandboxApp({
       bridge.send({
         type: 'rendered',
         version: ver,
+        playable: rootRef.current ? hasPlayableControls(rootRef.current) : false,
         ...(height !== undefined ? { height } : {}),
       })
     },

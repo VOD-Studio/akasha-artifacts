@@ -32,6 +32,12 @@ export interface FrameConnection {
   forwardState: (seq: number, ops: JsonPatchOp[]) => void
 }
 
+/** 试玩有自己的输入和导航，不能调用设计视图的选区、批注或直改操作。 */
+export type BoardFramePurpose =
+  | { type: 'overview'; interactive: boolean }
+  | { type: 'focus' }
+  | { type: 'play'; onNavigate: (target: string) => void; onExit: () => void }
+
 interface ArtifactFrameProps {
   artifact: Artifact
   version: Version
@@ -39,11 +45,10 @@ interface ArtifactFrameProps {
   state: StateStreamSnapshot
   sandboxOrigin: string
   pins: readonly Feedback[]
-  interactive: boolean
-  /** 聚焦是独立的只读沙盒，不能改写总览的选区或运行控件保态。 */
-  focused: boolean
-  /** 向工作区登记或注销这块画板的连接。 */
-  register: (id: string, frame: FrameConnection | null) => void
+  purpose: BoardFramePurpose
+  /** 只有设计视图登记；试玩不接收设计视图的指认或编辑指令。 */
+  register?: (id: string, frame: FrameConnection | null) => void
+  onPlayable: (board: CanvasBoard, version: number, playable: boolean) => void
   /** 直改模式下沙盒上报选中元素时调用。 */
   onVisualSelect: (message: Extract<SandboxToShellMessage, { type: 'visual.select' }>) => void
 }
@@ -73,14 +78,18 @@ export function ArtifactFrame({
   state,
   sandboxOrigin,
   pins,
-  interactive,
-  focused,
+  purpose,
   register,
+  onPlayable,
   onVisualSelect,
 }: ArtifactFrameProps) {
   const artifactId = artifact.publicId
   const { id, scoped, type, source } = board
   const versionNumber = version.version
+  const playback = purpose.type === 'play'
+  const focused = purpose.type === 'focus'
+  const isolated = focused || playback
+  const interactive = playback || (purpose.type === 'overview' && purpose.interactive)
   const viewKey = focused
     ? JSON.stringify([artifactId, id, 'focus'])
     : scoped
@@ -117,7 +126,8 @@ export function ArtifactFrame({
   const [livePinRects, setLivePinRects] = useState<Record<string, ElementRect | null>>({})
   const pickerActive = useSelectionStore((s) => s.pickerActive)
   const selection = useSelectionStore((s) => s.selectedByArtifact[artifactId] ?? null)
-  const selected = selection && belongsToBoard(selection, id, scoped) ? selection : null
+  const selected =
+    !playback && selection && belongsToBoard(selection, id, scoped) ? selection : null
   const focusedFeedbackId = useSelectionStore((s) => s.focusedFeedbackId)
   const versionPins = useMemo(
     () => pins.filter((pin) => pin.element && belongsToBoard(pin.element, id, scoped)),
@@ -129,16 +139,35 @@ export function ArtifactFrame({
       version: versionNumber,
       source,
       boardId: scoped ? id : undefined,
+      playback: playback ? (true as const) : undefined,
     }),
-    [type, source, versionNumber, scoped, id],
+    [type, source, versionNumber, scoped, id, playback],
   )
   const applied = useRef<{
     render: typeof render
     pins: readonly Feedback[]
     inspecting: boolean
   } | null>(null)
-  const latest = useRef({ state, versionNumber, versionPins, interactive, onVisualSelect })
-  latest.current = { state, versionNumber, versionPins, interactive, onVisualSelect }
+  const latest = useRef({
+    state,
+    versionNumber,
+    versionPins,
+    interactive,
+    onVisualSelect,
+    purpose,
+    board,
+    onPlayable,
+  })
+  latest.current = {
+    state,
+    versionNumber,
+    versionPins,
+    interactive,
+    onVisualSelect,
+    purpose,
+    board,
+    onPlayable,
+  }
 
   useEffect(() => {
     applied.current = null
@@ -163,7 +192,7 @@ export function ArtifactFrame({
       const selectionStore = useSelectionStore.getState()
       switch (message.type) {
         case 'viewState.snapshot':
-          useWorkspaceStore.getState().setPreservedView(viewKey, message.state)
+          if (!playback) useWorkspaceStore.getState().setPreservedView(viewKey, message.state)
           break
         case 'error':
           setError({
@@ -177,17 +206,19 @@ export function ArtifactFrame({
         case 'rendered': {
           if (message.version !== activeVersion) break
           setError(null)
+          if (playback) break
+          latest.current.onPlayable(latest.current.board, activeVersion, message.playable === true)
           const currentSelection = selectionStore.selectedByArtifact[artifactId]
           if (currentSelection) send({ type: 'highlight', element: currentSelection })
           trackPins(host, latest.current.versionPins)
           break
         }
         case 'inspect.hover':
-          if (!latest.current.interactive || !selectionStore.pickerActive) break
+          if (isolated || !latest.current.interactive || !selectionStore.pickerActive) break
           setHovered(message.element ? bindSandboxReference(message.element, id, scoped) : null)
           break
         case 'inspect.select': {
-          if (focused) break
+          if (isolated) break
           const element = bindSandboxReference(message.element, id, scoped)
           if (!element) break
           if (message.reason === 'sync') {
@@ -213,21 +244,21 @@ export function ArtifactFrame({
           break
         case 'storage.request':
           if (
-            focused &&
+            isolated &&
             (message.operation.action === 'set' || message.operation.action === 'delete')
           ) {
             host.send({
               type: 'storage.response',
               requestId: message.requestId,
               ok: false,
-              error: '聚焦模式不能修改制品存储',
+              error: '聚焦与试玩不能修改制品存储',
             })
             break
           }
           void storage.handle(message)
           break
         case 'visual.select': {
-          if (!latest.current.interactive || message.version !== activeVersion) break
+          if (isolated || !latest.current.interactive || message.version !== activeVersion) break
           const element = bindSandboxReference(message.element, id, scoped)
           if (element) {
             latest.current.onVisualSelect({
@@ -239,7 +270,7 @@ export function ArtifactFrame({
           break
         }
         case 'annotation.request': {
-          if (focused || message.version !== activeVersion) break
+          if (isolated || message.version !== activeVersion) break
           const element = bindSandboxReference(message.element, id, scoped)
           if (!element) break
           selectionStore.setSelectedElement(artifactId, element)
@@ -247,11 +278,23 @@ export function ArtifactFrame({
           useWorkspaceStore.getState().setInspectorTab('review')
           break
         }
+        case 'prototype.navigate': {
+          const target = latest.current.purpose
+          if (target.type === 'play' && message.version === activeVersion) {
+            target.onNavigate(message.target)
+          }
+          break
+        }
+        case 'prototype.exit': {
+          const target = latest.current.purpose
+          if (target.type === 'play' && message.version === activeVersion) target.onExit()
+          break
+        }
       }
     })
 
     host.start()
-    register(id, {
+    register?.(id, {
       send,
       forwardState(seq, ops) {
         if (seq <= lastStateSeq.current) return
@@ -260,12 +303,12 @@ export function ArtifactFrame({
       },
     })
     return () => {
-      register(id, null)
+      register?.(id, null)
       storage.dispose()
       off()
       host.stop()
     }
-  }, [artifactId, id, scoped, focused, viewKey, host, register])
+  }, [artifactId, id, scoped, isolated, playback, viewKey, host, register])
 
   // 未 ready 的新 render 会替换队列；重新下发属于该帧的图钉和指认设定。
   useEffect(() => {
@@ -273,7 +316,9 @@ export function ArtifactFrame({
     const needsRender = previous?.render !== render
     if (needsRender) {
       const currentState = latest.current.state
-      const preservedState = useWorkspaceStore.getState().preservedViewByArtifact[viewKey]
+      const preservedState = playback
+        ? undefined
+        : useWorkspaceStore.getState().preservedViewByArtifact[viewKey]
       host.send({
         type: 'render',
         ...render,
@@ -285,8 +330,8 @@ export function ArtifactFrame({
       setHovered(null)
       setLivePinRects({})
     }
-    if (needsRender || previous?.pins !== versionPins) trackPins(host, versionPins)
-    const inspecting = pickerActive && interactive
+    if (!playback && (needsRender || previous?.pins !== versionPins)) trackPins(host, versionPins)
+    const inspecting = !isolated && pickerActive && interactive
     if (inspecting && (needsRender || !previous?.inspecting)) {
       host.send({ type: 'inspect.start' })
     } else if (!inspecting && previous?.inspecting) {
@@ -294,7 +339,17 @@ export function ArtifactFrame({
       setHovered(null)
     }
     applied.current = { render, pins: versionPins, inspecting }
-  }, [host, interactive, pickerActive, render, versionNumber, versionPins, viewKey])
+  }, [
+    host,
+    interactive,
+    isolated,
+    pickerActive,
+    playback,
+    render,
+    versionNumber,
+    versionPins,
+    viewKey,
+  ])
 
   // 切换板或清除批注引用时，让原板的沙盒退出对旧元素的坐标跟踪。
   useEffect(() => {
@@ -325,44 +380,52 @@ export function ArtifactFrame({
         sandbox={SANDBOX_IFRAME_SANDBOX_ATTR}
         referrerPolicy="no-referrer"
         inert={!interactive}
-        tabIndex={interactive && !scoped ? undefined : -1}
+        tabIndex={interactive && (playback || !scoped) ? undefined : -1}
         className={`block h-full w-full border-0 bg-white ${interactive ? 'pointer-events-auto' : 'pointer-events-none'}`}
       />
-      <ElementOverlay
-        hovered={pickerActive && interactive ? hovered : null}
-        selected={selected}
-        pins={versionPins}
-        livePinRects={livePinRects}
-        focusedFeedbackId={focusedFeedbackId}
-        onSelectPin={(pin) => {
-          const selectionStore = useSelectionStore.getState()
-          selectionStore.setFocusedFeedbackId(pin.id)
-          useWorkspaceStore.getState().setInspectorTab('review')
-          if (pin.element) {
-            selectionStore.setSelectedElement(artifactId, pin.element)
-            host.send({ type: 'highlight', element: pin.element })
-          }
-        }}
-      />
+      {!playback ? (
+        <ElementOverlay
+          hovered={pickerActive && interactive ? hovered : null}
+          selected={selected}
+          pins={versionPins}
+          livePinRects={livePinRects}
+          focusedFeedbackId={focusedFeedbackId}
+          onSelectPin={(pin) => {
+            const selectionStore = useSelectionStore.getState()
+            selectionStore.setFocusedFeedbackId(pin.id)
+            useWorkspaceStore.getState().setInspectorTab('review')
+            if (pin.element) {
+              selectionStore.setSelectedElement(artifactId, pin.element)
+              host.send({ type: 'highlight', element: pin.element })
+            }
+          }}
+        />
+      ) : null}
       {error?.version === versionNumber ? (
         <div className="pointer-events-auto absolute inset-x-0 bottom-0 z-20 max-h-full overflow-auto p-2">
-          <RuntimeErrorPanel
-            artifactId={scoped ? viewKey : artifactId}
-            projectId={artifact.projectId}
-            version={versionNumber}
-            source={scoped ? source : version.source}
-            error={error}
-            onDismiss={() => setError(null)}
-            onSubmitFeedback={
-              scoped
-                ? (_key, input) =>
-                    submitArtifactFeedback(artifactId, {
-                      ...input,
-                      element: input.element ? { ...input.element, boardId: id } : input.element,
-                    })
-                : undefined
-            }
-          />
+          {playback ? (
+            <p role="alert" className="rounded border border-border bg-surface p-3 text-sm">
+              无法试玩该画板：{error.message}
+            </p>
+          ) : (
+            <RuntimeErrorPanel
+              artifactId={scoped ? viewKey : artifactId}
+              projectId={artifact.projectId}
+              version={versionNumber}
+              source={scoped ? source : version.source}
+              error={error}
+              onDismiss={() => setError(null)}
+              onSubmitFeedback={
+                scoped
+                  ? (_key, input) =>
+                      submitArtifactFeedback(artifactId, {
+                        ...input,
+                        element: input.element ? { ...input.element, boardId: id } : input.element,
+                      })
+                  : undefined
+              }
+            />
+          )}
         </div>
       ) : null}
     </div>

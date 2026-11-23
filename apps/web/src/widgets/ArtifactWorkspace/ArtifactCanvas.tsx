@@ -1,5 +1,5 @@
 import { Button } from '@akasha/ui/button'
-import { Focus } from 'lucide-react'
+import { Focus, Play } from 'lucide-react'
 import {
   type PointerEvent,
   type ReactNode,
@@ -11,7 +11,8 @@ import {
   useState,
 } from 'react'
 import { useSelectionStore } from '../../entities/selection/store'
-import { BoardFocus } from './BoardFocus'
+import type { BoardFramePurpose } from './ArtifactFrame'
+import { BoardPresentation } from './BoardPresentation'
 import { CanvasToolbar, PageNavigator } from './CanvasControls'
 import type { CanvasPageEditing } from './CanvasPageActions'
 import {
@@ -23,6 +24,7 @@ import {
   zoomCamera,
 } from './canvas-camera'
 import type { CanvasBoard, CanvasDocument, CanvasPage } from './canvas-model'
+import { useBoardPresentation } from './useBoardPresentation'
 import { useViewportSize } from './useViewportSize'
 
 interface ArtifactCanvasProps {
@@ -37,8 +39,8 @@ interface ArtifactCanvasProps {
   pageLink: (pageId: string) => string
   /** 只在可保存画布页面的头版本传入。 */
   pageEditing?: CanvasPageEditing
-  /** `focused` 表示独立的聚焦预览，不与总览沙盒共用交互状态。 */
-  renderBoard: (board: CanvasBoard, interactive: boolean, focused?: boolean) => ReactNode
+  renderBoard: (board: CanvasBoard, purpose: BoardFramePurpose) => ReactNode
+  canPlay: (board: CanvasBoard) => boolean
   /** 可视化直改的开关；省略时画布不提供直改入口。 */
   visualEdit?: { isPicking: boolean; toggle: () => void; cancel: () => void }
 }
@@ -97,12 +99,11 @@ export function ArtifactCanvas({
   pageLink,
   pageEditing,
   renderBoard,
+  canPlay,
   visualEdit,
 }: ArtifactCanvasProps) {
   const viewportRef = useRef<HTMLElement>(null)
   const pendingFocus = useRef<{ pageId: string; boardId: string } | null>(null)
-  const returnTo = useRef<HTMLButtonElement | null>(null)
-  const [focus, setFocus] = useState<{ pageId: string; boardId: string } | null>(null)
   const pointers = useRef(new Map<number, Point>())
   const wasPinching = useRef(false)
   const [view, setView] = useState(() => readView(storageKey))
@@ -119,24 +120,10 @@ export function ArtifactCanvas({
   const [dragging, setDragging] = useState(false)
   const pickerActive = useSelectionStore((state) => state.pickerActive)
   const setPickerActive = useSelectionStore((state) => state.setPickerActive)
-  const focusedBoard = focus
-    ? document.pages
-        .find((entry) => entry.id === focus.pageId)
-        ?.boards.find((board) => board.id === focus.boardId)
-    : undefined
-  const showOverview = visible && !focusedBoard
+  const presentation = useBoardPresentation(document, visible)
+  const showOverview = visible && !presentation.focused && !presentation.playing
   const size = useViewportSize(viewportRef, showOverview)
   const measurable = showOverview && size.width > 0 && size.height > 0
-
-  useLayoutEffect(() => {
-    if (focusedBoard || !visible) return
-    const target = returnTo.current
-    returnTo.current = null
-    if (target?.isConnected) target.focus({ preventScroll: true })
-  }, [focusedBoard, visible])
-  useEffect(() => {
-    if (focus && !focusedBoard) setFocus(null)
-  }, [focus, focusedBoard])
 
   const params = useMemo(() => new URLSearchParams(address.replace(/^#/, '')), [address])
   const explicit = address !== dismissedAddress && (params.has('page') || params.has('board'))
@@ -162,6 +149,7 @@ export function ArtifactCanvas({
     [page?.boards, document.columns],
   )
   const flows = useMemo(() => {
+    if (!document.showFlows) return []
     const unique = new Map<string, CanvasDocument['flows'][number]>()
     for (const flow of document.flows) {
       if (flow.from === flow.to || !layout.bounds.has(flow.from) || !layout.bounds.has(flow.to)) {
@@ -170,7 +158,7 @@ export function ArtifactCanvas({
       unique.set(JSON.stringify([flow.from, flow.to, flow.label]), flow)
     }
     return Array.from(unique)
-  }, [document.flows, layout.bounds])
+  }, [document.flows, document.showFlows, layout.bounds])
   const handActive = hand || space
 
   useEffect(() => {
@@ -314,10 +302,11 @@ export function ArtifactCanvas({
 
   const keyDown = useEffectEvent((event: KeyboardEvent) => {
     if (event.defaultPrevented || navigatorOpen) return
-    if (focusedBoard) {
-      if (event.key === 'Escape') {
+    if (presentation.playing || presentation.focused) {
+      if (event.key === 'Escape' && !event.isComposing) {
         event.preventDefault()
-        setFocus(null)
+        if (presentation.playing) presentation.closePlay()
+        else presentation.closeFocus()
       }
       return
     }
@@ -446,6 +435,14 @@ export function ArtifactCanvas({
     visualEdit?.cancel()
   }
 
+  const pauseCanvasTools = () => {
+    setNavigatorOpen(false)
+    setPickerActive(false)
+    setSpace(false)
+    setModifier(false)
+    visualEdit?.cancel()
+  }
+
   const selectionBounds = selected === null ? undefined : layout.bounds.get(selected)
   const zoom = (factor: number) =>
     updateCamera((current) =>
@@ -542,7 +539,9 @@ export function ArtifactCanvas({
                 const bounds = layout.bounds.get(board.id)
                 if (!bounds) return null
                 const isSelected = selected === board.id
-                const interactive = !handActive && (!board.scoped || pickerActive)
+                const interactive =
+                  !handActive && (pickerActive || (!board.scoped && Boolean(visualEdit?.isPicking)))
+                const target = { pageId: page.id, boardId: board.id }
                 return (
                   <div
                     key={board.id}
@@ -592,17 +591,28 @@ export function ArtifactCanvas({
                         aria-label={`聚焦画板：${board.title}`}
                         title="聚焦画板"
                         onClick={(event) => {
-                          setNavigatorOpen(false)
-                          setPickerActive(false)
-                          setSpace(false)
-                          setModifier(false)
-                          visualEdit?.cancel()
-                          returnTo.current = event.currentTarget
-                          setFocus({ pageId: page.id, boardId: board.id })
+                          pauseCanvasTools()
+                          presentation.openFocus(target, event.currentTarget)
                         }}
                       >
                         <Focus size={15} />
                       </Button>
+                      {canPlay(board) ? (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          iconOnly
+                          className="artifact-canvas-board-action"
+                          aria-label={`播放画板：${board.title}`}
+                          title="播放原型"
+                          onClick={(event) => {
+                            pauseCanvasTools()
+                            presentation.openPlay(target, event.currentTarget)
+                          }}
+                        >
+                          <Play size={15} />
+                        </Button>
+                      ) : null}
                     </div>
                     <div className="artifact-canvas-board-clip">
                       <div
@@ -613,7 +623,7 @@ export function ArtifactCanvas({
                         }}
                         className="artifact-canvas-board-frame"
                       >
-                        {renderBoard(board, interactive)}
+                        {renderBoard(board, { type: 'overview', interactive })}
                       </div>
                       {/* 抓手与组合键缩放由外层捕获，不依赖跨域 iframe 冒泡。 */}
                       {handActive || modifier ? (
@@ -670,10 +680,37 @@ export function ArtifactCanvas({
           }}
         />
       </div>
-      {visible && focus && focusedBoard ? (
-        <BoardFocus key={JSON.stringify(focus)} board={focusedBoard} onClose={() => setFocus(null)}>
-          {renderBoard(focusedBoard, false, true)}
-        </BoardFocus>
+      {presentation.focus && presentation.focused ? (
+        <BoardPresentation
+          key={`focus:${JSON.stringify(presentation.focus)}`}
+          board={presentation.focused}
+          visible={visible && !presentation.playing}
+          onClose={presentation.closeFocus}
+          onPlay={
+            canPlay(presentation.focused)
+              ? (event) => {
+                  if (presentation.focus)
+                    presentation.openPlay(presentation.focus, event.currentTarget)
+                }
+              : undefined
+          }
+        >
+          {renderBoard(presentation.focused, { type: 'focus' })}
+        </BoardPresentation>
+      ) : null}
+      {visible && presentation.play && presentation.playing ? (
+        <BoardPresentation
+          key={`play:${JSON.stringify(presentation.play)}`}
+          board={presentation.playing}
+          playback
+          onClose={presentation.closePlay}
+        >
+          {renderBoard(presentation.playing, {
+            type: 'play',
+            onNavigate: presentation.navigate,
+            onExit: presentation.closePlay,
+          })}
+        </BoardPresentation>
       ) : null}
     </>
   )
