@@ -79,6 +79,7 @@ const SAMPLE_V2: Version = {
 afterEach(() => {
   cleanup()
   vi.useRealTimers()
+  sessionStorage.clear()
   vi.restoreAllMocks()
   useLibraryView.setState(useLibraryView.getInitialState())
   useWorkspaceStore.setState({
@@ -91,7 +92,6 @@ afterEach(() => {
     agentActivityByProject: {},
     presenceByArtifact: {},
     preservedViewByArtifact: {},
-    unsentDraftsByArtifact: {},
     sentErrorFingerprints: {},
   })
   useSelectionStore.setState({
@@ -260,6 +260,50 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     })
 
     client.close()
+  })
+
+  it('批注草稿重开后不跟随相似元素或新版换锚点', async () => {
+    const queryClient = new QueryClient()
+    const submit = vi.fn(async (_input: unknown) => {})
+    const original = { boardId: 'desktop', blockId: 'headline', textPreview: '相同标题' }
+    const other = { ...original, boardId: 'mobile' }
+    const composer = (version: number, selectedElement: typeof original) => (
+      <QueryClientProvider client={queryClient}>
+        <AnnotationComposer
+          artifactId={SAMPLE_ARTIFACT.publicId}
+          projectId={SAMPLE_ARTIFACT.projectId}
+          version={version}
+          activeDraftingRound={null}
+          selectedElement={selectedElement}
+          onSubmitFeedback={submit}
+        />
+      </QueryClientProvider>
+    )
+    const first = render(composer(1, original))
+    fireEvent.change(screen.getByLabelText('批注内容'), { target: { value: '恢复原目标的意见' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: '同时发送给 Agent' }))
+    first.unmount()
+
+    const restored = render(composer(2, other))
+    expect(screen.getByDisplayValue('恢复原目标的意见')).toBeTruthy()
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '发送批注' }).disabled).toBe(true)
+    expect(screen.getByRole('link', { name: '回 v1 继续' }).getAttribute('href')).toBe(
+      `/a/${SAMPLE_ARTIFACT.publicId}/v/1`,
+    )
+    restored.rerender(composer(1, other))
+    fireEvent.click(screen.getByRole('button', { name: '发送批注' }))
+    expect(submit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: '恢复原目标的意见',
+        element: original,
+        version: 1,
+        audience: 'agent',
+      }),
+    )
+    await vi.waitFor(() => expect(screen.queryByDisplayValue('恢复原目标的意见')).toBeNull())
+    restored.unmount()
+    render(composer(1, original))
+    expect(screen.queryByDisplayValue('恢复原目标的意见')).toBeNull()
   })
 
   it('制品默认打开交互画布，切换工具和 Agent 热更新保留视角、控件与批注草稿', () => {

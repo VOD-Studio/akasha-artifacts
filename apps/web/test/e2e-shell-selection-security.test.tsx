@@ -37,7 +37,6 @@ afterEach(() => {
     agentActivityByProject: {},
     presenceByArtifact: {},
     preservedViewByArtifact: {},
-    unsentDraftsByArtifact: {},
     sentErrorFingerprints: {},
   })
   useSelectionStore.setState({

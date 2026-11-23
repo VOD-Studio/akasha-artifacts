@@ -17,6 +17,7 @@ import {
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useArtifactDetailQuery, useArtifactVersionsQuery } from '../entities/artifact/queries'
 import { useDaemonStatusQuery } from '../entities/daemon/queries'
+import { readAnnotationDraft } from '../entities/feedback/annotation-draft'
 import { useArtifactFeedbackQuery } from '../entities/feedback/queries'
 import { useWorkspaceStore } from '../entities/workspace/store'
 import { ArtifactCommandPalette } from '../features/command-palette/ArtifactCommandPalette'
@@ -79,7 +80,10 @@ function ArtifactRouteView({
   const feedbackQuery = useArtifactFeedbackQuery(resolvedPublicId)
 
   useLayoutEffect(() => {
-    if (publicId) useWorkspaceStore.getState().openArtifactView(publicId)
+    if (!publicId) return
+    const workspace = useWorkspaceStore.getState()
+    workspace.openArtifactView(publicId)
+    if (readAnnotationDraft(publicId)) workspace.setInspectorTab('review')
   }, [publicId])
 
   const stateForwarderRef = useRef<((seq: number, ops: JsonPatchOp[]) => void) | null>(null)

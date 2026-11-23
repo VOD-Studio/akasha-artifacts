@@ -33,7 +33,6 @@ export interface WorkspaceStoreState {
   agentActivityByProject: Record<string, AgentActivityRecord>
   presenceByArtifact: Record<string, { viewers: number; agentOnline: boolean }>
   preservedViewByArtifact: Record<string, PreservedViewState>
-  unsentDraftsByArtifact: Record<string, string>
   // 已交给 Agent 的错误指纹，同一条错误不重复提交
   sentErrorFingerprints: Record<string, boolean>
 
@@ -46,7 +45,6 @@ export interface WorkspaceStoreState {
   setAgentActivity: (projectId: string, record: AgentActivityRecord) => void
   setPresence: (artifactId: string, presence: { viewers: number; agentOnline: boolean }) => void
   setPreservedView: (artifactId: string, state: PreservedViewState) => void
-  setUnsentDraft: (artifactId: string, text: string) => void
   markErrorSent: (fingerprint: string) => void
 }
 
@@ -65,7 +63,6 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set) => ({
   agentActivityByProject: {},
   presenceByArtifact: {},
   preservedViewByArtifact: {},
-  unsentDraftsByArtifact: {},
   sentErrorFingerprints: {},
 
   openArtifactView: (artifactViewId) =>
@@ -90,10 +87,6 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set) => ({
   setPreservedView: (artifactId, state) =>
     set((s) => ({
       preservedViewByArtifact: { ...s.preservedViewByArtifact, [artifactId]: state },
-    })),
-  setUnsentDraft: (artifactId, text) =>
-    set((s) => ({
-      unsentDraftsByArtifact: { ...s.unsentDraftsByArtifact, [artifactId]: text },
     })),
   markErrorSent: (fingerprint) =>
     set((s) => ({

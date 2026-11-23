@@ -115,7 +115,7 @@ afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   useSelectionStore.getState().clearSelection(artifact.publicId)
-  useWorkspaceStore.setState({ inspectorTab: null, unsentDraftsByArtifact: {} })
+  useWorkspaceStore.setState({ inspectorTab: null })
   sessionStorage.clear()
 })
 
@@ -431,7 +431,6 @@ it('图层双向定位只在该画板与版本生效，悬停和旧坐标不改�
   stubResizeObserver()
   const detail = detailFor()
   const view = showWorkspace(detail)
-  act(() => useWorkspaceStore.getState().setUnsentDraft(artifact.publicId, '保留未发送的批注'))
   const desktop = sandbox(screen.getByTitle<HTMLIFrameElement>('宽屏首页 隔离沙盒'))
   const mobile = sandbox(screen.getByTitle<HTMLIFrameElement>('手机首页 隔离沙盒'))
   desktop.receive({ type: 'ready' })
@@ -530,9 +529,6 @@ it('图层双向定位只在该画板与版本生效，悬停和旧坐标不改�
   const review = screen.getByRole('dialog', { name: '批注与评审' })
   expect(within(review).getByText('针对选中元素批注')).toBeTruthy()
   expect(within(review).getByText(displaced.slice(0, 36))).toBeTruthy()
-  expect((within(review).getByLabelText('批注内容') as HTMLTextAreaElement).value).toBe(
-    '保留未发送的批注',
-  )
 
   view.update(workspace(detailFor(2)))
   expect(within(review).getByText('全局批注')).toBeTruthy()
