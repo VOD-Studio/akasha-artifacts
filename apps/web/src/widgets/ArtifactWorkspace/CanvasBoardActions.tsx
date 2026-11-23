@@ -1,9 +1,9 @@
 import { ARTBOARD_GEOMETRY_LIMITS, type Version } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
-import { Input } from '@akasha/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@akasha/ui/popover'
 import { Ellipsis } from 'lucide-react'
-import { useId, useState } from 'react'
+import { useState } from 'react'
+import { CanvasGeometryFields, sameGeometry } from './CanvasGeometryFields'
 import type { CanvasBoardEdit } from './canvas-board-source'
 import type { CanvasBounds } from './canvas-camera'
 import type { CanvasBoard } from './canvas-model'
@@ -16,9 +16,6 @@ interface BoardActionsProps {
   disabled: boolean
   onChange: (edit: CanvasBoardEdit, base: Version) => void
 }
-
-const fieldLabels = { x: '横坐标', y: '纵坐标', width: '宽度', height: '高度' } as const
-const fields = ['x', 'y', 'width', 'height'] as const
 
 /** 坐标和尺寸可以用键盘修改；四个字段作为一项版本变更提交。 */
 export function CanvasBoardActions({
@@ -34,8 +31,7 @@ export function CanvasBoardActions({
     bounds: CanvasBounds
     confirming: boolean
   } | null>(null)
-  const { viewport, coordinate } = ARTBOARD_GEOMETRY_LIMITS
-  const fieldPrefix = useId()
+  const { coordinate } = ARTBOARD_GEOMETRY_LIMITS
 
   function apply(edit: CanvasBoardEdit) {
     if (!form || disabled) return
@@ -93,39 +89,14 @@ export function CanvasBoardActions({
                 apply({ kind: 'geometry', changes: [{ id: board.id, bounds: form.bounds }] })
               }}
             >
-              <div className="grid grid-cols-2 gap-2">
-                {fields.map((field) => {
-                  const position = field === 'x' || field === 'y'
-                  const inputId = `${fieldPrefix}-${field}`
-                  return (
-                    <div key={field} className="space-y-1 text-xs text-ink-muted">
-                      <label htmlFor={inputId}>{fieldLabels[field]}</label>
-                      <Input
-                        id={inputId}
-                        type="number"
-                        controlSize="sm"
-                        value={Number.isNaN(form.bounds[field]) ? '' : form.bounds[field]}
-                        min={position ? -coordinate : 1}
-                        max={position ? coordinate : viewport}
-                        step={position ? 'any' : 1}
-                        required
-                        onChange={(event) =>
-                          setForm({
-                            ...form,
-                            bounds: { ...form.bounds, [field]: event.target.valueAsNumber },
-                          })
-                        }
-                      />
-                    </div>
-                  )
-                })}
-              </div>
+              <CanvasGeometryFields
+                value={form.bounds}
+                onChange={(bounds) => setForm({ ...form, bounds })}
+              />
               <Button
                 size="sm"
                 type="submit"
-                disabled={
-                  disabled || fields.every((field) => form.bounds[field] === form.initial[field])
-                }
+                disabled={disabled || sameGeometry(form.bounds, form.initial)}
               >
                 应用布局
               </Button>

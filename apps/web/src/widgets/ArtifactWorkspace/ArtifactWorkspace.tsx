@@ -422,6 +422,7 @@ export function ArtifactWorkspace({
         document={savedCanvas}
         location={canvasLocation}
         readOnly={fixedVersion !== undefined || version.version !== artifact.headVersion}
+        editing={canEditBoards ? boardEditing : undefined}
         layers={watchBoard ? inspection.layers : null}
         selectedLayerId={inspection.selectedId}
         layersAvailable={canvas === savedCanvas}

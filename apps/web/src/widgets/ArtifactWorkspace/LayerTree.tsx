@@ -4,25 +4,27 @@ import { useEffect, useMemo, useRef } from 'react'
 
 interface LayerTreeProps {
   layers: readonly CanvasLayer[]
+  /** 主选区用于展开其父级并滚动定位。 */
   selectedId?: string
-  onSelect: (layer: CanvasLayer) => void
+  /** 额外高亮的图层不触发滚动，也不取代主选区。 */
+  selectedIds?: ReadonlySet<string>
+  /** Shift 代表在当前选区中切换，是否支持多选由调用方决定。 */
+  onSelect: (layer: CanvasLayer, additive: boolean) => void
 }
 
-interface LayerNodeProps {
+interface LayerNodeProps extends Omit<LayerTreeProps, 'layers'> {
   layer: CanvasLayer
   groups: ReadonlyMap<string, CanvasLayer[]>
   opened: ReadonlySet<string>
-  selectedId?: string
-  onSelect: (layer: CanvasLayer) => void
 }
 
 /** 图层树只展开 DOM 真正的父子关系，选择用按钮的原生键盘语义。 */
-export function LayerTree({ layers, selectedId, onSelect }: LayerTreeProps) {
+export function LayerTree({ layers, selectedId, selectedIds, onSelect }: LayerTreeProps) {
   const tree = useRef<HTMLUListElement>(null)
   useEffect(() => {
     if (!selectedId) return
     const root = tree.current
-    const target = root?.querySelector('button[aria-pressed="true"]')
+    const target = root?.querySelector('button[data-primary="true"]')
     for (
       let branch = target?.closest('details');
       branch && root?.contains(branch);
@@ -56,6 +58,7 @@ export function LayerTree({ layers, selectedId, onSelect }: LayerTreeProps) {
           groups={groups}
           opened={opened}
           selectedId={selectedId}
+          selectedIds={selectedIds}
           onSelect={onSelect}
         />
       ))}
@@ -63,16 +66,18 @@ export function LayerTree({ layers, selectedId, onSelect }: LayerTreeProps) {
   )
 }
 
-function LayerNode({ layer, groups, opened, selectedId, onSelect }: LayerNodeProps) {
+function LayerNode({ layer, groups, opened, selectedId, selectedIds, onSelect }: LayerNodeProps) {
   const label = layer.label || `<${layer.tag}>`
+  const selected = selectedId === layer.id || Boolean(selectedIds?.has(layer.id))
   const children = groups.get(layer.id)
   const button = (
     <Button
       size="sm"
-      variant={selectedId === layer.id ? 'secondary' : 'ghost'}
-      aria-pressed={selectedId === layer.id}
+      variant={selected ? 'secondary' : 'ghost'}
+      aria-pressed={selected}
+      data-primary={selectedId === layer.id || undefined}
       className="w-full min-w-0 justify-start"
-      onClick={() => onSelect(layer)}
+      onClick={(event) => onSelect(layer, event.shiftKey)}
     >
       <span className="truncate">{label}</span>
     </Button>
@@ -94,6 +99,7 @@ function LayerNode({ layer, groups, opened, selectedId, onSelect }: LayerNodePro
                   groups={groups}
                   opened={opened}
                   selectedId={selectedId}
+                  selectedIds={selectedIds}
                   onSelect={onSelect}
                 />
               ))}

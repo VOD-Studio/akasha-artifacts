@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { DesignLayersSchema } from './artboard-layers.js'
 import { EditOpSchema, ElementRectSchema, ElementRefSchema, JsonPatchOpSchema } from './domain.js'
 import { ArtifactTypeSchema, PROTOCOL_VERSION } from './primitives.js'
 import { ArtifactStorageOperationSchema } from './storage.js'
@@ -13,6 +14,8 @@ const CanvasLayerSchema = z.object({
   label: z.string().max(120).optional(),
   width: z.number().nonnegative(),
   height: z.number().nonnegative(),
+  // 仅由实际的原生图层渲染器发出；不是作者 HTML 中的选择器
+  designId: z.string().min(1).max(96).optional(),
   // 仅确定静态节点时给出，行列相对该画板的源码片段
   sourceLoc: z
     .string()
@@ -59,6 +62,7 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
     playback: z.literal(true).optional(),
     version: z.number().int().min(1),
     source: z.string(),
+    designLayers: DesignLayersSchema.optional(),
     // 完整的初始状态快照
     state: z.record(z.string(), z.unknown()),
     // 上一次沙盒上报的保态快照

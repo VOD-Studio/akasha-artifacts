@@ -14,6 +14,7 @@ import { inkSvg } from '@violetjs/inkline/dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePersistentControl } from '../state/preserve'
 import { useArtifactState } from '../state/store'
+import { DesignLayerScene } from './DesignLayerScene'
 import type { RendererProps } from './registry'
 import { sanitizeMarkup } from './sanitize'
 
@@ -444,7 +445,22 @@ export function ArtboardRenderer({ source, preserved, onRendered }: RendererProp
               ) : null}
             </div>
             <div className="flex-1 p-4">
-              {board.html ? (
+              {board.designLayers?.length ? (
+                <div
+                  className="relative overflow-hidden"
+                  style={{
+                    height: board.viewport?.height ?? 800,
+                    width: board.viewport?.width ?? 1280,
+                  }}
+                >
+                  {board.html ? (
+                    <SanitizedHtmlBox html={board.html} className="text-sm" />
+                  ) : (
+                    board.description
+                  )}
+                  <DesignLayerScene layers={board.designLayers} interactive={false} />
+                </div>
+              ) : board.html ? (
                 <SanitizedHtmlBox html={board.html} className="text-sm" />
               ) : (
                 <p className="text-xs leading-relaxed text-slate-600">

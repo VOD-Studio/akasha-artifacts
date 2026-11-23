@@ -1,6 +1,11 @@
-import type { ElementRect, ElementRef, ShellToSandboxMessage } from '@akasha/protocol'
+import {
+  DESIGN_LAYER_BLOCK_PREFIX,
+  type ElementRect,
+  type ElementRef,
+  type ShellToSandboxMessage,
+} from '@akasha/protocol'
 import type { SandboxBridgeClient } from '../bridge/client'
-import { layerElementId, layerSelector } from './layers'
+import { layerElementId, layerSelector, readDesignLayerId } from './layers'
 
 function escapeCssIdent(value: string): string {
   if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
@@ -48,14 +53,21 @@ function readBlockId(el: Element, rootEl?: Element | null): string | undefined {
   // 优先查找显式声明的 data-ak-block，避免被内部普通表单元素的 id 覆盖
   let current: Element | null = el
   while (current && current !== rootEl && current !== document.body) {
+    const designId = readDesignLayerId(current)
+    if (designId) return `${DESIGN_LAYER_BLOCK_PREFIX}${designId}`
     const explicit = current.getAttribute('data-ak-block')?.trim()
-    if (explicit) return explicit
+    if (explicit && !explicit.startsWith(DESIGN_LAYER_BLOCK_PREFIX)) return explicit
     current = current.parentElement
   }
   current = el
   while (current && current !== rootEl && current !== document.body) {
     const id = current.getAttribute('id')?.trim()
-    if (id && id !== 'root' && !id.startsWith('ak-mmd-')) {
+    if (
+      id &&
+      id !== 'root' &&
+      !id.startsWith('ak-mmd-') &&
+      !id.startsWith(DESIGN_LAYER_BLOCK_PREFIX)
+    ) {
       return id
     }
     current = current.parentElement
@@ -110,6 +122,13 @@ export function buildElementRef(el: Element, rootEl?: Element | null): ElementRe
 export function findElementByRef(rootEl: Element, ref: ElementRef): Element | null {
   if (ref.blockId) {
     const esc = escapeCssIdent(ref.blockId)
+    if (ref.blockId.startsWith(DESIGN_LAYER_BLOCK_PREFIX)) {
+      const id = ref.blockId.slice(DESIGN_LAYER_BLOCK_PREFIX.length)
+      for (const element of rootEl.querySelectorAll(`[data-ak-block="${esc}"]`)) {
+        if (readDesignLayerId(element) === id) return element
+      }
+      return null
+    }
     const byBlock =
       rootEl.querySelector(`[data-ak-block="${esc}"]`) ?? rootEl.querySelector(`#${esc}`)
     if (byBlock) return byBlock

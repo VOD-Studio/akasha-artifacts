@@ -361,7 +361,8 @@ describe('apps/sandbox 运行时与安全边界', () => {
 
     await waitFor(() => expect(screen.getByTestId('gain-val').textContent).toBe('10'))
     fireEvent.click(screen.getByText('set-75'))
-    expect(screen.getByTestId('gain-val').textContent).toBe('75')
+    // React 编译后的组件与外部保态订阅异步提交，先等控件实际显示新值。
+    await waitFor(() => expect(screen.getByTestId('gain-val').textContent).toBe('75'))
 
     act(() => {
       dispatchFromHost({
@@ -565,4 +566,60 @@ describe('apps/sandbox 运行时与安全边界', () => {
     const pinRectsMsg = posted.slice(beforePins).find((m) => m.data.type === 'pins.rects')
     expect(pinRectsMsg?.data.type === 'pins.rects' && pinRectsMsg.data.rects.pin_1).toBeTruthy()
   })
+})
+
+it('原生图层和作者 HTML 独立渲染，同名标记不能接走原生图层的批注定位', async () => {
+  const { bridge, posted, dispatchFromHost, nonce } = createMockBridgeHarness()
+  const { container } = render(
+    <SandboxApp
+      bridge={bridge}
+      stateStore={new ArtifactStateStore()}
+      preserved={new PreservedStateManager()}
+    />,
+  )
+  act(() => {
+    dispatchFromHost({
+      v: PROTOCOL_VERSION,
+      nonce,
+      type: 'render',
+      artifactType: 'html',
+      boardId: 'example',
+      version: 2,
+      source: '<main><p data-ak-block="design-layer:note">作者的同名段落</p></main>',
+      designLayers: [
+        { kind: 'note', id: 'note', text: '原生便签', x: 30, y: 40, width: 160, height: 100 },
+      ],
+      state: {},
+    })
+    dispatchFromHost({ v: PROTOCOL_VERSION, nonce, type: 'inspect.layers.watch', active: true })
+  })
+  expect(await screen.findByText('作者的同名段落')).toBeTruthy()
+  const native = await screen.findByText('原生便签')
+  expect(native.style.left).toBe('30px')
+  await waitFor(() => {
+    const report = posted.find(
+      ({ data }) => data.type === 'inspect.layers.snapshot' && data.version === 2,
+    )
+    if (report?.data.type !== 'inspect.layers.snapshot') throw new Error('缺少 v2 的图层快照')
+    expect(report.data.layers.filter((layer) => layer.designId === 'note')).toEqual([
+      expect.objectContaining({ label: '原生便签', designId: 'note' }),
+    ])
+  })
+  const count = posted.length
+  act(() =>
+    dispatchFromHost({
+      v: PROTOCOL_VERSION,
+      nonce,
+      type: 'highlight',
+      element: { boardId: 'example', blockId: 'design-layer:note' },
+    }),
+  )
+  expect(
+    posted.slice(count).find(({ data }) => data.type === 'inspect.select')?.data,
+  ).toMatchObject({
+    reason: 'sync',
+    version: 2,
+    element: { blockId: 'design-layer:note', textPreview: '原生便签' },
+  })
+  expect(container.querySelector('p')?.getAttribute('data-ak-loc')).toBe('1:7')
 })

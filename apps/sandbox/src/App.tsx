@@ -1,4 +1,4 @@
-import type { ArtifactType, PreservedViewState } from '@akasha/protocol'
+import type { ArtifactType, DesignLayer, PreservedViewState } from '@akasha/protocol'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { SandboxBridgeClient } from './bridge/client'
 import { captureSandboxPng } from './capture-png'
@@ -6,6 +6,7 @@ import { SandboxInspector } from './inspector/index'
 import { readCanvasLayers } from './inspector/layers'
 import { bindPrototype, hasPlayableControls } from './prototype'
 import { registerBuiltinRenderers } from './renderers/builtins'
+import { DesignLayerScene } from './renderers/DesignLayerScene'
 import { getRenderer } from './renderers/registry'
 import {
   defaultPreservedStateManager,
@@ -28,6 +29,7 @@ export interface RenderPayload {
   boardId?: string
   version: number
   source: string
+  designLayers?: DesignLayer[]
   /** 允许由制品的控件发出原型导航请求。 */
   playback?: true
 }
@@ -104,7 +106,12 @@ export function SandboxApp({
           artifactType: msg.artifactType,
           version: msg.version,
           source: msg.source,
-          ...(msg.artifactType === 'html' && msg.boardId ? { boardId: msg.boardId } : {}),
+          ...(msg.artifactType === 'html' && msg.boardId
+            ? {
+                boardId: msg.boardId,
+                designLayers: msg.designLayers,
+              }
+            : {}),
           ...(msg.playback ? { playback: true } : {}),
         }
         committedPayloadRef.current = next
@@ -330,11 +337,18 @@ export function SandboxApp({
     () => (payload ? getRenderer(payload.artifactType) : undefined),
     [payload],
   )
+  const designLayers = payload?.designLayers?.length ? payload.designLayers : undefined
 
   return (
     <ArtifactStateContext.Provider value={stateStore}>
       <PreservedStateContext.Provider value={preserved}>
-        <div ref={rootRef} className="min-h-screen bg-white text-slate-900">
+        <div
+          ref={rootRef}
+          className={`min-h-screen bg-white text-slate-900${designLayers ? ' relative' : ''}`}
+        >
+          {designLayers ? (
+            <DesignLayerScene layers={designLayers} interactive={!payload?.playback} />
+          ) : null}
           {payload ? (
             renderer ? (
               renderer({
