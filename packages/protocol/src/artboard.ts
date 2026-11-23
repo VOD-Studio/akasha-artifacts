@@ -1,5 +1,8 @@
-/** `position` 与 `viewport` 在作者和画布编辑器中的共同约束。 */
-export const ARTBOARD_GEOMETRY_LIMITS = { coordinate: 1_000_000, viewport: 8192 } as const
+import {
+  ARTBOARD_GEOMETRY_LIMITS,
+  type DesignLayer,
+  DesignLayersSchema,
+} from './artboard-layers.js'
 
 /** 画布页面：制品内的一组画板。 */
 export interface ArtboardPage {
@@ -39,6 +42,8 @@ export interface ArtboardBoard {
   recommended?: boolean
   /** 画板内容的 HTML 片段。 */
   html?: string
+  /** 作者声明的原生设计图层；任意 HTML 内容不会被解释为可拖拽对象。 */
+  designLayers?: DesignLayer[]
   /** 没有 HTML 时用来生成画板内容的纯文本。 */
   description?: string
   /** 作者提供的画板标签。 */
@@ -168,6 +173,14 @@ export function parseArtboardValue(value: unknown): ArtboardParseResult {
     const position = asRecord(rec.position)
     const x = asNumber(position?.x)
     const y = asNumber(position?.y)
+    const designLayers =
+      rec.designLayers === undefined ? undefined : DesignLayersSchema.safeParse(rec.designLayers)
+    if (designLayers && !designLayers.success) {
+      return {
+        ok: false,
+        error: `boards[${i}].designLayers 无效：${designLayers.error.issues[0]?.message}`,
+      }
+    }
     boards.push({
       id,
       title,
@@ -186,6 +199,7 @@ export function parseArtboardValue(value: unknown): ArtboardParseResult {
         : {}),
       recommended: asBoolean(rec.recommended),
       html: asString(rec.html),
+      designLayers: designLayers?.data,
       description: asString(rec.description),
       tags: asStringArray(rec.tags),
     })

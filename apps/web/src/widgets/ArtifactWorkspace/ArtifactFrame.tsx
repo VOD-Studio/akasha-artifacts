@@ -1,13 +1,14 @@
-import type {
-  Artifact,
-  CanvasLayer,
-  ElementRect,
-  ElementRef,
-  Feedback,
-  JsonPatchOp,
-  SandboxToShellMessage,
-  StateStreamSnapshot,
-  Version,
+import {
+  type Artifact,
+  type CanvasLayer,
+  DESIGN_LAYER_BLOCK_PREFIX,
+  type ElementRect,
+  type ElementRef,
+  type Feedback,
+  type JsonPatchOp,
+  type SandboxToShellMessage,
+  type StateStreamSnapshot,
+  type Version,
 } from '@akasha/protocol'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { selectionForVersion, useSelectionStore } from '../../entities/selection/store'
@@ -61,11 +62,20 @@ function belongsToBoard(element: ElementRef, id: string, scoped: boolean): boole
   return scoped ? element.boardId === id : element.boardId === undefined
 }
 
-function bindSandboxReference(element: ElementRef, id: string, scoped: boolean): ElementRef | null {
+function bindSandboxReference(element: ElementRef, board: CanvasBoard): ElementRef | null {
+  const { id, scoped } = board
   if (!scoped) return belongsToBoard(element, id, false) ? element : null
-  // 沙盒不能指定画板归属；容器的兼容 blockId 不应把新圈选重新定位到整张画板。
+  // 沙盒不能指定画板归属或给作者 HTML 伪造原生图层的标识。
   const bound = { ...element, boardId: id }
-  if (bound.blockId === id && bound.selector) delete bound.blockId
+  if (
+    (bound.blockId === id && bound.selector) ||
+    (bound.blockId?.startsWith(DESIGN_LAYER_BLOCK_PREFIX) &&
+      !board.designLayers?.some(
+        (layer) => bound.blockId === `${DESIGN_LAYER_BLOCK_PREFIX}${layer.id}`,
+      ))
+  ) {
+    delete bound.blockId
+  }
   delete bound.loc
   return bound.blockId || bound.selector || bound.textPreview ? bound : null
 }
@@ -91,7 +101,7 @@ export function ArtifactFrame({
   onVisualSelect,
 }: ArtifactFrameProps) {
   const artifactId = artifact.publicId
-  const { id, scoped, type, source } = board
+  const { id, scoped, source, type, designLayers } = board
   const versionNumber = version.version
   const playback = purpose.type === 'play'
   const focused = purpose.type === 'focus'
@@ -145,10 +155,11 @@ export function ArtifactFrame({
       artifactType: type,
       version: versionNumber,
       source,
+      designLayers,
       boardId: scoped ? id : undefined,
       playback: playback ? (true as const) : undefined,
     }),
-    [type, source, versionNumber, scoped, id, playback],
+    [type, source, versionNumber, scoped, id, playback, designLayers],
   )
   const applied = useRef<{
     render: typeof render
@@ -237,12 +248,14 @@ export function ArtifactFrame({
           break
         case 'inspect.hover':
           if (isolated || !latest.current.interactive || !selectionStore.pickerActive) break
-          setHovered(message.element ? bindSandboxReference(message.element, id, scoped) : null)
+          setHovered(
+            message.element ? bindSandboxReference(message.element, latest.current.board) : null,
+          )
           break
         case 'inspect.select': {
           if (isolated) break
           if (message.version !== undefined && message.version !== activeVersion) break
-          const element = bindSandboxReference(message.element, id, scoped)
+          const element = bindSandboxReference(message.element, latest.current.board)
           if (!element) break
           if (message.reason === 'sync') {
             const currentSelection = selectionForVersion(selectionStore, artifactId, activeVersion)
@@ -272,6 +285,9 @@ export function ArtifactFrame({
                 {
                   selector: message.layerSelector,
                   rect: element.rect,
+                  ...(element.blockId?.startsWith(DESIGN_LAYER_BLOCK_PREFIX)
+                    ? { blockId: element.blockId }
+                    : {}),
                   ...(scoped ? { boardId: id } : {}),
                 },
                 { id: message.layerId, version: activeVersion },
@@ -305,7 +321,7 @@ export function ArtifactFrame({
           break
         case 'visual.select': {
           if (isolated || !latest.current.interactive || message.version !== activeVersion) break
-          const element = bindSandboxReference(message.element, id, scoped)
+          const element = bindSandboxReference(message.element, latest.current.board)
           if (element) {
             latest.current.onVisualSelect({
               ...message,
@@ -317,7 +333,7 @@ export function ArtifactFrame({
         }
         case 'annotation.request': {
           if (isolated || message.version !== activeVersion) break
-          const element = bindSandboxReference(message.element, id, scoped)
+          const element = bindSandboxReference(message.element, latest.current.board)
           if (!element) break
           selectionStore.setSelectedElement(artifactId, element)
           send({ type: 'highlight', element })

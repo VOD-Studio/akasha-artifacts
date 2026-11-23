@@ -947,3 +947,87 @@ it('Shift 多选可一次对齐并分组，重选组成员时联动选择', asyn
   fireEvent.click(desktop())
   expect(mobile().getAttribute('aria-pressed')).toBe('false')
 })
+
+it('检查器只编排原生图层，同画板选区在发布后重绑，旧基准草稿不覆盖新头版本', async () => {
+  stubResizeObserver()
+  const source = JSON.stringify({
+    ...design,
+    boards: design.boards.map((board) =>
+      board.id === 'desktop'
+        ? {
+            ...board,
+            designLayers: [
+              { id: 'note', kind: 'note', text: '发版便签', x: 40, y: 40, width: 100, height: 80 },
+              { id: 'frame', kind: 'rectangle', x: 160, y: 110, width: 70, height: 60 },
+            ],
+          }
+        : board,
+    ),
+  })
+  const editor = showEditableWorkspace(detailFor(1, source))
+  fireEvent.click(screen.getByRole('button', { name: '宽屏首页' }))
+  act(() => useWorkspaceStore.getState().setInspectorTab('inspect'))
+  const inspector = screen.getByRole('dialog', { name: '检查器' })
+  const frame = sandbox(screen.getByTitle('宽屏首页 隔离沙盒'))
+  frame.receive({ type: 'ready' })
+  const snapshot = (version: number) => {
+    frame.receive({
+      type: 'inspect.layers.snapshot',
+      version,
+      truncated: false,
+      layers: [
+        {
+          id: `${version}:h1`,
+          tag: 'h1',
+          selector: 'h1',
+          sourceLoc: '1:1',
+          label: '网页标题',
+          width: 500,
+          height: 45,
+        },
+        {
+          id: `${version}:note`,
+          tag: 'div',
+          selector: 'aside > div:nth-child(1)',
+          designId: 'note',
+          label: '发版便签',
+          width: 100,
+          height: 80,
+        },
+        {
+          id: `${version}:frame`,
+          tag: 'div',
+          selector: 'aside > div:nth-child(2)',
+          designId: 'frame',
+          label: '矩形',
+          width: 70,
+          height: 60,
+        },
+      ],
+    })
+  }
+  const layer = (name: string) => within(inspector).getByRole('button', { name })
+  snapshot(1)
+  fireEvent.click(layer('网页标题'))
+  expect(within(inspector).queryByRole('region', { name: '图层布局' })).toBeNull()
+  fireEvent.click(layer('发版便签'))
+  fireEvent.click(layer('矩形'), { shiftKey: true })
+  expect(layer('发版便签').getAttribute('aria-pressed')).toBe('true')
+  fireEvent.click(layer('顶端对齐'))
+  await waitFor(() => expect(editor.current.version.version).toBe(2))
+  snapshot(2)
+  const afterAlign = JSON.parse(editor.current.version.source)
+  expect(afterAlign.boards[0].designLayers.map(({ y }: { y: number }) => y)).toEqual([40, 40])
+  expect(afterAlign.boards[0].html).toBe(design.boards[0].html)
+  expect(layer('矩形').getAttribute('aria-pressed')).toBe('true')
+  expect(layer('发版便签').getAttribute('aria-pressed')).toBe('true')
+  const width = () => within(inspector).getByRole<HTMLInputElement>('spinbutton', { name: '宽度' })
+  fireEvent.change(width(), { target: { value: '82' } })
+  afterAlign.boards[0].designLayers[1].width = 92
+  editor.receiveAgentSource(JSON.stringify(afterAlign))
+  snapshot(3)
+  expect(width().value).toBe('82')
+  fireEvent.click(layer('应用图层布局'))
+  expect(await screen.findByText(/未保存的操作没有覆盖新版本/)).toBeTruthy()
+  expect(JSON.parse(editor.current.version.source).boards[0].designLayers[1].width).toBe(92)
+})

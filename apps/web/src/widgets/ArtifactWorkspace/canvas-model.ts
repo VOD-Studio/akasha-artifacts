@@ -1,6 +1,7 @@
 import {
   type ArtboardPage,
   type ArtifactType,
+  type DesignLayer,
   type ElementRef,
   parseArtboard,
 } from '@akasha/protocol'
@@ -20,6 +21,8 @@ export interface CanvasBoard {
   position?: { x: number; y: number }
   /** 同一页面内共用选择和位置变换。 */
   layoutGroup?: string
+  /** 持久化图层与作者写的 HTML 独立渲染。 */
+  designLayers?: DesignLayer[]
   source: string
   /** 从说明合成的内容并非源码片段。 */
   generated?: true
@@ -150,6 +153,7 @@ export function createCanvasDocument(
       ...(board.viewport ?? DEFAULT_VIEWPORT),
       position: board.position,
       layoutGroup: board.layoutGroup,
+      designLayers: board.designLayers,
     }
     if (!board.pageId) {
       shared.push(entry)

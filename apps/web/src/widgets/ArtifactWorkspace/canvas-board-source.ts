@@ -1,4 +1,4 @@
-import { ARTBOARD_GEOMETRY_LIMITS } from '@akasha/protocol'
+import { ARTBOARD_GEOMETRY_LIMITS, DesignLayersSchema } from '@akasha/protocol'
 import type { CanvasBounds } from './canvas-camera'
 import { readEditableCanvasSource, removeCanvasBoards } from './canvas-edit-source'
 
@@ -9,6 +9,12 @@ export type CanvasBoardEdit =
   | { kind: 'delete'; ids: readonly string[] }
   | { kind: 'geometry'; changes: readonly { id: string; bounds: CanvasBounds }[] }
   | { kind: 'group'; ids: readonly string[]; layoutGroup: string | null }
+  | {
+      kind: 'layerGeometry'
+      boardId: string
+      changes: readonly { id: string; bounds: CanvasBounds }[]
+    }
+  | { kind: 'layerGroup'; boardId: string; ids: readonly string[]; layoutGroup: string | null }
 
 /** 版本重放用真实源码，而不是可变 DOM 或相机快照。 */
 export interface CanvasSourceChange {
@@ -98,6 +104,37 @@ export function editCanvasBoards(
         Object.assign(target.raw, geometry(bounds))
       }
       break
+    case 'layerGeometry':
+    case 'layerGroup': {
+      const board = boards.get(edit.boardId)
+      if (!board || !Array.isArray(board.raw.designLayers))
+        throw new Error('原生图层所在的画板已变更')
+      const layers = new Map<string, Record<string, unknown>>(
+        (board.raw.designLayers as Array<Record<string, unknown>>).map((layer) => [
+          String(layer.id),
+          layer,
+        ]),
+      )
+      if (edit.kind === 'layerGeometry') {
+        for (const { id, bounds } of edit.changes) {
+          const layer = layers.get(id)
+          if (!layer) throw new Error('要调整的图层已不存在')
+          const { position, viewport } = geometry(bounds)
+          Object.assign(layer, position, viewport)
+        }
+      } else {
+        for (const id of edit.ids) {
+          const layer = layers.get(id)
+          if (!layer) throw new Error('该分组中的图层已不存在')
+          if (edit.layoutGroup) layer.layoutGroup = edit.layoutGroup
+          else delete layer.layoutGroup
+        }
+      }
+      if (!DesignLayersSchema.safeParse(board.raw.designLayers).success) {
+        throw new Error('图层变更不符合画板的设计数据约束')
+      }
+      break
+    }
   }
   return { before, after: JSON.stringify(raw, null, 2) }
 }

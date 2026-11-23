@@ -7,7 +7,7 @@ import type { ArtifactStateStore } from '../state/store'
 export interface RendererProps {
   /** 当前版本的完整源码。 */
   source: string
-  /** HTML 画板的 id；给出时整段源码作为一个画板块渲染，不注入 `data-ak-loc`。 */
+  /** HTML 画板的作用域；源码片段行列不等同于整个制品的位置。 */
   boardId?: string
   version: number
   /** 实时状态流；状态更新只触发重渲染，不替换渲染器实例。 */

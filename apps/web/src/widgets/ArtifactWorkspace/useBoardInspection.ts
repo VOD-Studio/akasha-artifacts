@@ -1,4 +1,8 @@
-import type { CanvasLayer, ShellToSandboxMessage } from '@akasha/protocol'
+import {
+  type CanvasLayer,
+  DESIGN_LAYER_BLOCK_PREFIX,
+  type ShellToSandboxMessage,
+} from '@akasha/protocol'
 import { useCallback, useState } from 'react'
 import { selectionForVersion, useSelectionStore } from '../../entities/selection/store'
 import { useWorkspaceStore } from '../../entities/workspace/store'
@@ -52,15 +56,30 @@ export function useBoardInspection({
     (boardId: string, activeVersion: number, layers: CanvasLayer[], truncated: boolean) => {
       setSnapshot({ artifactId, version: activeVersion, boardId, layers, truncated })
       const store = useSelectionStore.getState()
-      const selected = selectionForVersion(store, artifactId, activeVersion)
-      const layer = store.layersByArtifact[artifactId]
-      if (!layer || !selected || (selected.boardId ?? STANDALONE_BOARD_ID) !== boardId) return
-      const currentLayer = layers.find((entry) => entry.id === layer.id)
+      const selected = store.selectedByArtifact[artifactId]
+      const oldScope = store.layersByArtifact[artifactId]
+      if (!oldScope || !selected || (selected.boardId ?? STANDALONE_BOARD_ID) !== boardId) return
+      const sameVersion = oldScope.version === activeVersion
+      // 只有版本源码声明的设计对象可以用稳定标识重绑，普通 DOM 路径不能跨版本。
+      const currentLayer =
+        (sameVersion ? layers.find((entry) => entry.id === oldScope.id) : undefined) ??
+        layers.find(
+          (entry) =>
+            entry.designId && selected.blockId === `${DESIGN_LAYER_BLOCK_PREFIX}${entry.designId}`,
+        )
       if (!currentLayer) {
-        // 树的展示上限不是节点被移除的证据。
-        if (!truncated) store.clearSelection(artifactId)
-      } else if (currentLayer.selector !== selected.selector) {
-        const element = { ...selected, selector: currentLayer.selector }
+        if (!truncated && sameVersion) store.clearSelection(artifactId)
+      } else if (
+        !sameVersion ||
+        currentLayer.id !== oldScope.id ||
+        currentLayer.selector !== selected.selector
+      ) {
+        const layer = { id: currentLayer.id, version: activeVersion }
+        const element = {
+          ...selected,
+          selector: currentLayer.selector,
+          ...(sameVersion && currentLayer.id === oldScope.id ? {} : { rect: undefined }),
+        }
         store.setSelectedElement(artifactId, element, layer)
         highlight(boardId, { type: 'highlight', element, layer })
       }
@@ -88,12 +107,22 @@ export function useBoardInspection({
     selectedId,
     onLayers,
     onLayerPicked,
-    onSelect(layer: CanvasLayer) {
+    onSelect(layer: CanvasLayer | null) {
+      if (!layer) {
+        useSelectionStore.getState().clearSelection(artifactId)
+        return
+      }
       const board = document.pages
         .find((page) => page.id === current?.pageId)
         ?.boards.find((board) => board.id === current?.boardId)
       if (!current || !board || !layers?.layers.includes(layer)) return
-      const element = { selector: layer.selector, ...(board.scoped ? { boardId: board.id } : {}) }
+      const native =
+        layer.designId && board.designLayers?.some((item) => item.id === layer.designId)
+      const element = {
+        selector: layer.selector,
+        ...(board.scoped ? { boardId: board.id } : {}),
+        ...(native ? { blockId: `${DESIGN_LAYER_BLOCK_PREFIX}${layer.designId}` } : {}),
+      }
       const target = { id: layer.id, version }
       useSelectionStore.getState().setSelectedElement(artifactId, element, target)
       reveal(current)

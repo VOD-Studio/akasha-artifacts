@@ -5,8 +5,19 @@ const MAX_DEPTH = 14
 const MAX_LAYERS = 240
 const MAX_VISITED = 960
 const layerIds = new WeakMap<Element, string>()
+const designLayerIds = new WeakMap<Element, string>()
 const scopeId = crypto.getRandomValues(new Uint32Array(2)).join('-')
 let nextLayerId = 0
+
+/** 原生层的标识只由负责渲染该对象的代码登记，不能在作者 HTML 中声明。 */
+export function bindDesignLayer(element: Element, id: string): void {
+  designLayerIds.set(element, id)
+}
+
+/** 返回渲染器登记的原生对象标识。 */
+export function readDesignLayerId(element: Element): string | undefined {
+  return designLayerIds.get(element)
+}
 
 /** 沙盒会话内，一个存续节点的标识不随兄弟节点重排变化。 */
 export function layerElementId(element: Element): string {
@@ -85,6 +96,7 @@ export function readCanvasLayers(root: HTMLElement) {
       }
       const id = layerElementId(element)
       const label = layerLabel(element)
+      const designId = readDesignLayerId(element)
       const bounds = element.getBoundingClientRect()
       const layer: CanvasLayer = {
         id,
@@ -92,10 +104,12 @@ export function readCanvasLayers(root: HTMLElement) {
         ...(parentId !== undefined ? { parentId } : {}),
         tag: tag.slice(0, 80),
         ...(label ? { label } : {}),
+        ...(designId ? { designId } : {}),
         width: Math.max(0, Math.round(bounds.width * 10) / 10),
         height: Math.max(0, Math.round(bounds.height * 10) / 10),
       }
       layers.push(layer)
+      if (designId) continue
       const loc = element.getAttribute('data-ak-loc')
       if (loc && /^\d{1,8}:\d{1,8}$/.test(loc) && !element.closest('[data-ak-dynamic]')) {
         locations.push({ layer, location: loc })

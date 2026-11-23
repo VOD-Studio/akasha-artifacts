@@ -1,4 +1,4 @@
-import type { ArtifactType } from '@akasha/protocol'
+import type { ArtifactType, DesignLayer } from '@akasha/protocol'
 import { resolveSandboxOrigin } from '../config/runtime'
 import {
   buildSandboxIframeUrl,
@@ -12,6 +12,7 @@ interface PngBoard {
   scoped: boolean
   type: ArtifactType
   source: string
+  designLayers?: DesignLayer[]
   width: number
   height: number
 }
@@ -81,6 +82,7 @@ async function renderPng(board: PngBoard, version: number, scale: number, signal
       version,
       artifactType: board.type,
       source: board.source,
+      designLayers: board.designLayers,
       ...(board.scoped ? { boardId: board.id } : {}),
       state: {},
     })
