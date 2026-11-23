@@ -503,7 +503,7 @@ export const ARTBOARD_TEMPLATE: KitTemplateDefinition<ArtboardData> = {
   title: '并排多画板（Artboard）',
   description: '同一画布并排对比多套页面/交互方案，支持推荐角标、分轮单选与页面流程连线。',
   guide:
-    'JSON 格式定义：pages 用稳定 id 分组；页面的 includeSharedBoards 为 false 时不显示未分组画板。boards 含唯一稳定 id、title、html/description，可选 pageId、viewport（width/height 均为 1–8192 的整数）、position（画布绝对坐标 x/y，单位 CSS 像素）与 recommended；flows 定义 { from, to, label }。',
+    'JSON 格式定义：pages 用稳定 id 分组；页面的 includeSharedBoards 为 false 时不显示未分组画板。boards 含唯一稳定 id、title、html/description，可选 pageId、viewport（width/height 均为 1–8192 的整数）、position（画布绝对坐标 x/y，单位 CSS 像素）、layoutGroup（布局组合，不参与评审）与 recommended；flows 定义 { from, to, label }。',
   example: JSON.stringify(
     {
       title: '结账页布局探索',

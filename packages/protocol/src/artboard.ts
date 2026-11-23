@@ -29,6 +29,8 @@ export interface ArtboardBoard {
   pageId?: string
   /** 作者声明的画板分组标识。 */
   groupId?: string
+  /** 同组画板在同一画布页面可一起选择和移动；不参与评审分组。 */
+  layoutGroup?: string
   /** 画板固有尺寸；宽高均为 1–8192 的整数才保留，否则丢弃。 */
   viewport?: { width: number; height: number }
   /** 绝对画布坐标，单位 CSS 像素；缺省时仍参加自动排列。 */
@@ -174,6 +176,7 @@ export function parseArtboardValue(value: unknown): ArtboardParseResult {
       subtitle: asString(rec.subtitle),
       pageId: asString(rec.pageId),
       groupId: asString(rec.groupId),
+      layoutGroup: asString(rec.layoutGroup)?.trim() || undefined,
       ...(validSize(width) && validSize(height) ? { viewport: { width, height } } : {}),
       ...(x !== undefined &&
       y !== undefined &&

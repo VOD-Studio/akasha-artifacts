@@ -876,3 +876,74 @@ it('拖动只预览，取消不发布，移动或调整大小完成时各发布�
   expect(editor.current.version.version).toBe(3)
   expect(frame().height).toBe('944')
 })
+
+it('Shift 多选可一次对齐并分组，重选组成员时联动选择', async () => {
+  vi.stubGlobal('PointerEvent', MouseEvent)
+  const editor = showEditableWorkspace(
+    detailFor(
+      1,
+      JSON.stringify({
+        ...design,
+        boards: design.boards.map((board) =>
+          board.id === 'desktop'
+            ? { ...board, position: { x: -40, y: 0 } }
+            : board.id === 'mobile'
+              ? { ...board, position: { x: 140, y: 310 } }
+              : board,
+        ),
+      }),
+    ),
+  )
+  const desktop = () => screen.getByRole('button', { name: '宽屏首页' })
+  const mobile = () => screen.getByRole('button', { name: '手机首页' })
+  fireEvent.click(desktop())
+  fireEvent.click(mobile(), { shiftKey: true })
+  expect(desktop().getAttribute('aria-pressed')).toBe('true')
+  expect(mobile().getAttribute('aria-pressed')).toBe('true')
+
+  fireEvent.click(screen.getByRole('button', { name: '排列画板' }))
+  fireEvent.click(screen.getByRole('button', { name: '左对齐' }))
+  await waitFor(() => expect(editor.current.version.version).toBe(2))
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: '撤销画布编辑' }).hasAttribute('disabled')).toBe(
+      false,
+    ),
+  )
+  const doc = () => JSON.parse(editor.current.version.source)
+  expect(doc().boards[1].position).toEqual({ x: -40, y: 310 })
+  expect(doc().boards[1].viewport).toEqual({ width: 390, height: 844 })
+
+  fireEvent.click(screen.getByRole('button', { name: '排列画板' }))
+  fireEvent.click(screen.getByRole('button', { name: '分组画板' }))
+  await waitFor(() => expect(editor.current.version.version).toBe(3))
+  expect(doc().boards[0].layoutGroup).toEqual(expect.any(String))
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: '撤销画布编辑' }).hasAttribute('disabled')).toBe(
+      false,
+    ),
+  )
+  expect(doc().boards[1].layoutGroup).toBe(doc().boards[0].layoutGroup)
+  fireEvent.click(desktop())
+  expect(mobile().getAttribute('aria-pressed')).toBe('true')
+  const title = desktop()
+  fireEvent.pointerDown(title, { button: 0, clientX: 10, clientY: 10 })
+  fireEvent.pointerMove(title, { clientX: 80, clientY: 35 })
+  expect(editor.current.version.version).toBe(3)
+  fireEvent.pointerUp(title, { clientX: 80, clientY: 35 })
+  await waitFor(() => expect(editor.current.version.version).toBe(4))
+  expect(doc().boards[0].position).toEqual({ x: 30, y: 25 })
+  expect(doc().boards[1].position).toEqual({ x: 30, y: 335 })
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: '撤销画布编辑' }).hasAttribute('disabled')).toBe(
+      false,
+    ),
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: '排列画板' }))
+  fireEvent.click(screen.getByRole('button', { name: '取消画板分组' }))
+  await waitFor(() => expect(editor.current.version.version).toBe(5))
+  expect(doc().boards[0].layoutGroup).toBeUndefined()
+  expect(doc().boards[1].layoutGroup).toBeUndefined()
+  fireEvent.click(desktop())
+  expect(mobile().getAttribute('aria-pressed')).toBe('false')
+})

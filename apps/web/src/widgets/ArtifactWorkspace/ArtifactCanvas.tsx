@@ -13,9 +13,17 @@ import {
 import { useSelectionStore } from '../../entities/selection/store'
 import type { BoardFramePurpose } from './ArtifactFrame'
 import { BoardPresentation } from './BoardPresentation'
+import { CanvasArrangeMenu } from './CanvasArrangeMenu'
 import { CanvasBoardActions, CanvasBoardEditNotice } from './CanvasBoardActions'
 import { CanvasToolbar, PageNavigator } from './CanvasControls'
 import type { CanvasPageEditing } from './CanvasPageActions'
+import {
+  changeLayoutSelection,
+  fitSelection,
+  groupMembers,
+  type LayoutSelection,
+  layoutSelectionIds,
+} from './canvas-arrangement'
 import {
   type Camera,
   DEFAULT_CAMERA,
@@ -57,9 +65,7 @@ interface ArtifactCanvasProps {
 }
 
 // 单个页面的视图状态：选中的画板与相机
-interface PageView {
-  /** 当前选中的画板 id；没有选中时为 `null`。 */
-  selected: string | null
+interface PageView extends LayoutSelection {
   /** 该页面的相机；为 `null` 时用默认相机。 */
   camera: Camera | null
 }
@@ -156,10 +162,20 @@ export function ArtifactCanvas({
   const page = explicit ? addressedPage : (storedPage ?? firstPage)
   const pageId = page?.id
   const pageView = page ? pageViewFor(view, page.id) : DEFAULT_PAGE
-  const selected =
-    !invalidAddress && page?.boards.some((board) => board.id === pageView.selected)
+  const explicitSelection = invalidAddress ? undefined : pageView.selectedIds
+  const selected = invalidAddress
+    ? null
+    : page?.boards.some((board) => board.id === pageView.selected)
       ? pageView.selected
-      : null
+      : (page?.boards.find((board) => explicitSelection?.includes(board.id))?.id ?? null)
+  const activeSelection = useMemo(
+    () => layoutSelectionIds(page?.boards ?? [], { selected, selectedIds: explicitSelection }),
+    [page, selected, explicitSelection],
+  )
+  const selectedBoards = useMemo(
+    () => (page?.boards ?? []).filter((board) => activeSelection.has(board.id)),
+    [page, activeSelection],
+  )
   const camera = pageView.camera ?? DEFAULT_CAMERA
   const layout = useMemo(
     () => layoutBoards(page?.boards ?? [], document.columns),
@@ -285,6 +301,7 @@ export function ArtifactCanvas({
           ...prev.pages,
           [target.id]: {
             selected: boardId === undefined ? current.selected : boardId,
+            selectedIds: boardId === undefined ? current.selectedIds : undefined,
             camera: bounds && measurable ? fitCamera(bounds, size, 'board') : current.camera,
           },
         },
@@ -320,22 +337,23 @@ export function ArtifactCanvas({
     revealFromInspector(reveal)
   }, [onRevealHandled, reveal, visible])
 
-  const selectBoard = (boardId: string | null) => {
+  const selectBoard = (boardId: string | null, additive = false) => {
     if (!page || invalidAddress) return
     if (boardId !== null || requestedBoard !== null) clearAddress()
     pendingFocus.current = null
     const id = page.id
     setView((prev) => {
       const current = pageViewFor(prev, id)
+      const selection = changeLayoutSelection(page.boards, current, boardId, additive)
       const camera =
-        current.camera?.fit === 'board' && boardId !== current.selected
+        current.camera?.fit === 'board' && (selection.selected !== current.selected || additive)
           ? { ...current.camera, fit: null }
           : current.camera
       return {
         ...prev,
         pageId: id,
         address: boardId === null && requestedBoard === null ? (prev.address ?? '') : '',
-        pages: { ...prev.pages, [id]: { camera, selected: boardId } },
+        pages: { ...prev.pages, [id]: { camera, ...selection } },
       }
     })
   }
@@ -355,13 +373,12 @@ export function ArtifactCanvas({
     })
   }
   const boardGesture = useBoardGesture(boardEditing, (boardId) => {
-    selectBoard(boardId)
+    if (!activeSelection.has(boardId)) selectBoard(boardId)
     updateCamera((current) => (current.fit ? { ...current, fit: null } : current))
   })
   const boundsFor = (id: string) =>
-    boardGesture.preview?.pageId === pageId && boardGesture.preview?.boardId === id
-      ? boardGesture.preview.bounds
-      : layout.bounds.get(id)
+    (boardGesture.preview?.pageId === pageId ? boardGesture.preview?.bounds.get(id) : undefined) ??
+    layout.bounds.get(id)
   const canDragBoards = boardEditing?.available && !handActive && !pickerActive && !modifier
 
   const keyDown = useEffectEvent((event: KeyboardEvent) => {
@@ -530,7 +547,10 @@ export function ArtifactCanvas({
     visualEdit?.cancel()
   }
 
-  const selectionBounds = selected === null ? undefined : layout.bounds.get(selected)
+  const selectionBounds = useMemo(
+    () => fitSelection(selectedBoards.flatMap((board) => layout.bounds.get(board.id) ?? [])),
+    [selectedBoards, layout.bounds],
+  )
   const zoom = (factor: number) =>
     updateCamera((current) =>
       zoomCamera(current, factor, { x: size.width / 2, y: size.height / 2 }),
@@ -626,7 +646,7 @@ export function ArtifactCanvas({
               {page.boards.map((board) => {
                 const bounds = boundsFor(board.id)
                 if (!bounds) return null
-                const isSelected = selected === board.id
+                const isSelected = activeSelection.has(board.id)
                 const interactive =
                   !handActive &&
                   (!isPrototype(board) ||
@@ -654,15 +674,22 @@ export function ArtifactCanvas({
                         data-movable={canDragBoards ? true : undefined}
                         {...boardGesture.events}
                         onPointerDown={(event) => {
-                          if (canDragBoards) {
-                            boardGesture.begin(event, {
-                              pageId: page.id,
-                              boardId: board.id,
-                              original: bounds,
-                              mode: 'move',
-                              scale: camera.scale,
-                            })
+                          if (!canDragBoards || event.shiftKey) return
+                          const ids = isSelected
+                            ? activeSelection
+                            : groupMembers(page.boards, board.id)
+                          const initial = new Map([[board.id, bounds]])
+                          for (const id of ids) {
+                            const included = layout.bounds.get(id)
+                            if (included) initial.set(id, included)
                           }
+                          boardGesture.begin(event, {
+                            pageId: page.id,
+                            boardId: board.id,
+                            initial,
+                            mode: 'move',
+                            scale: camera.scale,
+                          })
                         }}
                         onFocus={(event) => {
                           if (!measurable || !event.currentTarget.matches(':focus-visible')) return
@@ -679,7 +706,9 @@ export function ArtifactCanvas({
                           }
                         }}
                         onClick={(event) => {
-                          if (!handActive || event.detail === 0) selectBoard(board.id)
+                          if (boardGesture.consumesClick(event)) return
+                          if (!handActive || event.detail === 0)
+                            selectBoard(board.id, event.shiftKey)
                         }}
                       >
                         {board.title}
@@ -752,12 +781,13 @@ export function ArtifactCanvas({
                           aria-label={`选择画板：${board.title}`}
                           className="artifact-canvas-board-hit"
                           onClick={(event) => {
-                            if (!wasPinching.current || event.detail === 0) selectBoard(board.id)
+                            if (!wasPinching.current || event.detail === 0)
+                              selectBoard(board.id, event.shiftKey)
                           }}
                         />
                       ) : null}
                     </div>
-                    {isSelected && canDragBoards ? (
+                    {selected === board.id && canDragBoards ? (
                       <button
                         type="button"
                         className="artifact-canvas-board-resize"
@@ -769,7 +799,7 @@ export function ArtifactCanvas({
                           boardGesture.begin(event, {
                             pageId: page.id,
                             boardId: board.id,
-                            original: bounds,
+                            initial: new Map([[board.id, bounds]]),
                             mode: 'resize',
                             scale: camera.scale,
                           })
@@ -802,6 +832,15 @@ export function ArtifactCanvas({
           }
           canAddBoard={boardEditing?.available}
           history={boardEditing}
+          arrangementMenu={
+            boardEditing ? (
+              <CanvasArrangeMenu
+                selected={selectedBoards}
+                bounds={layout.bounds}
+                editing={boardEditing}
+              />
+            ) : null
+          }
           canZoom={Boolean(page?.boards.length && !invalidAddress)}
           onZoom={zoom}
           onFitPage={
