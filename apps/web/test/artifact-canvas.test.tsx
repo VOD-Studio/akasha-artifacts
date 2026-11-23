@@ -694,6 +694,31 @@ it('新建页面保存为头版本，空页不继承旧制品的未分组画板'
   expect(screen.getByTitle('旧画板 隔离沙盒')).toBeTruthy()
 })
 
+it('画板保存后提交对应版本的 Agent 编辑反馈，通知失败不回滚', async () => {
+  const editor = showEditableWorkspace(detailFor())
+  const request = vi.mocked(fetch)
+  const previous = request.getMockImplementation()
+  const notifications: unknown[] = []
+  request.mockImplementation(async (path, init) => {
+    if (path === `/api/v1/artifacts/${artifact.publicId}/feedback` && init?.method === 'POST') {
+      notifications.push(JSON.parse(String(init.body)))
+      return Response.json(
+        { error: { code: 'UNAVAILABLE', message: '通知服务暂不可用' } },
+        { status: 500 },
+      )
+    }
+    if (!previous) throw new Error('缺少保存请求处理器')
+    return previous(path, init)
+  })
+  fireEvent.click(screen.getByRole('button', { name: '添加画板' }))
+  expect(await screen.findByTitle('画板 3 隔离沙盒')).toBeTruthy()
+  expect(editor.current.version.version).toBe(2)
+  expect(notifications).toEqual([
+    expect.objectContaining({ kind: 'edit', version: 2, roundId: null }),
+  ])
+  expect(screen.queryByRole('alert')).toBeNull()
+})
+
 it('沿用旧页定位链接完成重命名，确认删除时只移除该页直属画板', async () => {
   const initial = detailFor(
     1,

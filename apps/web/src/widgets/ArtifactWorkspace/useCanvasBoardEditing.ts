@@ -1,7 +1,7 @@
 import type { Artifact, Version } from '@akasha/protocol'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
-import { artifactKeys } from '../../entities/artifact/queries'
+import { artifactKeys, notifyHumanVersionEdit } from '../../entities/artifact/queries'
 import { ApiError, type ArtifactDetailResponse, publishHumanVersion } from '../../shared/api/client'
 import { type CanvasBoardEdit, editCanvasBoards } from './canvas-board-source'
 
@@ -65,6 +65,7 @@ export function useCanvasBoardEditing({
         baseVersion: edit.base.version,
         source: edit.source,
       })
+      await notifyHumanVersionEdit(artifact.projectId, saved.version, edit.base.source, 'canvas')
       query.setQueryData<ArtifactDetailResponse>(
         artifactKeys.detail(artifact.publicId),
         (current) =>
