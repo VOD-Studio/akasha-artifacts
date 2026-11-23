@@ -40,6 +40,7 @@ import { SANDBOX_IFRAME_SANDBOX_ATTR, SandboxBridgeHost } from '../src/shared/br
 import { ArtifactWorkspace } from '../src/widgets/ArtifactWorkspace/ArtifactWorkspace'
 import { InspectorPanel } from '../src/widgets/InspectorPanel/InspectorPanel'
 import { LibraryShell } from '../src/widgets/LibraryShell/LibraryShell'
+import { useLibraryView } from '../src/widgets/LibraryShell/library-view'
 import { RoundSubmitBar } from '../src/widgets/RoundSubmitBar/RoundSubmitBar'
 import { TopBar } from '../src/widgets/TopBar/TopBar'
 
@@ -79,6 +80,7 @@ afterEach(() => {
   cleanup()
   vi.useRealTimers()
   vi.restoreAllMocks()
+  useLibraryView.setState(useLibraryView.getInitialState())
   useWorkspaceStore.setState({
     selectedProjectId: null,
     commandPaletteOpen: false,
@@ -420,7 +422,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     })
   })
 
-  it('LibraryShell 支持多项目切换、休眠项目折叠，VersionDiffView 准确展示行级差异', () => {
+  it('制品库快捷键聚焦同一搜索框，打开制品再返回保留关键词与滚动位置', () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
     })
@@ -440,26 +442,44 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
         dormant: true,
       },
     ])
-    queryClient.setQueryData(artifactKeys.list(undefined), [SAMPLE_ARTIFACT])
+    queryClient.setQueryData(artifactKeys.list(undefined), [
+      SAMPLE_ARTIFACT,
+      {
+        ...SAMPLE_ARTIFACT,
+        publicId: 'LegacyLibraryItemAbC123',
+        projectId: 'proj_old',
+        title: '旧任务参考',
+      },
+    ])
 
     const opened: string[] = []
-    render(
-      <QueryClientProvider client={queryClient}>
-        <LibraryShell onOpenArtifact={(id) => opened.push(id)} />
-      </QueryClientProvider>,
-    )
+    const openLibrary = () =>
+      render(
+        <QueryClientProvider client={queryClient}>
+          <LibraryShell onOpenArtifact={(id) => opened.push(id)} />
+        </QueryClientProvider>,
+      )
 
-    expect(screen.getByText('最近 · 所有项目')).toBeTruthy()
-    expect(screen.getAllByText('Alpha Repo').length).toBeGreaterThanOrEqual(1)
-    // 休眠项目默认折叠
-    expect(screen.queryByText('Legacy Repo')).toBeNull()
-    fireEvent.click(screen.getByText(/休眠项目（1）/))
-    expect(screen.getByText('Legacy Repo')).toBeTruthy()
+    const library = openLibrary()
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true })
+    const search = screen.getByRole('searchbox', { name: '搜索制品' })
+    expect(document.activeElement).toBe(search)
+    fireEvent.change(search, { target: { value: '状态' } })
+    expect(screen.queryByText('旧任务参考')).toBeNull()
+    const scroller = screen.getByRole('region', { name: '制品列表' })
+    scroller.scrollTop = 80
+    fireEvent.scroll(scroller)
 
     fireEvent.click(screen.getByText('实时状态卡片'))
     expect(opened).toEqual([SAMPLE_ARTIFACT.publicId])
+    library.unmount()
+    openLibrary()
+    expect(screen.getByRole<HTMLInputElement>('searchbox', { name: '搜索制品' }).value).toBe('状态')
+    expect(screen.getByRole('region', { name: '制品列表' }).scrollTop).toBe(80)
+    expect(screen.queryByText('旧任务参考')).toBeNull()
+  })
 
-    cleanup()
+  it('VersionDiffView 展示源内容的行级增删', () => {
     render(<VersionDiffView versions={[SAMPLE_V1, SAMPLE_V2]} activeVersion={2} />)
     expect(screen.getByText('+1')).toBeTruthy()
     expect(screen.getByText('-1')).toBeTruthy()
@@ -508,7 +528,10 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       published = true
       await act(() => vi.advanceTimersByTimeAsync(15_000))
       expect(screen.getByText('新发布制品')).toBeTruthy()
-      fireEvent.click(screen.getByRole('button', { name: '新登记项目' }))
+      const projects = screen.getByRole('button', { name: '筛选项目' })
+      fireEvent.keyDown(projects, { key: 'ArrowDown' })
+      fireEvent.click(screen.getByRole('menuitemradio', { name: '新登记项目' }))
+      expect(projects.textContent).toBe('新登记项目')
       expect(screen.getByText('新发布制品')).toBeTruthy()
     } finally {
       cleanup()
