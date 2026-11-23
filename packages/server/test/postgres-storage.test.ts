@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { Feedback } from '@akasha/protocol'
+import type { Artifact, Feedback } from '@akasha/protocol'
 import { Pool } from 'pg'
 import { expect, it } from 'vitest'
 import { createPostgresStorage } from '../src/infrastructure/storage/postgres/index.js'
@@ -8,7 +8,7 @@ const postgresUrl = process.env.AKASHA_TEST_POSTGRES_URL
 const artifactId = 'sandboxAFGHe26rrQ'
 const now = '2026-11-23T10:00:00.000Z'
 
-it.skipIf(!postgresUrl)('PostgreSQL 多实例共享有序反馈、回执和制品存储', async () => {
+it.skipIf(!postgresUrl)('PostgreSQL 多实例共享反馈、回执、制品存储与项目索引', async () => {
   if (!postgresUrl) throw new Error('未配置测试数据库')
   const server = new Pool({ connectionString: postgresUrl })
   const schema = `akasha_test_${randomUUID().replaceAll('-', '')}`
@@ -20,6 +20,56 @@ it.skipIf(!postgresUrl)('PostgreSQL 多实例共享有序反馈、回执和制�
     const second = createPostgresStorage({ connectionString: connectionString.href })
     try {
       await Promise.all([first.ready, second.ready])
+      const projectIds = ['source-a', 'source-b', 'destination']
+      await Promise.all(
+        projectIds.map((id) =>
+          first.projects.upsert({ id, rootPath: `/${id}`, name: id, lastActiveAt: now }),
+        ),
+      )
+      const left: Artifact = {
+        publicId: 'pgMoveOriginalA',
+        projectId: 'source-a',
+        slug: 'html/review',
+        title: '移动原件',
+        type: 'html',
+        visibility: 'private',
+        headVersion: 1,
+        createdAt: now,
+        updatedAt: now,
+      }
+      const right: Artifact = { ...left, publicId: 'pgMoveOriginalB', projectId: 'source-b' }
+      await first.artifacts.saveArtifact(left)
+      await second.artifacts.saveArtifact(right)
+      const candidates = [left, right]
+      const moved = await Promise.allSettled(
+        candidates.map((artifact, index) =>
+          (index === 0 ? first : second).artifacts.relocate({
+            publicId: artifact.publicId,
+            sourceProjectId: artifact.projectId,
+            targetProjectId: 'destination',
+            updatedAt: now,
+          }),
+        ),
+      )
+      const winningIndex = moved.findIndex((result) => result.status === 'fulfilled')
+      const winner = candidates[winningIndex]
+      const loser = candidates[1 - winningIndex]
+      if (!winner || !loser) throw new Error('目标索引必须只接纳一个制品')
+      expect(moved[1 - winningIndex]).toMatchObject({
+        status: 'rejected',
+        reason: { code: 'RESOURCE_CONFLICT' },
+      })
+      // 另一实例已读到旧项目后写入的内容，不会把原件重新放回旧项目。
+      await second.artifacts.saveArtifact({ ...winner, headVersion: 2 })
+      expect(await first.artifacts.findBySlug('destination', left.slug)).toMatchObject({
+        publicId: winner.publicId,
+        headVersion: 2,
+      })
+      expect(await first.artifacts.findBySlug(loser.projectId, loser.slug)).toMatchObject({
+        publicId: loser.publicId,
+        headVersion: 1,
+      })
+
       const writes = Array.from({ length: 20 }, (_, index) => {
         const item: Feedback = {
           id: `feedback-${index}`,

@@ -1,4 +1,4 @@
-import type { Artifact } from '@akasha/protocol'
+import type { Artifact, ArtifactTransferInput } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Modal } from '@akasha/ui/dialog'
 import {
@@ -12,7 +12,9 @@ import {
 import {
   ChevronDown,
   Code2,
+  Copy,
   Download,
+  FolderInput,
   GitCompare,
   HandMetal,
   HardDrive,
@@ -43,6 +45,7 @@ interface ArtifactTitleMenuProps {
   onExport?: () => void
   onHandoff?: () => void
   onShare?: () => void
+  onTransfer?: (kind: ArtifactTransferInput['kind']) => void
   canEdit?: boolean
   shared?: boolean
   onQuickJump: () => void
@@ -57,6 +60,7 @@ export function ArtifactTitleMenu({
   onExport,
   onHandoff,
   onShare,
+  onTransfer,
   canEdit = true,
   shared = false,
   onQuickJump,
@@ -129,6 +133,18 @@ export function ArtifactTitleMenu({
               <Pencil size={14} />
               重命名制品
             </DropdownMenuItem>
+          ) : null}
+          {onTransfer && management.data?.canManage ? (
+            <>
+              <DropdownMenuItem onSelect={() => onTransfer('copy')}>
+                <Copy size={14} />
+                复制制品…
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onTransfer('move')}>
+                <FolderInput size={14} />
+                移动到项目…
+              </DropdownMenuItem>
+            </>
           ) : null}
           <DropdownMenuItem
             disabled={reload.isPending}

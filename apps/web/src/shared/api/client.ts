@@ -6,6 +6,7 @@ import {
   type ArtifactSpecOutput,
   type ArtifactStorageUsage,
   ArtifactStorageUsageSchema,
+  type ArtifactTransferInput,
   type ArtifactType,
   type Author,
   type DaemonStatus,
@@ -70,6 +71,17 @@ export async function createArtifactShare(
 
 export async function fetchArtifactManagement(id: string): Promise<{ canManage: boolean }> {
   return requestJson(`/api/v1/artifacts/${encodeURIComponent(id)}/management`)
+}
+
+/** 服务端固定复制版本并原子移动；两种操作都校验源与目标项目。 */
+export async function transferArtifact(
+  id: string,
+  input: ArtifactTransferInput,
+): Promise<{ artifact: Artifact; version?: Version }> {
+  return requestJson(`/api/v1/artifacts/${encodeURIComponent(id)}/transfer`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
 }
 
 export async function renameArtifact(id: string, title: string): Promise<{ artifact: Artifact }> {

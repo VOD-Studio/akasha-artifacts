@@ -7,6 +7,7 @@ import {
   ArtifactPushStateInputSchema,
   ArtifactRecordVerdictInputSchema,
   ArtifactStorageOperationSchema,
+  ArtifactTransferInputSchema,
   ArtifactTypeSchema,
   ArtifactUpdateInputSchema,
   AuthorSchema,
@@ -203,6 +204,7 @@ function errorCodeToStatus(code: ErrorCode): ContentfulStatusCode {
     case 'NOT_FOUND':
       return 404
     case 'VERSION_CONFLICT':
+    case 'RESOURCE_CONFLICT':
       return 409
     case 'MATCH_NOT_FOUND':
     case 'AMBIGUOUS_MATCH':
@@ -531,6 +533,17 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
       projectId: body.project,
     })
     return c.json({ artifact })
+  })
+
+  app.post('/api/v1/artifacts/:id/transfer', async (c) => {
+    const payload = await parseJsonBody(
+      c.req.raw,
+      ArtifactTransferInputSchema.and(
+        z.object({ author: AuthorSchema.optional().default('human:local') }),
+      ),
+    )
+    const result = await deps.service.transferArtifact(c.req.param('id'), payload, payload.author)
+    return c.json(result, payload.kind === 'copy' ? 201 : 200)
   })
 
   app.patch('/api/v1/artifacts/:id', async (c) => {

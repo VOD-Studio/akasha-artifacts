@@ -176,7 +176,9 @@ export function createHubAccess(
       const artifact = await artifacts.findByPublicId(event.artifactId)
       if (
         !artifact ||
-        (scope.projectId && artifact.projectId !== scope.projectId) ||
+        (scope.projectId &&
+          artifact.projectId !== scope.projectId &&
+          !(scope.artifactId && event.type === 'artifact.metadata')) ||
         (!scope.artifactId && !principal?.member)
       )
         return false

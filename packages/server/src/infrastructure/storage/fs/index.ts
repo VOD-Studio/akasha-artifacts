@@ -915,6 +915,14 @@ export class FsArtifactRepository implements ArtifactRepository {
     return this.inner.renameTitle(id, title, updatedAt)
   }
 
+  async relocate(): Promise<never> {
+    // .artifacts 根目录与仓储绑定一个项目，不能把原生文件迁到未受这套存储管理的位置。
+    throw new DomainError(
+      'BAD_REQUEST',
+      '原生文件模式只绑定一个项目；跨项目移动须使用 SQLite Daemon 或同一自托管 Hub',
+    )
+  }
+
   findByPublicId(publicId: PublicId): Promise<Artifact | undefined> {
     return this.inner.findByPublicId(publicId)
   }

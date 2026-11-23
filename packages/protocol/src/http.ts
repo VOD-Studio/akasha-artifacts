@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { AuthorSchema, ISODateTimeSchema, PublicIdSchema } from './primitives.js'
+import { AuthorSchema, ISODateTimeSchema, PublicIdSchema, SlugSchema } from './primitives.js'
 
 /** 错误码；含义见行尾说明。 */
 export const ERROR_CODES = [
@@ -7,6 +7,7 @@ export const ERROR_CODES = [
   'UNAUTHORIZED', // 缺少或无法识别的凭据
   'FORBIDDEN', // 已认证但无权限，或 Host / Origin 校验失败
   'NOT_FOUND', // 资源或版本不存在
+  'RESOURCE_CONFLICT', // 目标资源冲突，或操作期间资源归属已变化
   'VERSION_CONFLICT', // `baseVersion` 落后于头版本，`details` 为 `VersionConflictDetails`
   'AMBIGUOUS_MATCH', // `old_str` 在源码中匹配到多处
   'MATCH_NOT_FOUND', // `old_str` 在源码中零匹配
@@ -106,3 +107,18 @@ export interface ArtifactSharedAccess {
   version?: number
   expiresAt: string
 }
+
+/** 复制固定快照或把原制品移动到当前服务内已登记的项目。 */
+export const ArtifactTransferInputSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('copy'),
+    targetProjectId: z.string().min(1).max(256),
+    version: z.number().int().positive(),
+    slug: SlugSchema,
+  }),
+  z.object({
+    kind: z.literal('move'),
+    targetProjectId: z.string().min(1).max(256),
+  }),
+])
+export type ArtifactTransferInput = z.infer<typeof ArtifactTransferInputSchema>

@@ -19,6 +19,7 @@ import type {
   StateRepository,
 } from '../../../domain/ports.js'
 import { annotationStatements, createSqlAnnotationRepository } from '../annotation-records.js'
+import { rethrowArtifactStoreError } from '../artifact-conflict.js'
 import { schema } from './schema.js'
 import type { SqlDriver, SqlStatement, SqlValue, SqlWriteLock, VersionBlobs } from './types.js'
 
@@ -128,7 +129,7 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
       await query(
         `INSERT INTO artifacts (public_id, project_id, slug, title, type, visibility, head_version, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(public_id) DO UPDATE SET project_id = excluded.project_id,
+         ON CONFLICT(public_id) DO UPDATE SET
            slug = excluded.slug, title = excluded.title, type = excluded.type,
            visibility = excluded.visibility, head_version = excluded.head_version, updated_at = excluded.updated_at`,
         artifact.publicId,
@@ -140,7 +141,7 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
         artifact.headVersion,
         artifact.createdAt,
         artifact.updatedAt,
-      )
+      ).catch(rethrowArtifactStoreError)
     },
     renameTitle: (id, title, updatedAt) =>
       first<Artifact>(
@@ -149,6 +150,17 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
         updatedAt,
         id,
       ),
+    relocate: ({ publicId, sourceProjectId, targetProjectId, updatedAt }) =>
+      first<Artifact>(
+        `UPDATE artifacts SET project_id = ?, updated_at = ?
+         WHERE public_id = ? AND project_id = ? AND EXISTS (SELECT 1 FROM projects WHERE id = ?)
+         RETURNING ${artifactColumns}`,
+        targetProjectId,
+        updatedAt,
+        publicId,
+        sourceProjectId,
+        targetProjectId,
+      ).catch(rethrowArtifactStoreError),
     findByPublicId: (id) =>
       first<Artifact>(`SELECT ${artifactColumns} FROM artifacts WHERE public_id = ?`, id),
     findBySlug: (projectId, slug) =>

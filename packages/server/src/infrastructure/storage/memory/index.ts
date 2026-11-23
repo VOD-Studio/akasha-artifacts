@@ -13,8 +13,10 @@ import type {
   Version,
 } from '@akasha/protocol'
 import { PROTOCOL_VERSION } from '@akasha/protocol'
+import { DomainError } from '../../../domain/errors.js'
 import type {
   AnnotationRepository,
+  ArtifactRelocation,
   ArtifactRepository,
   Clock,
   FeedbackRepository,
@@ -104,12 +106,25 @@ export class InMemoryArtifactRepository implements ArtifactRepository {
   }
 
   async saveArtifact(artifact: Artifact): Promise<void> {
+    const oldProject = this.artifacts.get(artifact.publicId)?.projectId
+    this.storeArtifact(
+      oldProject && oldProject !== artifact.projectId
+        ? { ...artifact, projectId: oldProject }
+        : artifact,
+    )
+  }
+
+  private storeArtifact(artifact: Artifact): void {
+    const key = this.slugKey(artifact.projectId, artifact.slug)
+    const holder = this.slugIndex.get(key)
+    if (holder && holder !== artifact.publicId)
+      throw new DomainError('RESOURCE_CONFLICT', '目标项目已存在同名制品，原有内容未更改')
     const prev = this.artifacts.get(artifact.publicId)
     if (prev && (prev.projectId !== artifact.projectId || prev.slug !== artifact.slug)) {
       this.slugIndex.delete(this.slugKey(prev.projectId, prev.slug))
     }
     this.artifacts.set(artifact.publicId, structuredClone(artifact))
-    this.slugIndex.set(this.slugKey(artifact.projectId, artifact.slug), artifact.publicId)
+    this.slugIndex.set(key, artifact.publicId)
   }
 
   async renameTitle(id: PublicId, title: string, updatedAt: string): Promise<Artifact | undefined> {
@@ -118,6 +133,14 @@ export class InMemoryArtifactRepository implements ArtifactRepository {
     const renamed = { ...artifact, title, updatedAt }
     this.artifacts.set(id, renamed)
     return structuredClone(renamed)
+  }
+
+  async relocate({ publicId, sourceProjectId, targetProjectId, updatedAt }: ArtifactRelocation) {
+    const artifact = this.artifacts.get(publicId)
+    if (!artifact || artifact.projectId !== sourceProjectId) return
+    const moved = { ...artifact, projectId: targetProjectId, updatedAt }
+    this.storeArtifact(moved)
+    return moved
   }
 
   async findByPublicId(publicId: PublicId): Promise<Artifact | undefined> {
