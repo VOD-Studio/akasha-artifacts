@@ -77,23 +77,30 @@ function checkUniqueIds(
 // 1. live-timeline（实时排障与任务进度看板）
 // ============================================================================
 
+// pending 待执行；running 进行中；done 已完成；failed 失败；skipped 跳过
 export type TimelineStepStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped'
 
+/** 时间线里的一个步骤；`id` 用来匹配状态流里的 `stepOverrides`。 */
 export interface LiveTimelineStep {
   id: string
   title: string
   status: TimelineStepStatus
   detail?: string
+  /** 耗时，单位毫秒。 */
   durationMs?: number
+  /** 命令的原始输出。 */
   output?: string
   timestamp?: string
 }
 
+/** `live-timeline` 模板的数据。 */
 export interface LiveTimelineData {
   title: string
   subtitle?: string
+  /** 是否展开步骤的原始输出。 */
   showOutputs: boolean
   filterStatus: 'all' | TimelineStepStatus
+  /** 可被状态流里的 `steps` 数组整体替换。 */
   steps: LiveTimelineStep[]
 }
 
@@ -178,7 +185,13 @@ export function parseLiveTimeline(source: string): KitParseResult<LiveTimelineDa
   }
 }
 
-// 将 StateStream 的实时状态覆盖（steps 数组或 stepOverrides[id]）合入时间线步骤，实现零重挂实时推进。
+/**
+ * 把状态流的实时覆盖合入时间线数据。
+ *
+ * @remarks 三种覆盖：`steps` 整体替换步骤数组，`stepOverrides[<id>]` 修改单个步骤，
+ * `props` 覆盖标题、展开开关与筛选状态。类型不合法的覆盖项被忽略；
+ * `steps` 替换后解析失败时保留原步骤。
+ */
 export function applyLiveTimelineState(
   base: LiveTimelineData,
   stateSnapshot: Record<string, unknown> | undefined,
@@ -276,11 +289,13 @@ export const LIVE_TIMELINE_TEMPLATE: KitTemplateDefinition<LiveTimelineData> = {
 // 2. option-compare（结构化多方案对比矩阵）
 // ============================================================================
 
+/** 对比的一个维度；源码里可以直接写字符串，此时 `id` 与 `label` 相同。 */
 export interface CompareDimension {
   id: string
   label: string
 }
 
+/** 对比矩阵里的一个方案。 */
 export interface CompareOption {
   id: string
   title: string
@@ -288,13 +303,16 @@ export interface CompareOption {
   recommended?: boolean
   pros?: string[]
   cons?: string[]
+  /** 各维度的取值；不做维度校验，原样保留。 */
   values?: Record<string, string>
   tags?: string[]
 }
 
+/** `option-compare` 模板的数据。 */
 export interface OptionCompareData {
   title: string
   summary?: string
+  /** 推荐方案的 `id`；取顶层的 `recommended`，没有则取第一个标了 `recommended` 的方案。 */
   recommended?: string
   highlightDiffs: boolean
   compact: boolean
@@ -323,6 +341,7 @@ export const OPTION_COMPARE_PROP_FIELDS: readonly KitPropField[] = [
   },
 ]
 
+/** 解析 `option-compare` 源码；`options` 必须是数组，其中每项必须有 `title`。 */
 export function parseOptionCompare(source: string): KitParseResult<OptionCompareData> {
   const res = parseJsonObject(source)
   if (!res.ok) return res
@@ -541,9 +560,11 @@ export const ARTBOARD_TEMPLATE: KitTemplateDefinition<ArtboardData> = {
 // 4. document（结构化设计文档：支持稳定 blockId JSON 与 HTML 双格式）
 // ============================================================================
 
+/** 文档里的行内 Agent 提问。 */
 export interface DocumentQuestion {
   id: string
   prompt: string
+  /** `open` 待回答；`answered` 已回答。 */
   status: 'open' | 'answered'
   answer?: string
 }
@@ -553,6 +574,7 @@ export interface DocumentParagraph {
   text: string
 }
 
+/** 文档的一节；`id` 即该节的稳定块标识。 */
 export interface DocumentSection {
   id: string
   heading: string
@@ -561,6 +583,7 @@ export interface DocumentSection {
   questions: DocumentQuestion[]
 }
 
+/** JSON 格式的结构化文档。 */
 export interface StructuredDocumentData {
   format: 'json'
   title: string
@@ -570,11 +593,13 @@ export interface StructuredDocumentData {
   sections: DocumentSection[]
 }
 
+/** HTML 格式的文档；`id` 或 `data-ak-block` 属性充当稳定块标识。 */
 export interface HtmlDocumentData {
   format: 'html'
   html: string
 }
 
+/** `document` 模板的数据；`format` 区分 JSON 与 HTML 两种源码形态。 */
 export type DocumentData = StructuredDocumentData | HtmlDocumentData
 
 export const DOCUMENT_PROP_FIELDS: readonly KitPropField[] = [
@@ -596,6 +621,7 @@ export const DOCUMENT_PROP_FIELDS: readonly KitPropField[] = [
   },
 ]
 
+/** 解析 `document` 源码：以 `{` 开头按 JSON 解析，其余按 HTML 原样保留。 */
 export function parseDocument(source: string): KitParseResult<DocumentData> {
   const trimmed = source.trim()
   if (!trimmed.startsWith('{')) {
@@ -717,29 +743,37 @@ export const DOCUMENT_TEMPLATE: KitTemplateDefinition<DocumentData> = {
 // 5. verify（交付验收：预期/实际并排对比 + 可验证声明证据 + 未验证项清单）
 // ============================================================================
 
+// checked 已验证；failed 验证失败；updated 修复后待重验；pending 待验证
 export type VerifyClaimStatus = 'checked' | 'failed' | 'updated' | 'pending'
 
+/** 预期界面与实际界面的并排对比。 */
 export interface VerifyScreenComparison {
   id: string
   title: string
   expectedLabel: string
   actualLabel: string
+  /** 预期界面的 HTML 片段。 */
   expectedHtml?: string
+  /** 实际界面的 HTML 片段。 */
   actualHtml?: string
   diffNote?: string
 }
 
+/** 一条可验证的声明；`id` 用来匹配状态流里的 `claimOverrides` 与 `verdicts`。 */
 export interface VerifyClaim {
   id: string
   title: string
   status: VerifyClaimStatus
   summary?: string
+  /** 产出证据的命令。 */
   command?: string
+  /** 命令的原始输出。 */
   evidence?: string
   verdict?: Verdict
   updatedAt?: string
 }
 
+/** 未验证项及其原因。 */
 export interface VerifyUnverifiedItem {
   id: string
   title: string
@@ -747,6 +781,7 @@ export interface VerifyUnverifiedItem {
   risk: 'low' | 'medium' | 'high'
 }
 
+/** `verify` 模板的数据。 */
 export interface VerifyData {
   title: string
   summary?: string
@@ -865,7 +900,13 @@ export function parseVerify(source: string): KitParseResult<VerifyData> {
   }
 }
 
-// 合入 StateStream 实时重验证据更新（claimOverrides[id]）与裁决状态（verdicts[id]）
+/**
+ * 把状态流的实时覆盖合入验收数据。
+ *
+ * @remarks `claimOverrides[<id>]` 更新单条声明的状态、证据、摘要与时间，
+ * `verdicts[<id>]` 写入裁决，`props` 覆盖未验证项的展示开关与筛选状态。
+ * 类型不合法的覆盖项被忽略；`verdicts` 优先于 `claimOverrides` 里的 `verdict`。
+ */
 export function applyVerifyState(
   base: VerifyData,
   stateSnapshot: Record<string, unknown> | undefined,
@@ -960,6 +1001,7 @@ export const VERIFY_TEMPLATE: KitTemplateDefinition<VerifyData> = {
 
 let builtinsRegistered = false
 
+/** 向注册中心登记全部内置模板；重复调用无效果。 */
 export function registerBuiltinKitTemplates(): void {
   if (builtinsRegistered) return
   builtinsRegistered = true

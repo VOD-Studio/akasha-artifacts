@@ -2,6 +2,7 @@ import { registerBuiltinKitTemplates } from './templates.js'
 
 export const PACKAGE_KIT_VERSION = '0.3.0'
 
+// 导入本包即注册内置模板，渲染器与校验门禁不需要再手动调用
 registerBuiltinKitTemplates()
 
 export {

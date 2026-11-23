@@ -1,6 +1,7 @@
 import type { CheckDiagnostic } from '@akasha/protocol'
 import type { KitParseResult } from './registry.js'
 
+/** 稳定标识的格式：字母或数字开头，其后可含点、下划线与连字符。 */
 export const stableIdPattern = '^[A-Za-z0-9][A-Za-z0-9._-]*$'
 const stableIdRegex = new RegExp(stableIdPattern)
 
@@ -8,6 +9,7 @@ export function invalid(field: string, reason: string): never {
   throw new Error(`${field} ${reason}`)
 }
 
+/** 解析模板源码；解析器抛出的任何错误都收进结果的 `error`，不向外抛。 */
 export function parseDecision<T>(
   source: string,
   parse: (object: Record<string, unknown>) => T,
@@ -19,6 +21,7 @@ export function parseDecision<T>(
   }
 }
 
+/** 把解析失败转成一条 `INVALID_KIT_SOURCE` 错误诊断。 */
 export function decisionDiagnostics(parsed: KitParseResult<unknown>): CheckDiagnostic[] {
   return parsed.ok ? [] : [{ severity: 'error', code: 'INVALID_KIT_SOURCE', message: parsed.error }]
 }
@@ -30,6 +33,11 @@ export function object(value: unknown, field: string): Record<string, unknown> {
   return value as Record<string, unknown>
 }
 
+/**
+ * 逐项解析数组。
+ *
+ * @param nonempty - 为 true 时拒绝空数组。
+ */
 export function list<T>(
   value: unknown,
   field: string,
@@ -58,6 +66,7 @@ export function stableId(value: unknown, field: string): string {
   return value
 }
 
+/** 按标识建索引；出现重复标识即抛错。 */
 export function uniqueIndex<T>(
   values: readonly T[],
   identify: (value: T) => string,
