@@ -1,5 +1,5 @@
 import { Button } from '@akasha/ui/button'
-import { Focus, Play } from 'lucide-react'
+import { Download, Focus, Play } from 'lucide-react'
 import {
   type PointerEvent,
   type ReactNode,
@@ -64,6 +64,8 @@ interface ArtifactCanvasProps {
   reveal?: InspectorReveal | null
   onRevealHandled: () => void
   onLocationChange: (location: CanvasLocation | null) => void
+  /** 用该画板的稳定标识打开和制品共用的导出面板。 */
+  onExportBoard?: (boardId: string) => void
   renderBoard: (board: CanvasBoard, purpose: BoardFramePurpose) => ReactNode
   canPlay: (board: CanvasBoard) => boolean
   /** 可视化直改的开关；省略时画布不提供直改入口。 */
@@ -129,6 +131,7 @@ export function ArtifactCanvas({
   reveal,
   onRevealHandled,
   onLocationChange,
+  onExportBoard,
   renderBoard,
   canPlay,
   visualEdit,
@@ -759,6 +762,19 @@ export function ArtifactCanvas({
                           }}
                         >
                           <Play size={15} />
+                        </Button>
+                      ) : null}
+                      {onExportBoard ? (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          iconOnly
+                          className="artifact-canvas-board-action"
+                          aria-label={`导出画板：${board.title}`}
+                          title="导出画板"
+                          onClick={() => onExportBoard(board.id)}
+                        >
+                          <Download size={15} />
                         </Button>
                       ) : null}
                       {boardEditing ? (

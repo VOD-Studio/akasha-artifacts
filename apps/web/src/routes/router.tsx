@@ -14,7 +14,7 @@ import {
   useNavigate,
   useParams,
 } from '@tanstack/react-router'
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useArtifactDetailQuery, useArtifactVersionsQuery } from '../entities/artifact/queries'
 import { useDaemonStatusQuery } from '../entities/daemon/queries'
 import { useArtifactFeedbackQuery } from '../entities/feedback/queries'
@@ -24,6 +24,10 @@ import { HubAccountButton } from '../features/hub/HubActions'
 import { useLiveSync } from '../features/live-sync/useLiveSync'
 import { useLocalArtifactRedirect } from '../shared/config/local-artifact'
 import { isCloudHub, resolveSandboxOrigin } from '../shared/config/runtime'
+import {
+  ArtifactExportDialog,
+  type DesignExportTarget,
+} from '../widgets/ArtifactWorkspace/ArtifactExportDialog'
 import { ArtifactWorkspace } from '../widgets/ArtifactWorkspace/ArtifactWorkspace'
 import { LibraryShell } from '../widgets/LibraryShell/LibraryShell'
 import { TopBar } from '../widgets/TopBar/TopBar'
@@ -62,6 +66,7 @@ function ArtifactRouteView({
 }) {
   const navigate = useNavigate()
   const address = useLocation({ select: (location) => location.hash })
+  const [exportTarget, setExportTarget] = useState<DesignExportTarget | null>(null)
   const clearAddress = useCallback(() => {
     void navigate({ hash: '', search: true, replace: true, resetScroll: false })
   }, [navigate])
@@ -158,6 +163,8 @@ function ArtifactRouteView({
   const feedbacks = feedbackQuery.data?.items ?? []
   const rounds = feedbackQuery.data?.rounds ?? detail.rounds
   const sandboxOrigin = resolveSandboxOrigin(daemonStatus?.sandboxPort)
+  const openExport = (boardId?: string) =>
+    setExportTarget({ artifact: detail.artifact, version: detail.version, boardId })
 
   return (
     <div className="flex h-dvh flex-col bg-canvas text-ink">
@@ -167,6 +174,7 @@ function ArtifactRouteView({
         versions={versions}
         feedbackCount={feedbacks.length}
         hasActiveRound={rounds.some((round) => round.status !== 'closed')}
+        onExport={() => openExport()}
         onBackToLibrary={() => void navigate({ to: '/' })}
         onSelectVersion={(ver) => {
           if (ver === undefined) {
@@ -196,6 +204,7 @@ function ArtifactRouteView({
         address={address}
         fixedVersion={requestedVersion}
         onClearAddress={clearAddress}
+        onExportBoard={openExport}
         onRegisterStateForwarder={registerStateForwarder}
         onVersionSaved={() => {
           if (requestedVersion !== undefined) {
@@ -218,6 +227,9 @@ function ArtifactRouteView({
           }
         }}
       />
+      {exportTarget?.artifact.publicId === detail.artifact.publicId ? (
+        <ArtifactExportDialog target={exportTarget} onClose={() => setExportTarget(null)} />
+      ) : null}
     </div>
   )
 }

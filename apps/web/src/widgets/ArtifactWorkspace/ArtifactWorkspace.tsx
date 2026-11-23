@@ -45,6 +45,8 @@ export interface ArtifactWorkspaceProps {
   /** 固定查看的版本；省略时跟随头版本。 */
   fixedVersion?: number
   onClearAddress?: () => void
+  /** 只导出当前已保存快照中的画板，编辑器临时预览不提供出口。 */
+  onExportBoard?: (boardId: string) => void
   /** 登记把状态补丁转发给各画板沙盒的函数；传 `null` 表示注销。 */
   onRegisterStateForwarder?: (forwarder: ((seq: number, ops: JsonPatchOp[]) => void) | null) => void
   onVersionSaved?: (version: ArtifactDetailResponse['version']) => void
@@ -66,6 +68,7 @@ export function ArtifactWorkspace({
   address = '',
   fixedVersion,
   onClearAddress,
+  onExportBoard,
   onRegisterStateForwarder,
   onVersionSaved,
   onVersionAdopted,
@@ -382,6 +385,7 @@ export function ArtifactWorkspace({
             storageKey={canvasSessionKey}
             address={address}
             onClearAddress={onClearAddress}
+            onExportBoard={canvas === savedCanvas ? onExportBoard : undefined}
             pageLink={pageLink}
             reveal={inspectorReveal}
             onRevealHandled={clearInspectorReveal}
