@@ -87,6 +87,7 @@ export const DATA_POINT_SELECTION_LIMITS = { points: 64, id: 96, label: 240 } as
 // 元素定位契约：优先级 blockId > loc > selector > textPreview，至少须有一项非空
 export const ElementRefSchema = z
   .object({
+    boardId: z.string().min(1).optional(),
     blockId: z.string().min(1).optional(),
     loc: z
       .string()

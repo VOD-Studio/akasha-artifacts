@@ -17,12 +17,215 @@ body,
   margin: 0;
 }
 
+.artifact-canvas-shell {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
 .artifact-canvas {
-  background-color: color-mix(in oklab, var(--background) 96%, var(--foreground));
-  background-image: radial-gradient(
-    circle,
-    color-mix(in oklab, var(--foreground) 15%, transparent) 0.75px,
-    transparent 1px
-  );
-  background-size: 20px 20px;
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: clip;
+  overscroll-behavior: contain;
+  touch-action: none;
+  background-color: color-mix(in oklab, var(--background) 94%, var(--foreground));
+}
+
+.artifact-canvas:focus {
+  outline: none;
+}
+
+.artifact-canvas[data-hand="true"] {
+  cursor: grab;
+  user-select: none;
+}
+
+.artifact-canvas[data-dragging="true"] {
+  cursor: grabbing;
+}
+
+.artifact-canvas-board,
+.artifact-canvas-board-title {
+  position: absolute;
+}
+
+.artifact-canvas-board[data-selected="true"],
+.artifact-canvas-board:focus-within {
+  z-index: 1;
+}
+
+.artifact-canvas-board-title {
+  inset-block-end: calc(100% + 4px);
+  inset-inline-start: 0;
+  min-width: 32px;
+  max-width: max(32px, 100%);
+  min-height: 28px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2px 8px;
+  background: var(--card);
+  color: var(--foreground);
+  font-size: 12px;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifact-canvas-board-title:hover,
+.artifact-canvas-board-title:focus-visible {
+  z-index: 1;
+  max-width: min(18rem, 65vw);
+}
+
+.artifact-canvas-board[data-selected="true"] .artifact-canvas-board-title {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.artifact-canvas-board-clip,
+.artifact-canvas-board-hit {
+  position: absolute;
+  inset: 0;
+}
+
+.artifact-canvas-board-clip {
+  overflow: hidden;
+  outline: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
+}
+
+.artifact-canvas-board[data-selected="true"] .artifact-canvas-board-clip {
+  outline: 2px solid var(--primary);
+}
+
+.artifact-canvas-board-frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.artifact-canvas-board-hit[data-gesture] {
+  z-index: 2;
+}
+
+.artifact-canvas-board-title:focus-visible,
+.artifact-canvas-nav-item:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.artifact-canvas-flows {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.artifact-canvas-flows line {
+  stroke: var(--muted-foreground);
+  stroke-width: 1;
+}
+
+.artifact-canvas-flows[data-hand-drawn="true"] line {
+  stroke-dasharray: 4 3;
+}
+
+.artifact-canvas-flows text {
+  fill: var(--muted-foreground);
+  font-size: 11px;
+  text-anchor: middle;
+}
+
+.artifact-canvas-message {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 16px;
+  text-align: center;
+}
+
+.artifact-canvas-navigation,
+.artifact-canvas-zoom,
+.artifact-canvas-tools {
+  position: absolute;
+  z-index: 2;
+}
+
+.artifact-canvas-navigation {
+  inset-block-start: 12px;
+  inset-inline-start: 12px;
+}
+
+.artifact-canvas-zoom,
+.artifact-canvas-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px;
+  background: var(--card);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
+}
+
+.artifact-canvas-zoom {
+  inset-block-start: 12px;
+  inset-inline-end: 12px;
+}
+
+.artifact-canvas-tools {
+  inset-block-end: 12px;
+  inset-inline-start: 50%;
+  transform: translateX(-50%);
+}
+
+@media (width < 360px) {
+  .artifact-canvas-zoom {
+    inset-block-start: 52px;
+  }
+}
+
+.artifact-canvas-navigator {
+  width: min(19rem, var(--radix-popover-content-available-width, calc(100vw - 24px)));
+}
+
+.artifact-canvas-nav-results {
+  max-height: min(48vh, 21rem);
+  overflow: auto;
+}
+
+.artifact-canvas-nav-item {
+  display: flex;
+  width: 100%;
+  justify-content: flex-start;
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  text-align: start;
+  font-size: 13px;
+}
+
+.artifact-canvas-nav-item[aria-pressed] {
+  padding-inline-start: 20px;
+}
+
+.artifact-canvas-nav-item:hover,
+.artifact-canvas-nav-item[aria-current="page"],
+.artifact-canvas-nav-item[aria-pressed="true"] {
+  background: var(--muted);
 }

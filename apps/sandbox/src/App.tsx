@@ -20,6 +20,7 @@ registerBuiltinRenderers()
 
 export interface RenderPayload {
   artifactType: ArtifactType
+  boardId?: string
   version: number
   source: string
 }
@@ -77,7 +78,12 @@ export function SandboxApp({
         renderedVisualVersionRef.current = 0
         stateStore.replace(msg.state)
         preserved.hydrate(msg.preservedState)
-        const next = { artifactType: msg.artifactType, version: msg.version, source: msg.source }
+        const next: RenderPayload = {
+          artifactType: msg.artifactType,
+          version: msg.version,
+          source: msg.source,
+          ...(msg.artifactType === 'html' && msg.boardId ? { boardId: msg.boardId } : {}),
+        }
         committedPayloadRef.current = next
         setPayload(next)
       } else if (msg.type === 'apply.preview') {
@@ -210,6 +216,9 @@ export function SandboxApp({
             renderer ? (
               renderer({
                 source: payload.source,
+                ...(payload.artifactType === 'html' && payload.boardId
+                  ? { boardId: payload.boardId }
+                  : {}),
                 version: payload.version,
                 stateStore,
                 preserved,

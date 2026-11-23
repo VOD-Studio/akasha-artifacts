@@ -35,10 +35,6 @@ export {
 export {
   ARTBOARD_PROP_FIELDS,
   ARTBOARD_TEMPLATE,
-  type ArtboardBoard,
-  type ArtboardData,
-  type ArtboardFlow,
-  type ArtboardPage,
   applyLiveTimelineState,
   applyVerifyState,
   type CompareDimension,
@@ -57,7 +53,6 @@ export {
   OPTION_COMPARE_PROP_FIELDS,
   OPTION_COMPARE_TEMPLATE,
   type OptionCompareData,
-  parseArtboard,
   parseDocument,
   parseLiveTimeline,
   parseOptionCompare,

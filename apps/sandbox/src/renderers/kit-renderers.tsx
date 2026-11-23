@@ -2,13 +2,13 @@ import { injectHtmlLocations } from '@akasha/jsx-source'
 import {
   applyLiveTimelineState,
   applyVerifyState,
-  parseArtboard,
   parseDocument,
   parseLiveTimeline,
   parseOptionCompare,
   parseVerify,
   resolveEffectiveProps,
 } from '@akasha/kit'
+import { parseArtboard } from '@akasha/protocol'
 import { gpen, styles } from '@violetjs/inkline'
 import { inkSvg } from '@violetjs/inkline/dom'
 import { useEffect, useMemo, useRef, useState } from 'react'

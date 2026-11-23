@@ -1,4 +1,9 @@
-import type { CheckDiagnostic, Verdict } from '@akasha/protocol'
+import {
+  type ArtboardData,
+  type CheckDiagnostic,
+  parseArtboard,
+  type Verdict,
+} from '@akasha/protocol'
 import { DATA_STORY_TEMPLATE } from './data-story.js'
 import { PR_WALKTHROUGH_TEMPLATE } from './pr-walkthrough.js'
 import {
@@ -447,40 +452,6 @@ export const OPTION_COMPARE_TEMPLATE: KitTemplateDefinition<OptionCompareData> =
 // 3. artboard（并排多画板与页面流程连线）
 // ============================================================================
 
-export interface ArtboardPage {
-  id: string
-  title: string
-}
-
-export interface ArtboardBoard {
-  id: string
-  title: string
-  subtitle?: string
-  pageId?: string
-  groupId?: string
-  recommended?: boolean
-  html?: string
-  description?: string
-  tags?: string[]
-}
-
-export interface ArtboardFlow {
-  from: string
-  to: string
-  label?: string
-}
-
-export interface ArtboardData {
-  title: string
-  subtitle?: string
-  columns: number
-  showFlows: boolean
-  handDrawnFlows: boolean
-  pages: ArtboardPage[]
-  boards: ArtboardBoard[]
-  flows: ArtboardFlow[]
-}
-
 export const ARTBOARD_PROP_FIELDS: readonly KitPropField[] = [
   {
     key: 'columns',
@@ -505,83 +476,12 @@ export const ARTBOARD_PROP_FIELDS: readonly KitPropField[] = [
   },
 ]
 
-export function parseArtboard(source: string): KitParseResult<ArtboardData> {
-  const res = parseJsonObject(source)
-  if (!res.ok) return res
-  const rawBoards = res.data.boards
-  if (!Array.isArray(rawBoards)) {
-    return { ok: false, error: 'artboard 缺少数组字段 "boards"' }
-  }
-
-  const pages: ArtboardPage[] = []
-  if (Array.isArray(res.data.pages)) {
-    for (let i = 0; i < res.data.pages.length; i++) {
-      const rec = asRecord(res.data.pages[i])
-      if (!rec) continue
-      const id = asString(rec.id)?.trim() || `page-${i + 1}`
-      pages.push({ id, title: asString(rec.title)?.trim() || id })
-    }
-  }
-
-  const boards: ArtboardBoard[] = []
-  for (let i = 0; i < rawBoards.length; i++) {
-    const rec = asRecord(rawBoards[i])
-    if (!rec) return { ok: false, error: `boards[${i}] 必须为对象` }
-    const id = asString(rec.id)?.trim() || `board-${i + 1}`
-    const title = asString(rec.title)?.trim()
-    if (!title) return { ok: false, error: `boards[${i}] 缺少 title` }
-    boards.push({
-      id,
-      title,
-      subtitle: asString(rec.subtitle),
-      pageId: asString(rec.pageId),
-      groupId: asString(rec.groupId),
-      recommended: asBoolean(rec.recommended),
-      html: asString(rec.html),
-      description: asString(rec.description),
-      tags: asStringArray(rec.tags),
-    })
-  }
-
-  const flows: ArtboardFlow[] = []
-  if (Array.isArray(res.data.flows)) {
-    for (const item of res.data.flows) {
-      const rec = asRecord(item)
-      if (!rec) continue
-      const from = asString(rec.from)?.trim()
-      const to = asString(rec.to)?.trim()
-      if (from && to) {
-        flows.push({ from, to, label: asString(rec.label) })
-      }
-    }
-  }
-
-  const rawCols = asNumber(res.data.columns)
-  const columns = rawCols
-    ? Math.min(4, Math.max(1, Math.round(rawCols)))
-    : Math.min(2, Math.max(1, boards.length))
-
-  return {
-    ok: true,
-    data: {
-      title: asString(res.data.title) ?? '并排方案画板',
-      subtitle: asString(res.data.subtitle),
-      columns,
-      showFlows: asBoolean(res.data.showFlows) ?? true,
-      handDrawnFlows: asBoolean(res.data.handDrawnFlows) ?? true,
-      pages,
-      boards,
-      flows,
-    },
-  }
-}
-
 export const ARTBOARD_TEMPLATE: KitTemplateDefinition<ArtboardData> = {
   type: 'artboard',
   title: '并排多画板（Artboard）',
   description: '同一画布并排对比多套页面/交互方案，支持推荐角标、分轮单选与页面流程连线。',
   guide:
-    'JSON 格式并排多画板定义：包含 boards（含唯一 id、title、html/description、可选 recommended）、可选 pages、flows（{ from, to, label }）与 groups。',
+    'JSON 格式定义：pages 用稳定 id 分组，boards 含唯一稳定 id、title、html/description，可选 pageId、viewport（width/height 均为 1–8192 的整数）与 recommended；flows 定义 { from, to, label }。',
   example: JSON.stringify(
     {
       title: '结账页布局探索',
@@ -590,11 +490,13 @@ export const ARTBOARD_TEMPLATE: KitTemplateDefinition<ArtboardData> = {
         {
           id: 'opt-a',
           title: '方案 A · 双栏摘要',
+          viewport: { width: 1280, height: 800 },
           html: '<div class="p-4 rounded-lg border">左侧表单 / 右侧价格卡片</div>',
         },
         {
           id: 'opt-b',
           title: '方案 B · 分步引导',
+          viewport: { width: 390, height: 844 },
           recommended: true,
           html: '<div class="p-4 rounded-lg border bg-violet-50">三步清晰结账流程</div>',
         },
@@ -616,7 +518,11 @@ export const ARTBOARD_TEMPLATE: KitTemplateDefinition<ArtboardData> = {
     if (!parsed.ok) {
       return [{ severity: 'error', code: 'INVALID_KIT_SOURCE', message: parsed.error }]
     }
-    const diags = checkUniqueIds(parsed.data.boards, 'artboard.boards')
+    const diags = [
+      ...checkUniqueIds(parsed.data.pages, 'artboard.pages'),
+      ...checkUniqueIds(parsed.data.boards, 'artboard.boards'),
+    ]
+
     const boardIds = new Set(parsed.data.boards.map((b) => b.id))
     for (const flow of parsed.data.flows) {
       if (!boardIds.has(flow.from) || !boardIds.has(flow.to)) {

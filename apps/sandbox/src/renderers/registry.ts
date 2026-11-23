@@ -5,6 +5,7 @@ import type { ArtifactStateStore } from '../state/store'
 
 export interface RendererProps {
   source: string
+  boardId?: string
   version: number
   stateStore: ArtifactStateStore
   preserved: PreservedStateManager
