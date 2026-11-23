@@ -24,6 +24,7 @@ import { useWorkspaceStore } from '../entities/workspace/store'
 import { ArtifactCommandPalette } from '../features/command-palette/ArtifactCommandPalette'
 import { HubAccountButton } from '../features/hub/HubActions'
 import { useLiveSync } from '../features/live-sync/useLiveSync'
+import { ApiError } from '../shared/api/client'
 import { useLocalArtifactRedirect } from '../shared/config/local-artifact'
 import { isCloudHub, resolveSandboxOrigin } from '../shared/config/runtime'
 import {
@@ -167,7 +168,10 @@ function ArtifactRouteView({
     )
   }
 
-  if (detailQuery.isError || !detailQuery.data) {
+  const denied =
+    detailQuery.error instanceof ApiError && [401, 403, 404, 410].includes(detailQuery.error.status)
+  // 暂时读不到服务端时保留画布和未保存代码；明确撤回读取权限时不展示旧缓存。
+  if (!detailQuery.data || denied) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4 bg-canvas p-6">
         <div className="w-full max-w-md">
