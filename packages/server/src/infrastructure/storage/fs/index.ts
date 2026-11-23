@@ -245,6 +245,8 @@ export class FsArtifactRepository implements ArtifactRepository {
   private readonly pendingVersions = new Map<PublicId, Readonly<Version>>()
   // 同步记录已被占用的规范物理目录（防止并发首次发布 card 与 html/card 同时通过校验并互相覆写）
   private readonly reservedDirs = new Map<string, PublicId>()
+  // 标记当前正由监听器/全量扫描主动导入的外部新文件，用于区分合法外部导入与会覆写未入库文件的 API 首次发布
+  private readonly importingExternalFiles = new Map<string, { slug: Slug; source: string }>()
   private onDiskReconciled?: (artifact: Artifact, version: Readonly<Version>) => void
 
   constructor(
@@ -255,6 +257,14 @@ export class FsArtifactRepository implements ArtifactRepository {
 
   setOnDiskReconciled(cb: (artifact: Artifact, version: Readonly<Version>) => void): void {
     this.onDiskReconciled = cb
+  }
+
+  markImportingExternalFile(filePath: string, slug: Slug, source: string): void {
+    this.importingExternalFiles.set(resolveRealPathAllowMissing(filePath), { slug, source })
+  }
+
+  clearImportingExternalFile(filePath: string): void {
+    this.importingExternalFiles.delete(resolveRealPathAllowMissing(filePath))
   }
 
   private findExistingDiskEntry(artifact: Artifact): string | null {
@@ -326,6 +336,80 @@ export class FsArtifactRepository implements ArtifactRepository {
       ),
       authors: ['agent:fs'],
     })
+  }
+
+  // 首次发布前若目标物理目录已存在尚未被监听器入库的外部源文件，则先将其补录为 v1（保留原文件与合法 .artifact-id）
+  // 并抛出 409 VERSION_CONFLICT，防止防抖窗口内 API 首次发布静默覆写外部新文件。
+  private reconcileUnindexedDiskFileBeforeCreate(
+    artifact: Artifact,
+    layout: ArtifactFileLayout,
+  ): void {
+    const existingDiskFile = this.findExistingDiskEntry(artifact)
+    if (!existingDiskFile) return
+
+    let diskSource: string
+    try {
+      diskSource = fs.readFileSync(existingDiskFile, 'utf8')
+    } catch {
+      return
+    }
+
+    const importing = this.importingExternalFiles.get(resolveRealPathAllowMissing(existingDiskFile))
+    if (importing && importing.slug === artifact.slug && importing.source === diskSource) {
+      return
+    }
+
+    let reconciledId = artifact.publicId
+    if (fs.existsSync(layout.idFile)) {
+      try {
+        const parsedId = PublicIdSchema.safeParse(fs.readFileSync(layout.idFile, 'utf8').trim())
+        if (parsedId.success && !this.inner.findByPublicIdSync(parsedId.data)) {
+          reconciledId = parsedId.data
+        }
+      } catch {
+        // 忽略读取异常，回退使用新生成的 publicId
+      }
+    }
+
+    const now = new Date().toISOString()
+    const externalV1 = createImmutableVersion({
+      artifactId: reconciledId,
+      version: 1,
+      parentVersion: null,
+      author: 'agent:fs',
+      title: artifact.title,
+      source: diskSource,
+      createdAt: now,
+    })
+    const reconciledArtifact: Artifact = {
+      ...artifact,
+      publicId: reconciledId,
+      headVersion: 1,
+      createdAt: now,
+      updatedAt: now,
+    }
+    const targetDir = resolveRealPathAllowMissing(layout.artifactDir)
+    this.reservedDirs.set(targetDir, reconciledId)
+    this.inner.saveArtifactWithVersionSync(reconciledArtifact, externalV1)
+
+    const idBody = `${reconciledId}\n`
+    assertRealPathInsideRoot(this.artifactsRoot, layout.idFile)
+    if (!fs.existsSync(layout.idFile) || fs.readFileSync(layout.idFile, 'utf8') !== idBody) {
+      writeFileAtomic(layout.idFile, idBody)
+    }
+    this.recordSyncedContent(existingDiskFile, diskSource)
+    this.onDiskReconciled?.(reconciledArtifact, externalV1)
+
+    throw new DomainError(
+      'VERSION_CONFLICT',
+      `版本冲突：目标目录 "${layout.normalizedRelativeDir}" 已存在尚未入库的外部源文件，已自动补录为 v1，请先拉取 v1 再基于 baseVersion=1 合并提交`,
+      {
+        artifactId: reconciledId,
+        headVersion: 1,
+        diff: computeUnifiedDiff('', diskSource, 'v0', 'v1'),
+        authors: ['agent:fs'],
+      },
+    )
   }
 
   private assertOwnedProject(projectId: string): void {
@@ -568,6 +652,8 @@ export class FsArtifactRepository implements ArtifactRepository {
     const previous = this.inner.findByPublicIdSync(artifact.publicId)
     if (previous && stagedForHead) {
       this.reconcilePendingDiskEditBeforeWrite(previous, stagedForHead)
+    } else if (!previous) {
+      this.reconcileUnindexedDiskFileBeforeCreate(artifact, layout)
     }
     const targetDir = resolveRealPathAllowMissing(layout.artifactDir)
     this.reservedDirs.set(targetDir, artifact.publicId)

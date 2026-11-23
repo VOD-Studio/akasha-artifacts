@@ -889,4 +889,60 @@ describe('.artifacts/ 原生文件存储适配器与外部编辑监听', () => {
     )
     expect(fs.existsSync(movedDir)).toBe(false)
   })
+
+  it('防抖窗口内宿主新建未入库源文件时，API 首次发布先补录外部文件为 v1 并抛出 409，绝不静默覆写', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-unindexed-create-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    const container = createLocalContainer({
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_unindexed',
+      // 拉长防抖时间，模拟宿主工具刚创建文件、监听器尚未入库时 API 首次发布同名 slug
+      fsWatchDebounceMs: 5000,
+    })
+    closers.push(container.close)
+    await container.ready
+
+    const cardDir = path.join(artifactsDir, 'html', 'card')
+    fs.mkdirSync(cardDir, { recursive: true })
+    const cardFile = path.join(cardDir, 'index.html')
+    fs.writeFileSync(cardFile, '<div>created externally by host tool</div>', 'utf8')
+
+    // API 首次发布 slug='card' 必须先将未入库磁盘文件补录为 v1 并以 VERSION_CONFLICT 拒绝覆写
+    await expect(
+      container.service.publish({
+        projectId: 'proj_unindexed',
+        slug: 'card',
+        title: 'API Card',
+        type: 'html',
+        source: '<div>api first publish overwrite attempt</div>',
+        author: 'agent:cli',
+      }),
+    ).rejects.toThrow(/版本冲突/)
+
+    // 磁盘原内容完好保留，已自动回写 .artifact-id 并入库为 v1（agent:fs）
+    expect(fs.readFileSync(cardFile, 'utf8')).toBe('<div>created externally by host tool</div>')
+    const reconciled = await container.service.getArtifact({
+      id: 'card',
+      projectId: 'proj_unindexed',
+    })
+    expect(reconciled.artifact.headVersion).toBe(1)
+    expect(reconciled.version.source).toBe('<div>created externally by host tool</div>')
+    expect(reconciled.version.author).toBe('agent:fs')
+
+    // 随后基于 baseVersion=1 合并发布可正常推进为 v2
+    const merged = await container.service.publish({
+      projectId: 'proj_unindexed',
+      slug: 'card',
+      title: 'API Card Merged',
+      type: 'html',
+      source: '<div>merged v2</div>',
+      baseVersion: 1,
+      author: 'agent:cli',
+    })
+    expect(merged.artifact.headVersion).toBe(2)
+    expect(fs.readFileSync(cardFile, 'utf8')).toBe('<div>merged v2</div>')
+  })
 })

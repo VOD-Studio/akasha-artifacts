@@ -210,16 +210,21 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
 
           // 2. 外部宿主工具新建或 Git 检出的文件：自动建档；若已带合法 .artifact-id 则保留原 publicId 避免索引重建破坏书签
           fsStorage.artifacts.recordSyncedContent(evt.entryFile, evt.source)
+          fsStorage.artifacts.markImportingExternalFile(evt.entryFile, evt.slug, evt.source)
           const slugTitle = path.basename(evt.slug) || evt.slug
-          await service.publish({
-            projectId: fsProjectId,
-            slug: evt.slug,
-            title: slugTitle,
-            type: evt.type,
-            source: evt.source,
-            author: 'agent:fs',
-            preferredPublicId: evt.existingPublicId,
-          })
+          try {
+            await service.publish({
+              projectId: fsProjectId,
+              slug: evt.slug,
+              title: slugTitle,
+              type: evt.type,
+              source: evt.source,
+              author: 'agent:fs',
+              preferredPublicId: evt.existingPublicId,
+            })
+          } finally {
+            fsStorage.artifacts.clearImportingExternalFile(evt.entryFile)
+          }
         },
       })
     : undefined
