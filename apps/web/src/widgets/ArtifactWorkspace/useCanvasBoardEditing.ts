@@ -13,6 +13,7 @@ interface EditingInput {
   artifact: Artifact
   version: Version
   enabled: boolean
+  notifyAgent?: boolean
   onVersionSaved?: (version: Version) => void
 }
 
@@ -52,6 +53,7 @@ export function useCanvasBoardEditing({
   artifact,
   version,
   enabled,
+  notifyAgent = true,
   onVersionSaved,
 }: EditingInput): CanvasBoardEditing {
   const query = useQueryClient()
@@ -93,7 +95,8 @@ export function useCanvasBoardEditing({
         baseVersion: edit.base.version,
         source: edit.source,
       })
-      await notifyHumanVersionEdit(artifact.projectId, saved.version, edit.base.source, 'canvas')
+      if (notifyAgent)
+        await notifyHumanVersionEdit(artifact.projectId, saved.version, edit.base.source, 'canvas')
       query.setQueryData<ArtifactDetailResponse>(
         artifactKeys.detail(artifact.publicId),
         (current) =>

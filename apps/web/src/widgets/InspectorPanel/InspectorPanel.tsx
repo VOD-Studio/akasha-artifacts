@@ -22,6 +22,9 @@ export interface InspectorPanelProps {
   activeVersion: number
   activeRound: ReviewRound | null
   feedbacks: readonly Feedback[]
+  /** 查看者可读线程；分享审阅者可批注但不能投递 Agent。 */
+  canComment?: boolean
+  notifyAgent?: boolean
   /** 仅包含当前版本、当前页内有确定画板归属的线程。 */
   pageFeedbackIds?: ReadonlySet<string>
   /** 讨论记录以根批注 ID 为键。Agent 回执状态仍在 feedbacks 中。 */
@@ -70,6 +73,8 @@ function InspectorContent({
   activeVersion,
   activeRound,
   feedbacks,
+  canComment = true,
+  notifyAgent = true,
   pageFeedbackIds,
   threads,
   onFocusThread,
@@ -106,20 +111,25 @@ function InspectorContent({
       </SheetHeader>
       <SheetBody>
         <div className="space-y-3">
-          <AnnotationComposer
-            artifactId={artifactId}
-            projectId={projectId}
-            version={activeVersion}
-            activeDraftingRound={activeRound?.status === 'drafting' ? activeRound : null}
-            selectedElement={selectedElement}
-          />
+          {canComment ? (
+            <AnnotationComposer
+              artifactId={artifactId}
+              projectId={projectId}
+              version={activeVersion}
+              activeDraftingRound={activeRound?.status === 'drafting' ? activeRound : null}
+              notifyAgent={notifyAgent}
+              selectedElement={selectedElement}
+            />
+          ) : null}
 
-          <ReviewActionsBar
-            artifactId={artifactId}
-            projectId={projectId}
-            version={activeVersion}
-            activeRound={activeRound}
-          />
+          {notifyAgent ? (
+            <ReviewActionsBar
+              artifactId={artifactId}
+              projectId={projectId}
+              version={activeVersion}
+              activeRound={activeRound}
+            />
+          ) : null}
 
           <div className="space-y-2 pt-1">
             <div className="text-[11px] font-medium text-ink-muted">
@@ -261,6 +271,7 @@ function InspectorContent({
                         artifactId={artifactId}
                         feedbackId={fb.id}
                         thread={thread}
+                        readOnly={!canComment}
                       />
                     ) : null}
                   </div>

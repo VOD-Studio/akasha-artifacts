@@ -44,7 +44,13 @@ export function createHubContainer(options: HubContainerOptions) {
   const ids = options.ids ?? new CryptoIdGenerator()
   const { repositories, realtime } = options
   const service = new ArtifactService({ ...repositories, realtime, clock, ids })
-  const auth = createHubAuth(options.oauth, origin, clock, repositories.receipts)
+  const auth = createHubAuth(
+    options.oauth,
+    origin,
+    clock,
+    repositories.receipts,
+    repositories.artifacts,
+  )
   const access = createHubAccess(repositories.artifacts, auth, origin)
   const specs = new SpecRegistry()
   const core = createHttpApp({

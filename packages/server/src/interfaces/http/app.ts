@@ -101,6 +101,7 @@ const PublishBodySchema = ArtifactPublishInputSchema.extend({
 const UpdateBodySchema = ArtifactUpdateInputSchema.omit({ id: true }).extend({
   author: AuthorSchema.optional().default('agent:cli'),
 })
+const ReplaceBodySchema = UpdateBodySchema.omit({ edits: true }).extend({ source: z.string() })
 
 const RevertBodySchema = z.object({
   project: z.string().min(1).optional(),
@@ -534,13 +535,13 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
 
   app.patch('/api/v1/artifacts/:id', async (c) => {
     const id = c.req.param('id')
-    const body = await parseJsonBody(c.req.raw, UpdateBodySchema)
+    const body = await parseJsonBody(c.req.raw, z.union([UpdateBodySchema, ReplaceBodySchema]))
     const result = await deps.service.update({
       id,
       projectId: body.project,
       baseVersion: body.baseVersion,
       title: body.title,
-      edits: body.edits,
+      ...('source' in body ? { source: body.source } : { edits: body.edits }),
       author: body.author,
     })
     return c.json(result)

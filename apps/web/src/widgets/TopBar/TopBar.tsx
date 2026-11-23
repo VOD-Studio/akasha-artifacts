@@ -1,10 +1,9 @@
-import type { Artifact, Version } from '@akasha/protocol'
+import type { Artifact, ArtifactSharedAccess, Version } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { ArrowLeft, MessageSquare, ScanLine } from 'lucide-react'
-import { useState } from 'react'
 import { useSelectionStore } from '../../entities/selection/store'
 import { useWorkspaceStore, type WorkspaceViewMode } from '../../entities/workspace/store'
-import { HubAccountButton, HubShareDialog } from '../../features/hub/HubActions'
+import { HubAccountButton } from '../../features/hub/HubActions'
 import { VersionTimeline } from '../../features/version-timeline/VersionTimeline'
 import { ArtifactTitleMenu } from './ArtifactTitleMenu'
 
@@ -20,6 +19,8 @@ export interface TopBarProps {
   /** 打开基于当前允许读取版本的整份制品导出。 */
   onExport?: () => void
   onHandoff?: () => void
+  shareAccess?: ArtifactSharedAccess
+  onShare?: () => void
   onSelectVersion: (version?: number) => void
 }
 
@@ -33,9 +34,10 @@ export function TopBar({
   onBackToLibrary,
   onExport,
   onHandoff,
+  shareAccess,
+  onShare,
   onSelectVersion,
 }: TopBarProps) {
-  const [shareLink, setShareLink] = useState<string | null>(null)
   const viewMode = useWorkspaceStore((s) => s.viewMode)
   const setViewMode = useWorkspaceStore((s) => s.setViewMode)
   const inspectorOpen = useWorkspaceStore((s) => s.inspectorTab === 'inspect')
@@ -45,12 +47,14 @@ export function TopBar({
   const wsStatus = useWorkspaceStore((s) => s.wsStatus)
   const agentActivity = useWorkspaceStore((s) => s.agentActivityByProject[artifact.projectId])
 
-  const editing = agentActivity?.state === 'editing'
-  const agentStatus = editing
-    ? 'Agent 正在修改'
-    : agentActivity?.state === 'idle' || wsStatus === 'open'
-      ? 'Agent 空闲待命'
-      : '离线快照'
+  const editing = !shareAccess && agentActivity?.state === 'editing'
+  const agentStatus = shareAccess
+    ? `分享权限：${shareAccess.role === 'view' ? '仅查看' : shareAccess.role === 'edit' && shareAccess.version === undefined ? '可编辑' : '可批注'}`
+    : editing
+      ? 'Agent 正在修改'
+      : agentActivity?.state === 'idle' || wsStatus === 'open'
+        ? 'Agent 空闲待命'
+        : '离线快照'
   const reviewLabel = hasActiveRound ? '评审' : '批注'
 
   const showTool = (mode: WorkspaceViewMode) => {
@@ -78,7 +82,9 @@ export function TopBar({
           onShowTool={showTool}
           onExport={onExport}
           onHandoff={onHandoff}
-          onShare={setShareLink}
+          onShare={onShare}
+          shared={Boolean(shareAccess)}
+          canEdit={!shareAccess || (shareAccess.role === 'edit' && fixedVersion === undefined)}
           onQuickJump={() => setCommandPaletteOpen(true)}
         />
         <VersionTimeline
@@ -86,6 +92,7 @@ export function TopBar({
           activeVersion={version.version}
           headVersion={artifact.headVersion}
           versions={versions}
+          canRevert={!shareAccess}
           onSelectVersion={onSelectVersion}
         />
       </div>
@@ -135,7 +142,6 @@ export function TopBar({
           {feedbackCount > 0 ? ` ${feedbackCount}` : ''}
         </Button>
         <HubAccountButton />
-        {shareLink ? <HubShareDialog link={shareLink} onClose={() => setShareLink(null)} /> : null}
       </div>
     </header>
   )

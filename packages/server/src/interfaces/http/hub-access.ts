@@ -5,7 +5,12 @@ import {
   type RealtimeServerEvent,
 } from '@akasha/protocol'
 import type { ArtifactRepository } from '../../domain/ports.js'
-import { type HubPrincipal, sameHubOrigin } from './hub-auth.js'
+import {
+  fixedShareVersion,
+  type HubPrincipal,
+  type HubShareClaim,
+  sameHubOrigin,
+} from './hub-auth.js'
 
 /** 实时订阅或单条事件的授权范围：项目、制品，或两者。 */
 export interface HubRealtimeScope {
@@ -18,11 +23,17 @@ type HubArtifactRole = 'owner' | 'editor' | 'reader' | 'share' | 'none'
 export interface HubAccess {
   /** 凭 cookie 或 Bearer 解析调用方；无法识别时返回 `undefined`。 */
   authenticate(request: Request): Promise<HubPrincipal | undefined>
-  /** 请求是否持有某制品的有效分享链接。 */
-  hasShare(request: Request, artifactId: string): Promise<boolean>
+  /** 当前浏览器对制品的链接授权。 */
+  readShare(request: Request, artifactId: string): Promise<HubShareClaim | undefined>
 }
 
 export interface HubArtifactAccess {
+  /** team 和所有者沿用账户权限；其他浏览器按签名的最小授权访问。 */
+  share(
+    request: Request,
+    artifact: Artifact,
+    principal: HubPrincipal | undefined,
+  ): Promise<HubShareClaim | undefined>
   /** 综合可见性与分享链接，得出调用方对某制品的角色。 */
   role(
     request: Request,
@@ -82,20 +93,20 @@ export function createHubAccess(
   auth: HubAccess,
   origin: string,
 ): HubArtifactAccess {
+  async function share(request: Request, artifact: Artifact, principal: HubPrincipal | undefined) {
+    const base = baseArtifactRole(artifact, principal)
+    if (base === 'owner' || base === 'editor') return
+    return auth.readShare(request, artifact.publicId)
+  }
+
   async function role(
     request: Request,
     artifact: Artifact,
     principal: HubPrincipal | undefined,
   ): Promise<HubArtifactRole> {
-    const access = baseArtifactRole(artifact, principal)
-    if (
-      access !== 'owner' &&
-      access !== 'editor' &&
-      (await auth.hasShare(request, artifact.publicId))
-    ) {
-      return 'share'
-    }
-    return access
+    return (await share(request, artifact, principal))
+      ? 'share'
+      : baseArtifactRole(artifact, principal)
   }
 
   async function resolve(
@@ -169,9 +180,22 @@ export function createHubAccess(
         (!scope.artifactId && !principal?.member)
       )
         return false
-      const access = scope.artifactId
-        ? await role(request, artifact, principal)
-        : baseArtifactRole(artifact, principal)
+      const grant = scope.artifactId ? await share(request, artifact, principal) : undefined
+      if (grant) {
+        // 讨论变更只通知重读，再由 HTTP 按版本过滤；不转发正文、轮次、状态和 Agent 活动。
+        if (
+          event.type === 'annotation.changed' ||
+          event.type === 'artifact.metadata' ||
+          event.type === 'resync'
+        )
+          return true
+        return (
+          event.type === 'version.created' &&
+          (fixedShareVersion(grant) === undefined ||
+            event.version.version === fixedShareVersion(grant))
+        )
+      }
+      const access = baseArtifactRole(artifact, principal)
       if (
         (event.type === 'feedback.created' || event.type === 'feedback.updated') &&
         event.feedback.draft
@@ -188,6 +212,7 @@ export function createHubAccess(
   }
 
   return {
+    share,
     role,
     resolve,
     authorizeArtifact,

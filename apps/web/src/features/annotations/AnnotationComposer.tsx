@@ -19,6 +19,7 @@ export interface AnnotationComposerProps {
   /** 当前处于草稿状态的轮次；批注落在其中时自动标为草稿。 */
   activeDraftingRound: ReviewRound | null
   selectedElement: ElementRef | null
+  notifyAgent?: boolean
   onSubmitFeedback?: (input: {
     project: string
     version: number
@@ -50,6 +51,7 @@ export function AnnotationComposer({
   version,
   activeDraftingRound,
   selectedElement,
+  notifyAgent = true,
   onSubmitFeedback,
 }: AnnotationComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -88,7 +90,7 @@ export function AnnotationComposer({
       return
     }
     const audience: Feedback['audience'] =
-      kind === 'comment' ? (draft?.sendToAgent ? 'agent' : 'human') : undefined
+      kind === 'comment' ? (notifyAgent && draft?.sendToAgent ? 'agent' : 'human') : undefined
     const payload = {
       project: projectId,
       version,
@@ -206,18 +208,20 @@ export function AnnotationComposer({
         className="w-full resize-none rounded-lg border border-border bg-surface p-2 text-xs text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none"
       />
 
-      <label className="mt-2 flex items-center gap-2 text-xs text-ink">
-        <input
-          type="checkbox"
-          checked={draft?.sendToAgent ?? false}
-          disabled={locked}
-          onChange={(event) => changeDraft({ sendToAgent: event.target.checked })}
-        />
-        同时发送给 Agent
-      </label>
+      {notifyAgent ? (
+        <label className="mt-2 flex items-center gap-2 text-xs text-ink">
+          <input
+            type="checkbox"
+            checked={draft?.sendToAgent ?? false}
+            disabled={locked}
+            onChange={(event) => changeDraft({ sendToAgent: event.target.checked })}
+          />
+          同时发送给 Agent
+        </label>
+      ) : null}
 
       <div className="mt-2 flex flex-wrap items-center justify-between gap-1.5">
-        {target ? (
+        {target && notifyAgent ? (
           <Button
             variant="outline"
             size="sm"

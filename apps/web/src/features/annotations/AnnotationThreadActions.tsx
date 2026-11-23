@@ -10,6 +10,7 @@ interface AnnotationThreadActionsProps {
   feedbackId: string
   /** 展示记录与 Agent 消费状态独立；缺省表示没有回复或解决记录。 */
   thread?: AnnotationThread
+  readOnly?: boolean
 }
 
 /** 在批注原版本下继续讨论，不把回复或解决动作交给 Agent。 */
@@ -17,6 +18,7 @@ export function AnnotationThreadActions({
   artifactId,
   feedbackId,
   thread,
+  readOnly = false,
 }: AnnotationThreadActionsProps) {
   const key = useId()
   const [body, setBody] = useState(() => readReplyDraft(artifactId, feedbackId))
@@ -61,30 +63,32 @@ export function AnnotationThreadActions({
           解决
         </p>
       ) : null}
-      <div className="flex flex-wrap gap-1.5">
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-expanded={replyOpen}
-          aria-controls={key}
-          disabled={update.isPending}
-          onClick={() => {
-            update.reset()
-            setReplyOpen(!replyOpen)
-          }}
-        >
-          回复
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={update.isPending}
-          onClick={() => update.mutate({ kind: 'resolve', resolved: !resolution })}
-        >
-          {resolution ? '重新打开' : '解决线程'}
-        </Button>
-      </div>
-      {replyOpen ? (
+      {!readOnly ? (
+        <div className="flex flex-wrap gap-1.5">
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-expanded={replyOpen}
+            aria-controls={key}
+            disabled={update.isPending}
+            onClick={() => {
+              update.reset()
+              setReplyOpen(!replyOpen)
+            }}
+          >
+            回复
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={update.isPending}
+            onClick={() => update.mutate({ kind: 'resolve', resolved: !resolution })}
+          >
+            {resolution ? '重新打开' : '解决线程'}
+          </Button>
+        </div>
+      ) : null}
+      {!readOnly && replyOpen ? (
         <form
           id={key}
           onSubmit={(event) => {

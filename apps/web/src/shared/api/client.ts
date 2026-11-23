@@ -1,6 +1,8 @@
 import {
   type AnnotationThread,
   type Artifact,
+  type ArtifactSharedAccess,
+  type ArtifactShareInput,
   type ArtifactSpecOutput,
   type ArtifactStorageUsage,
   ArtifactStorageUsageSchema,
@@ -52,6 +54,18 @@ export interface ArtifactDetailResponse {
   version: Version
   state: StateStreamSnapshot
   rounds: ReviewRound[]
+  access?: ArtifactSharedAccess
+}
+
+/** 签发分享链接；普通定位链接不经过这个接口。 */
+export async function createArtifactShare(
+  id: string,
+  input: ArtifactShareInput,
+): Promise<{ url: string; expiresAt: string }> {
+  return requestJson(`/api/v1/artifacts/${encodeURIComponent(id)}/share`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
 }
 
 export async function fetchArtifactManagement(id: string): Promise<{ canManage: boolean }> {

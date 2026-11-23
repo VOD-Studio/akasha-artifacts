@@ -169,6 +169,18 @@ export function ArtifactCanvas({
   const storedPage = document.pages.find((entry) => entry.id === view.pageId)
   const addressedPage = document.pages.find((entry) => entry.id === requestedPage)
   const addressedBoard = addressedPage?.boards.find((board) => board.id === requestedBoard)
+  const focusedShareEntry = useRef('')
+  const focusShareEntry = useEffectEvent((link: string, pageId: string, boardId: string) => {
+    if (focusedShareEntry.current === link) return
+    focusedShareEntry.current = link
+    // 定位后仍由使用者点「播放」，预览内容不会因打开链接进入交互模式。
+    presentation.openFocus({ pageId, boardId }, null)
+  })
+  useEffect(() => {
+    if (explicit && params.get('play') === '1' && addressedPage && addressedBoard) {
+      focusShareEntry(address, addressedPage.id, addressedBoard.id)
+    }
+  }, [explicit, params, address, addressedPage, addressedBoard])
   const invalidAddress =
     explicit && (!addressedPage || (requestedBoard !== null && !addressedBoard))
   const page = explicit ? addressedPage : (storedPage ?? firstPage)

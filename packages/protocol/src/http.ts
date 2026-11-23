@@ -68,3 +68,41 @@ export const HealthResponseSchema = z.object({
   version: z.string().min(1),
 })
 export type HealthResponse = z.infer<typeof HealthResponseSchema>
+
+/** 链接授予的角色，不改变 Hub 用户自身的团队权限。 */
+export const ArtifactShareRoleSchema = z.enum(['view', 'comment', 'edit'])
+
+/** 头版本入口、固定快照入口或固定快照中的试玩画板。 */
+export const ArtifactShareEntrySchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('artifact') }),
+  z.object({ kind: z.literal('version'), version: z.number().int().positive() }),
+  z.object({
+    kind: z.literal('play'),
+    version: z.number().int().positive(),
+    // 空字符串表示总览或未分组页面。
+    pageId: z.string().max(512),
+    boardId: z.string().min(1).max(512),
+  }),
+])
+export type ArtifactShareEntry = z.infer<typeof ArtifactShareEntrySchema>
+
+/** 签发站内分享链接；链接默认为一天有效。 */
+export const ArtifactShareInputSchema = z.object({
+  role: ArtifactShareRoleSchema.default('comment'),
+  entry: ArtifactShareEntrySchema.default({ kind: 'artifact' }),
+  ttlSeconds: z
+    .number()
+    .int()
+    .min(1)
+    .max(7 * 24 * 60 * 60)
+    .default(24 * 60 * 60),
+})
+export type ArtifactShareInput = z.infer<typeof ArtifactShareInputSchema>
+
+/** 仅分享访客的详情响应携带权限；不返回签名或会话凭证。 */
+export interface ArtifactSharedAccess {
+  role: z.infer<typeof ArtifactShareRoleSchema>
+  /** 固定时只允许读取和讨论该快照；即使是 edit 角色也不能改写。 */
+  version?: number
+  expiresAt: string
+}
