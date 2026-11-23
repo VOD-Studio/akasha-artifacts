@@ -1,5 +1,9 @@
-import { type ArtboardBoard, type ArtboardPage, parseArtboardValue } from '@akasha/protocol'
-import { canvasIds } from './canvas-model'
+import {
+  type ArtboardBoard,
+  type ArtboardPage,
+  canvasIds,
+  parseArtboardValue,
+} from '@akasha/protocol'
 
 type RawRecord = Record<string, unknown>
 interface EditableCanvasSource {

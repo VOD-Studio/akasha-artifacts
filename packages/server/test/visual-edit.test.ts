@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { startNodeServer } from '../src/entry/node.js'
 
-async function createFixture(source: string, type: 'html' | 'react') {
+async function createFixture(source: string, type: 'html' | 'react' | 'artboard') {
   const server = await startNodeServer({ dbPath: 'memory', port: 0 })
   async function request(path: string, body?: unknown) {
     const params = body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) }
@@ -164,6 +164,40 @@ describe('可视化直改版本与反馈', () => {
       })
     } finally {
       await fixture.close()
+    }
+  })
+
+  it('在同一版本内只预览指定画板的静态文本，其他同位置元素不变', async () => {
+    const document = {
+      boards: [
+        { id: 'desktop', title: '桌面', html: '<p>桌面标题</p>' },
+        { id: 'phone', title: '手机', html: '<p>手机标题</p>' },
+      ],
+    }
+    const { request, path, id, close } = await createFixture(JSON.stringify(document), 'artboard')
+    try {
+      const target = await request(`${path}?baseVersion=1&boardId=phone&loc=1%3A1`)
+      expect(target.status).toBe(200)
+      expect(await target.json()).toMatchObject({ target: { text: '手机标题' } })
+
+      const preview = await request(`${path}/preview`, {
+        baseVersion: 1,
+        boardId: 'phone',
+        op: { kind: 'text', loc: '1:1', value: '提前 < 2 天' },
+      })
+      expect(preview.status).toBe(200)
+      const { source } = z.object({ source: z.string() }).parse(await preview.json())
+      expect(JSON.parse(source).boards).toEqual([
+        document.boards[0],
+        { ...document.boards[1], html: '<p>提前 &lt; 2 天</p>' },
+      ])
+      expect(await (await request(`/artifacts/${id}`)).json()).toMatchObject({
+        version: { version: 1, source: JSON.stringify(document) },
+      })
+      const gone = await request(`${path}?baseVersion=1&boardId=missing&loc=1%3A1`)
+      expect(await gone.json()).toEqual({ target: null })
+    } finally {
+      await close()
     }
   })
 })

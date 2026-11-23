@@ -47,6 +47,7 @@ import {
   withdrawReviewRound,
 } from '../domain/round/index.js'
 import { applyJsonPatch, replayStateStream } from '../domain/state/index.js'
+import { visualBoardSource } from './artboard-visual-source.js'
 import { KeyedAsyncLock } from './keyed-lock.js'
 
 /** 用例依赖的端口集合，全部经构造参数注入。 */
@@ -80,7 +81,7 @@ interface VisualEditBase {
   baseVersion: number
 }
 
-type VisualEditCommand = { op: EditOp } | { undoVersion: number }
+type VisualEditCommand = { op: EditOp; boardId?: string } | { undoVersion: number }
 
 /**
  * 制品用例编排：发布、增量更新、回退、状态流、评审轮次与反馈队列。
@@ -324,10 +325,18 @@ export class ArtifactService {
   }
 
   /** 查询某个 `loc` 能否直改；不带 `loc` 时返回当前可撤销的版本号。 */
-  async inspectVisualEdit(input: VisualEditBase & { loc?: string }) {
+  async inspectVisualEdit(input: VisualEditBase & { loc?: string; boardId?: string }) {
     const artifact = await this.resolveArtifact(input.id, input.projectId)
     const head = await this.visualEditHead(artifact, input.baseVersion)
-    if (input.loc) return { target: inspectVisualTarget(artifact.type, head.source, input.loc) }
+    if (input.loc) {
+      if (input.boardId === undefined)
+        return { target: inspectVisualTarget(artifact.type, head.source, input.loc) }
+      const board =
+        artifact.type === 'artboard'
+          ? visualBoardSource(head.source, head.version, input.boardId)
+          : null
+      return { target: board ? inspectVisualTarget('html', board.html, input.loc) : null }
+    }
     return { undoVersion: (await this.findVisualUndo(artifact, head))?.version ?? null }
   }
 
@@ -415,6 +424,14 @@ export class ArtifactService {
   ): Promise<string> {
     if ('op' in command) {
       try {
+        if (command.boardId !== undefined) {
+          const board =
+            artifact.type === 'artboard' && command.op.kind === 'text'
+              ? visualBoardSource(head.source, head.version, command.boardId)
+              : null
+          if (!board) throw new VisualEditError('该画板仅支持直改静态文字')
+          return board.replace(applyVisualEdit('html', board.html, command.op))
+        }
         return applyVisualEdit(artifact.type, head.source, command.op)
       } catch (error) {
         if (!(error instanceof VisualEditError)) throw error
