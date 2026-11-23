@@ -941,25 +941,51 @@ export class FsArtifactsStorage {
 
     let resolvedProjectId = options.projectId
     if (!resolvedProjectId) {
-      const existingRow = this.sqlite.db
+      const byRoot = this.sqlite.db
         .prepare('SELECT id FROM projects WHERE root_path = ?')
         .get(this.projectRoot) as { id: string } | undefined
-      resolvedProjectId = existingRow?.id ?? 'default'
+      const byMeta = this.sqlite.db
+        .prepare("SELECT value FROM meta WHERE key = 'fs_project_id'")
+        .get() as { value: string } | undefined
+      const fallbackExisting = this.sqlite.db
+        .prepare('SELECT id FROM projects ORDER BY last_active_at DESC LIMIT 1')
+        .get() as { id: string } | undefined
+      resolvedProjectId = byRoot?.id ?? byMeta?.value ?? fallbackExisting?.id ?? 'default'
     }
     this.projectId = resolvedProjectId
 
-    // 登记实际业务项目根目录（而非简单取 artifactsRoot 父目录），使 --artifacts-dir 位于嵌套/外部目录时宿主按 projectDir 登记仍命中同一 projectId
-    this.sqlite.db
-      .prepare(
-        `INSERT OR IGNORE INTO projects (id, root_path, name, last_active_at)
-         VALUES (?, ?, ?, ?)`,
-      )
-      .run(
-        this.projectId,
-        this.projectRoot,
-        path.basename(this.projectRoot) || this.projectId,
-        new Date().toISOString(),
-      )
+    // 登记并刷新当前 .artifacts/ 所属项目的最新根目录（兼容项目目录整体改名/迁移后保留原 projectId，确保宿主按新 projectDir 登记命中同一项目）
+    this.sqlite.db.exec('BEGIN IMMEDIATE')
+    try {
+      this.sqlite.db
+        .prepare('DELETE FROM projects WHERE root_path = ? AND id != ?')
+        .run(this.projectRoot, this.projectId)
+      this.sqlite.db
+        .prepare(
+          `INSERT INTO projects (id, root_path, name, last_active_at)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET
+             root_path = excluded.root_path,
+             name = excluded.name,
+             last_active_at = excluded.last_active_at`,
+        )
+        .run(
+          this.projectId,
+          this.projectRoot,
+          path.basename(this.projectRoot) || this.projectId,
+          new Date().toISOString(),
+        )
+      this.sqlite.db
+        .prepare(
+          `INSERT INTO meta (key, value) VALUES ('fs_project_id', ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        )
+        .run(this.projectId)
+      this.sqlite.db.exec('COMMIT')
+    } catch (err) {
+      this.sqlite.db.exec('ROLLBACK')
+      throw err
+    }
 
     this.projects = this.sqlite.projects
     this.artifacts = new FsArtifactRepository(

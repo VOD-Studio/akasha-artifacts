@@ -1604,4 +1604,66 @@ describe('.artifacts/ 原生文件存储适配器与外部编辑监听', () => {
     expect(latest.version.source).toBe('<div>api merged v3</div>')
     expect(fs.readFileSync(cardFile, 'utf8')).toBe('<div>api merged v3</div>')
   })
+
+  it('项目目录携 .artifacts/.state 整体改名迁移后，重启刷新项目根路径并保留原 projectId，宿主按新目录登记仍可发布', async () => {
+    const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-relocate-'))
+    const oldRepo = path.join(parent, 'repo-old')
+    const newRepo = path.join(parent, 'repo-new')
+    fs.mkdirSync(oldRepo, { recursive: true })
+    tempDirs.push(parent)
+
+    // 1. 在旧目录启动并发布 v1
+    const c1 = createLocalContainer({
+      storageMode: 'fs',
+      artifactsDir: path.join(oldRepo, '.artifacts'),
+      fsProjectRoot: oldRepo,
+    })
+    await c1.ready
+    const origProjectId = c1.fsStorage?.projectId ?? ''
+    const pub1 = await c1.service.publish({
+      projectId: origProjectId,
+      slug: 'html/card',
+      title: 'Relocatable Card',
+      type: 'html',
+      source: '<div>before move</div>',
+      author: 'agent:cli',
+    })
+    c1.close()
+
+    // 2. 将整个仓库目录（含 .artifacts/.state/state.db）迁移到新路径
+    fs.renameSync(oldRepo, newRepo)
+
+    // 3. 在新路径重新启动（不显式指定 fsProjectId），应保留原 projectId 并刷新其 root_path
+    const c2 = createLocalContainer({
+      storageMode: 'fs',
+      artifactsDir: path.join(newRepo, '.artifacts'),
+      fsProjectRoot: newRepo,
+    })
+    closers.push(c2.close)
+    await c2.ready
+
+    expect(c2.fsStorage?.projectId).toBe(origProjectId)
+
+    // 模拟宿主 MCP 按新仓库路径调用登记（POST /api/v1/projects）
+    const registered = await c2.repositories.projects.upsert({
+      id: 'proj_new_random',
+      rootPath: newRepo,
+      name: path.basename(newRepo),
+      lastActiveAt: new Date().toISOString(),
+    })
+    expect(registered.id).toBe(origProjectId)
+
+    // 基于登记返回的 projectId 发布 v2 必须顺利成功，不被 assertOwnedProject 拒绝
+    const pub2 = await c2.service.publish({
+      projectId: registered.id,
+      slug: 'html/card',
+      title: 'Relocatable Card v2',
+      type: 'html',
+      source: '<div>after repo move</div>',
+      baseVersion: 1,
+      author: 'agent:mcp',
+    })
+    expect(pub2.artifact.publicId).toBe(pub1.artifact.publicId)
+    expect(pub2.artifact.headVersion).toBe(2)
+  })
 })
