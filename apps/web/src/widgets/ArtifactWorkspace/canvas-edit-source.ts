@@ -6,6 +6,7 @@ interface EditableCanvasSource {
   raw: RawRecord & { boards: RawRecord[] }
   pages: ReadonlyMap<string, { page: ArtboardPage; raw: RawRecord }>
   boards: ReadonlyMap<string, { board: ArtboardBoard; raw: RawRecord }>
+  stabilized: boolean
 }
 
 function isRecord(value: unknown): value is RawRecord {
@@ -28,6 +29,7 @@ export function readEditableCanvasSource(
     throw new Error('当前源码有重复的页面或画板标识，请修正后再编辑')
   }
 
+  let stabilized = false
   const pageEntries = new Map<string, { page: ArtboardPage; raw: RawRecord }>()
   let pageIndex = 0
   for (const entry of Array.isArray(raw.pages) ? raw.pages : []) {
@@ -36,6 +38,7 @@ export function readEditableCanvasSource(
     const id = page && pageIds.get(page.id)
     if (!page || !id) continue
     if (page.inferredId) {
+      stabilized = true
       entry.id = id
       entry.title = page.title
     }
@@ -48,6 +51,7 @@ export function readEditableCanvasSource(
     const id = board && boardIds.get(board.id)
     if (!board || !id) continue
     if (board.inferredId) {
+      stabilized = true
       entry.id = id
       if (board.id !== id) entry.legacyId = board.id
     }
@@ -65,7 +69,7 @@ export function readEditableCanvasSource(
       if (stable && stable !== original.trim()) entry[endpoint] = stable
     }
   }
-  return { raw, pages: pageEntries, boards: boardEntries }
+  return { raw, pages: pageEntries, boards: boardEntries, stabilized }
 }
 
 /** 移除稳定 ID 指定的画板及其流程端点，不改写其他画板。 */

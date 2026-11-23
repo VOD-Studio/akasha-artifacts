@@ -23,7 +23,7 @@ it('移动到负坐标并调整独立视口；旧定位和流程继续指向原�
   const page = before.pages[0]
   const desktop = page?.boards[0]
   if (!page || !desktop) throw new Error('桌面画板夹具不可用')
-  const edited = editCanvasBoards(source, 4, {
+  const { after: edited, before: undoSource } = editCanvasBoards(source, 4, {
     kind: 'geometry',
     changes: [{ id: desktop.id, bounds: { x: -50, y: 80, width: 720, height: 570 } }],
   })
@@ -37,19 +37,22 @@ it('移动到负坐标并调整独立视口；旧定位和流程继续指向原�
   expect(after.flows[0]).toMatchObject({ from: desktop.id, to: 'mobile' })
   expect(JSON.parse(edited).flows[0].custom).toBe(true)
   expect(JSON.parse(edited).metadata).toEqual({ provenance: 'cli' })
+  expect(
+    createCanvasDocument('artboard', '预约', undoSource, 6, undefined).pages[0]?.boards[0]?.id,
+  ).toBe(desktop.id)
   expect(before.pages[0]?.boards[0]?.width).toBe(960)
 })
 
 it('在指定页面创建空画板并删除旧板，不把已删除端点转给新板', () => {
   const page = createCanvasDocument('artboard', '预约', source, 4, undefined).pages[0]
   if (!page) throw new Error('预约页面夹具不可用')
-  const added = editCanvasBoards(source, 4, {
+  const { after: added } = editCanvasBoards(source, 4, {
     kind: 'create',
     id: 'blank',
     title: '备注',
     pageId: page.id,
   })
-  const deleted = editCanvasBoards(added, 5, { kind: 'delete', ids: ['mobile'] })
+  const { after: deleted } = editCanvasBoards(added, 5, { kind: 'delete', ids: ['mobile'] })
   const final = createCanvasDocument('artboard', '预约', deleted, 6, undefined)
   expect(final.pages[0]?.boards.map((board) => [board.title, board.source])).toEqual([
     ['桌面', '<h1>预约</h1>'],
@@ -62,7 +65,7 @@ it('复制画板保留 HTML 与已声明的出边，不把旧入口标识分给�
   const { pages } = createCanvasDocument('artboard', '预约', source, 4, undefined)
   const original = pages[0]?.boards[0]
   if (!original) throw new Error('桌面画板夹具不可用')
-  const edited = editCanvasBoards(source, 4, {
+  const { after: edited } = editCanvasBoards(source, 4, {
     kind: 'duplicate',
     boardId: original.id,
     id: 'copy',

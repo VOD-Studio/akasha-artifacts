@@ -93,6 +93,24 @@ body,
   color: var(--primary-foreground);
 }
 
+.artifact-canvas-board-title[data-movable="true"] {
+  cursor: grab;
+  user-select: none;
+}
+
+.artifact-canvas-board-resize {
+  position: absolute;
+  inset-block-end: -6px;
+  inset-inline-end: -6px;
+  z-index: 2;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--primary);
+  border-radius: 2px;
+  background: var(--card);
+  cursor: nwse-resize;
+}
+
 .artifact-canvas-board-action {
   flex-shrink: 0;
 }
