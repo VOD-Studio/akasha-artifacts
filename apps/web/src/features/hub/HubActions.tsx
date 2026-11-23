@@ -5,6 +5,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link2 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { clearAnnotationDrafts } from '../../entities/feedback/annotation-draft'
 import { isCloudHub } from '../../shared/config/runtime'
 
 function useHubSession() {
@@ -31,6 +32,7 @@ export function HubAccountButton() {
       if (!response.ok) throw new Error('退出 Hub 失败')
     },
     onSuccess() {
+      clearAnnotationDrafts()
       window.location.reload()
     },
     onError(error) {
@@ -48,6 +50,7 @@ export function HubAccountButton() {
   return (
     <a
       href={`/auth/login?next=${encodeURIComponent(window.location.pathname)}`}
+      onClick={clearAnnotationDrafts}
       className="rounded px-2.5 py-1.5 text-sm font-medium text-ink hover:bg-muted"
     >
       GitHub 登录
