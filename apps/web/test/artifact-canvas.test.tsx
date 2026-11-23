@@ -488,11 +488,18 @@ it('图层双向定位只在该画板与版本生效，悬停和旧坐标不改�
     within(inspector).getByText('此图层没有可唯一定位的源码，以下是该快照的源码。'),
   ).toBeTruthy()
 
+  const displaced = ':scope > div:nth-of-type(2) > h1:nth-of-type(1)'
+  mobile.receive(report([{ ...mobileLayer, selector: displaced }]))
+  mobile.receive({ ...report([]), truncated: true })
+  expect(screen.getByTestId('overlay-select-box').getAttribute('style')).toBe(originalRect)
+  mobile.receive(report([{ ...mobileLayer, selector: displaced }]))
+
   fireEvent.keyDown(within(inspector).getByRole('tab', { name: '属性' }), { key: 'Enter' })
   expect(within(inspector).getByText('140 × 25 px')).toBeTruthy()
   fireEvent.click(within(inspector).getByRole('button', { name: '批注该图层' }))
   const review = screen.getByRole('dialog', { name: '批注与评审' })
   expect(within(review).getByText('针对选中元素批注')).toBeTruthy()
+  expect(within(review).getByText(displaced.slice(0, 36))).toBeTruthy()
   expect((within(review).getByLabelText('批注内容') as HTMLTextAreaElement).value).toBe(
     '保留未发送的批注',
   )

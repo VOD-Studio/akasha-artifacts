@@ -54,16 +54,18 @@ export function useBoardInspection({
       const store = useSelectionStore.getState()
       const selected = selectionForVersion(store, artifactId, activeVersion)
       const layer = store.layersByArtifact[artifactId]
-      if (
-        layer &&
-        selected &&
-        (selected.boardId ?? STANDALONE_BOARD_ID) === boardId &&
-        !layers.some((entry) => entry.id === layer.id)
-      ) {
-        store.clearSelection(artifactId)
+      if (!layer || !selected || (selected.boardId ?? STANDALONE_BOARD_ID) !== boardId) return
+      const currentLayer = layers.find((entry) => entry.id === layer.id)
+      if (!currentLayer) {
+        // 树的展示上限不是节点被移除的证据。
+        if (!truncated) store.clearSelection(artifactId)
+      } else if (currentLayer.selector !== selected.selector) {
+        const element = { ...selected, selector: currentLayer.selector }
+        store.setSelectedElement(artifactId, element, layer)
+        highlight(boardId, { type: 'highlight', element, layer })
       }
     },
-    [artifactId],
+    [artifactId, highlight],
   )
 
   const onLayerPicked = useCallback(

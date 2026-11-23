@@ -265,13 +265,20 @@ export function ArtifactWorkspace({
     },
     [artifact.publicId, resolveElement, setSelectedElement],
   )
+  const highlightLayer = useCallback(
+    (
+      boardId: string,
+      message: Extract<Parameters<FrameConnection['send']>[0], { type: 'highlight' }>,
+    ) => frames.current.get(boardId)?.send(message),
+    [],
+  )
   const inspection = useBoardInspection({
     artifactId: artifact.publicId,
     version: version.version,
     document: savedCanvas,
     current: canvasLocation,
     reveal: revealBoard,
-    highlight: (boardId, message) => frames.current.get(boardId)?.send(message),
+    highlight: highlightLayer,
   })
   const watchBoard = inspection.open && canvas === savedCanvas ? canvasLocation?.boardId : undefined
   const renderBoard = useCallback(
