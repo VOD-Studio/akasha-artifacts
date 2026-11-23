@@ -402,6 +402,11 @@ function ReactRenderer({ source, version, preserved, onError, onRendered }: Rend
 
 let builtinsRegistered = false
 
+/**
+ * 注册 html、markdown、mermaid、svg、react 五类内置渲染器，以及全部 Kit 模板渲染器。
+ *
+ * @remarks 重复调用无效果。
+ */
 export function registerBuiltinRenderers(): void {
   if (builtinsRegistered) return
   builtinsRegistered = true

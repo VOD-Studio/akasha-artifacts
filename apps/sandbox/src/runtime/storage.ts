@@ -1,6 +1,7 @@
 import { ArtifactStorageOperationSchema, type StorageScope } from '@akasha/protocol'
 import type { SandboxBridgeClient } from '../bridge/client'
 
+/** `scope` 省略时为 `private`。 */
 interface StorageOptions {
   scope?: StorageScope
 }
@@ -24,6 +25,11 @@ interface PendingRequest {
   reject: (error: Error) => void
 }
 
+/**
+ * 在沙盒内安装 `window.akasha.storage`；所有操作都经 Bridge 交给外壳代办，沙盒自己不联网。
+ *
+ * @remarks 未接入 Bridge 时调用会直接报错。同时最多 16 个未完成的请求，单个请求 10 秒超时。
+ */
 export function installSandboxStorage(bridge: SandboxBridgeClient | null): void {
   const pending = new Map<string, PendingRequest>()
   bridge?.onMessage((message) => {

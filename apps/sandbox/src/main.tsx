@@ -9,6 +9,7 @@ import { installSandboxStorage } from './runtime/storage'
 
 installSandboxGlobals()
 
+// hash 里没有外壳参数时不建 Bridge，沙盒可独立打开
 const params = parseSandboxHash(window.location.hash)
 const bridge = params
   ? new SandboxBridgeClient({

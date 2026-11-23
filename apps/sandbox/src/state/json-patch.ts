@@ -155,7 +155,7 @@ function applySingleOp(doc: Record<string, unknown>, op: JsonPatchOp): Record<st
   }
 }
 
-// 沙盒端原子应用 RFC 6902 补丁：失败时保持旧快照不变。
+/** 在快照的深拷贝上按序应用补丁；任一步失败时抛错，原快照不变。 */
 export function applyJsonPatch(
   snapshot: Readonly<Record<string, unknown>>,
   ops: readonly JsonPatchOp[],

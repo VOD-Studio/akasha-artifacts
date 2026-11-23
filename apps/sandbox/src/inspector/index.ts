@@ -8,7 +8,9 @@ function escapeCssIdent(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, '\\$&')
 }
 
-// 生成从沙盒根容器到目标元素的稳定 CSS 选择器，作为无 blockId 与无 loc 时的降级定位。
+/**
+ * 生成从沙盒根容器到目标元素的 CSS 选择器，作为既没有 `blockId` 也没有 `loc` 时的降级定位。
+ */
 export function buildCssSelector(el: Element, rootEl?: Element | null): string {
   const parts: string[] = []
   let current: Element | null = el
@@ -80,7 +82,9 @@ function readRect(el: Element): { x: number; y: number; width: number; height: n
   }
 }
 
-// 按 blockId > loc > selector > textPreview 优先级构造 ElementRef，并附带视口相对 rect。
+/**
+ * 按 `blockId` > `loc` > `selector` > `textPreview` 构造 `ElementRef`，并附带相对视口的 `rect`。
+ */
 export function buildElementRef(el: Element, rootEl?: Element | null): ElementRef {
   const blockId = readBlockId(el, rootEl)
   const loc = readLoc(el, rootEl)
@@ -97,6 +101,11 @@ export function buildElementRef(el: Element, rootEl?: Element | null): ElementRe
   }
 }
 
+/**
+ * 按 `blockId` > `loc` > `selector` > `textPreview` 的顺序查找元素。
+ *
+ * @returns 第一个匹配的元素；都找不到时返回 `null`。
+ */
 export function findElementByRef(rootEl: Element, ref: ElementRef): Element | null {
   if (ref.blockId) {
     const esc = escapeCssIdent(ref.blockId)
@@ -138,7 +147,11 @@ export function findElementByRef(rootEl: Element, ref: ElementRef): Element | nu
   return null
 }
 
-// 沙盒无 UI 元素命中探测器：绝不在沙盒 DOM 内绘制任何高亮框或提示条，所有视觉叠层均由外壳负责。
+/**
+ * 沙盒内的元素命中探测器。
+ *
+ * @remarks 不在沙盒 DOM 里绘制任何高亮框或提示条，只把悬停、选中与图钉的坐标回传给外壳。
+ */
 export class SandboxInspector {
   private active = false
   private hoveredEl: Element | null = null

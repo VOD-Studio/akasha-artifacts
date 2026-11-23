@@ -39,7 +39,11 @@ function scrubNode(el: Element): void {
   }
 }
 
-// 净化 Markdown / SVG 输出 DOM：剥离 script、危险嵌入标签、内联 on* 事件与 javascript: URL。
+/**
+ * 净化 Markdown 或 SVG 输出的标记：移除 script、iframe 等嵌入标签、内联 `on*` 事件与脚本类 URL。
+ *
+ * @remarks 没有 `DOMParser` 时退化为正则剥离。URL 先去掉不可见控制字符再判断协议前缀。
+ */
 export function sanitizeMarkup(markup: string, mode: 'html' | 'svg' = 'html'): string {
   if (typeof DOMParser === 'undefined') {
     return markup

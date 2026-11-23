@@ -18,22 +18,30 @@ import { SandboxVisualInspector } from './visual-edit'
 
 registerBuiltinRenderers()
 
+/** 一次渲染指令：按类型与版本渲染这份源码。 */
 export interface RenderPayload {
   artifactType: ArtifactType
+  /** HTML 画板的 id；给出时整段源码作为一个画板块渲染。 */
   boardId?: string
   version: number
   source: string
 }
 
+/** 沙盒根组件的输入；多数字段用于测试或独立运行时预置。 */
 export interface SandboxAppProps {
+  /** 为空时沙盒独立运行，不与外壳通信。 */
   bridge?: SandboxBridgeClient | null
   stateStore?: ArtifactStateStore
   preserved?: PreservedStateManager
+  /** 预置的首个渲染指令；正常由外壳经 Bridge 下发。 */
   initialRender?: RenderPayload | null
+  /** 预置的初始状态快照。 */
   initialState?: Record<string, unknown>
+  /** 预置的保态快照。 */
   initialPreservedState?: PreservedViewState
 }
 
+/** 沙盒根组件：接收外壳的渲染与状态指令，并把运行错误、选中元素与尺寸回报给外壳。 */
 export function SandboxApp({
   bridge,
   stateStore = defaultArtifactStateStore,
