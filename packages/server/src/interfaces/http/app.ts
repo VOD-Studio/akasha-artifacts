@@ -22,8 +22,12 @@ import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { z } from 'zod'
+import { listArtifactFavorites, setArtifactFavorite } from '../../application/artifact-favorites.js'
 import type { ArtifactService } from '../../application/artifact-service.js'
-import { executeArtifactStorage } from '../../application/artifact-storage.js'
+import {
+  executeArtifactStorage,
+  getArtifactStorageUsage,
+} from '../../application/artifact-storage.js'
 import type { CheckService } from '../../application/check-service.js'
 import type { SpecRegistry } from '../../application/spec-registry.js'
 import type { ArtifactStorageRepository } from '../../domain/artifact-storage.js'
@@ -80,6 +84,8 @@ export interface HttpAppDeps {
   artifactStorage?: ArtifactStorageRepository
   // 从请求解析制品存储的调用方身份；null 表示未登录。省略时视为本地单一用户
   storagePrincipal?: (request: Request) => Promise<string | null>
+  // 收藏保留用户意愿，但列出时仍须检查当前权限；本地只验证制品仍存在。
+  canReadFavorite?: (request: Request, artifactId: string) => Promise<boolean>
 }
 
 const RegisterProjectBodySchema = z.object({
@@ -250,6 +256,8 @@ async function parseJsonBody<T>(req: Request, schema: z.ZodType<T>): Promise<T> 
  */
 export function createHttpApp(deps: HttpAppDeps): Hono {
   const app = new Hono()
+  const storagePrincipal = (request: Request) =>
+    deps.storagePrincipal?.(request) ?? Promise.resolve('local')
   // 一次性浏览器登录码：60 秒有效且仅可消费一次，用于 akasha open 换取 HttpOnly Cookie
   const otcStore = new Map<string, { next: string; expiresAt: number }>()
   // 项目级浏览器当前选区与草稿快照（供 UserPromptSubmit / PreInvocation Hook 即时注入上下文）
@@ -418,6 +426,33 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
     return c.json({ selection })
   })
 
+  app.get('/api/v1/favorites', async (c) => {
+    if (!deps.artifactStorage) throw new DomainError('NOT_FOUND', '收藏存储未启用')
+    const principal = await storagePrincipal(c.req.raw)
+    if (!principal) throw new DomainError('UNAUTHORIZED', '请先登录后查看收藏')
+    const ids = await listArtifactFavorites(deps.artifactStorage, principal)
+    const visible = await Promise.all(
+      ids.map(async (id) =>
+        deps.canReadFavorite
+          ? deps.canReadFavorite(c.req.raw, id)
+          : Boolean(await deps.artifacts.findByPublicId(id)),
+      ),
+    )
+    return c.json({ artifactIds: ids.filter((_, index) => visible[index]) }, 200, {
+      'Cache-Control': 'private, no-store',
+    })
+  })
+
+  app.put('/api/v1/artifacts/:id/favorite', async (c) => {
+    if (!deps.artifactStorage) throw new DomainError('NOT_FOUND', '收藏存储未启用')
+    const principal = await storagePrincipal(c.req.raw)
+    if (!principal) throw new DomainError('UNAUTHORIZED', '请先登录后收藏')
+    const { favorite } = await parseJsonBody(c.req.raw, z.object({ favorite: z.boolean() }))
+    const artifact = await deps.service.resolveArtifact(c.req.param('id'))
+    await setArtifactFavorite(deps.artifactStorage, principal, artifact.publicId, favorite)
+    return c.json({ favorite }, 200, { 'Cache-Control': 'private, no-store' })
+  })
+
   app.get('/api/v1/artifacts', async (c) => {
     const projectId = c.req.query('projectId')
     const artifacts = await deps.artifacts.listByProject(projectId)
@@ -579,7 +614,7 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
         throw new DomainError('NOT_FOUND', '未找到制品')
       }
       const operation = await parseJsonBody(c.req.raw, ArtifactStorageOperationSchema)
-      const principal = deps.storagePrincipal ? await deps.storagePrincipal(c.req.raw) : 'local'
+      const principal = await storagePrincipal(c.req.raw)
       const value = await executeArtifactStorage(
         deps.artifactStorage,
         id.data,
@@ -590,6 +625,17 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
       return c.json({ value })
     },
   )
+
+  app.get('/api/v1/artifacts/:id/storage/usage', async (c) => {
+    if (!deps.artifactStorage) throw new DomainError('NOT_FOUND', '制品存储未启用')
+    const artifact = await deps.service.resolveArtifact(c.req.param('id'))
+    const usage = await getArtifactStorageUsage(
+      deps.artifactStorage,
+      artifact.publicId,
+      await storagePrincipal(c.req.raw),
+    )
+    return c.json(usage, 200, { 'Cache-Control': 'private, no-store' })
+  })
 
   app.get('/api/v1/artifacts/:id/state', async (c) => {
     const id = c.req.param('id')

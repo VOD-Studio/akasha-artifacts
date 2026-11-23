@@ -59,6 +59,7 @@ const readSuffixes: Readonly<Record<string, true>> = {
   '/edits': true,
   '/feedback': true,
   '/management': true,
+  '/storage/usage': true,
 }
 // 允许转发到 core 的写路径后缀；authored 表示强制以调用方身份作为作者
 const writeSuffixes: Readonly<Record<string, 'write' | 'authored'>> = {
@@ -180,6 +181,10 @@ export function mountHubGuard(
         else delete payload.receipt
       }
       return c.json(payload)
+    }
+
+    if (path === '/api/v1/favorites' && read) {
+      return principal?.kind === 'session' ? core.fetch(request) : forbidden(c, principal)
     }
 
     if (path === '/api/v1/projects') {
@@ -355,6 +360,7 @@ export function mountHubGuard(
       read
         ? !Object.hasOwn(readSuffixes, suffix)
         : !(method === 'PATCH' && (suffix === '' || suffix === '/metadata')) &&
+          !(method === 'PUT' && suffix === '/favorite') &&
           !(
             method === 'POST' &&
             (writeMode ||
@@ -386,6 +392,14 @@ export function mountHubGuard(
     if (suffix === '/management') return c.json({ canManage })
     if (suffix === '/metadata') {
       return canManage ? core.fetch(rewrite(request, url, body)) : forbidden(c, principal)
+    }
+    if (suffix === '/favorite') {
+      return principal?.kind === 'session'
+        ? core.fetch(rewrite(request, url, body))
+        : forbidden(c, principal)
+    }
+    if (suffix === '/storage/usage') {
+      return canManage ? core.fetch(rewrite(request, url)) : forbidden(c, principal)
     }
 
     if (suffix === '/share') {

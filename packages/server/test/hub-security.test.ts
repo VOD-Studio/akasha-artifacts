@@ -294,6 +294,40 @@ describe('Cloud Hub 身份与制品权限', () => {
     const privateRead = await post(storage, { action: 'get', scope: 'private', key: 'flag' }, bob)
     expect(await privateRead.json()).toEqual({ value: true })
     expect((await post(storage, { action: 'get', scope: 'private', key: 'flag' })).status).toBe(401)
+
+    const favorite = (cookie: string, value: boolean) =>
+      send(`${teamPath}/favorite`, {
+        method: 'PUT',
+        headers: { cookie, origin, 'content-type': 'application/json' },
+        body: JSON.stringify({ favorite: value }),
+      })
+    const listFavorites = (cookie: string) => send('/api/v1/favorites', { headers: { cookie } })
+    expect((await listFavorites('')).status).toBe(401)
+    expect((await favorite(bob, true)).status).toBe(200)
+    expect(await (await listFavorites(bob)).json()).toEqual({
+      artifactIds: [team.artifact.publicId],
+    })
+    expect(await (await listFavorites(alice)).json()).toEqual({ artifactIds: [] })
+    expect((await favorite(bob, false)).status).toBe(200)
+    expect(await (await listFavorites(bob)).json()).toEqual({ artifactIds: [] })
+
+    const data = { label: '仅公用尺寸' }
+    expect(
+      (
+        await post(
+          storage,
+          { action: 'set', scope: 'shared', key: 'label', value: data.label },
+          alice,
+        )
+      ).status,
+    ).toBe(200)
+    const usage = await send(`${storage}/usage`, { headers: { cookie: alice } })
+    expect(await usage.json()).toEqual({
+      sharedBytes: new TextEncoder().encode(JSON.stringify(data)).length,
+      privateBytes: 0,
+      limitPerScopeBytes: 64 * 1024,
+    })
+    expect((await send(`${storage}/usage`, { headers: { cookie: bob } })).status).toBe(403)
   })
 
   it('分享链接限定制品，只供讨论的批注不进入回执，回执仅项目所有者可消费', async ({
