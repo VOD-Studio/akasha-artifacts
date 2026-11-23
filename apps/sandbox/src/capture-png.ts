@@ -21,7 +21,11 @@ export async function captureSandboxPng(
   const painted = Promise.withResolvers<void>()
   requestAnimationFrame(() => requestAnimationFrame(() => painted.resolve()))
   await painted.promise
-  await Promise.all([...root.querySelectorAll('img')].map((image) => image.decode()))
+  try {
+    await Promise.all([...root.querySelectorAll('img')].map((image) => image.decode()))
+  } catch (cause) {
+    throw new Error('画板中有无法加载或解码的图片', { cause })
+  }
 
   const png = await toBlob(root, {
     width,

@@ -529,7 +529,7 @@ apps/web/src/
 │                #   InspectorPanel（批注、属性与轮次提交）
 ├── features/    # 用户能力切片：live-sync、daemon-control、command-palette、version-timeline、version-diff、
 │                #   element-picker、annotations、review-rounds、review-actions、props-panel、code-editor、
-│                #   visual-edit、export-html
+│                #   visual-edit、export-design
 ├── entities/    # 业务实体：project、artifact、version、round、feedback、selection
 └── shared/      # api、bridge（宿主端+保态恢复）、overlay、lib、config
 ```

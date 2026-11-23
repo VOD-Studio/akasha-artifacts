@@ -11,6 +11,7 @@ import {
 import {
   ArrowLeft,
   Code2,
+  Download,
   Ellipsis,
   GitCompare,
   MessageSquare,
@@ -21,7 +22,6 @@ import {
 import { useState } from 'react'
 import { useSelectionStore } from '../../entities/selection/store'
 import { useWorkspaceStore, type WorkspaceViewMode } from '../../entities/workspace/store'
-import { ExportHtmlMenuItem } from '../../features/export-html/ExportHtmlMenuItem'
 import { HubAccountButton, HubShareDialog, HubShareMenuItem } from '../../features/hub/HubActions'
 import { VersionTimeline } from '../../features/version-timeline/VersionTimeline'
 
@@ -32,6 +32,8 @@ export interface TopBarProps {
   feedbackCount?: number
   hasActiveRound?: boolean
   onBackToLibrary: () => void
+  /** 打开基于当前允许读取版本的整份制品导出。 */
+  onExport?: () => void
   onSelectVersion: (version?: number) => void
 }
 
@@ -42,6 +44,7 @@ export function TopBar({
   feedbackCount = 0,
   hasActiveRound = false,
   onBackToLibrary,
+  onExport,
   onSelectVersion,
 }: TopBarProps) {
   const [shareLink, setShareLink] = useState<string | null>(null)
@@ -153,7 +156,12 @@ export function TopBar({
               对比版本
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <ExportHtmlMenuItem artifact={artifact} version={version} />
+            {onExport ? (
+              <DropdownMenuItem onSelect={onExport}>
+                <Download size={14} />
+                导出设计
+              </DropdownMenuItem>
+            ) : null}
             <HubShareMenuItem publicId={artifact.publicId} onShare={setShareLink} />
             <DropdownMenuItem onSelect={() => setCommandPaletteOpen(true)}>
               <Search size={14} />
