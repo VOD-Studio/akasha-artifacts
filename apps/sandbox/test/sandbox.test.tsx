@@ -361,7 +361,8 @@ describe('apps/sandbox 运行时与安全边界', () => {
 
     await waitFor(() => expect(screen.getByTestId('gain-val').textContent).toBe('10'))
     fireEvent.click(screen.getByText('set-75'))
-    expect(screen.getByTestId('gain-val').textContent).toBe('75')
+    // React 编译后的组件与外部保态订阅异步提交，先等控件实际显示新值。
+    await waitFor(() => expect(screen.getByTestId('gain-val').textContent).toBe('75'))
 
     act(() => {
       dispatchFromHost({
