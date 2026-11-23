@@ -122,7 +122,8 @@ describe('Hono HTTP server & @akasha/protocol contract tests', () => {
       body: JSON.stringify({ patch: [{ op: 'add', path: '/progress', value: 80 }] }),
     })
 
-    await fetch(`${srv1.baseUrl}/api/v1/artifacts/${artifact.publicId}/feedback`, {
+    const feedbackPath = `/api/v1/artifacts/${artifact.publicId}/feedback`
+    const created = await fetch(`${srv1.baseUrl}${feedbackPath}`, {
       method: 'POST',
       headers: authHeaders(srv1.token),
       body: JSON.stringify({
@@ -133,6 +134,18 @@ describe('Hono HTTP server & @akasha/protocol contract tests', () => {
         author: 'human:sun',
       }),
     })
+    expect(created.status).toBe(201)
+    const { feedback: thread } = z.object({ feedback: FeedbackSchema }).parse(await created.json())
+    const actOnThread = (action: string, body: unknown) =>
+      fetch(`${srv1.baseUrl}${feedbackPath}/${thread.id}/${action}`, {
+        method: 'POST',
+        headers: authHeaders(srv1.token),
+        body: JSON.stringify(body),
+      })
+    expect(
+      (await actOnThread('replies', { body: '确认修正', author: 'human:reviewer' })).status,
+    ).toBe(201)
+    expect((await actOnThread('resolve', { resolved: true, author: 'human:sun' })).status).toBe(200)
     const seqBeforeRestart = srv1.realtime.getLatestSeq()
     await srv1.close()
 
@@ -154,6 +167,17 @@ describe('Hono HTTP server & @akasha/protocol contract tests', () => {
     const fb = (await fbRes.json()) as { items: Array<{ body: string }> }
     expect(fb.items).toHaveLength(1)
     expect(fb.items[0]?.body).toBe('重启后仍应存在')
+
+    const review = await fetch(`${srv2.baseUrl}${feedbackPath}`)
+    expect(await review.json()).toMatchObject({
+      threads: {
+        [thread.id]: {
+          replies: [{ body: '确认修正', author: 'human:reviewer' }],
+          resolution: { author: 'human:sun' },
+        },
+      },
+    })
+    expect(fb.items[0]).toMatchObject({ status: 'pending' })
 
     // 重启后携带重启前的 lastSeq 重连 → 必须收到 resync，避免前端保留陈旧缓存
     const wsAfterRestart = await connectWs(srv2.wsUrl)

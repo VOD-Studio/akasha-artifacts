@@ -18,6 +18,7 @@ import type {
   RoundRepository,
   StateRepository,
 } from '../../../domain/ports.js'
+import { annotationStatements, createSqlAnnotationRepository } from '../annotation-records.js'
 import { schema } from './schema.js'
 import type { SqlDriver, SqlStatement, SqlValue, SqlWriteLock, VersionBlobs } from './types.js'
 
@@ -74,7 +75,7 @@ async function versionBlobKey(version: Readonly<Version>): Promise<string> {
  * 表里只保留对象键。返回的版本对象一律递归冻结。
  */
 export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
-  const ready = driver.batch(schema, 'schema').then(() => {})
+  const ready = driver.batch([...schema, ...annotationStatements], 'schema').then(() => {})
   async function query<Row>(sql: string, ...params: SqlValue[]): Promise<Row[]> {
     await ready
     return driver.execute<Row>([sql, ...params])
@@ -298,6 +299,9 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
   }
 
   const feedbacks: FeedbackRepository = {
+    annotations: createSqlAnnotationRepository(<Row>([sql, ...params]: SqlStatement) =>
+      query<Row>(sql, ...params),
+    ),
     async save(feedback) {
       // 投递序号与记录在同一事务提交，避免靠序列取号导致提交乱序、跳过反馈。
       const draft = feedback.draft ? 1 : 0

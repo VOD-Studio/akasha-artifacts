@@ -47,6 +47,8 @@ interface ArtifactFrameProps {
   state: StateStreamSnapshot
   sandboxOrigin: string
   pins: readonly Feedback[]
+  /** 图钉只打开原线程，不覆盖正在撰写的选区。 */
+  onFocusPin: (feedback: Feedback) => void
   purpose: BoardFramePurpose
   /** 只有设计视图登记；试玩不接收设计视图的指认或编辑指令。 */
   register?: (id: string, frame: FrameConnection | null) => void
@@ -97,6 +99,7 @@ export function ArtifactFrame({
   state,
   sandboxOrigin,
   pins,
+  onFocusPin,
   purpose,
   register,
   onPlayable,
@@ -478,15 +481,7 @@ export function ArtifactFrame({
           pins={versionPins}
           livePinRects={livePinRects}
           focusedFeedbackId={focusedFeedbackId}
-          onSelectPin={(pin) => {
-            const selectionStore = useSelectionStore.getState()
-            selectionStore.setFocusedFeedbackId(pin.id)
-            useWorkspaceStore.getState().setInspectorTab('review')
-            if (pin.element) {
-              selectionStore.setSelectedElement(artifactId, pin.element)
-              host.send({ type: 'highlight', element: pin.element })
-            }
-          }}
+          onSelectPin={onFocusPin}
         />
       ) : null}
       {error?.version === versionNumber ? (

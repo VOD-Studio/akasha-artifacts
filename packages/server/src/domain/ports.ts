@@ -1,4 +1,7 @@
 import type {
+  AnnotationReply,
+  AnnotationResolution,
+  AnnotationThread,
   Artifact,
   Feedback,
   Project,
@@ -59,8 +62,18 @@ export interface RoundRepository {
   listByArtifact(artifactId: PublicId): Promise<readonly ReviewRound[]>
 }
 
+/** 讨论仓储与消费队列分开，写入不改变 Agent 游标或回执状态。 */
+export interface AnnotationRepository {
+  list(artifactId: PublicId, includeDrafts: boolean): Promise<Record<string, AnnotationThread>>
+  reply(feedbackId: string, reply: AnnotationReply): Promise<void>
+  /** 重复解决保留首条解决记录；传 `null` 重新打开。 */
+  setResolution(feedbackId: string, resolution: AnnotationResolution | null): Promise<void>
+}
+
 /** 反馈队列的仓储端口；游标即「可投递顺序号」。 */
 export interface FeedbackRepository {
+  /** 以反馈 ID 关联的讨论，不参与队列消费。 */
+  readonly annotations: AnnotationRepository
   save(feedback: Feedback): Promise<void>
   findById(id: string): Promise<Feedback | undefined>
   /**

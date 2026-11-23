@@ -131,7 +131,10 @@ export function TopBar({
           aria-expanded={reviewOpen}
           aria-haspopup="dialog"
           aria-controls="artifact-inspector"
-          onClick={() => setInspectorTab(reviewOpen ? null : 'review')}
+          onClick={() => {
+            useSelectionStore.getState().setFocusedFeedbackId(null)
+            setInspectorTab(reviewOpen ? null : 'review')
+          }}
         >
           {reviewLabel}
           {feedbackCount > 0 ? ` ${feedbackCount}` : ''}

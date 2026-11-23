@@ -1043,7 +1043,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       </QueryClientProvider>,
     )
 
-    expect(screen.getByText('已解决')).toBeTruthy()
+    expect(screen.getByText('Agent 已处理')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '撤回修改' }))
     await vi.waitFor(() => expect(withdrawnRounds).toEqual(['round_1']))
   })

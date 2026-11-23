@@ -1,4 +1,5 @@
 import {
+  type AnnotationThread,
   type Artifact,
   type ArtifactSpecOutput,
   type ArtifactType,
@@ -177,9 +178,32 @@ export async function submitArtifactFeedback(
   )
 }
 
-export async function fetchArtifactFeedback(id: string): Promise<{ items: Feedback[] }> {
-  return requestJson<{ items: Feedback[] }>(
+export async function fetchArtifactFeedback(
+  id: string,
+): Promise<{ items: Feedback[]; threads: Record<string, AnnotationThread> }> {
+  return requestJson<{ items: Feedback[]; threads: Record<string, AnnotationThread> }>(
     `/api/v1/artifacts/${encodeURIComponent(id)}/feedback?includeDrafts=true`,
+  )
+}
+
+/** 可在任意已授权的历史版本下继续讨论，不改变 Agent 消费状态。 */
+export type AnnotationThreadAction =
+  | { kind: 'reply'; body: string }
+  | { kind: 'resolve'; resolved: boolean }
+
+export async function updateAnnotationThread(
+  artifactId: string,
+  id: string,
+  action: AnnotationThreadAction,
+): Promise<unknown> {
+  return requestJson(
+    `/api/v1/artifacts/${encodeURIComponent(artifactId)}/feedback/${encodeURIComponent(id)}/${action.kind === 'reply' ? 'replies' : 'resolve'}`,
+    {
+      method: 'POST',
+      body: JSON.stringify(
+        action.kind === 'reply' ? { body: action.body } : { resolved: action.resolved },
+      ),
+    },
   )
 }
 

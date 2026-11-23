@@ -1,4 +1,5 @@
 import type {
+  AnnotationThread,
   Artifact,
   Feedback,
   Project,
@@ -13,6 +14,7 @@ import type {
 } from '@akasha/protocol'
 import { PROTOCOL_VERSION } from '@akasha/protocol'
 import type {
+  AnnotationRepository,
   ArtifactRepository,
   Clock,
   FeedbackRepository,
@@ -213,6 +215,37 @@ export class InMemoryFeedbackRepository implements FeedbackRepository {
   private nextDeliverySeq = 0
   private readonly orderedIds: string[] = []
   private readonly byId = new Map<string, StoredFeedback>()
+  private readonly discussions = new Map<string, AnnotationThread>()
+
+  readonly annotations: AnnotationRepository = {
+    list: async (artifactId, includeDrafts) => {
+      const result: Record<string, AnnotationThread> = Object.create(null)
+      for (const [id, thread] of this.discussions) {
+        const feedback = this.byId.get(id)?.feedback
+        if (feedback?.artifactId === artifactId && (includeDrafts || !feedback.draft)) {
+          result[id] = structuredClone(thread)
+        }
+      }
+      return result
+    },
+    reply: async (id, reply) => {
+      const thread = this.discussions.get(id) ?? { replies: [], resolution: null }
+      thread.replies.push(structuredClone(reply))
+      this.discussions.set(id, thread)
+    },
+    setResolution: async (id, resolution) => {
+      const thread = this.discussions.get(id)
+      if (!thread) {
+        if (resolution) this.discussions.set(id, { replies: [], resolution: { ...resolution } })
+      } else if (resolution) {
+        thread.resolution ??= { ...resolution }
+      } else if (thread.replies.length) {
+        thread.resolution = null
+      } else {
+        this.discussions.delete(id)
+      }
+    },
+  }
 
   async save(feedback: Feedback): Promise<void> {
     const existing = this.byId.get(feedback.id)

@@ -77,6 +77,22 @@ it.skipIf(!postgresUrl)('PostgreSQL 多实例共享有序反馈、回执和制�
         draft: false,
         audience: 'human',
       })
+      const reply = {
+        id: 'reply-1',
+        author: 'human:reviewer' as const,
+        body: '已核对',
+        createdAt: now,
+      }
+      const resolution = { author: 'human:reviewer' as const, resolvedAt: now }
+      await feedbacks.annotations.reply('agent-draft', reply)
+      await second.feedbacks.annotations.setResolution('agent-draft', resolution)
+      expect(await feedbacks.annotations.list(artifactId, false)).toEqual({
+        'agent-draft': { replies: [reply], resolution },
+      })
+      expect(await feedbacks.list({ artifactId, afterCursor: '21' })).toEqual({
+        items: [],
+        cursor: '21',
+      })
 
       const receipt = {
         receipt: 'receipt-1',

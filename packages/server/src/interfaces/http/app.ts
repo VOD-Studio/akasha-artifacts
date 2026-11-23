@@ -149,6 +149,13 @@ const SubmitFeedbackBodySchema = z
     path: ['audience'],
   })
 
+const DiscussionBodySchema = z.object({
+  project: z.string().min(1).optional(),
+  author: AuthorSchema.optional().default('human:local'),
+  // Hub 根据访问角色覆写；本机写请求已经过 Daemon 鉴权。
+  includeDrafts: z.boolean().optional().default(true),
+})
+
 const AgentActivityBodySchema = z.object({
   projectId: z.string().min(1),
   artifactId: z.string().min(1).optional(),
@@ -654,12 +661,44 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
   })
 
   app.get('/api/v1/artifacts/:id/feedback', async (c) => {
-    const items = await deps.service.listFeedbackForReview({
+    const review = await deps.service.listFeedbackForReview({
       id: c.req.param('id'),
       projectId: c.req.query('projectId'),
       includeDrafts: c.req.query('includeDrafts') === 'true',
     })
-    return c.json({ items }, 200, { 'Cache-Control': 'private, no-store' })
+    return c.json(review, 200, { 'Cache-Control': 'private, no-store' })
+  })
+
+  app.post('/api/v1/artifacts/:id/feedback/:feedbackId/replies', async (c) => {
+    const { body, author, project, includeDrafts } = await parseJsonBody(
+      c.req.raw,
+      DiscussionBodySchema.extend({ body: z.string().trim().min(1).max(8000) }),
+    )
+    const reply = await deps.service.replyToAnnotation({
+      id: c.req.param('id'),
+      feedbackId: c.req.param('feedbackId'),
+      projectId: project,
+      author,
+      includeDrafts,
+      body,
+    })
+    return c.json({ reply }, 201)
+  })
+
+  app.post('/api/v1/artifacts/:id/feedback/:feedbackId/resolve', async (c) => {
+    const { resolved, author, project, includeDrafts } = await parseJsonBody(
+      c.req.raw,
+      DiscussionBodySchema.extend({ resolved: z.boolean() }),
+    )
+    await deps.service.resolveAnnotation({
+      id: c.req.param('id'),
+      feedbackId: c.req.param('feedbackId'),
+      projectId: project,
+      author,
+      includeDrafts,
+      resolved,
+    })
+    return c.json({ ok: true })
   })
 
   app.get('/api/v1/feedback', async (c) => {

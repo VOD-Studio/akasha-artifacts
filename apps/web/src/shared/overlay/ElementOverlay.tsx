@@ -31,6 +31,7 @@ export function ElementOverlay({
   focusedFeedbackId,
   onSelectPin,
 }: ElementOverlayProps) {
+  const pinnedPositions = pins.length > 1 ? new Map<string, number>() : null
   return (
     <div
       data-testid="shell-element-overlay"
@@ -80,7 +81,13 @@ export function ElementOverlay({
         if (!rect || (rect.width <= 0 && rect.height <= 0)) return null
         const isFocused = fb.id === focusedFeedbackId
         const pinX = Math.max(4, rect.x + rect.width - 10)
-        const pinY = Math.max(4, rect.y - 10)
+        let pinY = Math.max(4, rect.y - 10)
+        if (pinnedPositions) {
+          const position = `${pinX}:${pinY}`
+          const overlap = pinnedPositions.get(position) ?? 0
+          pinnedPositions.set(position, overlap + 1)
+          pinY += overlap * 26
+        }
         const toneCls =
           fb.status === 'resolved'
             ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
@@ -93,6 +100,7 @@ export function ElementOverlay({
             key={fb.id}
             type="button"
             data-testid={`annotation-pin-${fb.id}`}
+            aria-label={`打开批注 ${idx + 1}：${fb.body}`}
             onClick={() => onSelectPin?.(fb)}
             title={fb.body}
             style={{
