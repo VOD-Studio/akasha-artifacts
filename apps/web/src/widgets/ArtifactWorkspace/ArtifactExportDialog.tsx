@@ -42,7 +42,7 @@ function boardsFor(type: Artifact['type'], version: Version) {
         })
     }
   }
-  return boards
+  return { boards, flows: document.flows }
 }
 
 function filePart(text: string) {
@@ -68,13 +68,17 @@ function downloadFile(file: Blob, name: string) {
 /** 同一个入口按指定画板或整份制品导出，始终先重新检查固定版本的访问权。 */
 export function ArtifactExportDialog({ target, onClose }: ExportDialogProps) {
   const { artifact, version } = target
-  const initialBoards = useMemo(() => boardsFor(artifact.type, version), [artifact.type, version])
+  const initialBoards = useMemo(
+    () => boardsFor(artifact.type, version).boards,
+    [artifact.type, version],
+  )
   const [boardId, setBoardId] = useState(target.boardId ?? '')
-  const [format, setFormat] = useState<'png' | 'pdf'>(target.boardId ? 'png' : 'pdf')
+  const [format, setFormat] = useState<'png' | 'pdf' | 'html'>(target.boardId ? 'png' : 'pdf')
   const [error, setError] = useState('')
   const [progress, setProgress] = useState('')
   const job = useRef<AbortController | null>(null)
   const id = useId()
+  const extension = format === 'html' && boardId ? 'zip' : format
   useEffect(() => () => job.current?.abort(), [])
 
   async function download() {
@@ -92,11 +96,43 @@ export function ArtifactExportDialog({ target, onClose }: ExportDialogProps) {
         result.version.version !== version.version
       )
         throw new Error('服务端未返回指定的制品版本')
-      const available = boardsFor(result.artifact.type, result.version)
+      const { boards: available, flows } = boardsFor(result.artifact.type, result.version)
       const selected = boardId ? available.get(boardId)?.board : undefined
       if (boardId && !selected) throw new Error('指定版本没有这张画板')
       const boards = selected ? [selected] : Array.from(available.values(), ({ board }) => board)
       if (!boards.length) throw new Error('指定版本没有可导出的画板')
+      if (format === 'html') {
+        const { composeOfflineDesign } = await import('../../features/export-design/offline-design')
+        const output = await composeOfflineDesign(
+          {
+            title: result.version.title,
+            version: result.version.version,
+            boards: boards.map((board) => ({
+              id: board.id,
+              title: board.title,
+              legacyId: board.legacyBlockId,
+              boardId: board.scoped ? board.id : undefined,
+              width: board.width,
+              height: board.height,
+              type: board.type,
+              source: board.source,
+              designLayers: board.designLayers,
+            })),
+            flows,
+          },
+          Boolean(selected),
+          signal,
+          setProgress,
+        )
+        signal.throwIfAborted()
+        const suffix = selected ? `-${filePart(selected.title)}` : ''
+        downloadFile(
+          output,
+          `${filePart(result.version.title)}-v${version.version}${suffix}.${extension}`,
+        )
+        onClose()
+        return
+      }
 
       async function* renderPages() {
         for (const [index, board] of boards.entries()) {
@@ -161,7 +197,7 @@ export function ArtifactExportDialog({ target, onClose }: ExportDialogProps) {
             }
             onClick={() => void download()}
           >
-            下载 {format.toUpperCase()}
+            下载 {extension.toUpperCase()}
           </Button>
         </>
       }
@@ -192,7 +228,7 @@ export function ArtifactExportDialog({ target, onClose }: ExportDialogProps) {
           </select>
         </div>
         {initialBoards.size ? (
-          <fieldset className="flex gap-3" disabled={Boolean(progress)}>
+          <fieldset className="flex flex-wrap gap-3" disabled={Boolean(progress)}>
             <legend className="mb-1 font-medium">格式</legend>
             {boardId ? (
               <label className="flex items-center gap-1.5">
@@ -214,10 +250,30 @@ export function ArtifactExportDialog({ target, onClose }: ExportDialogProps) {
               />{' '}
               PDF
             </label>
+            <label className="flex items-center gap-1.5">
+              <input
+                type="radio"
+                name={`${id}-format`}
+                checked={format === 'html'}
+                onChange={() => {
+                  setFormat('html')
+                  setError('')
+                }}
+              />{' '}
+              {boardId ? '可试玩 HTML ZIP' : '离线试玩 HTML'}
+            </label>
           </fieldset>
         ) : (
           <p className="text-ink-muted">当前版本没有可导出的画板。</p>
         )}
+        {format === 'html' ? (
+          <p className="text-ink-muted">
+            {boardId
+              ? '解压后打开 index.html；不包含其他画板。'
+              : '直接打开 HTML；保留声明的跨画板路径。'}
+            不包含运行存储；依赖外部资源的画板无法离线打包。
+          </p>
+        ) : null}
         {progress ? (
           <p role="status" className="text-ink-muted">
             {progress}
