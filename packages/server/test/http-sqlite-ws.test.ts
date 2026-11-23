@@ -88,6 +88,66 @@ describe('Hono HTTP server & @akasha/protocol contract tests', () => {
     expect(report.passed).toBe(true)
   })
 
+  it('撤下后从详情、历史、反馈、状态和收藏移除，并仅凭维护权限恢复', async () => {
+    const srv = await startNodeServer({ dbPath: ':memory:', port: 0 })
+    closers.push(srv.close)
+    const payload = {
+      slug: 'html/withdraw',
+      title: '可恢复设计',
+      type: 'html',
+      source: '<h1>保存的原件</h1>',
+    }
+    const published = await fetch(`${srv.baseUrl}/api/v1/artifacts`, {
+      method: 'POST',
+      headers: authHeaders(srv.token),
+      body: JSON.stringify(payload),
+    })
+    expect(published.status).toBe(201)
+    const { artifact } = z
+      .object({ artifact: z.object({ publicId: z.string() }) })
+      .parse(await published.json())
+    const path = `${srv.baseUrl}/api/v1/artifacts/${artifact.publicId}`
+    const favorite = await fetch(`${path}/favorite`, {
+      method: 'PUT',
+      headers: authHeaders(srv.token),
+      body: JSON.stringify({ favorite: true }),
+    })
+    expect(favorite.status).toBe(200)
+    expect((await fetch(path, { method: 'DELETE' })).status).toBe(401)
+    const removed = await fetch(path, { method: 'DELETE', headers: authHeaders(srv.token) })
+    expect(removed.status).toBe(200)
+    for (const suffix of ['', '?version=1', '/versions', '/feedback', '/state']) {
+      expect((await fetch(`${path}${suffix}`)).status).toBe(404)
+    }
+    expect(await (await fetch(`${srv.baseUrl}/api/v1/artifacts`)).json()).toEqual({ artifacts: [] })
+    expect(await (await fetch(`${srv.baseUrl}/api/v1/favorites`)).json()).toEqual({
+      artifactIds: [],
+    })
+    const archived = `${srv.baseUrl}/api/v1/withdrawn-artifacts`
+    expect((await fetch(archived)).status).toBe(401)
+    expect(await (await fetch(archived, { headers: authHeaders(srv.token) })).json()).toMatchObject(
+      {
+        items: [
+          {
+            artifact: { publicId: artifact.publicId, title: payload.title },
+            withdrawnAt: expect.any(String),
+          },
+        ],
+      },
+    )
+    expect((await fetch(`${path}/restore`, { method: 'POST' })).status).toBe(401)
+    expect(
+      (await fetch(`${path}/restore`, { method: 'POST', headers: authHeaders(srv.token) })).status,
+    ).toBe(200)
+    expect(await (await fetch(`${path}?version=1`)).json()).toMatchObject({
+      artifact: { publicId: artifact.publicId },
+      version: { source: payload.source, version: 1 },
+    })
+    expect(await (await fetch(archived, { headers: authHeaders(srv.token) })).json()).toEqual({
+      items: [],
+    })
+  })
+
   it('persists data across SQLite restarts and sends resync to reconnecting clients', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-sqlite-'))
     tempDirs.push(dir)

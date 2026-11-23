@@ -24,7 +24,11 @@ export interface HubAccess {
   /** 凭 cookie 或 Bearer 解析调用方；无法识别时返回 `undefined`。 */
   authenticate(request: Request): Promise<HubPrincipal | undefined>
   /** 当前浏览器对制品的链接授权。 */
-  readShare(request: Request, artifactId: string): Promise<HubShareClaim | undefined>
+  readShare(
+    request: Request,
+    artifactId: string,
+    mode?: 'revocation',
+  ): Promise<HubShareClaim | undefined>
 }
 
 export interface HubArtifactAccess {
@@ -118,6 +122,7 @@ export function createHubAccess(
     if (PublicIdSchema.safeParse(id).success) {
       const artifact = await artifacts.findByPublicId(id)
       if (artifact) return projectId && artifact.projectId !== projectId ? undefined : artifact
+      if (await artifacts.lifecycle.findWithdrawn(id)) return
     }
     const project =
       projectId ?? (principal?.member ? `${hubProjectPrefix(principal)}default` : undefined)
@@ -174,6 +179,18 @@ export function createHubAccess(
     const principal = await auth.authenticate(request)
     if (event.artifactId) {
       const artifact = await artifacts.findByPublicId(event.artifactId)
+      if (
+        !artifact &&
+        event.type === 'artifact.metadata' &&
+        scope.artifactId === event.artifactId
+      ) {
+        const withdrawn = await artifacts.lifecycle.findWithdrawn(event.artifactId)
+        return Boolean(
+          withdrawn &&
+            (baseArtifactRole(withdrawn.artifact, principal) !== 'none' ||
+              (await auth.readShare(request, event.artifactId, 'revocation'))),
+        )
+      }
       if (
         !artifact ||
         (scope.projectId &&

@@ -62,6 +62,8 @@ const credentials = z.discriminatedUnion('kind', [
     // 老签名未区分角色；继续只给制品级讨论权，不再允许投递 Agent。
     role: ArtifactShareRoleSchema.default('comment'),
     entry: ArtifactShareEntrySchema.default({ kind: 'artifact' }),
+    // 没有撤下过的旧签名仍使用代数 0；恢复不会回退代数。
+    generation: z.number().int().nonnegative().default(0),
   }),
   expires.extend({
     kind: z.literal('receipt'),
@@ -97,13 +99,17 @@ export interface HubAuth {
   mount(app: Hono): void
   /** 凭会话 cookie 或 Bearer 令牌识别调用方；Bearer 只接受 cli 凭证。 */
   authenticate(request: Request): Promise<HubPrincipal | undefined>
-  /** 返回当前浏览器对指定制品的有效链接授权；CLI 不继承浏览器授权。 */
-  readShare(request: Request, artifactId: string): Promise<HubShareClaim | undefined>
+  /** 正常只返回当前代数；`revocation` 只用于给已经订阅的连接发送无内容的失效通知。 */
+  readShare(
+    request: Request,
+    artifactId: string,
+    mode?: 'revocation',
+  ): Promise<HubShareClaim | undefined>
   /** 签发一条分享链接；`ttlSeconds` 的单位为秒。 */
   createShare(
     artifactId: string,
     input: ArtifactShareInput,
-  ): Promise<{ url: string; expiresAt: string }>
+  ): Promise<{ url: string; expiresAt: string } | undefined>
   /** 把回执封装成只对该调用方有效的令牌；Hub 把回执交给 CLI 之前使用。 */
   sealReceipt(principal: HubPrincipal, artifactId: string, receipt: string): Promise<string>
   /** 还原 `sealReceipt` 封装的回执；调用方不一致或已过期时返回 `undefined`。 */
@@ -234,15 +240,22 @@ export function createHubAuth(
     }
   }
 
-  async function readShare(request: Request, artifactId: string) {
+  async function readShare(request: Request, artifactId: string, mode?: 'revocation') {
     if (request.headers.has('authorization')) return
     const claim = await verify(cookie(request, shareCookie(artifactId)))
-    if (claim?.kind === 'share' && claim.artifactId === artifactId) return claim
+    if (claim?.kind !== 'share' || claim.artifactId !== artifactId) return
+    if (
+      mode === 'revocation' ||
+      (await artifacts.lifecycle.activeShareGeneration(artifactId)) === claim.generation
+    )
+      return claim
   }
 
   async function createShare(artifactId: string, { ttlSeconds, role, entry }: ArtifactShareInput) {
+    const generation = await artifacts.lifecycle.activeShareGeneration(artifactId)
+    if (generation === undefined) return
     const exp = now() + ttlSeconds
-    const token = await sign({ kind: 'share', artifactId, role, entry, exp })
+    const token = await sign({ kind: 'share', artifactId, role, entry, generation, exp })
     return {
       url: `${origin}/auth/share?token=${encodeURIComponent(token)}`,
       expiresAt: new Date(exp * 1000).toISOString(),
@@ -417,7 +430,7 @@ export function createHubAuth(
       if (
         claim?.kind !== 'share' ||
         !token ||
-        !(await artifacts.findByPublicId(claim.artifactId))
+        (await artifacts.lifecycle.activeShareGeneration(claim.artifactId)) !== claim.generation
       ) {
         return c.text('分享链接无效或已过期', 404)
       }

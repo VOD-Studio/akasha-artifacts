@@ -69,6 +69,14 @@ it.skipIf(!postgresUrl)('PostgreSQL 多实例共享反馈、回执、制品存�
         publicId: loser.publicId,
         headVersion: 1,
       })
+      expect(await first.artifacts.lifecycle.activeShareGeneration(winner.publicId)).toBe(0)
+      expect(await first.artifacts.lifecycle.setWithdrawal(winner.publicId, now)).toBe(true)
+      expect(await second.artifacts.findBySlug('destination', winner.slug)).toBeUndefined()
+      expect(await second.artifacts.lifecycle.listWithdrawn()).toMatchObject([
+        { artifact: { publicId: winner.publicId, projectId: 'destination' }, withdrawnAt: now },
+      ])
+      expect(await second.artifacts.lifecycle.setWithdrawal(winner.publicId, null)).toBe(true)
+      expect(await first.artifacts.lifecycle.activeShareGeneration(winner.publicId)).toBe(1)
 
       const writes = Array.from({ length: 20 }, (_, index) => {
         const item: Feedback = {

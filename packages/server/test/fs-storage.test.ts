@@ -371,6 +371,44 @@ describe('.artifacts/ 原生文件存储适配器与外部编辑监听', () => {
     expect(discovered.version.source).toContain('Release Notes from Git')
   })
 
+  it('原生源文件离线编辑和重启不重新发布已撤下的制品', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-withdraw-'))
+    tempDirs.push(root)
+    const artifactsDir = path.join(root, '.artifacts')
+    const options = { storageMode: 'fs' as const, artifactsDir, fsProjectId: 'proj_withdrawn' }
+    const active = createLocalContainer(options)
+    let publicId: string
+    try {
+      await active.ready
+      const { artifact } = await active.service.publish({
+        projectId: options.fsProjectId,
+        slug: 'html/source',
+        title: '原生撤下',
+        type: 'html',
+        source: '<h1>保留的初版</h1>',
+        author: 'agent:cli',
+      })
+      publicId = artifact.publicId
+      await active.service.setArtifactWithdrawal(publicId, true)
+    } finally {
+      active.close()
+    }
+    const sourcePath = path.join(artifactsDir, 'html', 'source', 'index.html')
+    fs.writeFileSync(sourcePath, '<h1>停机期间的编辑</h1>')
+    const restarted = createLocalContainer(options)
+    closers.push(restarted.close)
+    await restarted.ready
+    expect(await restarted.repositories.artifacts.listByProject()).toEqual([])
+    expect(await restarted.repositories.artifacts.lifecycle.findWithdrawn(publicId)).toMatchObject({
+      artifact: { publicId, headVersion: 1 },
+    })
+    await restarted.service.setArtifactWithdrawal(publicId, false)
+    expect((await restarted.service.getArtifact({ id: publicId, version: 1 })).version.source).toBe(
+      '<h1>保留的初版</h1>',
+    )
+    expect(fs.readFileSync(sourcePath, 'utf8')).toBe('<h1>停机期间的编辑</h1>')
+  })
+
   it('重建 .state 索引时保留 Git 中已签入的 .artifact-id 稳定 publicId', async () => {
     const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-import-id-'))
     const artifactsDir = path.join(projRoot, '.artifacts')

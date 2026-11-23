@@ -4,7 +4,7 @@ import type { Hono } from 'hono'
 import type { RealtimeSubscriber } from '../../domain/ports.js'
 import type { HubRealtimeScope } from '../http/hub-access.js'
 
-// 三道授权钩子，全部可省略；本地 Daemon 不传
+// 三道授权钩子：本机校验制品可见性，Hub 进一步校验连接身份和分享范围。
 interface NodeWebSocketAuthorization {
   // 是否允许把请求升级为 WebSocket
   authorizeUpgrade?: (request: Request) => Promise<boolean>

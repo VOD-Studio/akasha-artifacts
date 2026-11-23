@@ -24,7 +24,15 @@ export async function startNodeServer(options: NodeServerOptions = {}) {
     container.close()
     throw err
   }
-  const { injectWebSocket } = attachNodeWebSocket(container.app, container.realtime)
+  const { artifacts } = container.repositories
+  const isActive = async (id: string) =>
+    (await artifacts.lifecycle.activeShareGeneration(id)) !== undefined
+  const { injectWebSocket } = attachNodeWebSocket(container.app, container.realtime, {
+    authorizeSubscription: async (_request, { artifactId }) =>
+      artifactId === undefined || isActive(artifactId),
+    authorizeEvent: async (_request, _scope, event) =>
+      event.type === 'artifact.metadata' || !event.artifactId || (await isActive(event.artifactId)),
+  })
 
   const server = await new Promise<ReturnType<typeof serve>>((resolve, reject) => {
     const srv = serve(

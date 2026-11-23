@@ -51,6 +51,15 @@ export const ArtifactSchema = z.object({
 })
 export type Artifact = z.infer<typeof ArtifactSchema>
 
+/** 维护者可见的撤下记录，不包含源码也不复用活动制品列表。 */
+export const WithdrawnArtifactSchema = z.object({
+  // 原制品的元数据与 publicId，版本和讨论仍保存在原处
+  artifact: ArtifactSchema,
+  // 该制品最近一次撤下的时间
+  withdrawnAt: ISODateTimeSchema,
+})
+export type WithdrawnArtifact = z.infer<typeof WithdrawnArtifactSchema>
+
 /** 版本：制品的一份不可变源码快照，一经写入不能修改。 */
 export const VersionSchema = z.object({
   // 所属 `Artifact.publicId`

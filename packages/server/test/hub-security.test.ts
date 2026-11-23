@@ -717,6 +717,88 @@ describe('Cloud Hub 身份与制品权限', () => {
     expect(await hub.authorizeRealtime(subscriber, scope)).toBe(false)
   })
 
+  it('撤下会失效旧签名和实时内容，授权恢复也不重新开放它们', async ({ onTestFinished }) => {
+    const storage = createSqliteHubStorage(':memory:')
+    onTestFinished(storage.close)
+    const { hub, request, send, post, login } = setup(storage)
+    const owner = await login('alice')
+    const other = await login('bob')
+    const payload = {
+      slug: 'html/withdrawn',
+      title: '保留的原件',
+      type: 'html',
+      source: '<p>原版</p>',
+    }
+    const { artifact, version } = publishedArtifact.parse(
+      await (await post('/api/v1/artifacts', payload, owner)).json(),
+    )
+    const path = `/api/v1/artifacts/${artifact.publicId}`
+    const pre = await post(
+      `${path}/share`,
+      { role: 'edit', entry: { kind: 'artifact' }, ttlSeconds: 3600 },
+      owner,
+    )
+    const { url } = z.object({ url: z.string() }).parse(await pre.json())
+    const shareCookie = (await send(url)).headers.get('set-cookie')?.split(';')[0] ?? ''
+    const grant = { cookie: shareCookie, origin }
+    expect((await send(path, { headers: grant })).status).toBe(200)
+    expect((await send(path, { method: 'DELETE', headers: grant })).status).toBe(403)
+    const scope = { artifactId: artifact.publicId }
+    const subscription = request(`/api/v1/ws?artifactId=${artifact.publicId}`, { headers: grant })
+    expect(await hub.authorizeRealtime(subscription, scope)).toBe(true)
+    const deleteResponse = await send(path, {
+      method: 'DELETE',
+      headers: { cookie: owner, origin },
+    })
+    expect(deleteResponse.status).toBe(200)
+    expect((await send(path, { headers: grant })).status).toBe(404)
+    expect((await send(url)).status).toBe(404)
+    expect(await hub.authorizeRealtime(subscription, scope)).toBe(false)
+    const envelope = {
+      v: 1 as const,
+      seq: 3,
+      artifactId: artifact.publicId,
+      timestamp: version.createdAt,
+    }
+    expect(
+      await hub.authorizeRealtimeEvent(subscription, scope, {
+        ...envelope,
+        type: 'version.created',
+        version,
+      }),
+    ).toBe(false)
+    expect(
+      await hub.authorizeRealtimeEvent(subscription, scope, {
+        ...envelope,
+        type: 'artifact.metadata',
+      }),
+    ).toBe(true)
+    expect(
+      await (await send('/api/v1/withdrawn-artifacts', { headers: { cookie: other } })).json(),
+    ).toEqual({ items: [] })
+    expect((await post(`${path}/restore`, {}, other)).status).toBe(404)
+    expect((await post(`${path}/restore`, {}, owner)).status).toBe(200)
+    expect(await (await send(path, { headers: { cookie: owner } })).json()).toMatchObject({
+      version,
+    })
+    expect((await send(url)).status).toBe(404)
+    expect((await send(path, { headers: grant })).status).toBe(404)
+    expect(
+      await hub.authorizeRealtimeEvent(subscription, scope, {
+        ...envelope,
+        type: 'version.created',
+        version,
+      }),
+    ).toBe(false)
+    const next = await post(
+      `${path}/share`,
+      { role: 'view', entry: { kind: 'version', version: 1 } },
+      owner,
+    )
+    const fresh = z.object({ url: z.string() }).parse(await next.json()).url
+    expect((await send(fresh)).status).toBe(302)
+  })
+
   it('CLI 证明绑定一次性授权码，多实例只允许兑换一次', async () => {
     const { callback, makeHub, request } = setup()
     const verifier = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ'

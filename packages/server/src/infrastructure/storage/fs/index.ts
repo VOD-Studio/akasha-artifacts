@@ -284,6 +284,10 @@ export class FsArtifactRepository implements ArtifactRepository {
     private readonly inner: SqliteArtifactRepository,
   ) {}
 
+  get lifecycle() {
+    return this.inner.lifecycle
+  }
+
   /** 注册回调：服务端写入前补录了未入库的外部改动时触发，用于把补录的版本广播出去。 */
   setOnDiskReconciled(cb: (artifact: Artifact, version: Readonly<Version>) => void): void {
     this.onDiskReconciled = cb

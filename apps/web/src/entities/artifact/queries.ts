@@ -29,6 +29,7 @@ export const artifactKeys = {
   detail: (id: string, version?: number) => ['artifacts', 'detail', id, version ?? 'head'] as const,
   versions: (id: string) => ['artifacts', 'versions', id] as const,
   management: (id: string) => ['artifacts', 'management', id] as const,
+  withdrawn: ['artifacts', 'withdrawn'] as const,
   favorites: ['artifact-favorites'] as const,
   storageUsage: (id: string) => ['artifacts', 'storage-usage', id] as const,
   spec: (type: ArtifactType) => ['artifacts', 'spec', type] as const,

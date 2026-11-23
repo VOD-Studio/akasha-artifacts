@@ -91,6 +91,7 @@ export function TopBar({
           onHandoff={onHandoff}
           onShare={onShare}
           onTransfer={onTransfer}
+          onWithdrawn={shareAccess ? undefined : onBackToLibrary}
           shared={Boolean(shareAccess)}
           canEdit={!shareAccess || (shareAccess.role === 'edit' && fixedVersion === undefined)}
           onQuickJump={() => setCommandPaletteOpen(true)}

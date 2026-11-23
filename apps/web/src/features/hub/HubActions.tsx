@@ -4,7 +4,8 @@ import { toast } from 'sonner'
 import { clearAnnotationDrafts } from '../../entities/feedback/annotation-draft'
 import { isCloudHub } from '../../shared/config/runtime'
 
-function useHubSession() {
+/** 供界面在服务端授权之外隐藏只对 Hub 成员有意义的入口。 */
+export function useHubSession() {
   return useQuery({
     queryKey: ['hub-session'],
     enabled: isCloudHub(),

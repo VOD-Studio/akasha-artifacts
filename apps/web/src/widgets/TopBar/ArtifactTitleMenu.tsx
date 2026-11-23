@@ -23,6 +23,7 @@ import {
   RefreshCw,
   Search,
   Star,
+  Trash2,
 } from 'lucide-react'
 import { useId, useState } from 'react'
 import { toast } from 'sonner'
@@ -35,6 +36,7 @@ import {
 } from '../../entities/artifact/queries'
 import type { WorkspaceViewMode } from '../../entities/workspace/store'
 import { ArtifactStorageUsageDialog } from './ArtifactStorageUsageDialog'
+import { ArtifactWithdrawalDialog } from './ArtifactWithdrawalDialog'
 
 interface ArtifactTitleMenuProps {
   artifact: Artifact
@@ -46,6 +48,7 @@ interface ArtifactTitleMenuProps {
   onHandoff?: () => void
   onShare?: () => void
   onTransfer?: (kind: ArtifactTransferInput['kind']) => void
+  onWithdrawn?: () => void
   canEdit?: boolean
   shared?: boolean
   onQuickJump: () => void
@@ -61,6 +64,7 @@ export function ArtifactTitleMenu({
   onHandoff,
   onShare,
   onTransfer,
+  onWithdrawn,
   canEdit = true,
   shared = false,
   onQuickJump,
@@ -73,6 +77,7 @@ export function ArtifactTitleMenu({
   const setFavorite = useSetArtifactFavoriteMutation(publicId)
   const isFavorite = favorites.data?.includes(publicId) ?? false
   const [showUsage, setShowUsage] = useState(false)
+  const [showWithdrawal, setShowWithdrawal] = useState(false)
   const [name, setName] = useState<string | null>(null)
   const formId = useId()
 
@@ -203,10 +208,26 @@ export function ArtifactTitleMenu({
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuLabel>{agentStatus}</DropdownMenuLabel>
+          {onWithdrawn && management.data?.canManage ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onSelect={() => setShowWithdrawal(true)}>
+                <Trash2 size={14} />
+                撤下制品…
+              </DropdownMenuItem>
+            </>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
       {showUsage && management.data?.canManage ? (
         <ArtifactStorageUsageDialog artifactId={publicId} onClose={() => setShowUsage(false)} />
+      ) : null}
+      {showWithdrawal && onWithdrawn && management.data?.canManage ? (
+        <ArtifactWithdrawalDialog
+          artifact={artifact}
+          onClose={() => setShowWithdrawal(false)}
+          onWithdrawn={onWithdrawn}
+        />
       ) : null}
       {name !== null ? (
         <Modal

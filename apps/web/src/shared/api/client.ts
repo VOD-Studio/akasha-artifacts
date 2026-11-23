@@ -23,6 +23,7 @@ import {
   type Verdict,
   type Version,
   type Visibility,
+  type WithdrawnArtifact,
 } from '@akasha/protocol'
 import { getApiBaseUrl } from '../config/runtime'
 
@@ -89,6 +90,19 @@ export async function renameArtifact(id: string, title: string): Promise<{ artif
     method: 'PATCH',
     body: JSON.stringify({ title }),
   })
+}
+
+/** 撤下不删除书签指向的记录，但会在服务端撤销所有已发签名。 */
+export async function withdrawArtifact(id: string): Promise<{ artifact: Artifact }> {
+  return requestJson(`/api/v1/artifacts/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export async function fetchWithdrawnArtifacts(): Promise<{ items: WithdrawnArtifact[] }> {
+  return requestJson('/api/v1/withdrawn-artifacts')
+}
+
+export async function restoreArtifact(id: string): Promise<{ artifact: Artifact }> {
+  return requestJson(`/api/v1/artifacts/${encodeURIComponent(id)}/restore`, { method: 'POST' })
 }
 
 export async function fetchArtifactFavorites(): Promise<{ artifactIds: string[] }> {

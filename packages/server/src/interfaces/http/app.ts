@@ -304,7 +304,7 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
           )
         }
       }
-      if (isMutation && sec.token) {
+      if ((isMutation || c.req.path === '/api/v1/withdrawn-artifacts') && sec.token) {
         const auth = c.req.header('authorization')
         const bearerOk = auth === `Bearer ${sec.token}`
         const cookieName = sec.cookieName ?? 'akasha_session'
@@ -406,9 +406,17 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
     return c.json({ ok: true as const, id })
   })
 
-  app.get('/api/v1/projects/:id/selection', (c) => {
+  app.get('/api/v1/projects/:id/selection', async (c) => {
     const id = c.req.param('id')
-    return c.json({ selection: selectionStore.get(id) ?? null })
+    const selected = selectionStore.get(id)
+    if (selected?.artifactId) {
+      const artifact = await deps.artifacts.findByPublicId(selected.artifactId)
+      if (artifact?.projectId !== id) {
+        if (selectionStore.get(id) === selected) selectionStore.delete(id)
+        return c.json({ selection: null })
+      }
+    }
+    return c.json({ selection: selected ?? null })
   })
 
   app.post('/api/v1/projects/:id/selection', async (c) => {
@@ -417,6 +425,11 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
     if (!body.element && !body.draftText?.trim()) {
       selectionStore.delete(id)
       return c.json({ selection: null })
+    }
+    if (body.artifactId) {
+      const artifact = await deps.artifacts.findByPublicId(body.artifactId)
+      if (artifact?.projectId !== id)
+        throw new DomainError('NOT_FOUND', '未找到当前项目内的活动制品')
     }
     const selection = {
       projectId: id,
@@ -512,6 +525,23 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
     }
     const data = await deps.service.getArtifact({ id, projectId, version })
     return c.json(data)
+  })
+
+  app.get('/api/v1/withdrawn-artifacts', async (c) => {
+    const items = await deps.artifacts.lifecycle.listWithdrawn()
+    return c.json({ items }, 200, { 'Cache-Control': 'private, no-store' })
+  })
+
+  app.delete('/api/v1/artifacts/:id', async (c) => {
+    const artifact = await deps.service.setArtifactWithdrawal(c.req.param('id'), true)
+    if (selectionStore.get(artifact.projectId)?.artifactId === artifact.publicId)
+      selectionStore.delete(artifact.projectId)
+    return c.json({ artifact })
+  })
+
+  app.post('/api/v1/artifacts/:id/restore', async (c) => {
+    const artifact = await deps.service.setArtifactWithdrawal(c.req.param('id'), false)
+    return c.json({ artifact })
   })
 
   app.get('/api/v1/artifacts/:id/management', async (c) => {

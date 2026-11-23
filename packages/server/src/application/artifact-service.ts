@@ -139,6 +139,10 @@ export class ArtifactService {
     if (PublicIdSchema.safeParse(identifier).success) {
       const byPublic = await this.deps.artifacts.findByPublicId(identifier)
       if (byPublic) return byPublic
+      // 撤下的 publicId 仍是保留标识，不能把旧书签重新解释为另一份制品的 slug。
+      if (await this.deps.artifacts.lifecycle.findWithdrawn(identifier)) {
+        throw new NotFoundError('未找到活动制品')
+      }
     }
     const targetProject = projectId ?? DEFAULT_PROJECT_ID
     const bySlug = await this.deps.artifacts.findBySlug(targetProject, identifier)
@@ -195,6 +199,12 @@ export class ArtifactService {
         let publicId: PublicId
         if (input.preferredPublicId && PublicIdSchema.safeParse(input.preferredPublicId).success) {
           const taken = await this.deps.artifacts.findByPublicId(input.preferredPublicId)
+          if (
+            !taken &&
+            (await this.deps.artifacts.lifecycle.findWithdrawn(input.preferredPublicId))
+          ) {
+            throw new DomainError('RESOURCE_CONFLICT', '制品已撤下，恢复前不能重新发布')
+          }
           publicId = taken ? this.deps.ids.publicId() : input.preferredPublicId
         } else {
           publicId = this.deps.ids.publicId()
@@ -343,6 +353,28 @@ export class ArtifactService {
         return { artifact: moved }
       }),
     )
+  }
+
+  /** 软撤下和恢复只更改可见性层，不重建源码、版本或反馈。 */
+  async setArtifactWithdrawal(publicId: PublicId, withdrawn: boolean): Promise<Artifact> {
+    if (!PublicIdSchema.safeParse(publicId).success) throw new NotFoundError('未找到制品')
+    const lifecycle = this.deps.artifacts.lifecycle
+    return this.withArtifactLock(publicId, async () => {
+      const artifact = withdrawn
+        ? await this.deps.artifacts.findByPublicId(publicId)
+        : (await lifecycle.findWithdrawn(publicId))?.artifact
+      if (
+        !artifact ||
+        !(await lifecycle.setWithdrawal(publicId, withdrawn ? this.deps.clock.now() : null))
+      ) {
+        throw new NotFoundError(withdrawn ? '未找到活动制品' : '未找到可恢复的制品')
+      }
+      await this.deps.realtime.publish(
+        { type: 'artifact.metadata', artifactId: artifact.publicId },
+        { projectId: artifact.projectId },
+      )
+      return artifact
+    })
   }
 
   /**
@@ -992,9 +1024,9 @@ export class ArtifactService {
   }> {
     const artifact = input.id ? await this.resolveArtifact(input.id, input.projectId) : undefined
 
-    // 未指定具体 artifact 但指定了 projectId 时，严格限定在项目所属的 Artifact 集合内
+    // 不按制品读取时也只能拉取活动制品，不能通过全局队列读到撤下内容。
     let artifactIds: Set<PublicId> | undefined
-    if (!artifact && input.projectId) {
+    if (!artifact) {
       const projectArtifacts = await this.deps.artifacts.listByProject(input.projectId)
       artifactIds = new Set(projectArtifacts.map((a) => a.publicId))
       if (artifactIds.size === 0) {
