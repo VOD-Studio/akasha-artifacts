@@ -33,6 +33,10 @@ import type {
 } from '../../../domain/ports.js'
 import { createSqliteArtifactStorage } from './artifact-kv.js'
 
+// 本地 Daemon 的表结构，与 Hub 共用的 cloud/schema.ts 相互独立：
+// - versions.source 直接存源码文本，不走对象存储
+// - feedbacks.delivery_seq 是可投递顺序号（草稿为 NULL），没有 insertion_seq，并列时按 rowid 排序
+// - meta 表以键值形式存放实时事件序号（event_seq）
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS projects (
   id TEXT PRIMARY KEY,
@@ -127,6 +131,12 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 `
 
+/**
+ * 本地 Daemon 的 SQLite 存储：一个库文件承载全部仓储与制品存储表。
+ *
+ * @remarks 开启 WAL、外键与 5 秒忙等待。全部仓储共用同一个同步连接，方法都是同步执行后包装为
+ * Promise。`close` 之后，读写事件序号与反查项目的方法变为空操作。
+ */
 export class SqliteStorage {
   private closed = false
   readonly db: DatabaseSync
@@ -157,6 +167,7 @@ export class SqliteStorage {
     this.artifactStorage = createSqliteArtifactStorage(this.db)
   }
 
+  /** 读出已持久化的实时事件序号；从未写入或已关闭时为 0。 */
   getEventSeq(): number {
     if (this.closed) return 0
     const row = this.db.prepare("SELECT value FROM meta WHERE key = 'event_seq'").get() as
@@ -165,6 +176,7 @@ export class SqliteStorage {
     return row ? Number.parseInt(row.value, 10) || 0 : 0
   }
 
+  /** 持久化实时事件序号，供重启后续接。 */
   setEventSeq(seq: number): void {
     if (this.closed) return
     this.db
@@ -175,6 +187,7 @@ export class SqliteStorage {
       .run(String(seq))
   }
 
+  /** 按制品反查所属项目，供实时总线路由事件。 */
   findProjectIdByArtifactSync(publicId: PublicId): string | undefined {
     if (this.closed) return undefined
     const row = this.db
@@ -183,6 +196,7 @@ export class SqliteStorage {
     return row?.project_id
   }
 
+  /** 关闭连接；重复调用无效果。 */
   close(): void {
     if (this.closed) return
     this.closed = true
@@ -190,6 +204,7 @@ export class SqliteStorage {
   }
 }
 
+// BEGIN IMMEDIATE 立即取得写锁，事务内的多次读写对外是一次原子提交
 function runInTx<T>(db: DatabaseSync, fn: () => T): T {
   db.exec('BEGIN IMMEDIATE')
   try {
@@ -308,6 +323,7 @@ function mapVersion(row: VersionRow): Readonly<Version> {
   })
 }
 
+/** `ArtifactRepository` 的 SQLite 实现；`FsArtifactRepository` 在其之上叠加文件落盘。 */
 export class SqliteArtifactRepository implements ArtifactRepository {
   constructor(private readonly db: DatabaseSync) {}
 
@@ -355,7 +371,9 @@ export class SqliteArtifactRepository implements ArtifactRepository {
       )
   }
 
-  // 在单个同步 SQLite 事务内原子写入版本与 Artifact 元数据，防止后续校验失败遗留孤儿版本。
+  /**
+   * 在单个同步事务内写入版本与制品元数据，后续校验失败时不会遗留孤儿版本。
+   */
   saveArtifactWithVersionSync(artifact: Artifact, version?: Readonly<Version>): void {
     runInTx(this.db, () => {
       if (version) {
@@ -387,6 +405,7 @@ export class SqliteArtifactRepository implements ArtifactRepository {
     return this.listByProjectSync(projectId)
   }
 
+  // 以下 Sync 方法与对应的异步版本等价，供文件存储在没有 await 间隙的校验与提交里调用
   listByProjectSync(projectId?: string): readonly Artifact[] {
     const rows = projectId
       ? (this.db
@@ -615,6 +634,11 @@ function mapFeedback(row: FeedbackRow): Feedback {
   }
 }
 
+/**
+ * 反馈队列的 SQLite 实现：投递顺序号取当前最大值加一，与记录在同一事务内提交。
+ *
+ * @remarks 最大值加一没有行级保护，并发转正靠 `BEGIN IMMEDIATE` 串行化。
+ */
 export class SqliteFeedbackRepository implements FeedbackRepository {
   constructor(private readonly db: DatabaseSync) {}
 
@@ -717,6 +741,7 @@ export class SqliteFeedbackRepository implements FeedbackRepository {
     }
   }
 
+  // 转正的草稿按 rowid 顺序接在当前最大投递序号之后
   async promoteRoundDrafts(
     artifactId: PublicId,
     roundId: string,
