@@ -1,8 +1,34 @@
-import { ARTIFACT_STORAGE_LIMITS, type ArtifactStorageOperation } from '@akasha/protocol'
+import {
+  ARTIFACT_STORAGE_LIMITS,
+  type ArtifactStorageOperation,
+  type ArtifactStorageUsage,
+  type StorageScope,
+} from '@akasha/protocol'
 import type { ArtifactStorageRepository } from '../domain/artifact-storage.js'
 import { DomainError } from '../domain/errors.js'
 
 const encoder = new TextEncoder()
+
+function namespaceFor(artifactId: string, scope: StorageScope, principal: string | null) {
+  return JSON.stringify([artifactId, scope, scope === 'private' ? principal : null])
+}
+
+/** 返回当前制品与调用方可用的两个命名空间的序列化用量。 */
+export async function getArtifactStorageUsage(
+  repository: ArtifactStorageRepository,
+  artifactId: string,
+  principal: string | null,
+): Promise<ArtifactStorageUsage> {
+  const [shared, own] = await Promise.all([
+    repository.read(namespaceFor(artifactId, 'shared', null)),
+    principal ? repository.read(namespaceFor(artifactId, 'private', principal)) : null,
+  ])
+  return {
+    sharedBytes: shared ? encoder.encode(shared.json).length : 0,
+    privateBytes: principal ? (own ? encoder.encode(own.json).length : 0) : null,
+    limitPerScopeBytes: ARTIFACT_STORAGE_LIMITS.scopeBytes,
+  }
+}
 
 /**
  * 在仓储上执行一次制品存储操作，读写与配额校验基于同一修订号。
@@ -44,11 +70,7 @@ export async function executeArtifactStorage(
   }
 
   // 命名空间由制品、作用域与登录身份共同决定；`shared` 不含身份
-  const namespace = JSON.stringify([
-    artifactId,
-    operation.scope,
-    operation.scope === 'private' ? principal : null,
-  ])
+  const namespace = namespaceFor(artifactId, operation.scope, principal)
   // CAS 失败说明有并发写入，重读后重试
   for (let attempt = 0; attempt < 8; attempt++) {
     const current = await repository.read(namespace)

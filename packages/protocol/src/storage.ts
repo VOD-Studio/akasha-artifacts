@@ -38,3 +38,12 @@ export const ArtifactStorageOperationSchema = z.discriminatedUnion('action', [
   }),
 ])
 export type ArtifactStorageOperation = z.infer<typeof ArtifactStorageOperationSchema>
+
+/** 只公开按既有配额算法计算的字节数，不包含键或值。 */
+export const ArtifactStorageUsageSchema = z.object({
+  sharedBytes: z.number().int().nonnegative(),
+  // null 表示当前请求没有个人命名空间
+  privateBytes: z.number().int().nonnegative().nullable(),
+  limitPerScopeBytes: z.number().int().positive(),
+})
+export type ArtifactStorageUsage = z.infer<typeof ArtifactStorageUsageSchema>

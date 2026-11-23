@@ -14,20 +14,25 @@ import {
   Code2,
   Download,
   GitCompare,
+  HardDrive,
   Link2,
   Pencil,
   RefreshCw,
   Search,
+  Star,
 } from 'lucide-react'
 import { useId, useState } from 'react'
 import { toast } from 'sonner'
 import {
+  useArtifactFavoritesQuery,
   useArtifactManagementQuery,
   useReloadArtifactMutation,
   useRenameArtifactMutation,
+  useSetArtifactFavoriteMutation,
 } from '../../entities/artifact/queries'
 import type { WorkspaceViewMode } from '../../entities/workspace/store'
 import { HubShareMenuItem } from '../../features/hub/HubActions'
+import { ArtifactStorageUsageDialog } from './ArtifactStorageUsageDialog'
 
 interface ArtifactTitleMenuProps {
   artifact: Artifact
@@ -54,6 +59,10 @@ export function ArtifactTitleMenu({
   const management = useArtifactManagementQuery(publicId)
   const rename = useRenameArtifactMutation(publicId)
   const reload = useReloadArtifactMutation(publicId)
+  const favorites = useArtifactFavoritesQuery()
+  const setFavorite = useSetArtifactFavoriteMutation(publicId)
+  const isFavorite = favorites.data?.includes(publicId) ?? false
+  const [showUsage, setShowUsage] = useState(false)
   const [name, setName] = useState<string | null>(null)
   const formId = useId()
 
@@ -89,6 +98,21 @@ export function ArtifactTitleMenu({
             <Link2 size={14} />
             复制制品链接
           </DropdownMenuItem>
+          {favorites.data ? (
+            <DropdownMenuItem
+              disabled={setFavorite.isPending}
+              onSelect={() => {
+                setFavorite.mutate(!isFavorite, {
+                  onSuccess: ({ favorite }) =>
+                    toast.success(favorite ? '已收藏制品' : '已取消收藏'),
+                  onError: (error) => toast.error(error.message),
+                })
+              }}
+            >
+              <Star size={14} />
+              {isFavorite ? '取消收藏' : '收藏制品'}
+            </DropdownMenuItem>
+          ) : null}
           {management.data?.canManage ? (
             <DropdownMenuItem
               onSelect={() => {
@@ -112,6 +136,12 @@ export function ArtifactTitleMenu({
             <RefreshCw size={14} />
             重新加载
           </DropdownMenuItem>
+          {management.data?.canManage ? (
+            <DropdownMenuItem onSelect={() => setShowUsage(true)}>
+              <HardDrive size={14} />
+              存储用量
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => onShowTool('source')}>
             <Code2 size={14} />
@@ -142,6 +172,9 @@ export function ArtifactTitleMenu({
           <DropdownMenuLabel>{agentStatus}</DropdownMenuLabel>
         </DropdownMenuContent>
       </DropdownMenu>
+      {showUsage && management.data?.canManage ? (
+        <ArtifactStorageUsageDialog artifactId={publicId} onClose={() => setShowUsage(false)} />
+      ) : null}
       {name !== null ? (
         <Modal
           open

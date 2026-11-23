@@ -2,6 +2,8 @@ import {
   type AnnotationThread,
   type Artifact,
   type ArtifactSpecOutput,
+  type ArtifactStorageUsage,
+  ArtifactStorageUsageSchema,
   type ArtifactType,
   type Author,
   type DaemonStatus,
@@ -61,6 +63,27 @@ export async function renameArtifact(id: string, title: string): Promise<{ artif
     method: 'PATCH',
     body: JSON.stringify({ title }),
   })
+}
+
+export async function fetchArtifactFavorites(): Promise<{ artifactIds: string[] }> {
+  return requestJson('/api/v1/favorites')
+}
+
+export async function setArtifactFavorite(
+  id: string,
+  favorite: boolean,
+): Promise<{ favorite: boolean }> {
+  return requestJson(`/api/v1/artifacts/${encodeURIComponent(id)}/favorite`, {
+    method: 'PUT',
+    body: JSON.stringify({ favorite }),
+  })
+}
+
+export async function fetchArtifactStorageUsage(id: string): Promise<ArtifactStorageUsage> {
+  const usage = await requestJson<unknown>(
+    `/api/v1/artifacts/${encodeURIComponent(id)}/storage/usage`,
+  )
+  return ArtifactStorageUsageSchema.parse(usage)
 }
 
 // 所有请求带上同源 cookie；有请求体且未指定 Content-Type 时按 JSON 发送

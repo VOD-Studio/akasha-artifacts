@@ -68,6 +68,7 @@ export function createHubContainer(options: HubContainerOptions) {
     },
     artifactStorage: options.artifactStorage,
     storagePrincipal: async (request) => (await auth.authenticate(request))?.userId ?? null,
+    canReadFavorite: (request, artifactId) => access.authorizeArtifact(request, artifactId, 'read'),
   })
   const app = new Hono()
   mountHubGuard(app, { core, auth, access, repositories, origin, clock, ids })

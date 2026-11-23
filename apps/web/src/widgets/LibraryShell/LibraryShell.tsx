@@ -13,10 +13,10 @@ import {
 } from '@akasha/ui/dropdown-menu'
 import { Empty } from '@akasha/ui/empty'
 import { ScrollArea } from '@akasha/ui/scroll-area'
-import { ChevronDown, FolderGit2, Trash2 } from 'lucide-react'
+import { ChevronDown, FolderGit2, Star, Trash2 } from 'lucide-react'
 import { useLayoutEffect, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
-import { useArtifactsQuery } from '../../entities/artifact/queries'
+import { useArtifactFavoritesQuery, useArtifactsQuery } from '../../entities/artifact/queries'
 import { useProjectsQuery, useRemoveProjectMutation } from '../../entities/project/queries'
 import { useWorkspaceStore } from '../../entities/workspace/store'
 import { DaemonStatusPill } from '../../features/daemon-control/DaemonStatusPill'
@@ -39,6 +39,7 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
   const setSelectedProjectId = useWorkspaceStore((state) => state.setSelectedProjectId)
   const search = useLibraryView((state) => state.search)
   const type = useLibraryView((state) => state.type)
+  const favoritesOnly = useLibraryView((state) => state.favoritesOnly)
   const order = useLibraryView((state) => state.order)
   const layout = useLibraryView((state) => state.layout)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -46,6 +47,11 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
   const cloudHub = isCloudHub()
   const projectsQuery = useProjectsQuery(LIBRARY_REFRESH_MS)
   const artifactsQuery = useArtifactsQuery(undefined, LIBRARY_REFRESH_MS)
+  const favoritesQuery = useArtifactFavoritesQuery()
+  const favorites = useMemo(
+    () => (favoritesQuery.data ? new Set(favoritesQuery.data) : null),
+    [favoritesQuery.data],
+  )
   const projects = projectsQuery.data
   const artifacts = artifactsQuery.data
   const isLoading = projectsQuery.isLoading || artifactsQuery.isLoading
@@ -59,6 +65,7 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
   const visible = useMemo(() => {
     const keyword = search.trim().toLocaleLowerCase()
     const list = (artifacts ?? []).filter((artifact) => {
+      if (favoritesOnly && favorites && !favorites.has(artifact.publicId)) return false
       if (selectedProjectId && artifact.projectId !== selectedProjectId) return false
       if (type !== 'all' && artifact.type !== type) return false
       return (
@@ -74,7 +81,7 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
         ? (a, b) => a.title.localeCompare(b.title)
         : (a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt),
     )
-  }, [artifacts, order, projectMap, search, selectedProjectId, type])
+  }, [artifacts, favorites, favoritesOnly, order, projectMap, search, selectedProjectId, type])
   const presentTypes = useMemo(() => {
     const values = new Set<ArtifactType>()
     for (const artifact of artifacts ?? []) values.add(artifact.type)
@@ -98,7 +105,11 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
           </div>
         </div>
         <div className="mx-auto max-w-6xl px-3 pb-3 sm:px-6">
-          <LibraryToolbar projects={projects ?? []} types={presentTypes} />
+          <LibraryToolbar
+            projects={projects ?? []}
+            types={presentTypes}
+            favoritesAvailable={favorites !== null}
+          />
         </div>
       </header>
 
@@ -147,7 +158,7 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
                   variant="outline"
                   onClick={() => {
                     setSelectedProjectId(null)
-                    useLibraryView.setState({ search: '', type: 'all' })
+                    useLibraryView.setState({ search: '', type: 'all', favoritesOnly: false })
                   }}
                 >
                   清除筛选
@@ -180,6 +191,9 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
                         </h2>
                       )}
                       <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-muted">
+                        {favorites?.has(artifact.publicId) ? (
+                          <Star size={12} aria-label="已收藏" />
+                        ) : null}
                         {layout === 'list' ? (
                           <Badge tone="neutral">{ARTIFACT_TYPE_LABELS[artifact.type]}</Badge>
                         ) : null}

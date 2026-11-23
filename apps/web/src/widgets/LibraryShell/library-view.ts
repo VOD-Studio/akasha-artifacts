@@ -4,6 +4,7 @@ import { create } from 'zustand'
 interface LibraryView {
   search: string
   type: ArtifactType | 'all'
+  favoritesOnly: boolean
   order: 'recent' | 'title'
   layout: 'cards' | 'list'
   scrollTop: number
@@ -13,6 +14,7 @@ interface LibraryView {
 export const useLibraryView = create<LibraryView>(() => ({
   search: '',
   type: 'all',
+  favoritesOnly: false,
   order: 'recent',
   layout: 'cards',
   scrollTop: 0,

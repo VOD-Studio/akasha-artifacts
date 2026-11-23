@@ -8,7 +8,7 @@ import {
   DropdownMenuTrigger,
 } from '@akasha/ui/dropdown-menu'
 import { SearchInput } from '@akasha/ui/input'
-import { ChevronDown, LayoutGrid, List } from 'lucide-react'
+import { ChevronDown, LayoutGrid, List, Star } from 'lucide-react'
 import { type ReactNode, useEffect, useRef } from 'react'
 import { useWorkspaceStore } from '../../entities/workspace/store'
 import { ARTIFACT_TYPE_LABELS } from '../../shared/lib/format'
@@ -45,13 +45,16 @@ function FilterMenu({ label, summary, value, children }: FilterMenuProps) {
 interface LibraryToolbarProps {
   projects: readonly Project[]
   types: readonly ArtifactType[]
+  /** 账户未登录或读取个人收藏失败时不提供收藏筛选。 */
+  favoritesAvailable: boolean
 }
 
 /** 库页只提供一个搜索输入框，键盘快捷键与点按共用其当前查询。 */
-export function LibraryToolbar({ projects, types }: LibraryToolbarProps) {
+export function LibraryToolbar({ projects, types, favoritesAvailable }: LibraryToolbarProps) {
   const searchRef = useRef<HTMLInputElement>(null)
   const search = useLibraryView((state) => state.search)
   const type = useLibraryView((state) => state.type)
+  const favoritesOnly = useLibraryView((state) => state.favoritesOnly)
   const order = useLibraryView((state) => state.order)
   const layout = useLibraryView((state) => state.layout)
   const currentProjectId = useWorkspaceStore((state) => state.selectedProjectId)
@@ -139,6 +142,17 @@ export function LibraryToolbar({ projects, types }: LibraryToolbarProps) {
           按标题
         </DropdownMenuRadioItem>
       </FilterMenu>
+      {favoritesAvailable ? (
+        <Button
+          size="sm"
+          variant={favoritesOnly ? 'secondary' : 'outline'}
+          aria-pressed={favoritesOnly}
+          leftIcon={<Star size={14} />}
+          onClick={() => useLibraryView.setState({ favoritesOnly: !favoritesOnly })}
+        >
+          仅收藏
+        </Button>
+      ) : null}
       <fieldset className="ml-auto flex items-center gap-1">
         <legend className="sr-only">制品显示方式</legend>
         <Button

@@ -3,14 +3,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   type ArtifactDetailResponse,
   fetchArtifactDetail,
+  fetchArtifactFavorites,
   fetchArtifactManagement,
   fetchArtifactSpec,
+  fetchArtifactStorageUsage,
   fetchArtifacts,
   fetchArtifactVersions,
   publishHumanVersion,
   pushArtifactState,
   renameArtifact,
   revertArtifactVersion,
+  setArtifactFavorite,
   submitArtifactFeedback,
 } from '../../shared/api/client'
 import { computeLineDiff } from '../../shared/lib/diff'
@@ -26,6 +29,8 @@ export const artifactKeys = {
   detail: (id: string, version?: number) => ['artifacts', 'detail', id, version ?? 'head'] as const,
   versions: (id: string) => ['artifacts', 'versions', id] as const,
   management: (id: string) => ['artifacts', 'management', id] as const,
+  favorites: ['artifact-favorites'] as const,
+  storageUsage: (id: string) => ['artifacts', 'storage-usage', id] as const,
   spec: (type: ArtifactType) => ['artifacts', 'spec', type] as const,
 }
 
@@ -82,6 +87,30 @@ export function useRenameArtifactMutation(id: string) {
       )
       void queryClient.invalidateQueries({ queryKey: artifactKeys.lists })
     },
+  })
+}
+
+export function useArtifactFavoritesQuery() {
+  return useQuery({
+    queryKey: artifactKeys.favorites,
+    queryFn: async () => (await fetchArtifactFavorites()).artifactIds,
+    retry: false,
+  })
+}
+
+export function useSetArtifactFavoriteMutation(id: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (favorite: boolean) => setArtifactFavorite(id, favorite),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: artifactKeys.favorites }),
+  })
+}
+
+export function useArtifactStorageUsageQuery(id: string) {
+  return useQuery({
+    queryKey: artifactKeys.storageUsage(id),
+    queryFn: () => fetchArtifactStorageUsage(id),
+    retry: false,
   })
 }
 
