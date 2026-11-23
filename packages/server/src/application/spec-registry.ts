@@ -5,6 +5,7 @@ import {
 } from '@akasha/kit'
 import type { ArtifactSpecOutput, ArtifactType, CheckDiagnostic } from '@akasha/protocol'
 
+/** 沙盒预置、允许 import 的依赖；类型未注册专属白名单时的回退值。 */
 export const SANDBOX_DEPENDENCY_WHITELIST = [
   'react',
   'react-dom',
@@ -20,15 +21,25 @@ export const SANDBOX_DEPENDENCY_WHITELIST = [
 ] as const
 
 export interface ArtifactSpecDefinition {
+  /** 注册键；同一类型后注册的定义覆盖先注册的。 */
   type: ArtifactType
+  /** 写作规范全文，原样进入 `artifact_spec` 的输出。 */
   guide: string
+  /** 省略时回退为 `SANDBOX_DEPENDENCY_WHITELIST`。 */
   whitelist?: readonly string[]
+  /** 模板的 props schema；自由渲染的类型没有。 */
   schema?: Record<string, unknown>
+  /** 最小示例源码。 */
   example?: string
+  /** 类型专属的附加校验，与 `CheckService` 的通用规则叠加。 */
   validate?: (source: string) => CheckDiagnostic[]
 }
 
-// 按需写作规范与模板校验注册表：Kit 模板扩展时只需注册自身定义，无需维护重复文档。
+/**
+ * 按需写作规范与模板校验的注册表，以 Artifact 类型为键。
+ *
+ * @remarks 未注册的类型回退为通用说明与全局白名单。
+ */
 export class SpecRegistry {
   private readonly specs = new Map<ArtifactType, ArtifactSpecDefinition>()
 
@@ -38,6 +49,7 @@ export class SpecRegistry {
     }
   }
 
+  /** 覆盖同类型的既有定义。 */
   register(def: ArtifactSpecDefinition): void {
     this.specs.set(def.type, def)
   }

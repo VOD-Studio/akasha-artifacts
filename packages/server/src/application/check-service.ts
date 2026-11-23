@@ -75,6 +75,7 @@ function checkUniqueArrayIds(items: unknown, label: string): CheckDiagnostic[] {
   return diagnostics
 }
 
+// JSON 形态的类型必须包含的顶层字段
 const JSON_REQUIRED_FIELDS: Partial<Record<ArtifactType, readonly string[]>> = {
   artboard: ['boards'],
   verify: ['claims'],
@@ -82,10 +83,15 @@ const JSON_REQUIRED_FIELDS: Partial<Record<ArtifactType, readonly string[]>> = {
   'option-compare': ['options'],
 }
 
-// 发布前静态校验门禁：在把链接发给用户前拦截越界依赖、非法 JSON、重复块 ID 与沙盒违规。
+/**
+ * 发布前静态校验门禁：在把链接发给用户前拦截越界依赖、非法 JSON、重复块 ID 与沙盒违规。
+ *
+ * @remarks 只做静态检查，不执行源码；类型专属规则来自 `SpecRegistry` 上注册的 `validate`。
+ */
 export class CheckService {
   constructor(private readonly specs: SpecRegistry) {}
 
+  /** 返回全部诊断；`ok` 只取决于有没有 `error` 级诊断。 */
   check(input: { type: ArtifactType; source: string }): CheckResult {
     const diagnostics: CheckDiagnostic[] = []
     const { type, source } = input

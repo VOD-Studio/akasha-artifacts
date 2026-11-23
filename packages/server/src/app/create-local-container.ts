@@ -34,15 +34,21 @@ export interface LocalContainerOptions {
   // fs 模式下关联的项目 ID 与项目根路径（独立于 artifactsDir，兼容嵌套或外部产物目录）
   fsProjectId?: string
   fsProjectRoot?: string
+  // 外部文件改动入库前的防抖间隔（毫秒），缺省 120
   fsWatchDebounceMs?: number
   // 'memory' 走内存适配器；其它路径（含 ':memory:'）走 node:sqlite 适配器
   dbPath?: string
+  // 对外报告的服务端版本，缺省 0.1.0
   version?: string
+  // 缺省 24321；传 0 时由系统分配，绑定后经 `syncBoundPort` 回填
   port?: number
+  // 沙盒静态资源端口，缺省 24331
   sandboxPort?: number
+  // 内存中保留的事件条数，缺省 500；超出后携带旧游标的重连会收到 `resync`
   maxEventHistory?: number
   // 默认强制启用本地安全边界（Host/Origin/Token）；仅在需要自定义策略时覆写
   security?: HttpSecurityConfig
+  // 收到 shutdown 请求时调用
   onShutdown?: () => void
   clock?: Clock
   ids?: IdGenerator
@@ -54,15 +60,23 @@ function generateSecureToken(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
+/** 端口 `port` 上的三个回环 Host，用作防 DNS rebinding 的 Host 头白名单。 */
 export function buildLoopbackHosts(port: number): string[] {
   return [`localhost:${port}`, `127.0.0.1:${port}`, `[::1]:${port}`]
 }
 
+/** 端口 `port` 上的三个回环 origin，用作写请求的 Origin 白名单。 */
 export function buildLoopbackOrigins(port: number): string[] {
   return [`http://localhost:${port}`, `http://127.0.0.1:${port}`, `http://[::1]:${port}`]
 }
 
-// 手工装配本地容器：默认启用 Host/Origin/Token 本地安全边界，支持 SQLite 与内存双适配器。
+/**
+ * 手工装配本地容器：默认启用 Host / Origin / Token 本地安全边界。
+ *
+ * @remarks 存储三选一：`storageMode` 为 `fs` 时用项目内 `.artifacts/`；`dbPath` 为 `memory` 时用
+ * 内存适配器；其余用 SQLite。返回的 `ready` 在 `.artifacts/` 启动期对账完成后 resolve，
+ * 监听端口前应先等待它。
+ */
 export function createLocalContainer(options: LocalContainerOptions = {}) {
   const clock = options.clock ?? new SystemClock()
   const ids = options.ids ?? new CryptoIdGenerator()
