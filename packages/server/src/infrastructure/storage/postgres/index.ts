@@ -15,6 +15,12 @@ function toPostgres([sql, ...values]: SqlStatement) {
   return { text: sql.replace(/\?/g, () => `$${++position}`), values }
 }
 
+/**
+ * 用连接池组装 Hub 的 PostgreSQL 存储。
+ *
+ * @remarks 语句里的 `?` 占位符在发送前改写为 `$n`。成组写入在 READ COMMITTED 事务内执行，
+ * 给出 `lock` 时先取事务级咨询锁。
+ */
 export function createPostgresStorage({ connectionString, blobs }: PostgresStorageOptions) {
   const pool = new Pool({ connectionString })
   pool.on('error', (error) => {
@@ -51,6 +57,7 @@ export function createPostgresStorage({ connectionString, blobs }: PostgresStora
           }
           throw error
         } finally {
+          // 回滚也失败时销毁该连接，不放回池里
           client.release(connectionError)
         }
       },

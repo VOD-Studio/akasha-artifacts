@@ -11,9 +11,11 @@ export type S3BlobsOptions = Pick<
   'region' | 'endpoint' | 'forcePathStyle' | 'credentials'
 > & { bucket: string }
 
+/** 版本源码的 S3 兼容对象存储实现。 */
 export function createS3Blobs({ bucket, ...config }: S3BlobsOptions): VersionBlobs {
   const client = new S3Client(config)
   return {
+    /** 对象不存在时返回 `null`，其余错误原样抛出。 */
     async get(key) {
       try {
         const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }))
