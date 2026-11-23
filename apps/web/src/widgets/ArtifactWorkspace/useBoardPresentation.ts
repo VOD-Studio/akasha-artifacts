@@ -73,7 +73,7 @@ export function useBoardPresentation(document: CanvasDocument, visible: boolean)
           for (const board of page.boards) {
             if (visited.has(board.id)) continue
             visited.add(board.id)
-            if ((board.legacyBlockId ?? board.id) !== rawTarget) continue
+            if (board.id !== rawTarget && board.legacyBlockId !== rawTarget) continue
             if (
               document.flows.some(({ from, to }) => from === current.boardId && to === board.id)
             ) {

@@ -16,6 +16,8 @@ export interface CanvasBoard {
   width: number
   height: number
   type: ArtifactType
+  /** 未声明时沿用旧制品的网格布局。 */
+  position?: { x: number; y: number }
   source: string
   /** 从说明合成的内容并非源码片段。 */
   generated?: true
@@ -132,17 +134,19 @@ export function createCanvasDocument(
     if (placed.has(board.id)) continue
     placed.add(board.id)
     const id = boardIds.get(board.id) ?? board.id
+    const legacyBlockId = id !== board.id ? board.id : board.legacyId
     const entry: CanvasBoard = {
       id,
       title: board.title,
       subtitle: board.subtitle,
       recommended: board.recommended,
-      ...(id !== board.id ? { legacyBlockId: board.id } : {}),
+      legacyBlockId,
       type: 'html',
       source: board.html ?? descriptionMarkup(board.description ?? '空白画板'),
       ...(board.html === undefined ? { generated: true } : {}),
       scoped: true,
       ...(board.viewport ?? DEFAULT_VIEWPORT),
+      position: board.position,
     }
     if (!board.pageId) {
       shared.push(entry)

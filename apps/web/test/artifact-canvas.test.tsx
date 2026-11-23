@@ -731,3 +731,36 @@ it('沿用旧页定位链接完成重命名，确认删除时只移除该页直�
   expect(screen.queryByTitle('要移除的画板 隔离沙盒')).toBeNull()
   expect(JSON.parse(editor.current.version.source)).toMatchObject({ flows: [] })
 })
+
+it('画板表单打开后收到新版本时，保留未保存布局而不提交到新版本', () => {
+  const request = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json({}))
+  const view = showWorkspace()
+  fireEvent.click(screen.getByRole('button', { name: '设置画板：宽屏首页' }))
+  const width = screen.getByRole('spinbutton', { name: '宽度' })
+  fireEvent.change(width, { target: { value: '880' } })
+  view.update(
+    workspace(
+      detailFor(
+        2,
+        JSON.stringify({
+          ...design,
+          boards: design.boards.map((board) =>
+            board.id === 'desktop' ? { ...board, viewport: { width: 1000, height: 900 } } : board,
+          ),
+        }),
+      ),
+    ),
+  )
+  expect((screen.getByRole('spinbutton', { name: '宽度' }) as HTMLInputElement).value).toBe('880')
+  fireEvent.click(screen.getByRole('button', { name: '应用布局' }))
+
+  const alert = screen.getByRole('alert')
+  expect(within(alert).getByText('已保留基于 v1 的未保存操作。')).toBeTruthy()
+  expect(within(alert).getByRole('button', { name: '下载未保存源码' })).toBeTruthy()
+  expect(screen.getByTitle<HTMLIFrameElement>('宽屏首页 隔离沙盒').width).toBe('1000')
+  expect(
+    request.mock.calls.some(
+      ([path, init]) => path === '/api/v1/artifacts' && init?.method === 'POST',
+    ),
+  ).toBe(false)
+})

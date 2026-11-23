@@ -13,6 +13,7 @@ import {
 import { useSelectionStore } from '../../entities/selection/store'
 import type { BoardFramePurpose } from './ArtifactFrame'
 import { BoardPresentation } from './BoardPresentation'
+import { CanvasBoardActions, CanvasBoardEditNotice } from './CanvasBoardActions'
 import { CanvasToolbar, PageNavigator } from './CanvasControls'
 import type { CanvasPageEditing } from './CanvasPageActions'
 import {
@@ -25,6 +26,7 @@ import {
 } from './canvas-camera'
 import type { CanvasBoard, CanvasDocument, CanvasLocation, CanvasPage } from './canvas-model'
 import { useBoardPresentation } from './useBoardPresentation'
+import type { CanvasBoardEditing } from './useCanvasBoardEditing'
 import { useViewportSize } from './useViewportSize'
 
 /** 显式选板要求适配；元素指认与图层选择只在画板不可见时移动相机。 */
@@ -42,6 +44,7 @@ interface ArtifactCanvasProps {
   pageLink: (pageId: string) => string
   /** 只在可保存画布页面的头版本传入。 */
   pageEditing?: CanvasPageEditing
+  boardEditing?: CanvasBoardEditing
   /** 抽屉选板后定位；换工具不消费尚不可见的请求。 */
   reveal?: InspectorReveal | null
   onRevealHandled: () => void
@@ -107,6 +110,7 @@ export function ArtifactCanvas({
   onClearAddress,
   pageLink,
   pageEditing,
+  boardEditing,
   reveal,
   onRevealHandled,
   onLocationChange,
@@ -515,6 +519,7 @@ export function ArtifactCanvas({
             status={copyStatus}
             onStatus={setCopyStatus}
           />
+          {boardEditing ? <CanvasBoardEditNotice editing={boardEditing} /> : null}
         </div>
         <section
           ref={viewportRef}
@@ -666,6 +671,15 @@ export function ArtifactCanvas({
                           <Play size={15} />
                         </Button>
                       ) : null}
+                      {boardEditing ? (
+                        <CanvasBoardActions
+                          board={board}
+                          bounds={bounds}
+                          version={boardEditing.version}
+                          disabled={!boardEditing.available}
+                          onChange={boardEditing.change}
+                        />
+                      ) : null}
                     </div>
                     <div className="artifact-canvas-board-clip">
                       <div
@@ -709,6 +723,19 @@ export function ArtifactCanvas({
           camera={camera}
           hand={hand}
           onChangeTool={setCanvasTool}
+          onAddBoard={
+            boardEditing && page && !invalidAddress
+              ? () => {
+                  boardEditing.change({
+                    kind: 'create',
+                    id: crypto.randomUUID(),
+                    title: `画板 ${page.boards.length + 1}`,
+                    pageId: page.id,
+                  })
+                }
+              : undefined
+          }
+          canAddBoard={boardEditing?.available}
           canZoom={Boolean(page?.boards.length && !invalidAddress)}
           onZoom={zoom}
           onFitPage={

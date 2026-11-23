@@ -1,3 +1,6 @@
+/** `position` 与 `viewport` 在作者和画布编辑器中的共同约束。 */
+export const ARTBOARD_GEOMETRY_LIMITS = { coordinate: 1_000_000, viewport: 8192 } as const
+
 /** 画布页面：制品内的一组画板。 */
 export interface ArtboardPage {
   /** 源码里的 `id`；缺省时按数组下标生成 `page-<n>`。 */
@@ -16,19 +19,27 @@ export interface ArtboardBoard {
   id: string
   /** `id` 不是作者写的，而是解析时推断出来的。 */
   inferredId?: true
+  /** 首次保存旧制品时保留的隐式 ID，供原有原型导航引用。 */
+  legacyId?: string
   /** 必填；缺失时整个制品解析失败。 */
   title: string
+  /** 画板标题旁的辅助说明。 */
   subtitle?: string
   /** 所属页面的 `ArtboardPage.id`。 */
   pageId?: string
+  /** 作者声明的画板分组标识。 */
   groupId?: string
   /** 画板固有尺寸；宽高均为 1–8192 的整数才保留，否则丢弃。 */
   viewport?: { width: number; height: number }
+  /** 绝对画布坐标，单位 CSS 像素；缺省时仍参加自动排列。 */
+  position?: { x: number; y: number }
   /** 标记为推荐方案。 */
   recommended?: boolean
   /** 画板内容的 HTML 片段。 */
   html?: string
+  /** 没有 HTML 时用来生成画板内容的纯文本。 */
   description?: string
+  /** 作者提供的画板标签。 */
   tags?: string[]
 }
 
@@ -38,6 +49,7 @@ export interface ArtboardFlow {
   from: string
   /** 终点画板 id。 */
   to: string
+  /** 可选的流程连线说明。 */
   label?: string
 }
 
@@ -45,6 +57,7 @@ export interface ArtboardFlow {
 export interface ArtboardData {
   /** 缺省为「并排方案画板」。 */
   title: string
+  /** 制品主标题下的辅助说明。 */
   subtitle?: string
   /** 每行画板数，解析后收敛到 1–4。 */
   columns: number
@@ -87,7 +100,12 @@ function asStringArray(value: unknown): string[] | undefined {
 }
 
 function validSize(value: number | undefined): value is number {
-  return value !== undefined && Number.isSafeInteger(value) && value > 0 && value <= 8192
+  return (
+    value !== undefined &&
+    Number.isSafeInteger(value) &&
+    value > 0 &&
+    value <= ARTBOARD_GEOMETRY_LIMITS.viewport
+  )
 }
 
 /**
@@ -145,14 +163,24 @@ export function parseArtboardValue(value: unknown): ArtboardParseResult {
     const viewport = asRecord(rec.viewport)
     const width = asNumber(viewport?.width)
     const height = asNumber(viewport?.height)
+    const position = asRecord(rec.position)
+    const x = asNumber(position?.x)
+    const y = asNumber(position?.y)
     boards.push({
       id,
       title,
       ...(!authoredId && { inferredId: true }),
+      legacyId: asString(rec.legacyId)?.trim() || undefined,
       subtitle: asString(rec.subtitle),
       pageId: asString(rec.pageId),
       groupId: asString(rec.groupId),
       ...(validSize(width) && validSize(height) ? { viewport: { width, height } } : {}),
+      ...(x !== undefined &&
+      y !== undefined &&
+      Math.abs(x) <= ARTBOARD_GEOMETRY_LIMITS.coordinate &&
+      Math.abs(y) <= ARTBOARD_GEOMETRY_LIMITS.coordinate
+        ? { position: { x, y } }
+        : {}),
       recommended: asBoolean(rec.recommended),
       html: asString(rec.html),
       description: asString(rec.description),

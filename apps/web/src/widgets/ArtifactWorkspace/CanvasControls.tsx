@@ -9,6 +9,7 @@ import {
   Maximize,
   Minus,
   MousePointer2,
+  PanelTop,
   Pencil,
   Plus,
 } from 'lucide-react'
@@ -167,6 +168,8 @@ export function CanvasToolbar({
   onStartPicker,
   visualEditActive,
   onToggleVisualEdit,
+  onAddBoard,
+  canAddBoard,
 }: {
   camera: Camera
   hand: boolean
@@ -178,6 +181,8 @@ export function CanvasToolbar({
   onStartPicker: () => void
   visualEditActive: boolean | undefined
   onToggleVisualEdit: () => void
+  onAddBoard?: () => void
+  canAddBoard?: boolean
 }) {
   return (
     <>
@@ -255,6 +260,19 @@ export function CanvasToolbar({
         >
           <Hand size={15} />
         </Button>
+        {onAddBoard ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            iconOnly
+            aria-label="添加画板"
+            title="添加画板"
+            disabled={!canAddBoard}
+            onClick={onAddBoard}
+          >
+            <PanelTop size={15} />
+          </Button>
+        ) : null}
         <ElementPickerButton onStart={onStartPicker} />
         {visualEditActive !== undefined ? (
           <Button
