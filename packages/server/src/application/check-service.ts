@@ -78,10 +78,8 @@ function checkUniqueArrayIds(items: unknown, label: string): CheckDiagnostic[] {
 const JSON_REQUIRED_FIELDS: Partial<Record<ArtifactType, readonly string[]>> = {
   artboard: ['boards'],
   verify: ['claims'],
-  'pr-walkthrough': ['chapters'],
   'live-timeline': ['steps'],
   'option-compare': ['options'],
-  'data-story': ['datasets'],
 }
 
 // 发布前静态校验门禁：在把链接发给用户前拦截越界依赖、非法 JSON、重复块 ID 与沙盒违规。

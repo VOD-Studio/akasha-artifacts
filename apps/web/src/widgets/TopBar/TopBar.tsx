@@ -9,9 +9,11 @@ import {
   DropdownMenuTrigger,
 } from '@akasha/ui/dropdown-menu'
 import { ArrowLeft, Code2, Ellipsis, GitCompare, MessageSquare, Pencil, Search } from 'lucide-react'
+import { useState } from 'react'
 import { useSelectionStore } from '../../entities/selection/store'
 import { useWorkspaceStore, type WorkspaceViewMode } from '../../entities/workspace/store'
 import { ExportHtmlMenuItem } from '../../features/export-html/ExportHtmlMenuItem'
+import { HubAccountButton, HubShareDialog, HubShareMenuItem } from '../../features/hub/HubActions'
 import { VersionTimeline } from '../../features/version-timeline/VersionTimeline'
 
 export interface TopBarProps {
@@ -33,6 +35,7 @@ export function TopBar({
   onBackToLibrary,
   onSelectVersion,
 }: TopBarProps) {
+  const [shareLink, setShareLink] = useState<string | null>(null)
   const viewMode = useWorkspaceStore((s) => s.viewMode)
   const setViewMode = useWorkspaceStore((s) => s.setViewMode)
   const inspectorOpen = useWorkspaceStore((s) => s.inspectorTab !== null)
@@ -128,6 +131,7 @@ export function TopBar({
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <ExportHtmlMenuItem artifact={artifact} version={version} />
+            <HubShareMenuItem publicId={artifact.publicId} onShare={setShareLink} />
             <DropdownMenuItem onSelect={() => setCommandPaletteOpen(true)}>
               <Search size={14} />
               快速跳转
@@ -136,6 +140,8 @@ export function TopBar({
             <DropdownMenuLabel>{agentStatus}</DropdownMenuLabel>
           </DropdownMenuContent>
         </DropdownMenu>
+        <HubAccountButton />
+        {shareLink ? <HubShareDialog link={shareLink} onClose={() => setShareLink(null)} /> : null}
       </div>
     </header>
   )

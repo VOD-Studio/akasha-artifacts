@@ -26,6 +26,8 @@ import { useArtifactsQuery } from '../../entities/artifact/queries'
 import { useProjectsQuery, useRemoveProjectMutation } from '../../entities/project/queries'
 import { useWorkspaceStore } from '../../entities/workspace/store'
 import { DaemonStatusPill } from '../../features/daemon-control/DaemonStatusPill'
+import { HubAccountButton } from '../../features/hub/HubActions'
+import { isCloudHub } from '../../shared/config/runtime'
 import { ARTIFACT_TYPE_LABELS, formatRelativeTime } from '../../shared/lib/format'
 
 export interface LibraryShellProps {
@@ -173,7 +175,7 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
             快速跳转
             <Kbd size="sm" keys={['mod', 'K']} className="ml-1.5" />
           </Button>
-          <DaemonStatusPill />
+          {isCloudHub() ? <HubAccountButton /> : <DaemonStatusPill />}
         </div>
       </header>
 

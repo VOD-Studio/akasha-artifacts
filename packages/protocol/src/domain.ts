@@ -82,6 +82,8 @@ export const ElementRectSchema = z.object({
 })
 export type ElementRect = z.infer<typeof ElementRectSchema>
 
+export const DATA_POINT_SELECTION_LIMITS = { points: 64, id: 96, label: 240 } as const
+
 // 元素定位契约：优先级 blockId > loc > selector > textPreview，至少须有一项非空
 export const ElementRefSchema = z
   .object({
@@ -93,6 +95,27 @@ export const ElementRefSchema = z
     selector: z.string().min(1).optional(),
     rect: ElementRectSchema.optional(),
     textPreview: z.string().max(400).optional(),
+    dataPoints: z
+      .object({
+        datasetId: z.string().min(1).max(DATA_POINT_SELECTION_LIMITS.id),
+        chartId: z.string().min(1).max(DATA_POINT_SELECTION_LIMITS.id),
+        chartTitle: z.string().min(1).max(DATA_POINT_SELECTION_LIMITS.label),
+        valueLabel: z.string().min(1).max(DATA_POINT_SELECTION_LIMITS.label),
+        points: z
+          .array(
+            z.object({
+              id: z.string().min(1).max(DATA_POINT_SELECTION_LIMITS.id),
+              label: z.string().max(DATA_POINT_SELECTION_LIMITS.label),
+              value: z.number(),
+            }),
+          )
+          .min(1)
+          .max(DATA_POINT_SELECTION_LIMITS.points)
+          .refine((points) => new Set(points.map((point) => point.id)).size === points.length, {
+            message: '所选数据点的标识必须唯一',
+          }),
+      })
+      .optional(),
   })
   .refine(
     (ref) => Boolean(ref.blockId || ref.loc || ref.selector || ref.textPreview),

@@ -86,11 +86,6 @@ export class RealtimeEventHub implements RealtimePublisher, RealtimeSubscriber {
     state: AgentActivityState
     summary?: string
   }): Promise<void> {
-    this.agentActivities.set(input.projectId, {
-      state: input.state,
-      summary: input.summary,
-      updatedAt: this.options.clock.now(),
-    })
     await this.publish(
       {
         type: 'agent.activity',
@@ -113,6 +108,14 @@ export class RealtimeEventHub implements RealtimePublisher, RealtimeSubscriber {
       seq: this.seq,
       timestamp: this.options.clock.now(),
     } as RealtimeServerEvent
+
+    if (event.type === 'agent.activity') {
+      this.agentActivities.set(event.projectId, {
+        state: event.state,
+        summary: event.summary,
+        updatedAt: event.timestamp,
+      })
+    }
 
     const artifactId = 'artifactId' in event ? event.artifactId : undefined
     let projectId = meta?.projectId ?? ('projectId' in event ? event.projectId : undefined)

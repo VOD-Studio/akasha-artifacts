@@ -19,8 +19,10 @@ import { useDaemonStatusQuery } from '../entities/daemon/queries'
 import { useArtifactFeedbackQuery } from '../entities/feedback/queries'
 import { useWorkspaceStore } from '../entities/workspace/store'
 import { ArtifactCommandPalette } from '../features/command-palette/ArtifactCommandPalette'
+import { HubAccountButton } from '../features/hub/HubActions'
 import { useLiveSync } from '../features/live-sync/useLiveSync'
-import { resolveSandboxOrigin } from '../shared/config/runtime'
+import { useLocalArtifactRedirect } from '../shared/config/local-artifact'
+import { isCloudHub, resolveSandboxOrigin } from '../shared/config/runtime'
 import { ArtifactWorkspace } from '../widgets/ArtifactWorkspace/ArtifactWorkspace'
 import { LibraryShell } from '../widgets/LibraryShell/LibraryShell'
 import { TopBar } from '../widgets/TopBar/TopBar'
@@ -38,7 +40,7 @@ function RootLayout() {
 
 function LibraryPage() {
   const navigate = useNavigate()
-  useLiveSync({})
+  useLiveSync({ enabled: !isCloudHub() })
   useLayoutEffect(() => {
     useWorkspaceStore.getState().openArtifactView(null)
   }, [])
@@ -57,6 +59,7 @@ function ArtifactRouteView({
   requestedVersion?: number
 }) {
   const navigate = useNavigate()
+  const probingLocal = useLocalArtifactRedirect(identifier, requestedVersion)
   const { data: daemonStatus } = useDaemonStatusQuery()
   const detailQuery = useArtifactDetailQuery(identifier, requestedVersion)
   const publicId = detailQuery.data?.artifact.publicId
@@ -96,9 +99,9 @@ function ArtifactRouteView({
   }, [detailQuery.data?.artifact.publicId, identifier, requestedVersion, navigate])
 
   useLiveSync({
-    artifactId: detailQuery.data?.artifact.publicId,
+    artifactId: publicId,
     projectId: detailQuery.data?.artifact.projectId,
-    enabled: Boolean(detailQuery.data?.artifact.publicId),
+    enabled: Boolean(publicId) && !probingLocal,
     onStatePatched: (evt) => {
       if (
         requestedVersion === undefined &&
@@ -109,11 +112,11 @@ function ArtifactRouteView({
     },
   })
 
-  if (detailQuery.isLoading) {
+  if (probingLocal || detailQuery.isLoading) {
     return (
       <div className="flex h-screen items-center justify-center gap-2 bg-canvas text-sm text-ink-muted">
         <Spinner size={16} />
-        正在加载 Artifact…
+        {probingLocal ? '正在查找本机制品…' : '正在加载 Artifact…'}
       </div>
     )
   }
@@ -132,6 +135,7 @@ function ArtifactRouteView({
             }
           />
         </div>
+        <HubAccountButton />
         <Button variant="outline" onClick={() => void navigate({ to: '/' })}>
           返回多项目库
         </Button>

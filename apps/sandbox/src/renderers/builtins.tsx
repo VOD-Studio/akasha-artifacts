@@ -15,6 +15,7 @@ import {
 } from 'react'
 import { ArtifactCompileError, compileReactArtifact } from '../runtime/compiler'
 import { usePersistentControl } from '../state/preserve'
+import { DataStoryRenderer } from './data-story'
 import {
   ArtboardRenderer,
   DocumentRenderer,
@@ -22,6 +23,7 @@ import {
   OptionCompareRenderer,
   VerifyRenderer,
 } from './kit-renderers'
+import { PrWalkthroughRenderer } from './pr-walkthrough'
 import { type RendererProps, registerRenderer } from './registry'
 import { sanitizeMarkup } from './sanitize'
 
@@ -100,7 +102,7 @@ class ArtifactErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryS
   }
 }
 
-function HtmlRenderer({ source, preserved, onRendered }: RendererProps) {
+function HtmlRenderer({ source, version, preserved, onRendered }: RendererProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const onRenderedRef = useRef(onRendered)
   onRenderedRef.current = onRendered
@@ -111,9 +113,9 @@ function HtmlRenderer({ source, preserved, onRendered }: RendererProps) {
     const instrumented = injectHtmlLocations(source).code
     el.innerHTML = sanitizeMarkup(instrumented, 'html')
     const cleanup = preserved.bindDomPersistence(el, window)
-    onRenderedRef.current()
+    onRenderedRef.current(version)
     return cleanup
-  }, [source, preserved])
+  }, [source, version, preserved])
 
   return <div ref={containerRef} data-ak-renderer="html" className="ak-html-root p-4" />
 }
@@ -353,7 +355,7 @@ function ReactRenderer({ source, version, preserved, onError, onRendered }: Rend
     const el = hostRef.current
     if (!el || !compiled) return
     const cleanup = preserved.bindDomPersistence(el, window)
-    onRenderedRef.current()
+    onRenderedRef.current(compiled.version)
     return cleanup
   }, [compiled, preserved])
 
@@ -390,32 +392,6 @@ function ReactRenderer({ source, version, preserved, onError, onRendered }: Rend
   )
 }
 
-function StructuredJsonFallbackRenderer({ source, onRendered }: RendererProps) {
-  const onRenderedRef = useRef(onRendered)
-  onRenderedRef.current = onRendered
-
-  let formatted = source
-  try {
-    formatted = JSON.stringify(JSON.parse(source), null, 2)
-  } catch {
-    // 非 JSON 则按原文展示
-  }
-
-  useEffect(() => {
-    if (formatted.length >= 0) {
-      onRenderedRef.current()
-    }
-  }, [formatted])
-
-  return (
-    <div data-ak-renderer="structured" className="p-5">
-      <pre className="overflow-auto rounded-xl border border-slate-200 bg-slate-50 p-4 font-mono text-xs text-slate-800">
-        {formatted}
-      </pre>
-    </div>
-  )
-}
-
 let builtinsRegistered = false
 
 export function registerBuiltinRenderers(): void {
@@ -432,6 +408,6 @@ export function registerBuiltinRenderers(): void {
   registerRenderer('verify', (props) => <VerifyRenderer {...props} />)
   registerRenderer('live-timeline', (props) => <LiveTimelineRenderer {...props} />)
   registerRenderer('option-compare', (props) => <OptionCompareRenderer {...props} />)
-  registerRenderer('pr-walkthrough', (props) => <StructuredJsonFallbackRenderer {...props} />)
-  registerRenderer('data-story', (props) => <StructuredJsonFallbackRenderer {...props} />)
+  registerRenderer('pr-walkthrough', (props) => <PrWalkthroughRenderer {...props} />)
+  registerRenderer('data-story', (props) => <DataStoryRenderer {...props} />)
 }

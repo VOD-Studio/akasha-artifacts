@@ -43,13 +43,13 @@ Anthropic 官方的 _Claude Code Artifacts_ 允许从 CLI 会话生成实时网�
 
 **Akasha 彻底解决了以上三个痛点：**
 
-| 维度             | Claude Code 官方 Artifacts      | Akasha (`VOD-Studio/akasha-artifacts`)                                                                   |
-| :--------------- | :------------------------------ | :------------------------------------------------------------------------------------------------------- |
-| **兼容 Agent**   | 仅限 Claude Code                | **Antigravity / Codex CLI / Claude Code / Cursor / Gemini CLI / Aider**（通过 MCP 与 CLI）               |
-| **部署与隐私**   | 强制上传 `claude.ai` 官方公有云 | **Local + Cloud 双模**：本地 `localhost` 零配置秒开 **+ 团队私有云部署**（Docker / Cloudflare / Vercel） |
-| **实时原地更新** | 支持                            | **支持** —— 整页版本发布（`v1..vn`）**+ 零闪烁 JSON 状态流式增量推送（`artifact_push_state`）**          |
-| **工程组件原语** | 模型每次从零手写页面            | **内置 `@akasha/kit`**：`<PRWalkthrough />`、`<LiveTimeline />`、`<OptionCompare />`、`<DataStory />`    |
-| **交互方向**     | 单向浏览（只读快照）            | **双向人机协同（HITL）**：行内 Diff 批注、方案投票、审批按钮直接唤醒或回传给 CLI Agent                   |
+| 维度             | Claude Code 官方 Artifacts      | Akasha (`VOD-Studio/akasha-artifacts`)                                                                |
+| :--------------- | :------------------------------ | :---------------------------------------------------------------------------------------------------- |
+| **兼容 Agent**   | 仅限 Claude Code                | **Antigravity / Codex CLI / Claude Code / Cursor / Gemini CLI / Aider**（通过 MCP 与 CLI）            |
+| **部署与隐私**   | 强制上传 `claude.ai` 官方公有云 | **Local + Cloud 双模**：本地 `localhost` 零配置秒开 **+ 团队私有云部署**（Docker）                    |
+| **实时原地更新** | 支持                            | **支持** —— 整页版本发布（`v1..vn`）**+ 零闪烁 JSON 状态流式增量推送（`artifact_push_state`）**       |
+| **工程组件原语** | 模型每次从零手写页面            | **内置 `@akasha/kit`**：`<PRWalkthrough />`、`<LiveTimeline />`、`<OptionCompare />`、`<DataStory />` |
+| **交互方向**     | 单向浏览（只读快照）            | **双向人机协同（HITL）**：行内 Diff 批注、方案投票、审批按钮直接唤醒或回传给 CLI Agent                |
 
 ---
 
@@ -75,8 +75,8 @@ Anthropic 官方的 _Claude Code Artifacts_ 允许从 CLI 会话生成实时网�
 ### 3. 本地优先 + 团队云端（Local + Cloud Hub）双模架构
 
 - **本地模式（Local Daemon）**：零外部依赖，本机 `http://localhost:24321/a/:id` 即刻预览。
-- **团队私有云模式（Cloud Hub）**：支持单 Docker 容器私有化部署或 Cloudflare Workers（Durable Objects + D1 + R2）零成本 Serverless 部署，生成团队持久化链接（如 `https://akasha.your-team.dev/a/:id`）。
-  - **双域名沙盒安全隔离（Origin Isolation）**：AI 生成的不可信前端代码运行在独立沙盒子域名（`*.sandbox.your-team.dev`）的严格 CSP `iframe` 中，彻底杜绝 XSS 窃取主站 Cookie 或 Token。
+- **团队私有云模式（Cloud Hub）**：支持单 Docker 镜像私有化部署，生成团队持久化链接（如 `https://akasha.your-team.dev/a/:id`）。
+  - **双域名沙盒安全隔离（Origin Isolation）**：不可信的制品 HTML/React 运行在另一个注册域名下，受独立的严格 CSP 约束。
   - **三级权限控制**：`private`（仅创建者与签名链接）、`team`（团队 SSO / GitHub OAuth 登录可见）、`public`（公开只读分享）。
   - **在线实时 + 离线异步反馈队列**：当开发者的 CLI 在线时（`● Live with Agent`），同事在网页上的评审操作毫秒级穿透回终端唤醒 Agent；当开发者合上电脑离线时（`○ Snapshot`），同事的行内批注自动存入云端队列，下次 Agent 启动时一键拉取处理。
 
@@ -95,7 +95,7 @@ flowchart TB
 
     subgraph Modes["Local + Cloud 统一双模协议"]
         LOCAL["Local Daemon (localhost:24321 · 内存 / SQLite)"]
-        CLOUD["Cloud Artifact Hub (Docker / Cloudflare Workers · Postgres/D1 + S3/R2)"]
+        CLOUD["Cloud Artifact Hub (Docker · SQLite 或 PostgreSQL + 可选 S3)"]
     end
 
     subgraph Browser["交互式 Artifact 画布"]
@@ -123,16 +123,16 @@ flowchart TB
 | **M1** | 整机单例 Local Daemon（Hono + SQLite）、WS 断线补齐、MCP 工具、`check` 校验门禁、热更新保态沙盒、多项目外壳工作台        | 已完成 |
 | **M2** | L1 元素指认与选中框、`ReviewRound` 草稿/整轮提交防打断回路、`receipt/ack`、多 Harness Hooks 与 Skills、运行报错修复回路  | 已完成 |
 | **M3** | `@akasha/kit` schema 引擎与 L2 属性面板、`artboard` / `document` / `verify`、L3 分栏代码编辑、`.artifacts/` 原生文件模式 | 已完成 |
-| **M4** | L4 可视化直改（AST 回写与撤销）与 `window.akasha.storage` 作用域存储                                                     | 计划中 |
-| **M5** | Docker 单容器 Cloud Hub 自托管（OAuth、可见性权限、离线反馈队列、本机访问优先直连 Daemon）                               | 计划中 |
-| **M6** | Cloudflare Workers（D1 + R2 + Durable Objects）与多人 CRDT 协同编辑                                                      | 计划中 |
+| **M4** | L4 可视化直改（AST 回写与撤销）、作用域存储、PR 走查与数据故事模板                                                       | 已完成 |
+| **M5** | Docker 单容器 Cloud Hub 自托管（OAuth、可见性权限、离线反馈队列、本机访问优先直连 Daemon）                               | 已完成 |
+| **M6** | Cloudflare Workers（D1 + R2 + Durable Objects）与多人 CRDT 协同编辑                                                      | 未实现 |
 
 ---
 
 ## 快速开始
 
 > [!NOTE]
-> 本地守护进程（`akasha serve`，同时支持默认 SQLite 与 `--storage fs` 项目内 `.artifacts/` 原生文件模式）、完整 MCP 服务（`akasha mcp`）、隔离沙盒运行时、`@akasha/kit` 工程与决策模板（`artboard`、`document`、`verify`、`live-timeline`、`option-compare`）、L1/L2/L3 协同编辑以及多端插件安装器（`akasha install` / `akasha doctor`）现已可用（**M3**）；团队 Cloud Hub 容器部署计划在 **M5** 交付。
+> `akasha serve` 启动本地工作台、MCP 后端与隔离沙盒。打开制品即可操作画布，按需打开批注抽屉，也可直改静态 HTML/React 节点。Kit 还提供 `pr-walkthrough` 与 `data-story`。以下 Hub 部署方式需要自备域名和 OAuth App。
 
 ### 1. 接入你的编程 Agent（MCP 与 Hooks — M1/M2）
 
@@ -169,22 +169,29 @@ npx -y akasha-artifacts doctor --harness claude-code
 claude mcp add akasha -- npx -y akasha-artifacts mcp
 ```
 
-### 2. 团队云端部署（Cloud Hub 自托管 — M5）
+### 2. 团队云端部署（Docker）
+
+按[单镜像部署指南](deploy/docker/README.md)配置[环境变量](deploy/docker/.env.example)。默认 SQLite，可选 PostgreSQL 和 S3 兼容对象存储。生产外壳与沙盒必须使用不同的注册域名。
+
+先登录，再将 MCP 接到团队 Hub：
 
 ```bash
-# 单容器 Docker 部署（默认内置 SQLite，生产环境可配置 Postgres + S3/R2）
-docker run -d \
-  --name akasha-hub \
-  -p 24321:24321 \
-  -v ./akasha-data:/data \
-  ghcr.io/vod-studio/akasha-artifacts:latest
+npx akasha-artifacts login --hub https://akasha.example.com
+npx akasha-artifacts mcp --hub https://akasha.example.com
 ```
 
-将本地 CLI 登录绑定至团队 Cloud Hub：
+本机已绑定该 Hub 且持有同一制品时，打开 Hub 链接会优先进入本机工作台。
 
-```bash
-npx akasha-artifacts login --hub https://akasha.your-team.dev
+### 3. 制品作用域存储
+
+```js
+await window.akasha.storage.set('layout', { compact: true })
+const layout = await window.akasha.storage.get('layout')
+const keys = await window.akasha.storage.list({ scope: 'shared', prefix: 'team:' })
+await window.akasha.storage.delete('layout')
 ```
+
+默认 `private` 按制品和用户隔离。`shared` 对该制品的查看者可读、编辑者可写。每个作用域最多 128 个键、总计 64 KiB；单键不超过 128 字节，单个 JSON 值不超过 16 KiB。不存在的键返回 `null`。存储请求由外壳转发，沙盒不发起网络请求。
 
 ---
 

@@ -1,8 +1,10 @@
+import { applyVisualEdit, inspectVisualTarget, VisualEditError } from '@akasha/jsx-source/edit'
 import type {
   Artifact,
   ArtifactIdentifier,
   ArtifactType,
   Author,
+  EditOp,
   ElementRef,
   Feedback,
   FeedbackKind,
@@ -60,6 +62,24 @@ export interface ArtifactServiceDeps {
 }
 
 const DEFAULT_PROJECT_ID = 'default'
+const VISUAL_EDIT_LABEL = '可视化直改：'
+const VISUAL_EDIT_FEEDBACK_PREFIX = 'visualedit'
+const VISUAL_UNDO_LABEL = '撤销可视化直改 v'
+const VISUAL_EDIT_KIND_LABEL = {
+  text: '修改文字',
+  className: '调整 Tailwind 类名',
+  attr: '修改属性',
+  move: '调整兄弟元素顺序',
+  remove: '删除元素',
+} satisfies Record<EditOp['kind'], string>
+
+interface VisualEditBase {
+  id: ArtifactIdentifier
+  projectId?: string
+  baseVersion: number
+}
+
+type VisualEditCommand = { op: EditOp } | { undoVersion: number }
 
 export class ArtifactService {
   // 分别串行化同一 Artifact 的版本写入与状态流补丁，避免并发读-检-写竞态
@@ -268,6 +288,138 @@ export class ArtifactService {
       )
       return { artifact: updated, version }
     })
+  }
+
+  async inspectVisualEdit(input: VisualEditBase & { loc?: string }) {
+    const artifact = await this.resolveArtifact(input.id, input.projectId)
+    const head = await this.visualEditHead(artifact, input.baseVersion)
+    if (input.loc) return { target: inspectVisualTarget(artifact.type, head.source, input.loc) }
+    return { undoVersion: (await this.findVisualUndo(artifact, head))?.version ?? null }
+  }
+
+  async previewVisualEdit(input: VisualEditBase & VisualEditCommand): Promise<string> {
+    const artifact = await this.resolveArtifact(input.id, input.projectId)
+    const head = await this.visualEditHead(artifact, input.baseVersion)
+    return this.visualEditSource(artifact, head, input)
+  }
+
+  async visualEdit(input: VisualEditBase & VisualEditCommand & { author: Author }) {
+    if (!input.author.startsWith('human:')) {
+      throw new DomainError('FORBIDDEN', '可视化直改仅支持人类作者')
+    }
+    const resolved = await this.resolveArtifact(input.id, input.projectId)
+    return this.withArtifactLock(resolved.publicId, async () => {
+      const artifact = await this.deps.artifacts.findByPublicId(resolved.publicId)
+      if (!artifact) throw new NotFoundError(`未找到 Artifact "${resolved.publicId}"`)
+      const head = await this.visualEditHead(artifact, input.baseVersion)
+      const source = await this.visualEditSource(artifact, head, input)
+      if (source === head.source) return { artifact, version: head }
+      const now = this.deps.clock.now()
+      const version = createImmutableVersion({
+        artifactId: artifact.publicId,
+        version: head.version + 1,
+        parentVersion: head.version,
+        author: input.author,
+        title: head.title,
+        source,
+        createdAt: now,
+      })
+      const updated = { ...artifact, headVersion: version.version, updatedAt: now }
+      await this.deps.artifacts.appendVersion(version)
+      await this.deps.artifacts.saveArtifact(updated)
+      await this.submitFeedback(
+        {
+          id: updated.publicId,
+          projectId: updated.projectId,
+          version: version.version,
+          kind: 'edit',
+          // loc 属于基准源码；写入新版本后位置可能漂移，不把它当作新版本的图钉。
+          body:
+            'op' in input
+              ? `${VISUAL_EDIT_LABEL}${VISUAL_EDIT_KIND_LABEL[input.op.kind]}（v${head.version}，${input.op.loc}）`
+              : `${VISUAL_UNDO_LABEL}${input.undoVersion}`,
+          author: input.author,
+        },
+        VISUAL_EDIT_FEEDBACK_PREFIX,
+      )
+      await this.deps.realtime.publish(
+        { type: 'version.created', artifactId: updated.publicId, version },
+        { projectId: updated.projectId },
+      )
+      return { artifact: updated, version }
+    })
+  }
+
+  private async visualEditHead(
+    artifact: Artifact,
+    baseVersion: number,
+  ): Promise<Readonly<Version>> {
+    if (baseVersion !== artifact.headVersion) {
+      assertBaseVersion(
+        artifact,
+        await this.deps.artifacts.getVersions(artifact.publicId),
+        baseVersion,
+      )
+    }
+    const head = await this.deps.artifacts.getVersion(artifact.publicId, artifact.headVersion)
+    if (!head) throw new NotFoundError(`缺少头版本 v${artifact.headVersion}`)
+    return head
+  }
+
+  private async visualEditSource(
+    artifact: Artifact,
+    head: Readonly<Version>,
+    command: VisualEditCommand,
+  ): Promise<string> {
+    if ('op' in command) {
+      try {
+        return applyVisualEdit(artifact.type, head.source, command.op)
+      } catch (error) {
+        if (!(error instanceof VisualEditError)) throw error
+        throw new DomainError('BAD_REQUEST', error.message, { annotationOnly: true })
+      }
+    }
+    const edited = await this.findVisualUndo(artifact, head)
+    if (
+      edited?.version !== command.undoVersion ||
+      !edited.parentVersion ||
+      edited.source !== head.source
+    ) {
+      throw new DomainError('BAD_REQUEST', '只能撤销当前源码中的最近一次直改')
+    }
+    const parent = await this.deps.artifacts.getVersion(artifact.publicId, edited.parentVersion)
+    if (!parent) throw new NotFoundError(`缺少基准版本 v${edited.parentVersion}`)
+    return parent.source
+  }
+
+  private async findVisualUndo(
+    artifact: Artifact,
+    head: Readonly<Version>,
+  ): Promise<Readonly<Version> | undefined> {
+    if (!head.parentVersion || (artifact.type !== 'react' && artifact.type !== 'html'))
+      return undefined
+    const { items } = await this.deps.feedbacks.list({ artifactId: artifact.publicId })
+    const editNotes = new Map<number, string>()
+    for (const item of items) {
+      if (
+        item.kind === 'edit' &&
+        item.id.startsWith(`${VISUAL_EDIT_FEEDBACK_PREFIX}_`) &&
+        item.version <= head.version
+      ) {
+        editNotes.set(item.version, item.body)
+      }
+    }
+    const versions = await this.deps.artifacts.getVersions(artifact.publicId)
+    const stack: Readonly<Version>[] = []
+    // 任何普通发布、代码保存或历史回退都会打断直改撤销链。
+    for (const version of [...versions].sort((a, b) => a.version - b.version)) {
+      if (version.version > head.version) break
+      const note = editNotes.get(version.version)
+      if (note?.startsWith(VISUAL_EDIT_LABEL)) stack.push(version)
+      else if (note === `${VISUAL_UNDO_LABEL}${stack.at(-1)?.version}`) stack.pop()
+      else stack.length = 0
+    }
+    return stack.at(-1)
   }
 
   // 回退历史版本同样作为一次新写入，不覆盖或篡改既有不可变版本历史。
@@ -529,17 +681,20 @@ export class ArtifactService {
     return withdrawn
   }
 
-  async submitFeedback(input: {
-    id: ArtifactIdentifier
-    projectId?: string
-    version: number
-    roundId?: string | null
-    groupId?: string | null
-    kind: FeedbackKind
-    element?: ElementRef | null
-    body: string
-    author: Author
-  }): Promise<Feedback> {
+  async submitFeedback(
+    input: {
+      id: ArtifactIdentifier
+      projectId?: string
+      version: number
+      roundId?: string | null
+      groupId?: string | null
+      kind: FeedbackKind
+      element?: ElementRef | null
+      body: string
+      author: Author
+    },
+    idPrefix = 'fb',
+  ): Promise<Feedback> {
     const artifact = await this.resolveArtifact(input.id, input.projectId)
     const ver = await this.deps.artifacts.getVersion(artifact.publicId, input.version)
     if (!ver) {
@@ -550,7 +705,7 @@ export class ArtifactService {
       : undefined
     const now = this.deps.clock.now()
     const feedback: Feedback = {
-      id: this.deps.ids.id('fb'),
+      id: this.deps.ids.id(idPrefix),
       artifactId: artifact.publicId,
       version: input.version,
       roundId: input.roundId ?? null,

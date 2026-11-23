@@ -49,3 +49,31 @@ jobs:
           REPO: ${{ github.repository }}
           BRANCH: ${{ needs.release-please.outputs.pr_branch }}
         run: bash scripts/ci/dispatch-bot-ci.sh "$REPO" "$BRANCH"
+
+  hub-image:
+    name: 发布 Cloud Hub 容器
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+      - env:
+          GHCR_TOKEN: ${{ github.token }}
+          GHCR_USER: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          repo="ghcr.io/${REPO,,}"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USER" --password-stdin
+          make hub-image IMAGE="$repo:${TAG#v}"
+          docker tag "$repo:${TAG#v}" "$repo:latest"
+          docker push "$repo:${TAG#v}"
+          docker push "$repo:latest"

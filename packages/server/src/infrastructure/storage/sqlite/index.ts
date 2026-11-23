@@ -21,6 +21,7 @@ import type {
   Version,
   Visibility,
 } from '@akasha/protocol'
+import type { ArtifactStorageRepository } from '../../../domain/artifact-storage.js'
 import { deepFreeze } from '../../../domain/freeze.js'
 import type {
   ArtifactRepository,
@@ -30,6 +31,7 @@ import type {
   RoundRepository,
   StateRepository,
 } from '../../../domain/ports.js'
+import { createSqliteArtifactStorage } from './artifact-kv.js'
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS projects (
@@ -134,6 +136,7 @@ export class SqliteStorage {
   readonly rounds: SqliteRoundRepository
   readonly feedbacks: SqliteFeedbackRepository
   readonly receipts: SqliteReceiptRepository
+  readonly artifactStorage: ArtifactStorageRepository
 
   constructor(dbPath: string) {
     if (dbPath !== ':memory:') {
@@ -151,6 +154,7 @@ export class SqliteStorage {
     this.rounds = new SqliteRoundRepository(this.db)
     this.feedbacks = new SqliteFeedbackRepository(this.db)
     this.receipts = new SqliteReceiptRepository(this.db)
+    this.artifactStorage = createSqliteArtifactStorage(this.db)
   }
 
   getEventSeq(): number {

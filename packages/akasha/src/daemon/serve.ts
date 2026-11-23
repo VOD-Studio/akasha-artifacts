@@ -1,7 +1,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { PublicIdSchema } from '@akasha/protocol'
 import { buildLoopbackOrigins, startNodeServer } from '@akasha/server'
+import { readHubLogin } from '../hub/login.js'
 import { startSandboxServer } from './sandbox-server.js'
 import {
   acquireDaemonLock,
@@ -130,6 +132,34 @@ export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
 
   const activeNodeSrv = nodeSrv
   const activeSandboxSrv = sandboxSrv
+
+  // 仅向本机已登录的 Hub 公开命中与否，不返回制品数据、Cookie 或 Daemon 令牌。
+  activeNodeSrv.app.on(['GET', 'OPTIONS'], '/api/v1/local-artifact/:id', async (c) => {
+    const origin = c.req.header('Origin')
+    if (!origin || readHubLogin(homeDir)?.origin !== origin) return c.body(null, 404)
+    const headers = {
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Methods': 'GET',
+      'Access-Control-Allow-Private-Network': 'true',
+      'Cache-Control': 'no-store',
+      Vary: 'Origin',
+    }
+    if (c.req.method === 'OPTIONS') return c.body(null, 204, headers)
+    const id = PublicIdSchema.safeParse(c.req.param('id'))
+    if (!id.success || !(await activeNodeSrv.repositories.artifacts.findByPublicId(id.data))) {
+      return c.body(null, 404, headers)
+    }
+    const version = c.req.query('version')
+    if (version !== undefined) {
+      if (
+        !/^[1-9]\d*$/.test(version) ||
+        !(await activeNodeSrv.repositories.artifacts.getVersion(id.data, Number(version)))
+      ) {
+        return c.body(null, 404, headers)
+      }
+    }
+    return c.body(null, 204, headers)
+  })
 
   // 挂载外壳 SPA 静态产物（排除 /api/* 与 /auth/*）
   const webDir = options.webDir ?? defaultAssetDir('apps/web/dist')

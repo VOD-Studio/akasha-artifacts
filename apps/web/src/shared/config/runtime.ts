@@ -3,8 +3,13 @@ declare global {
     __AKASHA_CONFIG__?: {
       sandboxOrigin?: string
       apiBaseUrl?: string
+      hub?: boolean
     }
   }
+}
+
+export function isCloudHub(): boolean {
+  return typeof window !== 'undefined' && window.__AKASHA_CONFIG__?.hub === true
 }
 
 export function getApiBaseUrl(): string {

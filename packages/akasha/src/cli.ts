@@ -16,6 +16,8 @@ import { ArtifactTypeSchema } from '@akasha/protocol'
 import { CheckService, SpecRegistry } from '@akasha/server'
 import { ensureDaemon, probeDaemon, stopDaemon } from './daemon/lifecycle.js'
 import { AKASHA_VERSION, startAkashaDaemon } from './daemon/serve.js'
+import { DEFAULT_SHELL_PORTS, resolveAkashaHome } from './daemon/state.js'
+import { loginToHub, parseHubOrigin, readHubLogin, registerHubProject } from './hub/login.js'
 import { installHarnessPlugin, runDoctor, SUPPORTED_HARNESSES } from './install/index.js'
 
 export function formatCliBanner(): string {
@@ -115,6 +117,7 @@ function printHelp(): void {
 
 命令：
   serve    启动整机单例 Local Daemon（默认端口 24321，沙盒 24331）
+  login    登录团队 Cloud Hub（akasha login --hub <origin>）
   mcp      启动 stdio MCP Server（本地目标自动拉起并复用 Daemon）
   status   查看运行中 Daemon 的状态与端口
   stop     平滑停止整机 Daemon
@@ -174,8 +177,21 @@ export async function runCli(argv: string[]): Promise<number> {
       return 0
     }
 
+    case 'login': {
+      const origin = strFlag('hub') ?? positional[0] ?? process.env.AKASHA_HUB_URL
+      if (!origin) {
+        console.error('用法：akasha login --hub <origin>')
+        return 2
+      }
+      await loginToHub(parseHubOrigin(origin), strFlag('home'))
+      return 0
+    }
+
     case 'mcp': {
-      const hubUrl = strFlag('hub') ?? process.env.AKASHA_HUB_URL
+      const hubInput = strFlag('hub') ?? process.env.AKASHA_HUB_URL
+      const hubUrl = hubInput ? new URL(parseHubOrigin(hubInput)) : null
+      const homeDir = resolveAkashaHome(strFlag('home'))
+      const login = hubUrl ? readHubLogin(homeDir) : null
       const projectDir = strFlag('project') ?? process.cwd()
       let baseUrl: string
       let token = process.env.AKASHA_TOKEN
@@ -183,17 +199,28 @@ export async function runCli(argv: string[]): Promise<number> {
 
       let resolveConnection: (() => Promise<{ baseUrl: string; token?: string }>) | undefined
 
-      if (!hubUrl || /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?/i.test(hubUrl)) {
-        const ensured = await ensureDaemon({ projectDir })
+      const legacyLocal =
+        hubUrl?.protocol === 'http:' &&
+        ['localhost', '127.0.0.1', '[::1]'].includes(hubUrl.hostname) &&
+        DEFAULT_SHELL_PORTS.some((port) => hubUrl.port === String(port)) &&
+        login?.origin !== hubUrl.origin
+      if (!hubUrl || legacyLocal) {
+        const ensured = await ensureDaemon({ projectDir, homeDir })
         baseUrl = ensured.baseUrl
         token = ensured.state.token
         projectId = ensured.projectId
         resolveConnection = async () => {
-          const refreshed = await ensureDaemon({ projectDir })
+          const refreshed = await ensureDaemon({ projectDir, homeDir })
           return { baseUrl: refreshed.baseUrl, token: refreshed.state.token }
         }
       } else {
-        baseUrl = hubUrl
+        baseUrl = hubUrl.origin
+        token ??= login?.origin === baseUrl ? login.token : undefined
+        if (!token) {
+          console.error(`请先运行 akasha login --hub ${baseUrl}`)
+          return 2
+        }
+        projectId = await registerHubProject(baseUrl, token, projectDir)
       }
 
       await runStdioMcpServer({

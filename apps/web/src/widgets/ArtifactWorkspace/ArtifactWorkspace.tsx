@@ -6,6 +6,8 @@ import { SplitCodeEditor } from '../../features/code-editor/SplitCodeEditor'
 import { RuntimeErrorPanel } from '../../features/error-recovery/RuntimeErrorPanel'
 import { selectActiveRound } from '../../features/review-rounds/round-utils'
 import { VersionDiffView } from '../../features/version-diff/VersionDiffView'
+import { useVisualEdit } from '../../features/visual-edit/useVisualEdit'
+import { VisualEditPanel } from '../../features/visual-edit/VisualEditPanel'
 import type { ArtifactDetailResponse } from '../../shared/api/client'
 import { syncProjectSelection } from '../../shared/api/client'
 import {
@@ -14,6 +16,7 @@ import {
   SANDBOX_IFRAME_SANDBOX_ATTR,
   SandboxBridgeHost,
 } from '../../shared/bridge/host'
+import { createStorageRelay } from '../../shared/bridge/storage-relay'
 import { ElementOverlay } from '../../shared/overlay/ElementOverlay'
 import { InspectorPanel } from '../InspectorPanel/InspectorPanel'
 import { ArtifactCanvas } from './ArtifactCanvas'
@@ -64,6 +67,7 @@ export function ArtifactWorkspace({
     }
   }, [viewMode])
   const setInspectorTab = useWorkspaceStore((s) => s.setInspectorTab)
+  const inspectorOpen = useWorkspaceStore((s) => s.inspectorTab !== null)
   const sandboxError = useWorkspaceStore((s) => s.sandboxErrorByArtifact[artifact.publicId] ?? null)
   const setSandboxError = useWorkspaceStore((s) => s.setSandboxError)
   const setPreservedView = useWorkspaceStore((s) => s.setPreservedView)
@@ -104,6 +108,24 @@ export function ArtifactWorkspace({
 
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const hostRef = useRef<SandboxBridgeHost | null>(null)
+  const visual = useVisualEdit({
+    artifact,
+    version,
+    enabled: viewMode === 'preview' && latestVersion.version === version.version,
+    send: (message) => hostRef.current?.send(message),
+    onAnnotate: (element) => {
+      setSelectedElement(artifact.publicId, element)
+      hostRef.current?.send({ type: 'highlight', element })
+      setInspectorTab('review')
+    },
+    onVersionSaved,
+  })
+  const handleVisualMessageRef = useRef(visual.onMessage)
+  handleVisualMessageRef.current = visual.onMessage
+  const cancelVisual = visual.cancel
+  useEffect(() => {
+    if (inspectorOpen) cancelVisual()
+  }, [inspectorOpen, cancelVisual])
   const inspectingSentRef = useRef(false)
   const stateRef = useRef(state.snapshot)
   stateRef.current = state.snapshot
@@ -137,6 +159,7 @@ export function ArtifactWorkspace({
     hostRef.current = host
     lastSyncedStateSeqRef.current = -1
     lastRenderedKeyRef.current = ''
+    const storage = createStorageRelay(artifact.publicId, host)
 
     const off = host.onMessage((msg) => {
       if (msg.type === 'viewState.snapshot') {
@@ -164,10 +187,10 @@ export function ArtifactWorkspace({
         setHoveredElement(msg.element)
       } else if (msg.type === 'inspect.select') {
         if (msg.reason === 'sync') {
-          // 几何同步事件仅更新仍处于选中态的元素坐标，既不复活已清除的选区，也不意外退出指认模式
-          if (useSelectionStore.getState().selectedByArtifact[artifact.publicId]) {
-            setSelectedElement(artifact.publicId, msg.element)
-          }
+          // 只更新几何坐标，保留圈选数据点或代码行的业务引用。
+          const selected = useSelectionStore.getState().selectedByArtifact[artifact.publicId]
+          if (selected)
+            setSelectedElement(artifact.publicId, { ...selected, rect: msg.element.rect })
         } else {
           setSelectedElement(artifact.publicId, msg.element)
           if (useSelectionStore.getState().pickerActive) {
@@ -177,6 +200,14 @@ export function ArtifactWorkspace({
         }
       } else if (msg.type === 'pins.rects') {
         setLivePinRects(msg.rects)
+      } else if (msg.type === 'storage.request') {
+        void storage.handle(msg)
+      } else if (msg.type === 'visual.select') {
+        handleVisualMessageRef.current(msg)
+      } else if (msg.type === 'annotation.request' && msg.version === activeVersionRef.current) {
+        setSelectedElement(artifact.publicId, msg.element)
+        host.send({ type: 'highlight', element: msg.element })
+        setInspectorTab('review')
       }
     })
 
@@ -190,6 +221,7 @@ export function ArtifactWorkspace({
 
     return () => {
       onRegisterStateForwarder?.(null)
+      storage.dispose()
       off()
       host.stop()
       hostRef.current = null
@@ -358,7 +390,21 @@ export function ArtifactWorkspace({
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {/* 工具视图只隐藏画布；切回时保留同一沙盒与用户视角。 */}
-          <ArtifactCanvas visible={showCanvas}>
+          <ArtifactCanvas
+            visible={showCanvas}
+            visualEdit={
+              visual.available
+                ? {
+                    isPicking: visual.isPicking,
+                    cancel: visual.cancel,
+                    toggle: () => {
+                      setInspectorTab(null)
+                      visual.toggle()
+                    },
+                  }
+                : undefined
+            }
+          >
             <iframe
               ref={iframeRef}
               title={`${artifact.title} 隔离沙盒`}
@@ -410,6 +456,7 @@ export function ArtifactWorkspace({
         feedbacks={feedbacks}
         onHighlightElement={handleHighlightElement}
       />
+      <VisualEditPanel controller={visual} />
     </div>
   )
 }

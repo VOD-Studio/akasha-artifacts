@@ -1,4 +1,4 @@
-import type { ArtifactType } from '@akasha/protocol'
+import type { ArtifactType, ElementRef } from '@akasha/protocol'
 import type { ReactNode } from 'react'
 import type { PreservedStateManager } from '../state/preserve'
 import type { ArtifactStateStore } from '../state/store'
@@ -14,7 +14,8 @@ export interface RendererProps {
     stack?: string
     loc?: string
   }) => void
-  onRendered: () => void
+  onRendered: (version?: number) => void
+  onRequestAnnotation?: (element: ElementRef) => void
 }
 
 export type ArtifactRenderer = (props: RendererProps) => ReactNode

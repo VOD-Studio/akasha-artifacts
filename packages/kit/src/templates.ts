@@ -1,4 +1,6 @@
 import type { CheckDiagnostic, Verdict } from '@akasha/protocol'
+import { DATA_STORY_TEMPLATE } from './data-story.js'
+import { PR_WALKTHROUGH_TEMPLATE } from './pr-walkthrough.js'
 import {
   buildPropsJsonSchema,
   type KitParseResult,
@@ -1060,4 +1062,6 @@ export function registerBuiltinKitTemplates(): void {
   registerKitTemplate(ARTBOARD_TEMPLATE)
   registerKitTemplate(DOCUMENT_TEMPLATE)
   registerKitTemplate(VERIFY_TEMPLATE)
+  registerKitTemplate(PR_WALKTHROUGH_TEMPLATE)
+  registerKitTemplate(DATA_STORY_TEMPLATE)
 }

@@ -160,11 +160,15 @@ function InspectorContent({
                   const statusMeta = feedbackStatusBadge(fb)
                   const isOldVersion = fb.version !== activeVersion
                   const isFocused = fb.id === focusedFeedbackId
-                  const locator = fb.element?.blockId
-                    ? `#${fb.element.blockId}`
-                    : fb.element?.loc
-                      ? `@${fb.element.loc}`
-                      : fb.element?.selector?.slice(0, 28)
+                  const points = fb.element?.dataPoints
+                  const locator = points
+                    ? `${points.chartTitle} · ${points.points.length} 个数据点`
+                    : fb.element?.textPreview ||
+                      (fb.element?.blockId
+                        ? `#${fb.element.blockId}`
+                        : fb.element?.loc
+                          ? `@${fb.element.loc}`
+                          : fb.element?.selector?.slice(0, 28))
 
                   return (
                     <div
@@ -205,6 +209,18 @@ function InspectorContent({
                           <Target size={10} className="shrink-0" />
                           <span className="truncate">{locator}</span>
                         </button>
+                      ) : null}
+                      {points ? (
+                        <details className="mt-1 text-ink-muted">
+                          <summary className="cursor-pointer">查看圈选数据</summary>
+                          <ul className="mt-1 space-y-1">
+                            {points.points.map((point) => (
+                              <li key={point.id}>
+                                {point.label}：{point.value} {points.valueLabel}
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
                       ) : null}
 
                       <p className="mt-1.5 whitespace-pre-wrap break-words text-xs leading-relaxed text-ink">

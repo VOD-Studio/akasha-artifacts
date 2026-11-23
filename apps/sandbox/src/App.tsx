@@ -14,6 +14,7 @@ import {
   type ArtifactStateStore,
   defaultArtifactStateStore,
 } from './state/store'
+import { SandboxVisualInspector } from './visual-edit'
 
 registerBuiltinRenderers()
 
@@ -41,6 +42,8 @@ export function SandboxApp({
   initialPreservedState,
 }: SandboxAppProps) {
   const [payload, setPayload] = useState<RenderPayload | null>(initialRender)
+  const committedPayloadRef = useRef<RenderPayload | null>(initialRender)
+  const renderedVisualVersionRef = useRef(0)
   const rootRef = useRef<HTMLDivElement>(null)
   const inspectorRef = useRef<SandboxInspector | null>(null)
   const versionRef = useRef<number>(initialRender?.version ?? 0)
@@ -63,16 +66,28 @@ export function SandboxApp({
 
     const inspector = new SandboxInspector(() => rootRef.current, bridge)
     inspectorRef.current = inspector
+    const visualInspector = new SandboxVisualInspector(
+      () => rootRef.current,
+      bridge,
+      () => renderedVisualVersionRef.current,
+    )
 
     const off = bridge.onMessage((msg) => {
       if (msg.type === 'render') {
+        renderedVisualVersionRef.current = 0
         stateStore.replace(msg.state)
         preserved.hydrate(msg.preservedState)
-        setPayload({
-          artifactType: msg.artifactType,
-          version: msg.version,
-          source: msg.source,
-        })
+        const next = { artifactType: msg.artifactType, version: msg.version, source: msg.source }
+        committedPayloadRef.current = next
+        setPayload(next)
+      } else if (msg.type === 'apply.preview') {
+        const committed = committedPayloadRef.current
+        if (committed?.version === msg.version) setPayload({ ...committed, source: msg.source })
+      } else if (msg.type === 'apply.rollback') {
+        const committed = committedPayloadRef.current
+        if (committed?.version === msg.version) setPayload(committed)
+      } else if (msg.type === 'visual.inspect') {
+        visualInspector.setActive(msg.active)
       } else if (msg.type === 'state') {
         try {
           stateStore.applyPatch(msg.seq, msg.ops)
@@ -122,6 +137,7 @@ export function SandboxApp({
 
     return () => {
       inspector.dispose()
+      visualInspector.dispose()
       inspectorRef.current = null
       off()
       preserved.setSnapshotReporter(undefined)
@@ -163,18 +179,23 @@ export function SandboxApp({
     [bridge],
   )
 
-  const handleRendered = useCallback(() => {
-    const ver = versionRef.current
-    if (!bridge || ver < 1) return
-    const height = rootRef.current
-      ? Math.max(0, Math.round(rootRef.current.scrollHeight))
-      : undefined
-    bridge.send({
-      type: 'rendered',
-      version: ver,
-      ...(height !== undefined ? { height } : {}),
-    })
-  }, [bridge])
+  const handleRendered = useCallback(
+    (version?: number) => {
+      const ver = version ?? versionRef.current
+      // 旧 DOM 仍显示时，不让直改用旧坐标修改新源码。
+      if (!bridge || ver < 1 || ver !== versionRef.current) return
+      renderedVisualVersionRef.current = ver
+      const height = rootRef.current
+        ? Math.max(0, Math.round(rootRef.current.scrollHeight))
+        : undefined
+      bridge.send({
+        type: 'rendered',
+        version: ver,
+        ...(height !== undefined ? { height } : {}),
+      })
+    },
+    [bridge],
+  )
 
   const renderer = useMemo(
     () => (payload ? getRenderer(payload.artifactType) : undefined),
@@ -194,6 +215,10 @@ export function SandboxApp({
                 preserved,
                 onError: handleError,
                 onRendered: handleRendered,
+                onRequestAnnotation: bridge
+                  ? (element) =>
+                      bridge.send({ type: 'annotation.request', element, version: payload.version })
+                  : undefined,
               })
             ) : (
               <div className="p-6 text-sm text-amber-700">

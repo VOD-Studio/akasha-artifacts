@@ -25,6 +25,8 @@ export interface AnnotationComposerProps {
 }
 
 function elementLabel(el: ElementRef): string {
+  if (el.dataPoints) return `${el.dataPoints.chartTitle} · ${el.dataPoints.points.length} 个数据点`
+  if (el.blockId?.startsWith('pr-line:') && el.textPreview) return el.textPreview
   if (el.blockId) return `#${el.blockId}`
   if (el.loc) return `源码 ${el.loc}`
   if (el.selector) return el.selector.slice(0, 36)
@@ -93,7 +95,9 @@ export function AnnotationComposer({
           <div className="flex min-w-0 items-center gap-1.5">
             <Target size={12} className="shrink-0 text-violet-600" />
             <span className="truncate font-mono font-medium">{elementLabel(selectedElement)}</span>
-            {selectedElement.textPreview ? (
+            {selectedElement.textPreview &&
+            !selectedElement.dataPoints &&
+            !selectedElement.blockId?.startsWith('pr-line:') ? (
               <span className="truncate text-violet-700/80">
                 「{selectedElement.textPreview.slice(0, 24)}」
               </span>
@@ -109,6 +113,21 @@ export function AnnotationComposer({
           </button>
         </div>
       ) : null}
+
+      {selectedElement?.dataPoints && (
+        <details className="mb-2 rounded-lg border border-violet-200 px-2.5 py-1.5 text-xs text-violet-950">
+          <summary className="cursor-pointer">
+            {selectedElement.dataPoints.valueLabel} · 所选数据点
+          </summary>
+          <ul className="mt-1 max-h-36 list-disc space-y-1 overflow-auto pl-4">
+            {selectedElement.dataPoints.points.map((point) => (
+              <li key={point.id} className="break-words">
+                {point.label || '（空白）'}：{point.value}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
 
       <textarea
         ref={textareaRef}

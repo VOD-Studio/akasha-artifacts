@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { SandboxApp } from './App'
 import { parseSandboxHash, SandboxBridgeClient } from './bridge/client'
 import { installSandboxGlobals } from './runtime/modules'
+import { installSandboxStorage } from './runtime/storage'
 
 installSandboxGlobals()
 
@@ -15,6 +16,7 @@ const bridge = params
       nonce: params.nonce,
     })
   : null
+installSandboxStorage(bridge)
 
 const rootEl = document.getElementById('root')
 if (rootEl) {

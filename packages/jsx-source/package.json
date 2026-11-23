@@ -10,6 +10,12 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./edit": {
+      "@akasha/source": "./src/edit.ts",
+      "types": "./dist/edit.d.ts",
+      "import": "./dist/edit.js",
+      "default": "./dist/edit.js"
     }
   },
   "scripts": {
@@ -22,6 +28,7 @@
   "dependencies": {
     "@akasha/protocol": "workspace:*",
     "@babel/parser": "^8.1.3",
-    "parse5": "^8.1.1"
+    "parse5": "^8.1.1",
+    "recast": "0.24.3"
   }
 }

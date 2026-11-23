@@ -1,5 +1,5 @@
 import { Button } from '@akasha/ui/button'
-import { Hand, Maximize, Minus, Plus } from 'lucide-react'
+import { Hand, Maximize, Minus, Pencil, Plus } from 'lucide-react'
 import { type PointerEvent, type ReactNode, useLayoutEffect, useRef, useState } from 'react'
 import { useSelectionStore } from '../../entities/selection/store'
 import { ElementPickerButton } from '../../features/element-picker/ElementPickerButton'
@@ -17,7 +17,13 @@ interface CanvasDrag {
   top: number
 }
 
-export function ArtifactCanvas({ children, visible }: { children: ReactNode; visible: boolean }) {
+interface ArtifactCanvasProps {
+  children: ReactNode
+  visible: boolean
+  visualEdit?: { isPicking: boolean; toggle: () => void; cancel: () => void }
+}
+
+export function ArtifactCanvas({ children, visible, visualEdit }: ArtifactCanvasProps) {
   const viewportRef = useRef<HTMLElement>(null)
   const boardRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<CanvasDrag | null>(null)
@@ -136,7 +142,27 @@ export function ArtifactCanvas({ children, visible }: { children: ReactNode; vis
         className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-border bg-surface px-2 py-1 sm:px-4"
       >
         <div className="flex items-center gap-1">
-          <ElementPickerButton onStart={() => setHand(false)} />
+          <ElementPickerButton
+            onStart={() => {
+              setHand(false)
+              visualEdit?.cancel()
+            }}
+          />
+          {visualEdit ? (
+            <Button
+              variant={visualEdit.isPicking ? 'secondary' : 'ghost'}
+              size="sm"
+              leftIcon={<Pencil size={13} />}
+              aria-pressed={visualEdit.isPicking}
+              onClick={() => {
+                setHand(false)
+                setPickerActive(false)
+                visualEdit.toggle()
+              }}
+            >
+              可视化直改
+            </Button>
+          ) : null}
           <span className="ml-2 hidden text-xs text-ink-muted sm:inline">
             {BOARD_WIDTH} × {BOARD_HEIGHT}
           </span>
@@ -152,6 +178,7 @@ export function ArtifactCanvas({ children, visible }: { children: ReactNode; vis
             aria-pressed={handActive}
             onClick={() => {
               setPickerActive(false)
+              visualEdit?.cancel()
               setHand(!handActive)
             }}
           >
