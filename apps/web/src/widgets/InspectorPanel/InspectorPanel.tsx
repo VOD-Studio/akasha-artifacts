@@ -246,6 +246,9 @@ function InspectorContent({
   )
 }
 
+/**
+ * 右侧的非模态抽屉：承载评审与属性两个页签，开合不改变画布尺寸。
+ */
 export function InspectorPanel(props: InspectorPanelProps) {
   const open = useWorkspaceStore((s) => s.inspectorTab !== null)
   const setTab = useWorkspaceStore((s) => s.setInspectorTab)

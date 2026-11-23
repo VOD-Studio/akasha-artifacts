@@ -12,6 +12,7 @@ export interface AnnotationComposerProps {
   artifactId: string
   projectId: string
   version: number
+  /** 当前处于草稿状态的轮次；批注落在其中时自动标为草稿。 */
   activeDraftingRound: ReviewRound | null
   selectedElement: ElementRef | null
   onSubmitFeedback?: (input: {
@@ -33,7 +34,11 @@ function elementLabel(el: ElementRef): string {
   return el.textPreview?.slice(0, 28) ?? '已选元素'
 }
 
-// L1 批注撰写器：基于选中元素/块创建批注或「让 Agent 改这里」，在活跃草稿轮次中自动标为草稿不中途唤醒 Agent。
+/**
+ * L1 批注撰写器：基于选中的元素或块创建批注，或发起「让 Agent 改这里」。
+ *
+ * @remarks 批注所属轮次处于草稿状态时自动标为草稿，不中途唤醒 Agent。
+ */
 export function AnnotationComposer({
   artifactId,
   projectId,

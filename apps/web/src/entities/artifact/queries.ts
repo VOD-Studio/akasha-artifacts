@@ -119,13 +119,19 @@ function summarizeHumanEdit(
 
 export interface SaveHumanVersionVariables {
   artifact: Artifact
+  /** 保存前的源码，用来生成给 Agent 的改动摘要。 */
   previousSource: string
   source: string
+  /** 所基于的版本；落后于头版本时服务端返回 409。 */
   baseVersion: number
   title?: string
 }
 
-// 保存人类 L3 直接编辑的新版本（author='human:web'），并自动写入 kind='edit' 反馈通知 Agent。
+/**
+ * 保存人类在 L3 代码编辑器里直接改动的新版本，作者记为 `human:web`。
+ *
+ * @remarks 保存成功后自动写入一条 `kind=edit` 的反馈，把改动摘要通知 Agent。
+ */
 export function useSaveHumanVersionMutation(id: string) {
   const queryClient = useQueryClient()
   return useMutation({

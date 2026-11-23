@@ -170,6 +170,7 @@ function LiteralEditor({ controller, picked }: Props & { picked: PickedTarget })
   )
 }
 
+/** 可视化直改面板：点选提示、撤销入口，以及编辑选中目标的抽屉。 */
 export function VisualEditPanel({ controller }: Props) {
   const { active, busy, isPicking, canUndo } = controller
   return (

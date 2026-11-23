@@ -6,12 +6,14 @@ import { toast } from 'sonner'
 import { type SandboxErrorRecord, useWorkspaceStore } from '../../entities/workspace/store'
 import { submitArtifactFeedback } from '../../shared/api/client'
 
+/** 错误面板里展示的一行源码；`isTarget` 标出出错的那一行。 */
 export interface SourceSnippetLine {
   lineNo: number
   text: string
   isTarget: boolean
 }
 
+/** 给一条沙盒错误生成指纹，用来判断同一条错误是否已经交给 Agent。 */
 export function buildErrorFingerprint(
   artifactId: string,
   version: number,
@@ -20,6 +22,7 @@ export function buildErrorFingerprint(
   return `${artifactId}:v${version}:${error.phase}:${error.loc ?? ''}:${error.message}`
 }
 
+/** 从 `line:col` 形式的源码位置里取出行号；无法解析时返回 `null`。 */
 export function parseLocLine(loc?: string): number | null {
   if (!loc) return null
   const m = /^(\d+):(\d+)/.exec(loc)
@@ -28,7 +31,11 @@ export function parseLocLine(loc?: string): number | null {
   return Number.isInteger(line) && line >= 1 ? line : null
 }
 
-// 从源码中截取报错行及其前后上下文，供错误面板高亮展示并随 runtime_error 反馈回传 Agent。
+/**
+ * 从源码中截取出错行及其前后各 `radius` 行。
+ *
+ * @returns `loc` 无法解析或超出源码行数时返回空数组。
+ */
 export function extractSourceSnippet(
   source: string,
   loc?: string,
@@ -61,7 +68,11 @@ export interface RuntimeErrorPanelProps {
   onSubmitFeedback?: typeof submitArtifactFeedback
 }
 
-// 运行时/编译错误恢复面板：高亮出错源码片段，支持一键提交 kind=runtime_error 给 Agent，并对同一错误去重避免刷屏。
+/**
+ * 运行时或编译错误的恢复面板：高亮出错的源码片段，可一键把 `kind=runtime_error` 的反馈交给 Agent。
+ *
+ * @remarks 同一条错误只提交一次，避免刷屏。
+ */
 export function RuntimeErrorPanel({
   artifactId,
   projectId,

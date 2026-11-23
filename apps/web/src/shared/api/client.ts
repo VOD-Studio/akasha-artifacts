@@ -20,6 +20,7 @@ import {
 } from '@akasha/protocol'
 import { getApiBaseUrl } from '../config/runtime'
 
+/** 服务端的非 2xx 响应；`code` 是协议错误码，响应体不是错误信封时为 `HTTP_ERROR`。 */
 export class ApiError extends Error {
   readonly status: number
   readonly code: string
@@ -42,6 +43,7 @@ export interface DaemonLogEntry {
   message: string
 }
 
+/** `GET /api/v1/artifacts/:id` 的响应。 */
 export interface ArtifactDetailResponse {
   artifact: Artifact
   version: Version
@@ -49,6 +51,7 @@ export interface ArtifactDetailResponse {
   rounds: ReviewRound[]
 }
 
+// 所有请求带上同源 cookie；有请求体且未指定 Content-Type 时按 JSON 发送
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${getApiBaseUrl()}${path}`
   const headers = new Headers(init?.headers)
@@ -244,7 +247,11 @@ export async function recordHumanDecision(
   )
 }
 
-// 同步当前浏览器选区与未提交草稿到本机 Daemon，供终端 Hook 在用户发消息时无感注入上下文。
+/**
+ * 把浏览器当前的选区与未提交草稿同步到本机 Daemon，供终端 Hook 在用户发消息时注入上下文。
+ *
+ * @remarks 同步失败时静默返回，不阻断浏览器里的交互。
+ */
 export async function syncProjectSelection(
   projectId: string,
   input: { artifactId?: string; element: ElementRef | null; draftText?: string },
@@ -276,6 +283,7 @@ export async function pushArtifactState(
   )
 }
 
+/** 人类保存版本时的发布入参；`author` 缺省为 `human:web`。 */
 export interface PublishHumanVersionInput {
   project: string
   slug: string
@@ -287,7 +295,11 @@ export interface PublishHumanVersionInput {
   author?: Author
 }
 
-// L3 人类直接保存代码版本：显式声明 baseVersion 与 author='human:web'，落后于 headVersion 时由服务端返回 409 冲突详情。
+/**
+ * L3 代码编辑器保存人类直接改动的版本。
+ *
+ * @remarks `baseVersion` 落后于头版本时服务端返回 409，`ApiError.details` 里带冲突详情。
+ */
 export async function publishHumanVersion(
   input: PublishHumanVersionInput,
 ): Promise<{ artifact: Artifact; version: Version }> {

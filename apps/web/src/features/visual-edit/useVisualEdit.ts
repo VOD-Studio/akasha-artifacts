@@ -26,6 +26,7 @@ interface Options {
   onVersionSaved?: (version: Version) => void
 }
 
+/** 当前选中的可直改目标；`baseVersion` 是选中它时所基于的版本。 */
 export interface PickedTarget {
   baseVersion: number
   element: ElementRef
@@ -33,20 +34,37 @@ export interface PickedTarget {
   target: VisualEditTarget
 }
 
+/**
+ * 可视化直改控制器。
+ *
+ * @remarks `available` 只在查看头版本的 `react` 或 `html` 制品时为 true；
+ * `active` 是当前生效的目标，所基于的版本不再是正在查看的版本时为 `null`。
+ */
 export interface VisualEditController {
+  /** 当前制品与版本是否支持直改。 */
   available: boolean
+  /** 是否处于点选目标的状态。 */
   isPicking: boolean
   active: PickedTarget | null
   busy: boolean
+  /** 能否撤销最近一次直改。 */
   canUndo: boolean
   toggle: () => void
   cancel: () => void
+  /** 处理沙盒上报的 `visual.select`：可直改的元素成为当前目标，否则转为批注。 */
   onMessage: (message: Extract<SandboxToShellMessage, { type: 'visual.select' }>) => Promise<void>
   annotate: (element: ElementRef) => void
   apply: (op: EditOp) => Promise<void>
   undo: () => Promise<void> | undefined
 }
 
+/**
+ * L4 可视化直改的编排 Hook。
+ *
+ * @remarks 依赖制品与当前版本判断可用性，经 `send` 向沙盒开关点选。
+ * `apply` 先让沙盒乐观预览，再保存；保存失败时让沙盒回滚预览，版本冲突时使版本缓存失效。
+ * 保存成功后写入查询缓存，并使制品与反馈的查询失效。不再可用或卸载时自动取消点选。
+ */
 export function useVisualEdit(options: Options): VisualEditController {
   const { artifact, version, enabled } = options
   const optionsRef = useRef(options)

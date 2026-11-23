@@ -36,6 +36,7 @@ export interface LibraryShellProps {
   onOpenArtifact: (publicId: string) => void
 }
 
+/** 多项目库：按项目列出制品，是 `/` 路由的页面级组合。 */
 export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
   const selectedProjectId = useWorkspaceStore((s) => s.selectedProjectId)
   const setSelectedProjectId = useWorkspaceStore((s) => s.setSelectedProjectId)

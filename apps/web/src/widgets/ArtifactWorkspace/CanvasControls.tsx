@@ -19,6 +19,7 @@ import type { CanvasPage } from './canvas-model'
 
 const ZOOM_STEP = 1.25
 
+/** 画布页面导航：搜索并切换页面与画板，给出当前页面的链接。 */
 export function PageNavigator({
   open,
   onOpenChange,
@@ -142,6 +143,7 @@ export function PageNavigator({
   )
 }
 
+/** 画布工具栏：切换抓手工具、缩放、适配页面或选区，以及指认与直改的开关。 */
 export function CanvasToolbar({
   camera,
   hand,

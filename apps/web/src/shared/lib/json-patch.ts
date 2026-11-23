@@ -38,7 +38,11 @@ function resolveParent(
   return { parent: cur, key }
 }
 
-// 客户端轻量化 RFC 6902 补丁应用器：用于把 WS state.patched 增量同步到 TanStack Query 状态快照缓存。
+/**
+ * 在快照的深拷贝上应用补丁，用于把 `state.patched` 的增量同步到查询缓存里的状态快照。
+ *
+ * @remarks 与服务端不同：路径解析不到的单条操作被跳过，而不是让整批补丁失败。
+ */
 export function applyJsonPatchClient(
   snapshot: Readonly<Record<string, unknown>>,
   ops: readonly JsonPatchOp[],

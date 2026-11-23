@@ -5,7 +5,7 @@ export interface DiffLine {
   text: string
 }
 
-// 轻量 LCS 行级 diff：用于在版本对比视图中高亮两版源码的新增与删除行。
+/** 行级 LCS diff：供版本对比视图高亮两版源码里新增与删除的行。 */
 export function computeLineDiff(before: string, after: string): DiffLine[] {
   const a = before === '' ? [] : before.split('\n')
   const b = after === '' ? [] : after.split('\n')

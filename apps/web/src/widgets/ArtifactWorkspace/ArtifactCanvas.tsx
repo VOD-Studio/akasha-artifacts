@@ -24,23 +24,34 @@ import type { CanvasBoard, CanvasDocument, CanvasPage } from './canvas-model'
 interface ArtifactCanvasProps {
   document: CanvasDocument
   visible: boolean
+  /** 相机与选中画板的本地存储键。 */
   storageKey: string
+  /** 链接里 `#page=…&board=…` 形式的定位；只在进入时定位一次。 */
   address: string
   onClearAddress?: () => void
+  /** 生成指向某个页面的链接，用于导航与分享。 */
   pageLink: (pageId: string) => string
+  /** 渲染一块画板；`interactive` 为 false 时只读。 */
   renderBoard: (board: CanvasBoard, interactive: boolean) => ReactNode
+  /** 可视化直改的开关；省略时画布不提供直改入口。 */
   visualEdit?: { isPicking: boolean; toggle: () => void; cancel: () => void }
 }
 
+// 单个页面的视图状态：选中的画板与相机
 interface PageView {
+  /** 当前选中的画板 id；没有选中时为 `null`。 */
   selected: string | null
+  /** 该页面的相机；为 `null` 时用默认相机。 */
   camera: Camera | null
 }
 
+// 持久化到本地存储的画布视图
 interface CanvasView {
   pageId: string | null
   address?: string
+  /** 是否处于抓手平移工具。 */
   hand?: boolean
+  /** 各页面的视图状态，键为页面 id。 */
   pages: Record<string, PageView>
 }
 

@@ -18,7 +18,11 @@ function formatLocatorLabel(ref: ElementRef): string {
   return ref.textPreview?.slice(0, 24) ?? 'element'
 }
 
-// 外壳透明叠层：严格运行在主窗口 DOM 中，负责绘制悬停框、选中框与批注图钉，绝不向沙盒 iframe 注入任何外壳节点。
+/**
+ * 外壳的透明叠层：在主窗口的 DOM 里绘制悬停框、选中框与批注图钉。
+ *
+ * @remarks 不向沙盒 iframe 注入任何外壳节点。
+ */
 export function ElementOverlay({
   hovered,
   selected,

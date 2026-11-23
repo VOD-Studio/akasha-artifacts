@@ -22,6 +22,11 @@ export interface VersionTimelineProps {
   onSelectVersion: (version?: number) => void
 }
 
+/**
+ * 版本时间线：按版本号倒序展示版本，支持切换查看。
+ *
+ * @remarks 查看历史版本时，可以把它回退为新的头版本。
+ */
 export function VersionTimeline({
   publicId,
   activeVersion,

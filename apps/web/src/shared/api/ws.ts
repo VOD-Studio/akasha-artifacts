@@ -7,6 +7,7 @@ import {
 
 export type WsConnectionStatus = 'connecting' | 'open' | 'reconnecting' | 'closed'
 
+/** 订阅范围：制品、项目，或两者。 */
 export interface WsSubscriptionTarget {
   artifactId?: string
   projectId?: string
@@ -14,15 +15,23 @@ export interface WsSubscriptionTarget {
 
 export interface AkashaWsClientOptions {
   url: string
+  // 订阅范围；缺省为空，即订阅全部
   target?: WsSubscriptionTarget
   onEvent: (event: RealtimeServerEvent) => void
   onStatusChange?: (status: WsConnectionStatus) => void
   WebSocketImpl?: typeof WebSocket
+  // 首次重连的等待（毫秒），缺省 500
   baseRetryMs?: number
+  // 重连等待的上限（毫秒），缺省 8000
   maxRetryMs?: number
 }
 
-// 实时 WebSocket 客户端：维护单调 lastSeq，断线指数退避重连并自动携带 lastSeq 补齐漏收事件。
+/**
+ * 实时 WebSocket 客户端。
+ *
+ * @remarks 维护单调递增的 `lastSeq`，重连时带上它让服务端补发；重连按指数退避。
+ * 连接建立后每 25 秒发一次 ping。收到 4403 关闭码（没有订阅权限）后不再重连。
+ */
 export class AkashaWsClient {
   private ws: WebSocket | null = null
   private lastSeq = 0
@@ -49,6 +58,7 @@ export class AkashaWsClient {
     this.maxRetryMs = options.maxRetryMs ?? 8000
   }
 
+  /** 已收到的最大事件序号。 */
   getLastSeq(): number {
     return this.lastSeq
   }
@@ -58,6 +68,7 @@ export class AkashaWsClient {
     if (!this.ws && this.retryTimer === undefined) this.openSocket()
   }
 
+  /** 更新订阅范围；连接打开时先退订旧范围，再订阅新范围。 */
   updateTarget(next: WsSubscriptionTarget): void {
     const prev = this.target
     if (prev.artifactId === next.artifactId && prev.projectId === next.projectId) return
@@ -75,6 +86,7 @@ export class AkashaWsClient {
     }
   }
 
+  /** 关闭连接并停止重连。 */
   close(): void {
     this.closedByUser = true
     if (this.retryTimer !== undefined) {
