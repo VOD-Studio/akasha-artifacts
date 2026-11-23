@@ -96,15 +96,21 @@ function validSize(value: number | undefined): value is number {
  * @remarks 容错策略：`pages`、`flows` 里的非法项静默丢弃，`boards` 里的非法项则整体报错。
  */
 export function parseArtboard(source: string): ArtboardParseResult {
-  let data: Record<string, unknown> | null
+  let value: unknown
   try {
-    data = asRecord(JSON.parse(source))
+    value = JSON.parse(source)
   } catch (err) {
     return {
       ok: false,
       error: `JSON 解析失败：${err instanceof Error ? err.message : String(err)}`,
     }
   }
+  return parseArtboardValue(value)
+}
+
+/** 对已反序列化的制品应用与 `parseArtboard` 相同的校验及容错。 */
+export function parseArtboardValue(value: unknown): ArtboardParseResult {
+  const data = asRecord(value)
   if (!data) return { ok: false, error: '模板源码必须为 JSON 对象' }
 
   const rawBoards = data.boards

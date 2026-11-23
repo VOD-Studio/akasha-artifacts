@@ -291,6 +291,7 @@ it('固定版本定位到指定页面，复制的定位链接不携带分享授�
     expect(screen.queryByTitle('宽屏首页 隔离沙盒')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: '页面与画板' }))
+    expect(screen.queryByRole('button', { name: '新建页面' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '复制页面链接' }))
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith(
@@ -315,41 +316,95 @@ it('固定版本定位到指定页面，复制的定位链接不携带分享授�
   }
 })
 
-it('新建页面保存为头版本，空页不继承旧制品的未分组画板', async () => {
-  const initial = detailFor(
-    1,
-    JSON.stringify({ boards: [{ id: 'cover', title: '旧画板', html: '<h1>旧内容</h1>' }] }),
-  )
+function showEditableWorkspace(initial: ArtifactDetailResponse, address?: string) {
   const view = showWorkspace(initial)
   const editable = (detail: ArtifactDetailResponse) => (
     <ArtifactWorkspace
       detail={detail}
       versions={[detail.version]}
       sandboxOrigin="http://127.0.0.1:24331"
+      address={address}
       onVersionSaved={(version) =>
         view.update(editable(detailFor(version.version, version.source)))
       }
     />
   )
   let submittedVersion: number | undefined
+  let current = initial
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
     if (input === '/api/v1/artifacts' && options?.method === 'POST') {
       const payload = JSON.parse(String(options.body))
       submittedVersion = payload.baseVersion
-      return Response.json(detailFor(2, payload.source))
+      current = detailFor(current.version.version + 1, payload.source)
+      return Response.json(current)
     }
     return Response.json({ selection: null })
   })
   view.update(editable(initial))
+  return {
+    get current() {
+      return current
+    },
+    get submittedVersion() {
+      return submittedVersion
+    },
+  }
+}
+
+it('新建页面保存为头版本，空页不继承旧制品的未分组画板', async () => {
+  const editor = showEditableWorkspace(
+    detailFor(
+      1,
+      JSON.stringify({ boards: [{ id: 'cover', title: '旧画板', html: '<h1>旧内容</h1>' }] }),
+    ),
+  )
   fireEvent.click(screen.getByRole('button', { name: '页面与画板' }))
   fireEvent.click(screen.getByRole('button', { name: '新建页面' }))
   fireEvent.change(screen.getByRole('textbox', { name: '页面名称' }), { target: { value: '备忘' } })
   fireEvent.click(screen.getByRole('button', { name: '保存页面' }))
 
   expect(await screen.findByText('此页面没有画板')).toBeTruthy()
-  expect(submittedVersion).toBe(1)
+  expect(editor.submittedVersion).toBe(1)
   expect(screen.queryByTitle('旧画板 隔离沙盒')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: '页面与画板' }))
   fireEvent.click(screen.getByRole('button', { name: '旧画板' }))
   expect(screen.getByTitle('旧画板 隔离沙盒')).toBeTruthy()
+})
+
+it('沿用旧页定位链接完成重命名，确认删除时只移除该页直属画板', async () => {
+  const initial = detailFor(
+    1,
+    JSON.stringify({
+      pages: [{ title: '旧预约' }, { id: 'keep', title: '保留页' }],
+      boards: [
+        { title: '要移除的画板', pageId: 'page-1' },
+        { title: '要保留的画板', pageId: 'keep' },
+        { id: 'shared', title: '共享画板' },
+      ],
+      flows: [{ from: 'board-1', to: 'board-2' }],
+    }),
+  )
+  const address = new URLSearchParams({ page: 'legacy-page:旧预约' }).toString()
+  const editor = showEditableWorkspace(initial, address)
+  expect(screen.getByTitle('要移除的画板 隔离沙盒')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: '页面与画板' }))
+  fireEvent.click(screen.getByRole('button', { name: '重命名页面' }))
+  fireEvent.change(screen.getByRole('textbox', { name: '页面名称' }), {
+    target: { value: '新预约' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: '保存页面' }))
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: '页面与画板' }).textContent).toBe('新预约'),
+  )
+  expect(screen.getByTitle('要移除的画板 隔离沙盒')).toBeTruthy()
+  expect(screen.queryByRole('alert')).toBeNull()
+
+  fireEvent.click(screen.getByRole('button', { name: '删除页面' }))
+  expect(screen.getByText(/1 张直属画板/)).toBeTruthy()
+  expect(screen.getByTitle('要移除的画板 隔离沙盒')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: '确认删除页面' }))
+  expect(await screen.findByTitle('要保留的画板 隔离沙盒')).toBeTruthy()
+  expect(screen.getByTitle('共享画板 隔离沙盒')).toBeTruthy()
+  expect(screen.queryByTitle('要移除的画板 隔离沙盒')).toBeNull()
+  expect(JSON.parse(editor.current.version.source)).toMatchObject({ flows: [] })
 })

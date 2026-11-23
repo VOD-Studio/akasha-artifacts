@@ -138,7 +138,14 @@ export function PageNavigator({
           >
             复制页面链接
           </Button>
-          {pageEditing ? <CanvasPageActions editing={pageEditing} onNavigate={onNavigate} /> : null}
+          {pageEditing ? (
+            <CanvasPageActions
+              editing={pageEditing}
+              page={page}
+              pages={pages}
+              onNavigate={onNavigate}
+            />
+          ) : null}
           <p role="status" className="px-2 text-xs text-ink-muted">
             {status}
           </p>
