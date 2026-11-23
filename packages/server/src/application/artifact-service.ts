@@ -301,14 +301,15 @@ export class ArtifactService {
    * @throws {NotFoundError} 制品或其头版本不存在。
    * @throws {VersionConflictError} `baseVersion` 不等于头版本。
    */
-  async update(input: {
-    id: ArtifactIdentifier
-    projectId?: string
-    baseVersion: number
-    title?: string
-    edits: readonly TextEdit[]
-    author: Author
-  }): Promise<{ artifact: Artifact; version: Readonly<Version> }> {
+  async update(
+    input: {
+      id: ArtifactIdentifier
+      projectId?: string
+      baseVersion: number
+      title?: string
+      author: Author
+    } & ({ edits: readonly TextEdit[] } | { source: string }),
+  ): Promise<{ artifact: Artifact; version: Readonly<Version> }> {
     const resolved = await this.resolveArtifact(input.id, input.projectId)
     return this.writeLocks.run(`artifact:${resolved.publicId}`, async () => {
       const existing = await this.deps.artifacts.findByPublicId(resolved.publicId)
@@ -322,7 +323,7 @@ export class ArtifactService {
       if (!head) {
         throw new NotFoundError(`缺少头版本 v${existing.headVersion}`)
       }
-      const nextSource = applyTextEdits(head.source, input.edits)
+      const nextSource = 'source' in input ? input.source : applyTextEdits(head.source, input.edits)
       const now = this.deps.clock.now()
       const nextNumber = existing.headVersion + 1
       const version = createImmutableVersion({

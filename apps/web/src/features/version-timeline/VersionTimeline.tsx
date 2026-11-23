@@ -19,6 +19,7 @@ export interface VersionTimelineProps {
   activeVersion: number
   headVersion: number
   versions: readonly Version[]
+  canRevert?: boolean
   onSelectVersion: (version?: number) => void
 }
 
@@ -32,6 +33,7 @@ export function VersionTimeline({
   activeVersion,
   headVersion,
   versions,
+  canRevert = true,
   onSelectVersion,
 }: VersionTimelineProps) {
   const revertMutation = useRevertArtifactMutation(publicId)
@@ -97,13 +99,15 @@ export function VersionTimeline({
                 回到最新
               </DropdownMenuItem>
             ) : null}
-            <DropdownMenuItem
-              disabled={revertMutation.isPending}
-              onSelect={() => void handleRevert()}
-            >
-              <RotateCcw size={14} />
-              回退到 v{activeVersion}
-            </DropdownMenuItem>
+            {canRevert ? (
+              <DropdownMenuItem
+                disabled={revertMutation.isPending}
+                onSelect={() => void handleRevert()}
+              >
+                <RotateCcw size={14} />
+                回退到 v{activeVersion}
+              </DropdownMenuItem>
+            ) : null}
           </>
         ) : null}
       </DropdownMenuContent>

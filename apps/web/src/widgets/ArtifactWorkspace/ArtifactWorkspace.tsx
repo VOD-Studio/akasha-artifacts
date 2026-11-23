@@ -84,7 +84,9 @@ export function ArtifactWorkspace({
   onVersionSaved,
   onVersionAdopted,
 }: ArtifactWorkspaceProps) {
-  const { artifact, version, state } = detail
+  const { access, artifact, version, state } = detail
+  const shareCanEdit = !access || (access.role === 'edit' && fixedVersion === undefined)
+  const canComment = access?.role !== 'view'
   const rounds = roundsOverride ?? detail.rounds
   const [liveEditSource, setLiveEditSource] = useState<string | null>(null)
   const [canvasLocation, setCanvasLocation] = useState<CanvasLocation | null>(null)
@@ -97,7 +99,8 @@ export function ArtifactWorkspace({
       versions[0] ?? version,
     )
   }, [versions, version])
-  const viewMode = useWorkspaceStore((s) => s.viewMode)
+  const requestedTool = useWorkspaceStore((s) => s.viewMode)
+  const viewMode = !shareCanEdit && requestedTool === 'edit' ? 'preview' : requestedTool
   const showCanvas = viewMode === 'preview' || viewMode === 'edit'
   // 首次进入编辑态后保持编辑器挂载（切换回预览/Diff/源码时仅隐藏），防止丢失未保存草稿与撤销栈
   const [editorMounted, setEditorMounted] = useState(viewMode === 'edit')
@@ -143,7 +146,7 @@ export function ArtifactWorkspace({
   const visual = useVisualEdit({
     artifact,
     version,
-    enabled: viewMode === 'preview' && latestVersion.version === version.version,
+    enabled: !access && viewMode === 'preview' && latestVersion.version === version.version,
     send: (message) => frames.current.get(STANDALONE_BOARD_ID)?.send(message),
     onAnnotate: (element) => {
       setSelectedElement(artifact.publicId, element)
@@ -168,6 +171,7 @@ export function ArtifactWorkspace({
   const lastSyncedSelectionRef = useRef<string | null>(null)
   // 终端只同步选区。批注正文必须通过明确的投递动作才能抵达 Agent。
   useEffect(() => {
+    if (access) return
     const sig = JSON.stringify({
       projectId: artifact.projectId,
       artifactId: artifact.publicId,
@@ -182,7 +186,7 @@ export function ArtifactWorkspace({
       })
     }, 150)
     return () => clearTimeout(timer)
-  }, [artifact.projectId, artifact.publicId, selectedElement])
+  }, [access, artifact.projectId, artifact.publicId, selectedElement])
 
   const effectivePreviewSource =
     viewMode === 'edit' && liveEditSource !== null ? liveEditSource : version.source
@@ -220,12 +224,14 @@ export function ArtifactWorkspace({
     ],
   )
   const canEditBoards =
+    shareCanEdit &&
     artifact.type === 'artboard' &&
     fixedVersion === undefined &&
     version.version === artifact.headVersion &&
     viewMode === 'preview' &&
     savedCanvas.pages.every((page) => page.boards.every((board) => board.scoped))
   const canEditText =
+    shareCanEdit &&
     fixedVersion === undefined &&
     version.version === artifact.headVersion &&
     viewMode === 'preview' &&
@@ -234,6 +240,7 @@ export function ArtifactWorkspace({
     artifact,
     version,
     enabled: canEditText,
+    notifyAgent: !access,
     onVersionSaved,
   })
   const resolveElement = useMemo(
@@ -440,7 +447,7 @@ export function ArtifactWorkspace({
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-canvas">
       <main className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
-        {editorMounted ? (
+        {editorMounted && shareCanEdit ? (
           <div
             className={viewMode === 'edit' ? 'h-1/2 min-h-0 shrink-0 md:h-auto md:w-1/2' : 'hidden'}
           >
@@ -448,6 +455,7 @@ export function ArtifactWorkspace({
               artifact={artifact}
               version={version}
               latestVersion={latestVersion}
+              notifyAgent={!access}
               onLivePreviewChange={setLiveEditSource}
               onVersionSaved={onVersionSaved}
               onVersionAdopted={onVersionAdopted}
@@ -519,6 +527,8 @@ export function ArtifactWorkspace({
         activeVersion={version.version}
         activeRound={activeRound}
         feedbacks={feedbacks}
+        canComment={canComment}
+        notifyAgent={!access}
         threads={threads}
         pageFeedbackIds={pageFeedbackIds}
         onFocusThread={(feedback) => focusAndRemember(feedback, true)}
@@ -529,7 +539,10 @@ export function ArtifactWorkspace({
         stateSnapshot={state.snapshot}
         document={savedCanvas}
         location={canvasLocation}
-        readOnly={fixedVersion !== undefined || version.version !== artifact.headVersion}
+        readOnly={
+          Boolean(access) || fixedVersion !== undefined || version.version !== artifact.headVersion
+        }
+        canComment={canComment}
         editing={canEditBoards ? boardEditing : undefined}
         onEditText={canEditBoards && boardEditing.available ? inlineText.tools.edit : undefined}
         layers={watchBoard ? inspection.layers : null}

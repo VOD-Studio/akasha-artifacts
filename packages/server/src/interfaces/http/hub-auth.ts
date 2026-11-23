@@ -1,7 +1,13 @@
+import {
+  ArtifactShareEntrySchema,
+  type ArtifactShareInput,
+  ArtifactShareRoleSchema,
+  PublicIdSchema,
+} from '@akasha/protocol'
 import type { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { z } from 'zod'
-import type { Clock, ReceiptRepository } from '../../domain/ports.js'
+import type { ArtifactRepository, Clock, ReceiptRepository } from '../../domain/ports.js'
 
 // __Host- 前缀要求 cookie 带 Secure、Path=/ 且不设 Domain，子域名无法覆盖这些 cookie
 const sessionCookie = '__Host-akasha_hub_session'
@@ -50,7 +56,13 @@ const credentials = z.discriminatedUnion('kind', [
     next: z.string(),
     challenge: z.string().optional(),
   }),
-  expires.extend({ kind: z.literal('share'), artifactId: z.string() }),
+  expires.extend({
+    kind: z.literal('share'),
+    artifactId: PublicIdSchema,
+    // 老签名未区分角色；继续只给制品级讨论权，不再允许投递 Agent。
+    role: ArtifactShareRoleSchema.default('comment'),
+    entry: ArtifactShareEntrySchema.default({ kind: 'artifact' }),
+  }),
   expires.extend({
     kind: z.literal('receipt'),
     userId: z.string(),
@@ -59,6 +71,14 @@ const credentials = z.discriminatedUnion('kind', [
   }),
 ])
 type Credential = z.infer<typeof credentials>
+
+/** 已校验签名、制品及到期时间的分享授权。 */
+export type HubShareClaim = Extract<Credential, { kind: 'share' }>
+
+/** 固定范围不依赖浏览器传来的路径或查询参数。 */
+export function fixedShareVersion(claim: HubShareClaim) {
+  return claim.entry.kind === 'artifact' ? undefined : claim.entry.version
+}
 interface GitHubIdentity {
   userId: string
   login: string
@@ -77,10 +97,13 @@ export interface HubAuth {
   mount(app: Hono): void
   /** 凭会话 cookie 或 Bearer 令牌识别调用方；Bearer 只接受 cli 凭证。 */
   authenticate(request: Request): Promise<HubPrincipal | undefined>
-  /** 请求是否持有某制品的有效分享链接。 */
-  hasShare(request: Request, artifactId: string): Promise<boolean>
-  /** 签发一条分享链接；`ttl` 的单位为秒。 */
-  createShare(artifactId: string, ttl: number): Promise<{ url: string; expiresAt: string }>
+  /** 返回当前浏览器对指定制品的有效链接授权；CLI 不继承浏览器授权。 */
+  readShare(request: Request, artifactId: string): Promise<HubShareClaim | undefined>
+  /** 签发一条分享链接；`ttlSeconds` 的单位为秒。 */
+  createShare(
+    artifactId: string,
+    input: ArtifactShareInput,
+  ): Promise<{ url: string; expiresAt: string }>
   /** 把回执封装成只对该调用方有效的令牌；Hub 把回执交给 CLI 之前使用。 */
   sealReceipt(principal: HubPrincipal, artifactId: string, receipt: string): Promise<string>
   /** 还原 `sealReceipt` 封装的回执；调用方不一致或已过期时返回 `undefined`。 */
@@ -146,6 +169,7 @@ export function createHubAuth(
   origin: string,
   clock: Clock,
   receipts: ReceiptRepository,
+  artifacts: ArtifactRepository,
 ): HubAuth {
   if (
     !options.clientId ||
@@ -210,14 +234,15 @@ export function createHubAuth(
     }
   }
 
-  async function hasShare(request: Request, artifactId: string): Promise<boolean> {
+  async function readShare(request: Request, artifactId: string) {
+    if (request.headers.has('authorization')) return
     const claim = await verify(cookie(request, shareCookie(artifactId)))
-    return claim?.kind === 'share' && claim.artifactId === artifactId
+    if (claim?.kind === 'share' && claim.artifactId === artifactId) return claim
   }
 
-  async function createShare(artifactId: string, ttl: number) {
-    const exp = now() + ttl
-    const token = await sign({ kind: 'share', artifactId, exp })
+  async function createShare(artifactId: string, { ttlSeconds, role, entry }: ArtifactShareInput) {
+    const exp = now() + ttlSeconds
+    const token = await sign({ kind: 'share', artifactId, role, entry, exp })
     return {
       url: `${origin}/auth/share?token=${encodeURIComponent(token)}`,
       expiresAt: new Date(exp * 1000).toISOString(),
@@ -389,11 +414,24 @@ export function createHubAuth(
     app.get('/auth/share', async (c) => {
       const token = c.req.query('token')
       const claim = await verify(token)
-      if (claim?.kind !== 'share' || !token) return c.text('分享链接无效或已过期', 404)
+      if (
+        claim?.kind !== 'share' ||
+        !token ||
+        !(await artifacts.findByPublicId(claim.artifactId))
+      ) {
+        return c.text('分享链接无效或已过期', 404)
+      }
       c.header('set-cookie', cookieHeader(shareCookie(claim.artifactId), token, claim.exp - now()))
-      return c.redirect(`/a/${encodeURIComponent(claim.artifactId)}`)
+      const path = `/a/${encodeURIComponent(claim.artifactId)}`
+      if (claim.entry.kind === 'artifact') return c.redirect(`${path}?shared=1`)
+      const snapshot = `${path}/v/${claim.entry.version}?shared=1`
+      if (claim.entry.kind === 'version') return c.redirect(snapshot)
+      const { pageId, boardId } = claim.entry
+      return c.redirect(
+        `${snapshot}#${new URLSearchParams({ page: pageId, board: boardId, play: '1' })}`,
+      )
     })
   }
 
-  return { mount, authenticate, hasShare, createShare, sealReceipt, openReceipt }
+  return { mount, authenticate, readShare, createShare, sealReceipt, openReceipt }
 }

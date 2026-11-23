@@ -1,6 +1,7 @@
 import {
   ArtifactIdentifierSchema,
   ArtifactPublishInputSchema,
+  ArtifactShareInputSchema,
   PublicIdSchema,
 } from '@akasha/protocol'
 import type { Context, Hono } from 'hono'
@@ -9,6 +10,7 @@ import { z } from 'zod'
 import type {
   ArtifactRepository,
   Clock,
+  FeedbackRepository,
   IdGenerator,
   ProjectRepository,
 } from '../../domain/ports.js'
@@ -19,28 +21,35 @@ import {
   hubProjectPrefix,
   ownsHubProject,
 } from './hub-access.js'
-import { type HubAuth, type HubPrincipal, sameHubOrigin } from './hub-auth.js'
+import {
+  fixedShareVersion,
+  type HubAuth,
+  type HubPrincipal,
+  type HubShareClaim,
+  sameHubOrigin,
+} from './hub-auth.js'
+import {
+  canEditSharedArtifact,
+  matchesShareBoard,
+  sharedArtifactDetail,
+  visibleSharedDiscussion,
+} from './hub-share-policy.js'
 
 interface HubGuardOptions {
   core: Hono
   auth: HubAuth
   access: HubArtifactAccess
-  repositories: { artifacts: ArtifactRepository; projects: ProjectRepository }
+  repositories: {
+    artifacts: ArtifactRepository
+    projects: ProjectRepository
+    feedbacks: FeedbackRepository
+  }
   origin: string
   clock: Clock
   ids: IdGenerator
 }
 
 const jsonObject = z.record(z.string(), z.unknown())
-const shareInput = z.object({
-  // 分享链接有效期（秒），缺省一天，最长 7 天
-  ttlSeconds: z
-    .number()
-    .int()
-    .min(1)
-    .max(7 * 24 * 60 * 60)
-    .default(24 * 60 * 60),
-})
 const storageAccess = z.object({
   action: z.enum(['get', 'list', 'set', 'delete']),
   scope: z.enum(['shared', 'private']),
@@ -74,7 +83,7 @@ const writeSuffixes: Readonly<Record<string, 'write' | 'authored'>> = {
   '/edits/preview': 'authored',
 }
 const roundAction = /^\/rounds\/[^/]+\/(?:submit|withdraw)$/
-const discussionAction = /^\/feedback\/[^/]+\/(?:replies|resolve)$/
+const discussionAction = /^\/feedback\/([^/]+)\/(?:replies|resolve)$/
 const artifactPath = /^\/api\/v1\/artifacts\/([^/]+)(.*)$/
 
 // 无权访问与不存在统一返回 404，不泄露制品是否存在
@@ -82,9 +91,9 @@ function hidden(c: Context) {
   return c.json({ error: { code: 'NOT_FOUND', message: '未找到请求的资源' } }, 404)
 }
 
-function forbidden(c: Context, principal?: HubPrincipal) {
-  return principal
-    ? c.json({ error: { code: 'FORBIDDEN', message: '当前账号没有此操作的权限' } }, 403)
+function forbidden(c: Context, access?: HubPrincipal | HubShareClaim) {
+  return access
+    ? c.json({ error: { code: 'FORBIDDEN', message: '当前权限不允许此操作' } }, 403)
     : c.json({ error: { code: 'UNAUTHORIZED', message: '请先登录 Hub' } }, 401)
 }
 
@@ -114,12 +123,17 @@ async function readJson(request: Request) {
   if (parsed.success) return parsed.data
 }
 
-function rewrite(request: Request, url: URL, body?: Record<string, unknown>) {
+function rewrite(
+  request: Request,
+  url: URL,
+  body?: Record<string, unknown>,
+  method = request.method,
+) {
   if (body === undefined) return request.url === url.href ? request : new Request(url, request)
   const headers = new Headers(request.headers)
   headers.delete('content-length')
   return new Request(url, {
-    method: request.method,
+    method,
     headers,
     body: JSON.stringify(body),
     signal: request.signal,
@@ -255,12 +269,36 @@ export function mountHubGuard(
         })
       }
       if (method !== 'POST') return hidden(c)
-      if (!principal?.member) return forbidden(c, principal)
       const body = ArtifactPublishInputSchema.safeParse(await readJson(request))
       if (!body.success) return invalid(c)
       const project = body.data.project ?? defaultProject
-      if (!project) return invalid(c)
+      if (!project) return principal ? invalid(c) : forbidden(c)
       const existing = await repositories.artifacts.findBySlug(project, body.data.slug)
+      const grant = existing && (await access.share(request, existing, principal))
+      if (grant && existing) {
+        if (
+          !canEditSharedArtifact(grant) ||
+          (body.data.visibility !== undefined && body.data.visibility !== existing.visibility) ||
+          body.data.type !== existing.type
+        )
+          return forbidden(c, grant)
+        if (body.data.baseVersion === undefined) return invalid(c)
+        // 只有已授权的制品可以更新；锁定 publicId，不能借发布入口创建或覆盖其他制品。
+        url.pathname = `/api/v1/artifacts/${existing.publicId}`
+        return core.fetch(
+          rewrite(
+            request,
+            url,
+            {
+              baseVersion: body.data.baseVersion,
+              source: body.data.source,
+              author: 'human:share',
+            },
+            'PATCH',
+          ),
+        )
+      }
+      if (!principal?.member) return forbidden(c, principal)
       const publish = { ...body.data, project, author: hubAuthor(principal) }
       if (!existing)
         return ownsHubProject(principal, project)
@@ -287,7 +325,7 @@ export function mountHubGuard(
         const artifact = await access.resolve(id, projectQuery, principal)
         if (!artifact) return hidden(c)
         const role = await access.role(request, artifact, principal)
-        if (role === 'none') return hidden(c)
+        if (role === 'none' || role === 'share') return hidden(c)
         url.searchParams.set('id', artifact.publicId)
         if (role !== 'owner' && role !== 'editor') url.searchParams.set('includeDrafts', 'false')
         if (role !== 'owner') url.searchParams.set('detail', 'false')
@@ -355,7 +393,7 @@ export function mountHubGuard(
     const suffix = match[2]
     if (!ArtifactIdentifierSchema.safeParse(id).success) return hidden(c)
     const writeMode = writeSuffixes[suffix]
-    const writesDiscussion = discussionAction.test(suffix)
+    const discussion = discussionAction.exec(suffix)
     if (
       read
         ? !Object.hasOwn(readSuffixes, suffix)
@@ -364,7 +402,7 @@ export function mountHubGuard(
           !(
             method === 'POST' &&
             (writeMode ||
-              writesDiscussion ||
+              discussion ||
               roundAction.test(suffix) ||
               suffix === '/share' ||
               suffix === '/storage')
@@ -383,10 +421,80 @@ export function mountHubGuard(
           : undefined
         : await access.resolve(id, project, principal)
     if (!artifact) return hidden(c)
-    const role = await access.role(request, artifact, principal)
+    const grant = await access.share(request, artifact, principal)
+    const role = grant ? 'share' : baseArtifactRole(artifact, principal)
     if (role === 'none') return hidden(c)
     const writer = role === 'owner' || role === 'editor'
     url.pathname = `/api/v1/artifacts/${artifact.publicId}${suffix}`
+
+    if (grant) {
+      const fixed = fixedShareVersion(grant)
+      const rawVersion = url.searchParams.get('version')
+      if (fixed !== undefined && rawVersion !== null && rawVersion !== String(fixed))
+        return hidden(c)
+      if (read) {
+        if (suffix === '/management') return c.json({ canManage: false })
+        if (suffix === '/visual-edit' && canEditSharedArtifact(grant))
+          return core.fetch(rewrite(request, url))
+        if (suffix === '/versions') {
+          const versions =
+            fixed === undefined
+              ? await repositories.artifacts.getVersions(artifact.publicId)
+              : [await repositories.artifacts.getVersion(artifact.publicId, fixed)]
+          return versions.every(Boolean) ? c.json({ versions }) : hidden(c)
+        }
+        if (suffix === '') {
+          if (rawVersion !== null && !/^[1-9]\d*$/.test(rawVersion)) return invalid(c)
+          const number = fixed ?? (rawVersion === null ? artifact.headVersion : Number(rawVersion))
+          const version = await repositories.artifacts.getVersion(artifact.publicId, number)
+          return version ? c.json(sharedArtifactDetail(artifact, version, grant)) : hidden(c)
+        }
+        if (suffix !== '/feedback') return hidden(c)
+        const feedbacks = repositories.feedbacks
+        const items = (await feedbacks.listForReview(artifact.publicId, false)).filter((item) =>
+          visibleSharedDiscussion(item, grant),
+        )
+        const threads = await feedbacks.annotations.list(artifact.publicId, false)
+        return c.json({
+          items,
+          threads: Object.fromEntries(
+            items.flatMap(({ id }) => (threads[id] ? [[id, threads[id]]] : [])),
+          ),
+        })
+      }
+      if (
+        (method === 'PATCH' && !suffix) ||
+        suffix === '/revert' ||
+        suffix === '/visual-edit/preview'
+      ) {
+        return canEditSharedArtifact(grant)
+          ? core.fetch(rewrite(request, url, { ...body, title: undefined, author: 'human:share' }))
+          : forbidden(c, grant)
+      }
+      if (grant.role === 'view' || (suffix !== '/feedback' && !discussion))
+        return forbidden(c, grant)
+      if (suffix === '/feedback') {
+        if (fixed !== undefined && body?.version !== fixed) return hidden(c)
+        if (
+          body?.kind !== 'comment' ||
+          body.audience === 'agent' ||
+          body.roundId != null ||
+          body.groupId != null
+        )
+          return forbidden(c, grant)
+        return core.fetch(
+          rewrite(request, url, { ...body, author: 'human:share', audience: 'human' }),
+        )
+      }
+      const item = discussion?.[1]
+        ? await repositories.feedbacks.findById(decodeSegment(discussion[1]))
+        : undefined
+      if (!item || item.artifactId !== artifact.publicId || !visibleSharedDiscussion(item, grant))
+        return hidden(c)
+      return core.fetch(
+        rewrite(request, url, { ...body, includeDrafts: false, author: 'human:share' }),
+      )
+    }
 
     const canManage = role === 'owner' && principal?.kind === 'session'
     if (suffix === '/management') return c.json({ canManage })
@@ -403,11 +511,16 @@ export function mountHubGuard(
     }
 
     if (suffix === '/share') {
-      if (role !== 'owner') return forbidden(c, principal)
-      const parsed = shareInput.safeParse(body)
-      return parsed.success
-        ? c.json(await auth.createShare(artifact.publicId, parsed.data.ttlSeconds), 201)
-        : invalid(c)
+      if (!canManage) return forbidden(c, principal)
+      const parsed = ArtifactShareInputSchema.safeParse(body)
+      if (!parsed.success) return invalid(c)
+      const { entry } = parsed.data
+      if (entry.kind !== 'artifact') {
+        const version = await repositories.artifacts.getVersion(artifact.publicId, entry.version)
+        if (!version || (entry.kind === 'play' && !matchesShareBoard(artifact, version, entry)))
+          return hidden(c)
+      }
+      return c.json(await auth.createShare(artifact.publicId, parsed.data), 201)
     }
     if (suffix === '/storage') {
       const operation = storageAccess.safeParse(body)
@@ -431,14 +544,13 @@ export function mountHubGuard(
         ? response
         : hidden(c)
     }
-    if (suffix === '/feedback' || writesDiscussion) {
-      if ((!principal && role !== 'share') || (writesDiscussion && principal?.kind === 'cli'))
-        return forbidden(c, principal)
+    if (suffix === '/feedback' || discussion) {
+      if (!principal || (discussion && principal.kind === 'cli')) return forbidden(c, principal)
       return core.fetch(
         rewrite(request, url, {
           ...body,
-          author: principal ? hubAuthor(principal) : 'human:share',
-          ...(writesDiscussion && { includeDrafts: writer }),
+          author: hubAuthor(principal),
+          ...(discussion && { includeDrafts: writer }),
         }),
       )
     }

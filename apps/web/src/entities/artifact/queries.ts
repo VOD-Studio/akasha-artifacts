@@ -237,7 +237,7 @@ export interface SaveHumanVersionVariables {
  *
  * @remarks 保存成功后自动写入一条 `kind=edit` 的反馈，把改动摘要通知 Agent。
  */
-export function useSaveHumanVersionMutation(id: string) {
+export function useSaveHumanVersionMutation(id: string, notifyAgent = true) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (
@@ -256,12 +256,14 @@ export function useSaveHumanVersionMutation(id: string) {
         visibility: input.artifact.visibility,
         author: 'human:web',
       })
-      await notifyHumanVersionEdit(
-        input.artifact.projectId,
-        saved.version,
-        input.previousSource,
-        'code',
-      )
+      if (notifyAgent) {
+        await notifyHumanVersionEdit(
+          input.artifact.projectId,
+          saved.version,
+          input.previousSource,
+          'code',
+        )
+      }
       return saved
     },
     onSuccess: (saved) => {

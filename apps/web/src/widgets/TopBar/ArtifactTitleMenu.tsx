@@ -32,7 +32,6 @@ import {
   useSetArtifactFavoriteMutation,
 } from '../../entities/artifact/queries'
 import type { WorkspaceViewMode } from '../../entities/workspace/store'
-import { HubShareMenuItem } from '../../features/hub/HubActions'
 import { ArtifactStorageUsageDialog } from './ArtifactStorageUsageDialog'
 
 interface ArtifactTitleMenuProps {
@@ -43,7 +42,9 @@ interface ArtifactTitleMenuProps {
   onShowTool: (tool: WorkspaceViewMode) => void
   onExport?: () => void
   onHandoff?: () => void
-  onShare: (link: string) => void
+  onShare?: () => void
+  canEdit?: boolean
+  shared?: boolean
   onQuickJump: () => void
 }
 
@@ -56,6 +57,8 @@ export function ArtifactTitleMenu({
   onExport,
   onHandoff,
   onShare,
+  canEdit = true,
+  shared = false,
   onQuickJump,
 }: ArtifactTitleMenuProps) {
   const { publicId, title } = artifact
@@ -101,7 +104,7 @@ export function ArtifactTitleMenu({
             <Link2 size={14} />
             复制制品链接
           </DropdownMenuItem>
-          {favorites.data ? (
+          {!shared && favorites.data ? (
             <DropdownMenuItem
               disabled={setFavorite.isPending}
               onSelect={() => {
@@ -150,10 +153,12 @@ export function ArtifactTitleMenu({
             <Code2 size={14} />
             查看源码
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => onShowTool('edit')}>
-            <Pencil size={14} />
-            编辑代码
-          </DropdownMenuItem>
+          {canEdit ? (
+            <DropdownMenuItem onSelect={() => onShowTool('edit')}>
+              <Pencil size={14} />
+              编辑代码
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuItem onSelect={() => onShowTool('diff')}>
             <GitCompare size={14} />
             对比版本
@@ -170,8 +175,11 @@ export function ArtifactTitleMenu({
               移交整份给 CLI Agent
             </DropdownMenuItem>
           ) : null}
-          {management.data?.canManage ? (
-            <HubShareMenuItem publicId={publicId} onShare={onShare} />
+          {onShare && management.data?.canManage ? (
+            <DropdownMenuItem onSelect={onShare}>
+              <Link2 size={14} />
+              创建分享链接
+            </DropdownMenuItem>
           ) : null}
           <DropdownMenuItem onSelect={onQuickJump}>
             <Search size={14} />

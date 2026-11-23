@@ -40,6 +40,7 @@ interface BoardInspectorProps {
   document: CanvasDocument
   location: CanvasLocation | null
   readOnly: boolean
+  canComment?: boolean
   /** 缺省时仍可读取图层源码；只为可改的头版本提供布局编辑器。 */
   editing?: CanvasBoardEditing
   /** 只有可写的头版本可从图层属性打开就地文字编辑。 */
@@ -64,6 +65,7 @@ export function BoardInspector({
   document,
   location,
   readOnly,
+  canComment = true,
   editing,
   onEditText,
   layers,
@@ -297,7 +299,7 @@ export function BoardInspector({
                         编辑文字
                       </Button>
                     ) : null}
-                    {layer ? (
+                    {layer && canComment ? (
                       <Button
                         className="mt-3"
                         variant="outline"

@@ -350,7 +350,7 @@ describe('Cloud Hub 身份与制品权限', () => {
     expect(share.status).toBe(201)
     const { url } = z.object({ url: z.string() }).parse(await share.json())
     const redeemed = await send(url)
-    expect(redeemed.headers.get('location')).toBe(`/a/${id}`)
+    expect(redeemed.headers.get('location')).toBe(`/a/${id}?shared=1`)
     const cookie = redeemed.headers.get('set-cookie')?.split(';')[0] ?? ''
     expect(await hub.authorizeArtifact(request(path, { headers: { cookie } }), id, 'read')).toBe(
       true,
@@ -377,36 +377,54 @@ describe('Cloud Hub 身份与制品权限', () => {
     const { round } = z.object({ round: ReviewRoundSchema }).parse(await roundResponse.json())
     const anchor = {
       version: 1,
-      roundId: round.id,
       kind: 'comment',
       element: { blockId: 'heading' },
     }
     const reviewPath = `${path}/feedback?includeDrafts=true`
-    expect(
-      (await post(`${path}/feedback`, { ...anchor, body: '只供讨论', audience: 'human' }, cookie))
-        .status,
-    ).toBe(201)
-    const feedback = await post(
+    const discussion = await post(
       `${path}/feedback`,
-      { ...anchor, body: '离线意见', audience: 'agent' },
+      { ...anchor, body: '只供讨论', audience: 'human' },
       cookie,
     )
-    expect(feedback.status).toBe(201)
+    expect(discussion.status).toBe(201)
+    const { feedback: humanRoot } = z
+      .object({ feedback: FeedbackSchema })
+      .parse(await discussion.json())
+    const threadPath = `${path}/feedback/${humanRoot.id}`
+    expect(
+      (
+        await post(
+          `${path}/feedback`,
+          { ...anchor, body: '访客无权投递', audience: 'agent' },
+          cookie,
+        )
+      ).status,
+    ).toBe(403)
+    const submitted = await post(
+      `${path}/feedback`,
+      { ...anchor, roundId: round.id, body: '离线意见', audience: 'agent' },
+      alice,
+    )
+    expect(submitted.status).toBe(201)
     const { feedback: agentRoot } = z
       .object({ feedback: FeedbackSchema })
-      .parse(await feedback.json())
-    const threadPath = `${path}/feedback/${agentRoot.id}`
-    expect((await post(`${threadPath}/replies`, { body: '作者私下回复' }, alice)).status).toBe(201)
+      .parse(await submitted.json())
     expect(
-      (await post(`${threadPath}/replies`, { body: '不能读取草稿', includeDrafts: true }, cookie))
-        .status,
+      (
+        await post(
+          `${path}/feedback/${agentRoot.id}/replies`,
+          { body: '不能读取草稿', includeDrafts: true },
+          cookie,
+        )
+      ).status,
     ).toBe(404)
+    expect((await post(`${threadPath}/replies`, { body: '作者回复' }, alice)).status).toBe(201)
     const preflight = await send(`/api/v1/feedback?id=${id}&includeDrafts=true`, {
       headers: { cookie: alice },
     })
     expect(await preflight.json()).toMatchObject({ items: [], cursor: '' })
     const shareDrafts = await send(reviewPath, { headers: { cookie } })
-    expect(await shareDrafts.json()).toEqual({ items: [], threads: {} })
+    expect(await shareDrafts.json()).toMatchObject({ items: [{ id: humanRoot.id }] })
     expect((await post(`${path}/rounds/${round.id}/submit`, {}, alice)).status).toBe(200)
     advance(1)
     expect(
@@ -423,13 +441,10 @@ describe('Cloud Hub 身份与制品权限', () => {
     const review = await send(reviewPath, { headers: { cookie } })
     expect(review.headers.get('cache-control')).toBe('private, no-store')
     expect(await review.json()).toMatchObject({
-      items: [
-        { body: '只供讨论', draft: false },
-        { body: '离线意见', draft: false },
-      ],
+      items: [{ body: '只供讨论', draft: false }],
       threads: {
-        [agentRoot.id]: {
-          replies: [{ body: '作者私下回复' }, { body: '分享审阅回复', author: 'human:share' }],
+        [humanRoot.id]: {
+          replies: [{ body: '作者回复' }, { body: '分享审阅回复', author: 'human:share' }],
           resolution: { resolvedAt: expect.any(String) },
         },
       },
@@ -437,14 +452,14 @@ describe('Cloud Hub 身份与制品权限', () => {
     expect((await send(reviewPath, { headers: { cookie: bob } })).status).toBe(404)
     expect((await post(`${threadPath}/resolve`, { resolved: false }, alice)).status).toBe(200)
     expect(await (await send(reviewPath, { headers: { cookie: alice } })).json()).toMatchObject({
-      threads: { [agentRoot.id]: { resolution: null } },
+      threads: { [humanRoot.id]: { resolution: null } },
     })
     const pull = await post('/api/v1/feedback/await', { id, timeoutSec: 1 }, alice)
     expect(pull.status).toBe(200)
     const delivered = ArtifactAwaitFeedbackOutputSchema.parse(await pull.json())
     expect(delivered).toMatchObject({
       status: 'received',
-      items: [{ body: '离线意见', author: 'human:share' }],
+      items: [{ body: '离线意见', author: 'human:github-101' }],
       cursor: expect.any(String),
       receipt: expect.any(String),
     })
@@ -461,6 +476,127 @@ describe('Cloud Hub 身份与制品权限', () => {
     advance(61)
     expect((await send(path, { headers: { cookie } })).status).toBe(404)
     expect((await send(url)).status).toBe(404)
+  })
+
+  it('按签名角色和固定版本隔离分享读取、讨论、编辑和实时事件', async () => {
+    const { hub, request, send, post, login, advance } = setup()
+    const owner = await login('alice')
+    const payload = {
+      slug: 'html/scoped',
+      title: '签名分享',
+      type: 'html',
+      source: '<h1>原版</h1>',
+    }
+    const { artifact } = publishedArtifact.parse(
+      await (await post('/api/v1/artifacts', payload, owner)).json(),
+    )
+    const path = `/api/v1/artifacts/${artifact.publicId}`
+    const mint = async (role: string, entry: object) => {
+      const created = await post(`${path}/share`, { role, entry, ttlSeconds: 30 }, owner)
+      expect(created.status).toBe(201)
+      const { url } = z.object({ url: z.string() }).parse(await created.json())
+      const response = await send(url)
+      expect(response.status).toBe(302)
+      return {
+        url,
+        cookie: response.headers.get('set-cookie')?.split(';')[0] ?? '',
+        location: response.headers.get('location'),
+      }
+    }
+    const view = await mint('view', { kind: 'play', version: 1, pageId: '', boardId: 'main' })
+    const comment = await mint('comment', { kind: 'version', version: 1 })
+    const edit = await mint('edit', { kind: 'artifact' })
+    expect(view.location).toBe(`/a/${artifact.publicId}/v/1?shared=1#page=&board=main&play=1`)
+    expect(comment.location).toBe(`/a/${artifact.publicId}/v/1?shared=1`)
+    expect(edit.location).toBe(`/a/${artifact.publicId}?shared=1`)
+    expect(
+      (
+        await post(
+          '/api/v1/artifacts',
+          { ...payload, baseVersion: 1, source: '<h1>新版</h1>' },
+          owner,
+        )
+      ).status,
+    ).toBe(200)
+    expect((await send(path)).status).toBe(404)
+
+    const fixedHeaders = { cookie: view.cookie }
+    const shown = await send(path, { headers: fixedHeaders })
+    expect(await shown.json()).toMatchObject({
+      artifact: { headVersion: 1 },
+      version: { version: 1, source: '<h1>原版</h1>' },
+      access: { role: 'view', version: 1 },
+    })
+    expect((await send(`${path}?version=2`, { headers: fixedHeaders })).status).toBe(404)
+    const versions = await send(`${path}/versions`, { headers: fixedHeaders })
+    const onlyFixed = z.object({ versions: z.array(VersionSchema) }).parse(await versions.json())
+    expect(onlyFixed.versions.map((version) => version.version)).toEqual([1])
+    expect((await send(`${path}/state`, { headers: fixedHeaders })).status).toBe(404)
+
+    const root = { version: 1, kind: 'comment', body: '审阅意见', audience: 'human' }
+    expect((await post(`${path}/feedback`, root, view.cookie)).status).toBe(403)
+    expect((await post(`${path}/feedback`, { ...root, version: 2 }, comment.cookie)).status).toBe(
+      404,
+    )
+    const added = await post(`${path}/feedback`, root, comment.cookie)
+    expect(added.status).toBe(201)
+    const { feedback } = z.object({ feedback: FeedbackSchema }).parse(await added.json())
+    expect(
+      (await post(`${path}/feedback/${feedback.id}/replies`, { body: '同意' }, comment.cookie))
+        .status,
+    ).toBe(201)
+    expect(
+      (await post(`${path}/feedback`, { ...root, audience: 'agent' }, edit.cookie)).status,
+    ).toBe(403)
+    expect(
+      (await post(`${path}/share`, { role: 'edit', entry: { kind: 'artifact' } }, edit.cookie))
+        .status,
+    ).toBe(403)
+    const patch = (cookie: string, baseVersion: number) =>
+      send(path, {
+        method: 'PATCH',
+        headers: { cookie, origin, 'content-type': 'application/json' },
+        body: JSON.stringify({ baseVersion, edits: [{ old_str: '新版', new_str: '已编辑' }] }),
+      })
+    expect((await patch(comment.cookie, 2)).status).toBe(403)
+    expect((await patch(edit.cookie, 1)).status).toBe(409)
+    expect((await patch(edit.cookie, 2)).status).toBe(200)
+    const wholeSource = {
+      ...payload,
+      project: artifact.projectId,
+      baseVersion: 3,
+      title: '不能改制品元数据',
+      source: '<h1>访客新设计</h1>',
+    }
+    expect((await post('/api/v1/artifacts', wholeSource, comment.cookie)).status).toBe(403)
+    expect(
+      (await post('/api/v1/artifacts', { ...wholeSource, visibility: 'public' }, edit.cookie))
+        .status,
+    ).toBe(403)
+    expect((await post('/api/v1/artifacts', wholeSource, edit.cookie)).status).toBe(200)
+
+    const edited = await send(path, { headers: { cookie: edit.cookie } })
+    const { artifact: after, version } = publishedArtifact.parse(await edited.json())
+    expect(after).toMatchObject({ title: payload.title, visibility: 'private' })
+    expect(version).toMatchObject({ version: 4, source: wholeSource.source, author: 'human:share' })
+    const scope = { artifactId: artifact.publicId }
+    const subscriber = request(`/api/v1/ws?artifactId=${artifact.publicId}`, {
+      headers: fixedHeaders,
+    })
+    const event = {
+      v: 1 as const,
+      seq: 1,
+      timestamp: version.createdAt,
+      type: 'version.created' as const,
+      artifactId: artifact.publicId,
+      version,
+    }
+    expect(await hub.authorizeRealtime(subscriber, scope)).toBe(true)
+    expect(await hub.authorizeRealtimeEvent(subscriber, scope, event)).toBe(false)
+    advance(31)
+    expect((await send(view.url)).status).toBe(404)
+    expect((await send(path, { headers: fixedHeaders })).status).toBe(404)
+    expect(await hub.authorizeRealtime(subscriber, scope)).toBe(false)
   })
 
   it('CLI 证明绑定一次性授权码，多实例只允许兑换一次', async () => {

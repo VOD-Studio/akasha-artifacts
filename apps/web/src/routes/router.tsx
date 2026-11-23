@@ -35,6 +35,7 @@ import {
   ArtifactHandoffDialog,
   type ArtifactHandoffTarget,
 } from '../widgets/ArtifactWorkspace/ArtifactHandoffDialog'
+import { ArtifactShareDialog } from '../widgets/ArtifactWorkspace/ArtifactShareDialog'
 import { ArtifactWorkspace } from '../widgets/ArtifactWorkspace/ArtifactWorkspace'
 import { LibraryShell } from '../widgets/LibraryShell/LibraryShell'
 import { TopBar } from '../widgets/TopBar/TopBar'
@@ -73,14 +74,18 @@ function ArtifactRouteView({
 }) {
   const navigate = useNavigate()
   const address = useLocation({ select: (location) => location.hash })
+  const search = useLocation({ select: (location) => location.searchStr })
   const [exportTarget, setExportTarget] = useState<DesignExportTarget | null>(null)
   const [handoffTarget, setHandoffTarget] = useState<ArtifactHandoffTarget | null>(null)
+  const [shareTarget, setShareTarget] = useState<DesignExportTarget | null>(null)
+  const [expiredShare, setExpiredShare] = useState<string | null>(null)
   const clearAddress = useCallback(() => {
     void navigate({
       hash: (previous) => {
         const location = new URLSearchParams(previous)
         location.delete('page')
         location.delete('board')
+        location.delete('play')
         return location.toString()
       },
       search: true,
@@ -103,9 +108,27 @@ function ArtifactRouteView({
     },
     [navigate],
   )
-  const probingLocal = useLocalArtifactRedirect(identifier, requestedVersion)
   const { data: daemonStatus } = useDaemonStatusQuery()
   const detailQuery = useArtifactDetailQuery(identifier, requestedVersion)
+  const shareAccess = detailQuery.data?.access
+  const expiresAt = shareAccess?.expiresAt
+  const shareExpired = Boolean(expiresAt && expiredShare === expiresAt)
+  const probingLocal = useLocalArtifactRedirect(
+    identifier,
+    requestedVersion,
+    detailQuery.isSuccess && !shareAccess && !new URLSearchParams(search).has('shared'),
+  )
+  useEffect(() => {
+    if (!expiresAt) return
+    const expire = () => setExpiredShare(expiresAt)
+    const remaining = Date.parse(expiresAt) - Date.now()
+    if (remaining <= 0) {
+      expire()
+      return
+    }
+    const timer = window.setTimeout(expire, remaining)
+    return () => window.clearTimeout(timer)
+  }, [expiresAt])
   const publicId = detailQuery.data?.artifact.publicId
   const resolvedPublicId = publicId ?? identifier
   const versionsQuery = useArtifactVersionsQuery(resolvedPublicId)
@@ -152,11 +175,12 @@ function ArtifactRouteView({
 
   useLiveSync({
     artifactId: publicId,
-    projectId: detailQuery.data?.artifact.projectId,
-    enabled: Boolean(publicId) && !probingLocal,
+    projectId: shareAccess ? undefined : detailQuery.data?.artifact.projectId,
+    enabled: Boolean(publicId) && !probingLocal && !shareExpired,
     onStatePatched: (evt) => {
       if (
         requestedVersion === undefined &&
+        !shareAccess &&
         evt.artifactId === detailQuery.data?.artifact.publicId
       ) {
         stateForwarderRef.current?.(evt.stateSeq, evt.ops)
@@ -176,7 +200,7 @@ function ArtifactRouteView({
   const denied =
     detailQuery.error instanceof ApiError && [401, 403, 404, 410].includes(detailQuery.error.status)
   // 暂时读不到服务端时保留画布和未保存代码；明确撤回读取权限时不展示旧缓存。
-  if (!detailQuery.data || denied) {
+  if (!detailQuery.data || denied || shareExpired) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4 bg-canvas p-6">
         <div className="w-full max-w-md">
@@ -184,9 +208,11 @@ function ArtifactRouteView({
             tone="danger"
             title="无法加载 Artifact"
             description={
-              detailQuery.error instanceof Error
-                ? detailQuery.error.message
-                : `未找到标识为 "${identifier}" 的 Artifact`
+              shareExpired
+                ? '分享链接已过期，请联系制品所有者重新签发。'
+                : detailQuery.error instanceof Error
+                  ? detailQuery.error.message
+                  : `未找到标识为 "${identifier}" 的 Artifact`
             }
           />
         </div>
@@ -197,6 +223,7 @@ function ArtifactRouteView({
       </div>
     )
   }
+  const viewingFixedVersion = shareAccess?.version ?? requestedVersion
 
   const detail = detailQuery.data
   const versions = versionsQuery.data ?? [detail.version]
@@ -226,7 +253,13 @@ function ArtifactRouteView({
         artifact={detail.artifact}
         version={detail.version}
         versions={versions}
-        fixedVersion={requestedVersion}
+        fixedVersion={viewingFixedVersion}
+        shareAccess={shareAccess}
+        onShare={
+          isCloudHub() && !shareAccess
+            ? () => setShareTarget({ artifact: detail.artifact, version: detail.version })
+            : undefined
+        }
         feedbackCount={feedbacks.reduce(
           (count, feedback) => count + Number(isAnnotationKind(feedback.kind)),
           0,
@@ -262,7 +295,7 @@ function ArtifactRouteView({
         rounds={rounds}
         sandboxOrigin={sandboxOrigin}
         address={address}
-        fixedVersion={requestedVersion}
+        fixedVersion={viewingFixedVersion}
         onClearAddress={clearAddress}
         onRememberThread={rememberThread}
         onExportBoard={openExport}
@@ -294,6 +327,13 @@ function ArtifactRouteView({
       ) : null}
       {handoffTarget?.reference.artifactId === detail.artifact.publicId ? (
         <ArtifactHandoffDialog target={handoffTarget} onClose={() => setHandoffTarget(null)} />
+      ) : null}
+      {shareTarget?.artifact.publicId === detail.artifact.publicId ? (
+        <ArtifactShareDialog
+          artifact={shareTarget.artifact}
+          version={shareTarget.version}
+          onClose={() => setShareTarget(null)}
+        />
       ) : null}
     </div>
   )

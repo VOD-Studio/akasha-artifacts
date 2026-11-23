@@ -52,8 +52,12 @@ export async function findLocalArtifact(
  *
  * @remarks 只在 Hub 上对合法的 `publicId` 探测。跳转时带上当前的 `page` 与 `board` 定位。
  */
-export function useLocalArtifactRedirect(publicId: string, version?: number): boolean {
-  const shouldProbe = isCloudHub() && PublicIdSchema.safeParse(publicId).success
+export function useLocalArtifactRedirect(
+  publicId: string,
+  version: number | undefined,
+  allowed: boolean,
+): boolean {
+  const shouldProbe = allowed && isCloudHub() && PublicIdSchema.safeParse(publicId).success
   const key = `${publicId}:${version ?? ''}`
   const [completed, setCompleted] = useState<string | null>(null)
   useEffect(() => {

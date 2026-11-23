@@ -21,6 +21,8 @@ export interface SplitCodeEditorProps {
   version: Version
   /** 远端最新的版本；与 `version` 不同时提示冲突。 */
   latestVersion?: Version
+  /** 分享编辑者可以保存版本，但不能向所有者的 CLI 投递变更摘要。 */
+  notifyAgent?: boolean
   /** 草稿变化时通知父级更新右侧的沙盒预览；传 `null` 表示清除预览。 */
   onLivePreviewChange?: (source: string | null) => void
   // 测试或外层可注入自定义保存实现，默认调用 useSaveHumanVersionMutation（落盘 author=human + kind=edit 反馈）
@@ -57,6 +59,7 @@ export function SplitCodeEditor({
   artifact,
   version,
   latestVersion,
+  notifyAgent = true,
   onLivePreviewChange,
   onSaveOverride,
   onVersionSaved,
@@ -64,7 +67,7 @@ export function SplitCodeEditor({
 }: SplitCodeEditorProps) {
   const hostRef = useRef<HTMLElement>(null)
   const viewRef = useRef<EditorView | null>(null)
-  const saveMutation = useSaveHumanVersionMutation(artifact.publicId)
+  const saveMutation = useSaveHumanVersionMutation(artifact.publicId, notifyAgent)
 
   const [draftSource, setDraftSource] = useState(version.source)
   const [baseVersion, setBaseVersion] = useState(version.version)
@@ -211,7 +214,7 @@ export function SplitCodeEditor({
         toast.success(
           editedWhileSaving
             ? `已保存为 v${res.version.version}，已保留你在保存期间的新修改`
-            : `已保存为 v${res.version.version}（已同步 kind=edit 反馈给 Agent）`,
+            : `已保存为 v${res.version.version}`,
         )
         onVersionSaved?.(res.version)
       } catch (err) {

@@ -44,7 +44,7 @@ export function useBoardPresentation(document: CanvasDocument, visible: boolean)
     play,
     focused,
     playing,
-    openFocus(target: Target, trigger: HTMLButtonElement) {
+    openFocus(target: Target, trigger: HTMLButtonElement | null) {
       focusTrigger.current = trigger
       setFocus(target)
     },
