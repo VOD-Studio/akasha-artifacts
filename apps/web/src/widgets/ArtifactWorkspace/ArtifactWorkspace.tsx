@@ -248,6 +248,14 @@ export function ArtifactWorkspace({
             address={address}
             onClearAddress={onClearAddress}
             pageLink={pageLink}
+            pageEditing={
+              artifact.type === 'artboard' &&
+              fixedVersion === undefined &&
+              version.version === artifact.headVersion &&
+              viewMode === 'preview'
+                ? { artifact, version, onVersionSaved }
+                : undefined
+            }
             renderBoard={renderBoard}
             visible={showCanvas}
             visualEdit={

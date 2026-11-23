@@ -314,3 +314,42 @@ it('固定版本定位到指定页面，复制的定位链接不携带分享授�
     Reflect.deleteProperty(navigator, 'clipboard')
   }
 })
+
+it('新建页面保存为头版本，空页不继承旧制品的未分组画板', async () => {
+  const initial = detailFor(
+    1,
+    JSON.stringify({ boards: [{ id: 'cover', title: '旧画板', html: '<h1>旧内容</h1>' }] }),
+  )
+  const view = showWorkspace(initial)
+  const editable = (detail: ArtifactDetailResponse) => (
+    <ArtifactWorkspace
+      detail={detail}
+      versions={[detail.version]}
+      sandboxOrigin="http://127.0.0.1:24331"
+      onVersionSaved={(version) =>
+        view.update(editable(detailFor(version.version, version.source)))
+      }
+    />
+  )
+  let submittedVersion: number | undefined
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
+    if (input === '/api/v1/artifacts' && options?.method === 'POST') {
+      const payload = JSON.parse(String(options.body))
+      submittedVersion = payload.baseVersion
+      return Response.json(detailFor(2, payload.source))
+    }
+    return Response.json({ selection: null })
+  })
+  view.update(editable(initial))
+  fireEvent.click(screen.getByRole('button', { name: '页面与画板' }))
+  fireEvent.click(screen.getByRole('button', { name: '新建页面' }))
+  fireEvent.change(screen.getByRole('textbox', { name: '页面名称' }), { target: { value: '备忘' } })
+  fireEvent.click(screen.getByRole('button', { name: '保存页面' }))
+
+  expect(await screen.findByText('此页面没有画板')).toBeTruthy()
+  expect(submittedVersion).toBe(1)
+  expect(screen.queryByTitle('旧画板 隔离沙盒')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: '页面与画板' }))
+  fireEvent.click(screen.getByRole('button', { name: '旧画板' }))
+  expect(screen.getByTitle('旧画板 隔离沙盒')).toBeTruthy()
+})
