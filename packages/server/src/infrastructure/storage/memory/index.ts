@@ -59,7 +59,8 @@ export class CryptoIdGenerator implements IdGenerator {
   }
 }
 
-// 以下内存实现对外一律深拷贝：调用方修改传入或返回的对象，都不会影响已存数据。
+// 本文件内的内存实现对外一律深拷贝：调用方修改传入或返回的对象，都不会影响已存数据。
+
 export class InMemoryProjectRepository implements ProjectRepository {
   private readonly byId = new Map<string, Project>()
 

@@ -18,7 +18,7 @@ function parseOrigin(value: string): URL {
  *
  * @throws {Error} 任一不是无路径的 HTTPS origin（仅本机回环允许 HTTP），或两者的注册域名相同。
  *
- * @remarks 同一注册域名下的子域名可能共享 cookie，不能用来隔离沙盒。
+ * @remarks 同一注册域名下的子域名可以互相写入 cookie，不能用来隔离沙盒。
  */
 export function validateHubOrigins(origin: string, sandboxOrigin: string) {
   const hub = parseOrigin(origin)

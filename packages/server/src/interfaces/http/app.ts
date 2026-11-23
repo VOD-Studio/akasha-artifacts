@@ -166,7 +166,7 @@ function randomHex(bytesLen: number): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-// Hub 守卫在转发前自行拒绝的请求不经过这里，同一错误码的状态码可能不同
+// Hub 守卫在转发前自行拒绝的请求不经过这里：例如 INVALID_RECEIPT，守卫回 400，这里映射为 422
 function errorCodeToStatus(code: ErrorCode): ContentfulStatusCode {
   switch (code) {
     case 'BAD_REQUEST':
