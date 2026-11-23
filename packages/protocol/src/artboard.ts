@@ -6,6 +6,8 @@ export interface ArtboardPage {
   inferredId?: true
   /** 缺省回落为 `id`。 */
   title: string
+  /** 为 `false` 时不显示未指定 `pageId` 的共享画板；缺省为显示。 */
+  includeSharedBoards?: false
 }
 
 /** 画板：画布上的一个设计画面。 */
@@ -121,6 +123,7 @@ export function parseArtboard(source: string): ArtboardParseResult {
         id,
         title: asString(rec.title)?.trim() || id,
         ...(!authoredId && { inferredId: true }),
+        ...(rec.includeSharedBoards === false && { includeSharedBoards: false }),
       })
     }
   }

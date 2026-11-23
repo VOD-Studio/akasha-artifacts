@@ -11,6 +11,7 @@ import {
 } from 'react'
 import { useSelectionStore } from '../../entities/selection/store'
 import { CanvasToolbar, PageNavigator } from './CanvasControls'
+import type { CanvasPageEditing } from './CanvasPageActions'
 import {
   type Camera,
   DEFAULT_CAMERA,
@@ -31,6 +32,8 @@ interface ArtifactCanvasProps {
   onClearAddress?: () => void
   /** 生成指向某个页面的链接，用于导航与分享。 */
   pageLink: (pageId: string) => string
+  /** 只在可保存画布页面的头版本传入。 */
+  pageEditing?: CanvasPageEditing
   /** 渲染一块画板；`interactive` 为 false 时只读。 */
   renderBoard: (board: CanvasBoard, interactive: boolean) => ReactNode
   /** 可视化直改的开关；省略时画布不提供直改入口。 */
@@ -107,6 +110,7 @@ export function ArtifactCanvas({
   address,
   onClearAddress,
   pageLink,
+  pageEditing,
   renderBoard,
   visualEdit,
 }: ArtifactCanvasProps) {
@@ -448,6 +452,7 @@ export function ArtifactCanvas({
           selected={selected}
           onNavigate={navigate}
           pageLink={pageLink}
+          pageEditing={pageEditing}
           status={copyStatus}
           onStatus={setCopyStatus}
         />

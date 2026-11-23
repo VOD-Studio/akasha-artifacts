@@ -1,4 +1,9 @@
-import { type ArtifactType, type ElementRef, parseArtboard } from '@akasha/protocol'
+import {
+  type ArtboardPage,
+  type ArtifactType,
+  type ElementRef,
+  parseArtboard,
+} from '@akasha/protocol'
 
 /** 画布上的一块画板。 */
 export interface CanvasBoard {
@@ -103,8 +108,8 @@ export function createCanvasDocument(
   const data = parsed.data
   const pageIds = canvasIds(data.pages, 'page', version)
   const boardIds = canvasIds(data.boards, 'board', version)
-  const pageTitles = new Map<string, string>()
-  for (const page of data.pages) pageTitles.set(page.id, page.title)
+  const pageDefinitions = new Map<string, ArtboardPage>()
+  for (const page of data.pages) pageDefinitions.set(page.id, page)
   const unplaced: CanvasBoard[] = []
   const shared: CanvasBoard[] = []
   const boardsByPage = new Map<string, CanvasBoard[]>()
@@ -126,7 +131,7 @@ export function createCanvasDocument(
     }
     if (!board.pageId) {
       shared.push(entry)
-    } else if (pageTitles.has(board.pageId)) {
+    } else if (pageDefinitions.has(board.pageId)) {
       const page = boardsByPage.get(board.pageId)
       if (page) page.push(entry)
       else boardsByPage.set(board.pageId, [entry])
@@ -135,11 +140,22 @@ export function createCanvasDocument(
     }
   }
   const pages: CanvasPage[] = []
-  for (const [id, title] of pageTitles) {
+  let showsSharedBoards = false
+  for (const { id, title, includeSharedBoards } of pageDefinitions.values()) {
     const own = boardsByPage.get(id)
-    pages.push({ id: pageIds.get(id) ?? id, title, boards: own ? [...own, ...shared] : shared })
+    const showShared = includeSharedBoards !== false
+    showsSharedBoards ||= showShared
+    pages.push({
+      id: pageIds.get(id) ?? id,
+      title,
+      boards: showShared
+        ? own?.length && shared.length
+          ? [...own, ...shared]
+          : (own ?? shared)
+        : (own ?? []),
+    })
   }
-  if (pages.length === 0 || unplaced.length !== 0) {
+  if (pages.length === 0 || unplaced.length !== 0 || (shared.length !== 0 && !showsSharedBoards)) {
     pages.push({
       id: '',
       title: pages.length ? '未分组' : '总览',
@@ -166,6 +182,26 @@ export function createCanvasDocument(
         : [],
     handDrawnFlows: Boolean(overlay?.handDrawnFlows ?? data.handDrawnFlows),
   }
+}
+
+/** 追加独立空页，不改变原有画板归属和源码中的其他字段。 */
+export function addCanvasPage(source: string, page: Pick<CanvasPage, 'id' | 'title'>): string {
+  const data: unknown = JSON.parse(source)
+  if (
+    data === null ||
+    typeof data !== 'object' ||
+    Array.isArray(data) ||
+    !('boards' in data) ||
+    !Array.isArray(data.boards)
+  ) {
+    throw new Error('当前源码不是可编辑的画板制品')
+  }
+  const pages = 'pages' in data && Array.isArray(data.pages) ? data.pages : []
+  return JSON.stringify(
+    { ...data, pages: [...pages, { ...page, includeSharedBoards: false }] },
+    null,
+    2,
+  )
 }
 
 interface BlockPlacement {

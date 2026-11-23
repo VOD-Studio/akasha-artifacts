@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { ElementPickerButton } from '../../features/element-picker/ElementPickerButton'
+import { CanvasPageActions, type CanvasPageEditing } from './CanvasPageActions'
 import type { Camera } from './canvas-camera'
 import type { CanvasPage } from './canvas-model'
 
@@ -30,6 +31,7 @@ export function PageNavigator({
   onNavigate,
   status,
   onStatus,
+  pageEditing,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -40,6 +42,8 @@ export function PageNavigator({
   onNavigate: (page: CanvasPage, boardId?: string) => void
   status: string
   onStatus: (status: string) => void
+  /** 只在可保存画布页面的头版本传入。 */
+  pageEditing?: CanvasPageEditing
 }) {
   const [query, setQuery] = useState('')
   const search = query.trim().toLocaleLowerCase()
@@ -134,6 +138,7 @@ export function PageNavigator({
           >
             复制页面链接
           </Button>
+          {pageEditing ? <CanvasPageActions editing={pageEditing} onNavigate={onNavigate} /> : null}
           <p role="status" className="px-2 text-xs text-ink-muted">
             {status}
           </p>

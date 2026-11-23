@@ -354,23 +354,25 @@ export function ArtboardRenderer({ source, preserved, onRendered }: RendererProp
     return <ParseErrorCard typeLabel="artboard" error={parsed.ok ? '' : parsed.error} />
   }
 
-  const resolvedActivePage =
-    effective.pages.length > 0
-      ? effective.pages.some((p) => p.id === activePage)
-        ? activePage
-        : (effective.pages[0]?.id ?? '__all__')
-      : '__all__'
-
-  const visibleBoards =
-    effective.pages.length > 0 && resolvedActivePage !== '__all__'
-      ? effective.boards.filter((b) => !b.pageId || b.pageId === resolvedActivePage)
-      : effective.boards
+  const hasUnassignedOverview =
+    effective.pages.length > 0 &&
+    effective.pages.every((page) => page.includeSharedBoards === false) &&
+    effective.boards.some((board) => !board.pageId)
+  const pages: typeof effective.pages = hasUnassignedOverview
+    ? [...effective.pages, { id: '', title: '未分组' }]
+    : effective.pages
+  const page = pages.find((entry) => entry.id === activePage) ?? pages[0]
+  const resolvedActivePage = page?.id ?? '__all__'
+  const visibleBoards = page
+    ? effective.boards.filter((board) =>
+        board.pageId ? board.pageId === page.id : page.includeSharedBoards !== false,
+      )
+    : effective.boards
 
   const visibleBoardIds = new Set(visibleBoards.map((b) => b.id))
-  const visibleFlows =
-    effective.pages.length > 0 && resolvedActivePage !== '__all__'
-      ? effective.flows.filter((f) => visibleBoardIds.has(f.from) || visibleBoardIds.has(f.to))
-      : effective.flows
+  const visibleFlows = page
+    ? effective.flows.filter((f) => visibleBoardIds.has(f.from) || visibleBoardIds.has(f.to))
+    : effective.flows
 
   const boardTitleById = new Map(effective.boards.map((b) => [b.id, b.title]))
   const colsClass =
@@ -395,9 +397,9 @@ export function ArtboardRenderer({ source, preserved, onRendered }: RendererProp
             <p className="text-xs text-slate-500">{effective.subtitle}</p>
           ) : null}
         </div>
-        {effective.pages.length > 0 ? (
+        {pages.length > 0 ? (
           <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="画板页面">
-            {effective.pages.map((p) => (
+            {pages.map((p) => (
               <button
                 key={p.id}
                 type="button"
@@ -416,6 +418,8 @@ export function ArtboardRenderer({ source, preserved, onRendered }: RendererProp
           </div>
         ) : null}
       </header>
+
+      {visibleBoards.length === 0 ? <p className="text-sm text-slate-500">此页面没有画板</p> : null}
 
       <div className={`grid gap-4 ${colsClass}`}>
         {visibleBoards.map((board) => (
