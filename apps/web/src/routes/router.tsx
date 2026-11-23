@@ -36,6 +36,10 @@ import {
   type ArtifactHandoffTarget,
 } from '../widgets/ArtifactWorkspace/ArtifactHandoffDialog'
 import { ArtifactShareDialog } from '../widgets/ArtifactWorkspace/ArtifactShareDialog'
+import {
+  ArtifactTransferDialog,
+  type ArtifactTransferTarget,
+} from '../widgets/ArtifactWorkspace/ArtifactTransferDialog'
 import { ArtifactWorkspace } from '../widgets/ArtifactWorkspace/ArtifactWorkspace'
 import { LibraryShell } from '../widgets/LibraryShell/LibraryShell'
 import { TopBar } from '../widgets/TopBar/TopBar'
@@ -78,6 +82,7 @@ function ArtifactRouteView({
   const [exportTarget, setExportTarget] = useState<DesignExportTarget | null>(null)
   const [handoffTarget, setHandoffTarget] = useState<ArtifactHandoffTarget | null>(null)
   const [shareTarget, setShareTarget] = useState<DesignExportTarget | null>(null)
+  const [transferTarget, setTransferTarget] = useState<ArtifactTransferTarget | null>(null)
   const [expiredShare, setExpiredShare] = useState<string | null>(null)
   const clearAddress = useCallback(() => {
     void navigate({
@@ -260,6 +265,12 @@ function ArtifactRouteView({
             ? () => setShareTarget({ artifact: detail.artifact, version: detail.version })
             : undefined
         }
+        onTransfer={
+          shareAccess
+            ? undefined
+            : (kind) =>
+                setTransferTarget({ kind, artifact: detail.artifact, version: detail.version })
+        }
         feedbackCount={feedbacks.reduce(
           (count, feedback) => count + Number(isAnnotationKind(feedback.kind)),
           0,
@@ -333,6 +344,13 @@ function ArtifactRouteView({
           artifact={shareTarget.artifact}
           version={shareTarget.version}
           onClose={() => setShareTarget(null)}
+        />
+      ) : null}
+      {transferTarget?.artifact.publicId === detail.artifact.publicId ? (
+        <ArtifactTransferDialog
+          target={transferTarget}
+          onCopy={(publicId) => void navigate({ to: '/a/$publicId', params: { publicId } })}
+          onClose={() => setTransferTarget(null)}
         />
       ) : null}
     </div>

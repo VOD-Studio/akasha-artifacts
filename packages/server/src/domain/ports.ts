@@ -27,12 +27,26 @@ export interface ProjectRepository {
   remove(id: string): Promise<boolean>
 }
 
+/** 一次原子的项目归属切换。 */
+export interface ArtifactRelocation {
+  /** 要保留原版本和链接的制品。 */
+  publicId: PublicId
+  /** 用作更新条件，避免向已改变归属的资源重复应用移动。 */
+  sourceProjectId: string
+  /** 已在当前服务登记的目标项目。 */
+  targetProjectId: string
+  /** 移动只更新归属和此时间。 */
+  updatedAt: string
+}
+
 /** 制品与其不可变版本历史的仓储端口。 */
 export interface ArtifactRepository {
-  /** 按 `publicId` 插入或整体覆盖；项目或 slug 变更时须同步维护 slug 唯一索引。 */
+  /** 按 `publicId` 插入或更新；已有制品的项目归属只能经 `relocate` 更改。 */
   saveArtifact(artifact: Artifact): Promise<void>
   /** 单独更新展示标题与更新时间，不重写源码、版本或项目归属。 */
   renameTitle(id: PublicId, title: string, updatedAt: string): Promise<Artifact | undefined>
+  /** 原子更新项目和唯一 slug 索引，冲突不修改任何记录。 */
+  relocate(input: ArtifactRelocation): Promise<Artifact | undefined>
   findByPublicId(publicId: PublicId): Promise<Artifact | undefined>
   findBySlug(projectId: string, slug: Slug): Promise<Artifact | undefined>
   /** `projectId` 省略时跨项目列出全部。 */

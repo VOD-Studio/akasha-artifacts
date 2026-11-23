@@ -1,4 +1,9 @@
-import type { Artifact, ArtifactSharedAccess, Version } from '@akasha/protocol'
+import type {
+  Artifact,
+  ArtifactSharedAccess,
+  ArtifactTransferInput,
+  Version,
+} from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { ArrowLeft, MessageSquare, ScanLine } from 'lucide-react'
 import { useSelectionStore } from '../../entities/selection/store'
@@ -21,6 +26,7 @@ export interface TopBarProps {
   onHandoff?: () => void
   shareAccess?: ArtifactSharedAccess
   onShare?: () => void
+  onTransfer?: (kind: ArtifactTransferInput['kind']) => void
   onSelectVersion: (version?: number) => void
 }
 
@@ -36,6 +42,7 @@ export function TopBar({
   onHandoff,
   shareAccess,
   onShare,
+  onTransfer,
   onSelectVersion,
 }: TopBarProps) {
   const viewMode = useWorkspaceStore((s) => s.viewMode)
@@ -83,6 +90,7 @@ export function TopBar({
           onExport={onExport}
           onHandoff={onHandoff}
           onShare={onShare}
+          onTransfer={onTransfer}
           shared={Boolean(shareAccess)}
           canEdit={!shareAccess || (shareAccess.role === 'edit' && fixedVersion === undefined)}
           onQuickJump={() => setCommandPaletteOpen(true)}

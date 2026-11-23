@@ -2,6 +2,7 @@ import {
   ArtifactIdentifierSchema,
   ArtifactPublishInputSchema,
   ArtifactShareInputSchema,
+  ArtifactTransferInputSchema,
   PublicIdSchema,
 } from '@akasha/protocol'
 import type { Context, Hono } from 'hono'
@@ -405,6 +406,7 @@ export function mountHubGuard(
               discussion ||
               roundAction.test(suffix) ||
               suffix === '/share' ||
+              suffix === '/transfer' ||
               suffix === '/storage')
           )
     )
@@ -500,6 +502,14 @@ export function mountHubGuard(
     if (suffix === '/management') return c.json({ canManage })
     if (suffix === '/metadata') {
       return canManage ? core.fetch(rewrite(request, url, body)) : forbidden(c, principal)
+    }
+    if (suffix === '/transfer') {
+      if (!canManage || !principal) return forbidden(c, principal)
+      const parsed = ArtifactTransferInputSchema.safeParse(body)
+      if (!parsed.success) return invalid(c)
+      // 同属一个账户命名空间才保留旧分享角色与制品可见性。
+      if (!ownsHubProject(principal, parsed.data.targetProjectId)) return forbidden(c, principal)
+      return core.fetch(rewrite(request, url, { ...parsed.data, author: hubAuthor(principal) }))
     }
     if (suffix === '/favorite') {
       return principal?.kind === 'session'

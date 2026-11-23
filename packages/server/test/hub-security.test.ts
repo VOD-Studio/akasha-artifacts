@@ -150,6 +150,124 @@ describe('Cloud Hub 身份与制品权限', () => {
     expect((await post('/api/v1/daemon/shutdown', {}, alice)).status).toBe(404)
   })
 
+  it('在同一所有者的两个项目间复制固定版和移动原件，并保留旧链接的访问边界', async ({
+    onTestFinished,
+  }) => {
+    const storage = createSqliteHubStorage(':memory:')
+    onTestFinished(storage.close)
+    const { login, post, send } = setup(storage)
+    const alice = await login('alice')
+    const bob = await login('bob')
+    async function register(id: string, cookie: string) {
+      const response = await post(
+        '/api/v1/projects',
+        { id, name: id, rootPath: `/qa/${id}` },
+        cookie,
+      )
+      expect(response.status).toBe(201)
+      return z.object({ project: z.object({ id: z.string() }) }).parse(await response.json())
+        .project.id
+    }
+    const from = await register('from', alice)
+    const taken = await register('taken', alice)
+    const destination = await register('destination', alice)
+    const otherOwner = await register('other-owner', bob)
+    const original = { slug: 'html/transfer', title: '原件', type: 'html', source: '<p>第一版</p>' }
+    const create = async (project: string, cookie: string) => {
+      const response = await post('/api/v1/artifacts', { ...original, project }, cookie)
+      expect(response.status).toBe(201)
+      return publishedArtifact.parse(await response.json()).artifact
+    }
+    const artifact = await create(from, alice)
+    const existing = await create(taken, alice)
+    const path = `/api/v1/artifacts/${artifact.publicId}`
+    expect(
+      (
+        await post(
+          '/api/v1/artifacts',
+          { ...original, project: from, baseVersion: 1, source: '<p>第二版</p>' },
+          alice,
+        )
+      ).status,
+    ).toBe(200)
+    expect(
+      (
+        await post(
+          `${path}/feedback`,
+          { version: 1, kind: 'comment', audience: 'human', body: '跟随原件的讨论' },
+          alice,
+        )
+      ).status,
+    ).toBe(201)
+    const signed = await post(
+      `${path}/share`,
+      { role: 'view', entry: { kind: 'version', version: 1 } },
+      alice,
+    )
+    const { url } = z.object({ url: z.string() }).parse(await signed.json())
+    const grant = (await send(url)).headers.get('set-cookie')?.split(';')[0]
+    expect(grant).toBeTruthy()
+    const transfer = (input: object, cookie = alice) => post(`${path}/transfer`, input, cookie)
+    expect((await transfer({ kind: 'move', targetProjectId: taken })).status).toBe(409)
+    expect((await transfer({ kind: 'move', targetProjectId: otherOwner })).status).toBe(403)
+    expect(
+      (
+        await transfer(
+          { kind: 'copy', targetProjectId: destination, version: 1, slug: original.slug },
+          grant,
+        )
+      ).status,
+    ).toBe(403)
+
+    const cloneSlug = 'html/reproduction'
+    const created = await transfer({
+      kind: 'copy',
+      targetProjectId: destination,
+      version: 1,
+      slug: cloneSlug,
+    })
+    expect(created.status).toBe(201)
+    const clone = publishedArtifact.parse(await created.json())
+    expect(clone.artifact).toMatchObject({
+      projectId: destination,
+      slug: cloneSlug,
+      visibility: 'private',
+      headVersion: 1,
+    })
+    expect(clone.artifact.publicId).not.toBe(artifact.publicId)
+    expect(clone.version.source).toBe(original.source)
+    const copyPath = `/api/v1/artifacts/${clone.artifact.publicId}`
+    expect(
+      await (await send(`${copyPath}/feedback`, { headers: { cookie: alice } })).json(),
+    ).toEqual({ items: [], threads: {} })
+    expect((await send(copyPath, { headers: { cookie: grant ?? '' } })).status).toBe(404)
+
+    const moved = await transfer({ kind: 'move', targetProjectId: destination })
+    expect(moved.status).toBe(200)
+    expect(await moved.json()).toMatchObject({
+      artifact: { publicId: artifact.publicId, projectId: destination, headVersion: 2 },
+    })
+    const after = await send(`${path}?version=1`, { headers: { cookie: grant ?? '' } })
+    expect(await after.json()).toMatchObject({ version: { source: original.source, version: 1 } })
+    expect(
+      await (await send(`${path}/feedback`, { headers: { cookie: alice } })).json(),
+    ).toMatchObject({ items: [{ body: '跟随原件的讨论' }] })
+    expect(
+      (await send(`${path}?projectId=${encodeURIComponent(from)}`, { headers: { cookie: alice } }))
+        .status,
+    ).toBe(404)
+    expect(
+      (
+        await send(`${path}?projectId=${encodeURIComponent(destination)}`, {
+          headers: { cookie: alice },
+        })
+      ).status,
+    ).toBe(200)
+    expect(
+      (await send(`/api/v1/artifacts/${existing.publicId}`, { headers: { cookie: alice } })).status,
+    ).toBe(200)
+  })
+
   it('隔离私有历史、状态、列表、选区与项目事件，只允许团队协作者编辑团队制品', async () => {
     const { hub, request, send, post, login } = setup()
     hub.app.get('/api/v1/ws', (c) => c.json({ ok: true }))

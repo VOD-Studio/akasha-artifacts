@@ -4,6 +4,7 @@ import type {
   AnnotationThread,
   Artifact,
   ArtifactIdentifier,
+  ArtifactTransferInput,
   ArtifactType,
   Author,
   EditOp,
@@ -177,12 +178,17 @@ export class ArtifactService {
     author: Author
     // 仅供本地文件存储重建索引时沿用 .artifact-id 既有稳定 publicId，不对外部 HTTP/MCP 协议暴露
     preferredPublicId?: PublicId
+    // 复制不允许对命中的制品写入新版本。
+    createOnly?: true
   }): Promise<{ artifact: Artifact; version: Readonly<Version> }> {
     const projectId = input.projectId ?? DEFAULT_PROJECT_ID
     const slugLockKey = `slug:${projectId}::${input.slug}`
 
     return this.writeLocks.run(slugLockKey, async () => {
       const existing = await this.deps.artifacts.findBySlug(projectId, input.slug)
+      if (existing && input.createOnly) {
+        throw new DomainError('RESOURCE_CONFLICT', '目标项目已存在同名制品，原有内容未更改')
+      }
       const now = this.deps.clock.now()
 
       if (!existing) {
@@ -238,6 +244,9 @@ export class ArtifactService {
         if (!fresh) {
           throw new NotFoundError(`未找到 Artifact "${existing.publicId}"`)
         }
+        if (fresh.projectId !== projectId || fresh.slug !== input.slug) {
+          throw new DomainError('RESOURCE_CONFLICT', '制品归属已改变，请按目标项目重新定位')
+        }
         const versions = await this.deps.artifacts.getVersions(fresh.publicId)
         assertBaseVersion(fresh, versions, input.baseVersion)
 
@@ -292,6 +301,48 @@ export class ArtifactService {
       )
       return artifact
     })
+  }
+
+  /** 只复制所选源码快照，或在服务内原子移动既有标识。 */
+  async transferArtifact(id: ArtifactIdentifier, input: ArtifactTransferInput, author: Author) {
+    const artifact = await this.resolveArtifact(id)
+    if (!(await this.deps.projects.findById(input.targetProjectId))) {
+      throw new NotFoundError('目标项目未在当前服务登记')
+    }
+    if (input.kind === 'copy') {
+      const snapshot = await this.deps.artifacts.getVersion(artifact.publicId, input.version)
+      if (!snapshot) throw new NotFoundError(`找不到要复制的固定版本 v${input.version}`)
+      return this.publish({
+        projectId: input.targetProjectId,
+        slug: input.slug,
+        title: snapshot.title,
+        type: artifact.type,
+        source: snapshot.source,
+        visibility: 'private',
+        createOnly: true,
+        author,
+      })
+    }
+    if (input.targetProjectId === artifact.projectId) {
+      throw new DomainError('BAD_REQUEST', '请选择不同的目标项目')
+    }
+    return this.writeLocks.run(`slug:${input.targetProjectId}::${artifact.slug}`, () =>
+      this.withArtifactLock(artifact.publicId, async () => {
+        const moved = await this.deps.artifacts.relocate({
+          publicId: artifact.publicId,
+          sourceProjectId: artifact.projectId,
+          targetProjectId: input.targetProjectId,
+          updatedAt: this.deps.clock.now(),
+        })
+        if (!moved)
+          throw new DomainError('RESOURCE_CONFLICT', '制品归属或目标项目已改变，未移动制品')
+        await this.deps.realtime.publish(
+          { type: 'artifact.metadata', artifactId: moved.publicId },
+          { projectId: moved.projectId },
+        )
+        return { artifact: moved }
+      }),
+    )
   }
 
   /**

@@ -24,6 +24,7 @@ import type {
 import type { ArtifactStorageRepository } from '../../../domain/artifact-storage.js'
 import { deepFreeze } from '../../../domain/freeze.js'
 import type {
+  ArtifactRelocation,
   ArtifactRepository,
   FeedbackRepository,
   ProjectRepository,
@@ -32,6 +33,7 @@ import type {
   StateRepository,
 } from '../../../domain/ports.js'
 import { annotationStatements, createSqlAnnotationRepository } from '../annotation-records.js'
+import { rethrowArtifactStoreError } from '../artifact-conflict.js'
 import type { SqlStatement } from '../cloud/types.js'
 import { createSqliteArtifactStorage } from './artifact-kv.js'
 import { migrateFeedbackAudience } from './feedback-migration.js'
@@ -335,30 +337,33 @@ export class SqliteArtifactRepository implements ArtifactRepository {
   constructor(private readonly db: DatabaseSync) {}
 
   private upsertArtifactSync(artifact: Artifact): void {
-    this.db
-      .prepare(
-        `INSERT INTO artifacts (public_id, project_id, slug, title, type, visibility, head_version, created_at, updated_at)
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO artifacts (public_id, project_id, slug, title, type, visibility, head_version, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(public_id) DO UPDATE SET
-           project_id = excluded.project_id,
            slug = excluded.slug,
            title = excluded.title,
            type = excluded.type,
            visibility = excluded.visibility,
            head_version = excluded.head_version,
            updated_at = excluded.updated_at`,
-      )
-      .run(
-        artifact.publicId,
-        artifact.projectId,
-        artifact.slug,
-        artifact.title,
-        artifact.type,
-        artifact.visibility,
-        artifact.headVersion,
-        artifact.createdAt,
-        artifact.updatedAt,
-      )
+        )
+        .run(
+          artifact.publicId,
+          artifact.projectId,
+          artifact.slug,
+          artifact.title,
+          artifact.type,
+          artifact.visibility,
+          artifact.headVersion,
+          artifact.createdAt,
+          artifact.updatedAt,
+        )
+    } catch (error) {
+      rethrowArtifactStoreError(error)
+    }
   }
 
   private insertVersionSync(version: Readonly<Version>): void {
@@ -399,6 +404,25 @@ export class SqliteArtifactRepository implements ArtifactRepository {
       .prepare('UPDATE artifacts SET title = ?, updated_at = ? WHERE public_id = ? RETURNING *')
       .get(title, updatedAt, id) as ArtifactRow | undefined
     return row ? mapArtifact(row) : undefined
+  }
+
+  async relocate(input: ArtifactRelocation): Promise<Artifact | undefined> {
+    try {
+      const row = this.db
+        .prepare(`UPDATE artifacts SET project_id = ?, updated_at = ?
+          WHERE public_id = ? AND project_id = ? AND EXISTS (SELECT 1 FROM projects WHERE id = ?)
+          RETURNING *`)
+        .get(
+          input.targetProjectId,
+          input.updatedAt,
+          input.publicId,
+          input.sourceProjectId,
+          input.targetProjectId,
+        ) as ArtifactRow | undefined
+      return row ? mapArtifact(row) : undefined
+    } catch (error) {
+      return rethrowArtifactStoreError(error)
+    }
   }
 
   async findByPublicId(publicId: PublicId): Promise<Artifact | undefined> {
