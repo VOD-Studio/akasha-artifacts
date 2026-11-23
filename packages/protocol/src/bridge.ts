@@ -146,6 +146,15 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
     // 关闭检查器或换板即停止；只订阅本帧
     active: z.boolean(),
   }),
+  z.object({
+    ...BridgeEnvelopeBase,
+    // 双击命中测试；坐标是沙盒视口 CSS 像素，不派发原型的点击事件。
+    type: z.literal('inspect.text.at'),
+    requestId: z.string().min(1).max(64),
+    version: z.number().int().positive(),
+    x: z.number().nonnegative(),
+    y: z.number().nonnegative(),
+  }),
 ])
 export type ShellToSandboxMessage = z.infer<typeof ShellToSandboxMessageSchema>
 
@@ -272,6 +281,19 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
     version: z.number().int().positive(),
     element: ElementRefSchema,
     loc: z.string().optional(),
+  }),
+  z.object({
+    ...BridgeEnvelopeBase,
+    type: z.literal('inspect.text.target'),
+    requestId: z.string().min(1).max(64),
+    version: z.number().int().positive(),
+    // 未命中元素时为空；有元素但不能安全改写时只提供批注定位。
+    element: ElementRefSchema.nullable(),
+    // 仅为命中节点自身唯一的静态源码位置，不沿祖先查找。
+    loc: z
+      .string()
+      .regex(/^\d{1,8}:\d{1,8}$/)
+      .optional(),
   }),
 ])
 export type SandboxToShellMessage = z.infer<typeof SandboxToShellMessageSchema>

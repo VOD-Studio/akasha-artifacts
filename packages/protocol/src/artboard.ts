@@ -237,3 +237,31 @@ export function parseArtboardValue(value: unknown): ArtboardParseResult {
     },
   }
 }
+
+/** 以基准版本的可见标识定位旧对象，持久化编辑须保留该标识。 */
+export function canvasIds(
+  items: readonly { id: string; title: string; inferredId?: true }[],
+  kind: 'page' | 'board',
+  version: number,
+) {
+  const ids = new Map<string, string>()
+  const titles = new Map<string, number>()
+  for (const { id, title, inferredId } of items) {
+    titles.set(title, (titles.get(title) ?? 0) + 1)
+    if (!inferredId) ids.set(id, id)
+  }
+  const used = new Set(ids.values())
+  for (const { id, title, inferredId } of items) {
+    if (!inferredId || ids.has(id)) continue
+    // 旧版没有作者标识时，重排不能把链接转给同位置的另一个对象。
+    const named = `legacy-${kind}:${title}`
+    let key =
+      title !== id && titles.get(title) === 1 && !used.has(named)
+        ? named
+        : `legacy-${kind}:v${version}:${id}`
+    while (used.has(key)) key += ':'
+    used.add(key)
+    ids.set(id, key)
+  }
+  return ids
+}

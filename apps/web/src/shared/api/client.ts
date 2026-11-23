@@ -325,17 +325,18 @@ export interface VisualEditTarget {
   order: { parentLoc: string; siblings: Array<{ loc: string; label: string }> } | null
 }
 
-export type VisualEditCommand = { op: EditOp } | { undoVersion: number }
+export type VisualEditCommand = { op: EditOp; boardId?: string } | { undoVersion: number }
 
 export async function fetchVisualEditTarget(
   id: string,
-  input: { project: string; baseVersion: number; loc: string },
+  input: { project: string; baseVersion: number; loc: string; boardId?: string },
 ): Promise<{ target: VisualEditTarget | null }> {
   const query = new URLSearchParams({
     project: input.project,
     baseVersion: String(input.baseVersion),
     loc: input.loc,
   })
+  if (input.boardId !== undefined) query.set('boardId', input.boardId)
   return requestJson(`/api/v1/artifacts/${encodeURIComponent(id)}/visual-edit?${query}`)
 }
 

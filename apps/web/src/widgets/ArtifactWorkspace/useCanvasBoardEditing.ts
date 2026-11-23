@@ -1,4 +1,4 @@
-import type { Artifact, Version } from '@akasha/protocol'
+import { type Artifact, stabilizeArtboardSource, type Version } from '@akasha/protocol'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 import { artifactKeys, notifyHumanVersionEdit } from '../../entities/artifact/queries'
@@ -39,7 +39,9 @@ export interface CanvasBoardEditing {
   draft: PendingEdit | null
   inputError: string
   available: boolean
-  change: (command: CanvasBoardEdit, base?: Version) => void
+  change: (command: CanvasBoardEdit, base?: Version) => boolean
+  /** 提交由服务端按基准源码预览得到的完整版本，也加入同一撤销历史。 */
+  replaceSource: (source: string, base: Version) => boolean
   undo?: () => void
   redo?: () => void
   dismissDraft: () => void
@@ -136,6 +138,20 @@ export function useCanvasBoardEditing({
     })
   }
 
+  function stage(change: CanvasSourceChange, base: Version): boolean {
+    if (draft || inFlight.current) return false
+    if (change.after === base.source) return true
+    setInputError('')
+    void save({
+      artifactId: artifact.publicId,
+      base,
+      source: change.after,
+      timeline: { past: [...timeline.past.slice(1 - MAX_LOCAL_EDITS), change], future: [] },
+      status: 'saving',
+    })
+    return true
+  }
+
   return {
     version,
     draft,
@@ -144,21 +160,21 @@ export function useCanvasBoardEditing({
     undo: available && timeline.past.length ? () => replay(false) : undefined,
     redo: available && timeline.future.length ? () => replay(true) : undefined,
     change(command: CanvasBoardEdit, base = version) {
-      if (draft || inFlight.current) return
+      if (draft || inFlight.current) return false
       setInputError('')
       try {
-        const change = editCanvasBoards(base.source, base.version, command)
-        if (change.after === base.source) return
-        void save({
-          artifactId: artifact.publicId,
-          base,
-          source: change.after,
-          timeline: { past: [...timeline.past.slice(1 - MAX_LOCAL_EDITS), change], future: [] },
-          status: 'saving',
-        })
+        return stage(editCanvasBoards(base.source, base.version, command), base)
       } catch (cause) {
         setInputError(cause instanceof Error ? cause.message : '无法应用画板操作')
+        return false
       }
+    },
+    replaceSource(source, base) {
+      const before =
+        artifact.type === 'artboard' && source !== base.source
+          ? stabilizeArtboardSource(base.source, base.version)
+          : base.source
+      return stage({ before, after: source }, base)
     },
     dismissDraft() {
       if (inFlight.current) return

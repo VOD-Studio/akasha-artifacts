@@ -1,5 +1,5 @@
 import type { SandboxBridgeClient } from './bridge/client'
-import { buildElementRef } from './inspector/index'
+import { buildElementRef, uniqueStaticSourceLocation } from './inspector/index'
 
 /** 可视化直改的选取器：激活后拦截沙盒内的第一次真实点击，把命中元素上报给外壳。 */
 export class SandboxVisualInspector {
@@ -40,15 +40,7 @@ export class SandboxVisualInspector {
     event.preventDefault()
     event.stopImmediatePropagation()
     this.setActive(false)
-    // L1 可用祖先定位；L4 只信任当前命中元素自己的唯一 loc，不向上寻址。
-    const directLoc = target.getAttribute('data-ak-loc')
-    const loc =
-      directLoc &&
-      /^\d+:\d+$/.test(directLoc) &&
-      !target.closest('[data-ak-dynamic]') &&
-      root.querySelectorAll(`[data-ak-loc="${directLoc}"]`).length === 1
-        ? directLoc
-        : undefined
+    const loc = uniqueStaticSourceLocation(target, root)
     this.bridge.send({
       type: 'visual.select',
       version,

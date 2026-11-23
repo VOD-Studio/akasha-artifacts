@@ -37,6 +37,7 @@ import type { CanvasBoard, CanvasDocument, CanvasLocation, CanvasPage } from './
 import { useBoardGesture } from './useBoardGesture'
 import { useBoardPresentation } from './useBoardPresentation'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
+import type { CanvasTextTools } from './useInlineCanvasText'
 import { useViewportSize } from './useViewportSize'
 
 /** 显式选板要求适配；元素指认与图层选择只在画板不可见时移动相机。 */
@@ -55,6 +56,10 @@ interface ArtifactCanvasProps {
   /** 只在可保存画布页面的头版本传入。 */
   pageEditing?: CanvasPageEditing
   boardEditing?: CanvasBoardEditing
+  /** 同一份版本历史也可供单板 HTML 或 React 的文字直改使用。 */
+  historyEditing?: CanvasBoardEditing
+  /** 缺省时双击不启用文字直改，原型仍只从播放入口进入。 */
+  textTools?: CanvasTextTools
   /** 抽屉选板后定位；换工具不消费尚不可见的请求。 */
   reveal?: InspectorReveal | null
   onRevealHandled: () => void
@@ -119,6 +124,8 @@ export function ArtifactCanvas({
   pageLink,
   pageEditing,
   boardEditing,
+  historyEditing = boardEditing,
+  textTools,
   reveal,
   onRevealHandled,
   onLocationChange,
@@ -398,7 +405,7 @@ export function ArtifactCanvas({
     const target = event.target instanceof Element ? event.target : null
     const editing = target?.closest(KEYBOARD_CONTROL)
     if (
-      boardEditing &&
+      historyEditing &&
       (event.ctrlKey || event.metaKey) &&
       !event.altKey &&
       !event.isComposing &&
@@ -407,7 +414,7 @@ export function ArtifactCanvas({
       (target === window.document.body || viewportRef.current?.contains(target)) &&
       !target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')
     ) {
-      const action = event.shiftKey ? boardEditing.redo : boardEditing.undo
+      const action = event.shiftKey ? historyEditing.redo : historyEditing.undo
       if (action) {
         boardGesture.cancel()
         event.preventDefault()
@@ -580,7 +587,7 @@ export function ArtifactCanvas({
             status={copyStatus}
             onStatus={setCopyStatus}
           />
-          {boardEditing ? <CanvasBoardEditNotice editing={boardEditing} /> : null}
+          {historyEditing ? <CanvasBoardEditNotice editing={historyEditing} /> : null}
         </div>
         <section
           ref={viewportRef}
@@ -788,13 +795,17 @@ export function ArtifactCanvas({
                           board={board}
                           tool={drawingTool}
                           version={boardEditing.version}
-                          onCreate={(layer, base) => {
+                          onCreate={(layer, base, anchor) => {
                             selectBoard(board.id)
                             setDrawingTool(null)
-                            boardEditing.change(
-                              { kind: 'layerCreate', boardId: board.id, layer },
-                              base,
-                            )
+                            if (layer.kind === 'text' || layer.kind === 'note') {
+                              textTools?.place(board, layer, base, anchor)
+                            } else {
+                              boardEditing.change(
+                                { kind: 'layerCreate', boardId: board.id, layer },
+                                base,
+                              )
+                            }
                           }}
                         />
                       ) : !interactive ? (
@@ -806,6 +817,25 @@ export function ArtifactCanvas({
                           onClick={(event) => {
                             if (!wasPinching.current || event.detail === 0)
                               selectBoard(board.id, event.shiftKey)
+                          }}
+                          onDoubleClick={(event) => {
+                            if (!textTools || wasPinching.current || !isPrototype(board)) return
+                            const rect = event.currentTarget.getBoundingClientRect()
+                            if (!rect.width || !rect.height) return
+                            event.preventDefault()
+                            selectBoard(board.id)
+                            const anchor = { x: event.clientX, y: event.clientY }
+                            textTools.pick(
+                              board,
+                              {
+                                x: Math.max(0, ((anchor.x - rect.left) * board.width) / rect.width),
+                                y: Math.max(
+                                  0,
+                                  ((anchor.y - rect.top) * board.height) / rect.height,
+                                ),
+                              },
+                              anchor,
+                            )
                           }}
                         />
                       ) : null}
@@ -866,7 +896,7 @@ export function ArtifactCanvas({
               : undefined
           }
           canAddBoard={boardEditing?.available}
-          history={boardEditing}
+          history={historyEditing}
           arrangementMenu={
             boardEditing ? (
               <CanvasArrangeMenu

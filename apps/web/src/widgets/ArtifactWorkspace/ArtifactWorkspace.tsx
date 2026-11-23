@@ -26,8 +26,10 @@ import {
   createCanvasElementResolver,
   STANDALONE_BOARD_ID,
 } from './canvas-model'
+import { InlineCanvasText } from './InlineCanvasText'
 import { useBoardInspection } from './useBoardInspection'
 import { useCanvasBoardEditing } from './useCanvasBoardEditing'
+import { useInlineCanvasText } from './useInlineCanvasText'
 
 const EMPTY_FEEDBACKS: readonly Feedback[] = []
 
@@ -213,10 +215,15 @@ export function ArtifactWorkspace({
     version.version === artifact.headVersion &&
     viewMode === 'preview' &&
     savedCanvas.pages.every((page) => page.boards.every((board) => board.scoped))
+  const canEditText =
+    fixedVersion === undefined &&
+    version.version === artifact.headVersion &&
+    viewMode === 'preview' &&
+    (canEditBoards || artifact.type === 'html' || artifact.type === 'react')
   const boardEditing = useCanvasBoardEditing({
     artifact,
     version,
-    enabled: canEditBoards,
+    enabled: canEditText,
     onVersionSaved,
   })
   const resolveElement = useMemo(
@@ -293,6 +300,19 @@ export function ArtifactWorkspace({
     reveal: revealBoard,
     highlight: highlightLayer,
   })
+  const inlineText = useInlineCanvasText({
+    artifact,
+    version,
+    enabled: canEditText,
+    activeBoardId: canvasLocation?.boardId,
+    editing: boardEditing,
+    send: (boardId, message) => frames.current.get(boardId)?.send(message),
+    annotate: (element) => {
+      handleHighlightElement(element)
+      setInspectorTab('review')
+    },
+  })
+  const onTextTarget = inlineText.onTextTarget
   const watchBoard = inspection.open && canvas === savedCanvas ? canvasLocation?.boardId : undefined
   const renderBoard = useCallback(
     (board: CanvasBoard, purpose: BoardFramePurpose) => (
@@ -315,6 +335,7 @@ export function ArtifactWorkspace({
         watchLayers={purpose.type === 'overview' && watchBoard === board.id}
         onLayers={inspection.onLayers}
         onLayerPicked={inspection.onLayerPicked}
+        onTextTarget={onTextTarget}
         onVisualSelect={onVisualSelect}
       />
     ),
@@ -330,6 +351,7 @@ export function ArtifactWorkspace({
       watchBoard,
       inspection.onLayers,
       inspection.onLayerPicked,
+      onTextTarget,
       onVisualSelect,
     ],
   )
@@ -365,6 +387,8 @@ export function ArtifactWorkspace({
             onRevealHandled={clearInspectorReveal}
             onLocationChange={setCanvasLocation}
             boardEditing={canEditBoards ? boardEditing : undefined}
+            historyEditing={canEditText ? boardEditing : undefined}
+            textTools={canEditText ? inlineText.tools : undefined}
             pageEditing={
               canEditBoards && !boardEditing.draft
                 ? { artifact, version, onVersionSaved }
@@ -423,6 +447,7 @@ export function ArtifactWorkspace({
         location={canvasLocation}
         readOnly={fixedVersion !== undefined || version.version !== artifact.headVersion}
         editing={canEditBoards ? boardEditing : undefined}
+        onEditText={canEditBoards && boardEditing.available ? inlineText.tools.edit : undefined}
         layers={watchBoard ? inspection.layers : null}
         selectedLayerId={inspection.selectedId}
         layersAvailable={canvas === savedCanvas}
@@ -438,6 +463,14 @@ export function ArtifactWorkspace({
         }}
       />
       <VisualEditPanel controller={visual} />
+      {inlineText.draft ? (
+        <InlineCanvasText
+          draft={inlineText.draft}
+          onClose={inlineText.close}
+          onSave={inlineText.save}
+          onAnnotate={inlineText.annotate}
+        />
+      ) : null}
     </div>
   )
 }

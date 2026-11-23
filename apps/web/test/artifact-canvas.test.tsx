@@ -1099,3 +1099,44 @@ it('长笔迹达到采样上限后仍保存新转折', async () => {
     [120, 50],
   ])
 })
+
+it('双击已有便签只修改同画板原生对象的文本并保留版本基准', async () => {
+  stubResizeObserver()
+  const source = JSON.stringify({
+    ...design,
+    boards: design.boards.map((board) =>
+      board.id === 'desktop'
+        ? {
+            ...board,
+            designLayers: [
+              { id: 'note', kind: 'note', text: '原文', x: 10, y: 30, width: 200, height: 90 },
+            ],
+          }
+        : board,
+    ),
+  })
+  const editor = showEditableWorkspace(detailFor(1, source))
+  const frame = sandbox(screen.getByTitle('宽屏首页 隔离沙盒'))
+  frame.receive({ type: 'ready' })
+  const hit = screen.getByRole('button', { name: '选择画板：宽屏首页' })
+  vi.spyOn(hit, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 50, 720, 450))
+  fireEvent.doubleClick(hit, { clientX: 135, clientY: 85 })
+  const request = frame.post.mock.calls.find(([message]) => message.type === 'inspect.text.at')?.[0]
+  expect(request).toMatchObject({ version: 1, x: 70, y: 70 })
+  frame.receive({
+    type: 'inspect.text.target',
+    version: 1,
+    requestId: request.requestId,
+    element: { blockId: 'design-layer:note', selector: 'aside > div', textPreview: '原文' },
+  })
+  const text = screen.getByRole<HTMLTextAreaElement>('textbox', { name: '文字' })
+  expect(text.value).toBe('原文')
+  fireEvent.change(text, { target: { value: '版本化便签' } })
+  expect(editor.current.version.version).toBe(1)
+  fireEvent.click(screen.getByRole('button', { name: '保存文字' }))
+  await waitFor(() => expect(editor.current.version.version).toBe(2))
+  expect(JSON.parse(editor.current.version.source).boards[0].designLayers).toEqual([
+    { id: 'note', kind: 'note', text: '版本化便签', x: 10, y: 30, width: 200, height: 90 },
+  ])
+  expect(editor.submittedVersion).toBe(1)
+})

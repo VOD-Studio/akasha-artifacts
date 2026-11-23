@@ -105,6 +105,7 @@ const RevertBodySchema = z.object({
 const VisualTargetQuerySchema = z.object({
   project: z.string().min(1).optional(),
   baseVersion: z.coerce.number().int().positive(),
+  boardId: z.string().min(1).max(1024).optional(),
   loc: z
     .string()
     .regex(/^\d+:\d+$/)
@@ -118,7 +119,10 @@ const VisualEditBaseSchema = z.object({
 })
 
 const VisualEditBodySchema = z.union([
-  VisualEditBaseSchema.extend({ op: EditOpSchema }).strict(),
+  VisualEditBaseSchema.extend({
+    op: EditOpSchema,
+    boardId: z.string().min(1).max(1024).optional(),
+  }).strict(),
   VisualEditBaseSchema.extend({ undoVersion: z.number().int().positive() }).strict(),
 ])
 
@@ -480,6 +484,7 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
       projectId: query.data.project,
       baseVersion: query.data.baseVersion,
       loc: query.data.loc,
+      boardId: query.data.boardId,
     })
     return c.json(result)
   })

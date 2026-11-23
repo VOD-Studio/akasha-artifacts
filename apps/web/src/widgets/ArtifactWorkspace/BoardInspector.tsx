@@ -23,6 +23,7 @@ import type { CanvasDocument, CanvasLocation } from './canvas-model'
 import { DesignLayerLayout } from './DesignLayerLayout'
 import { LayerTree } from './LayerTree'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
+import type { CanvasTextTools } from './useInlineCanvasText'
 
 interface BoardInspectorProps {
   artifact: Artifact
@@ -33,6 +34,8 @@ interface BoardInspectorProps {
   readOnly: boolean
   /** 缺省时仍可读取图层源码；只为可改的头版本提供布局编辑器。 */
   editing?: CanvasBoardEditing
+  /** 只有可写的头版本可从图层属性打开就地文字编辑。 */
+  onEditText?: CanvasTextTools['edit']
   layers: { layers: readonly CanvasLayer[]; truncated: boolean } | null
   layersAvailable: boolean
   selectedLayerId?: string
@@ -53,6 +56,7 @@ export function BoardInspector({
   location,
   readOnly,
   editing,
+  onEditText,
   layers,
   layersAvailable,
   selectedLayerId,
@@ -255,6 +259,20 @@ export function BoardInspector({
                         selected={selectedDesignLayers}
                         editing={editing}
                       />
+                    ) : null}
+                    {onEditText &&
+                    (designLayer?.kind === 'text' || designLayer?.kind === 'note') ? (
+                      <Button
+                        className="mt-3 mr-1"
+                        variant="outline"
+                        size="sm"
+                        onClick={(event) => {
+                          const rect = event.currentTarget.getBoundingClientRect()
+                          onEditText(board, designLayer, { x: rect.left, y: rect.top })
+                        }}
+                      >
+                        编辑文字
+                      </Button>
                     ) : null}
                     {layer ? (
                       <Button

@@ -1,11 +1,13 @@
 import type { DesignLayer, Version } from '@akasha/protocol'
-import { Circle, PenLine, Square } from 'lucide-react'
+import { Circle, PenLine, Square, StickyNote, Type } from 'lucide-react'
 import { type PointerEvent, useRef, useState } from 'react'
 import type { CanvasBounds, Point } from './canvas-camera'
 import type { CanvasBoard } from './canvas-model'
 
 /** 原生图层工具按声明顺序出现在画布工具条。 */
 export const DRAWING_TOOLS = [
+  { kind: 'text', label: '添加文本', icon: Type },
+  { kind: 'note', label: '添加便签', icon: StickyNote },
   { kind: 'rectangle', label: '绘制矩形', icon: Square },
   { kind: 'ellipse', label: '绘制椭圆', icon: Circle },
   { kind: 'stroke', label: '画笔', icon: PenLine },
@@ -41,8 +43,8 @@ interface SurfaceProps {
   tool: DrawingTool
   /** 画笔或拖拽只以按下时的版本为基准。 */
   version: Version
-  /** 每个完成的几何只回报一次；取消不进入保存。 */
-  onCreate(layer: DesignLayer, base: Version): void
+  /** 每个完成的几何只回报一次；文字继续在锚点编辑后才发布。 */
+  onCreate(layer: DesignLayer, base: Version, anchor: Point): void
 }
 
 /** 只在松开指针后发布；绘制预览和相机都不进入源码。 */
@@ -58,18 +60,26 @@ export function BoardDrawingSurface({ board, tool, version, onCreate }: SurfaceP
     })
   }
 
-  function commitShape(start: Point, end: Point, base: Version) {
+  function commitShape(start: Point, end: Point, base: Version, anchor: Point) {
     if (tool.kind === 'stroke') return
+    const text = tool.kind === 'text' || tool.kind === 'note'
+    const presetWidth = text ? 220 : 120
+    const presetHeight = tool.kind === 'text' ? 56 : tool.kind === 'note' ? 112 : 80
     const moved = Math.hypot(end.x - start.x, end.y - start.y) >= 3
     const bounds = moved
       ? boundsOf(start, end)
       : {
-          x: Math.min(Math.round(start.x), Math.max(0, width - 120)),
-          y: Math.min(Math.round(start.y), Math.max(0, height - 80)),
-          width: Math.min(120, width),
-          height: Math.min(80, height),
+          x: Math.min(Math.round(start.x), Math.max(0, width - presetWidth)),
+          y: Math.min(Math.round(start.y), Math.max(0, height - presetHeight)),
+          width: Math.min(presetWidth, width),
+          height: Math.min(presetHeight, height),
         }
-    onCreate({ id: crypto.randomUUID(), kind: tool.kind, ...bounds, color: 'blue' }, base)
+    const id = crypto.randomUUID()
+    if (tool.kind === 'text' || tool.kind === 'note') {
+      onCreate({ id, kind: tool.kind, ...bounds, text: '' }, base, anchor)
+    } else {
+      onCreate({ id, kind: tool.kind, ...bounds, color: 'blue' }, base, anchor)
+    }
   }
 
   function sample(points: Point[], point: Point, final = false) {
@@ -125,10 +135,11 @@ export function BoardDrawingSurface({ board, tool, version, onCreate }: SurfaceP
         const drawing = gesture.current
         if (!drawing || event.pointerId !== drawing.pointer) return
         event.stopPropagation()
+        const anchor = { x: event.clientX, y: event.clientY }
         const end = drawing.toBoardPoint(event)
         cancel()
         if (tool.kind !== 'stroke') {
-          commitShape(drawing.start, end, drawing.base)
+          commitShape(drawing.start, end, drawing.base, anchor)
           return
         }
         sample(drawing.points, end, true)
@@ -157,6 +168,7 @@ export function BoardDrawingSurface({ board, tool, version, onCreate }: SurfaceP
             ]),
           },
           drawing.base,
+          anchor,
         )
       }}
       onPointerCancel={cancel}
@@ -164,7 +176,11 @@ export function BoardDrawingSurface({ board, tool, version, onCreate }: SurfaceP
       onClick={(event) => {
         if (event.detail !== 0) return
         const start = { x: width / 2, y: height / 2 }
-        commitShape(start, start, version)
+        const rect = event.currentTarget.getBoundingClientRect()
+        commitShape(start, start, version, {
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+        })
       }}
     >
       {preview ? (

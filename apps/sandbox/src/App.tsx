@@ -141,6 +141,8 @@ export function SandboxApp({
       } else if (msg.type === 'apply.rollback') {
         const committed = committedPayloadRef.current
         if (committed?.version === msg.version) setPayload(committed)
+      } else if (msg.type === 'inspect.text.at' && !committedPayloadRef.current?.playback) {
+        inspector.inspectTextAt(msg)
       } else if (msg.type === 'visual.inspect') {
         visualInspector.setActive(msg.active)
       } else if (msg.type === 'state') {
