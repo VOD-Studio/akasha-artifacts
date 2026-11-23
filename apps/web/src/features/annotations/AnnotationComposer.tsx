@@ -1,7 +1,7 @@
 import type { ElementRef, FeedbackKind, ReviewRound } from '@akasha/protocol'
 import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
-import { Send, Sparkles, Target, X } from 'lucide-react'
+import { Send, Target, X } from 'lucide-react'
 import { useRef } from 'react'
 import { toast } from 'sonner'
 import { useSubmitFeedbackMutation } from '../../entities/feedback/queries'
@@ -25,6 +25,8 @@ export interface AnnotationComposerProps {
 }
 
 function elementLabel(el: ElementRef): string {
+  if (el.dataPoints) return `${el.dataPoints.chartTitle} · ${el.dataPoints.points.length} 个数据点`
+  if (el.blockId?.startsWith('pr-line:') && el.textPreview) return el.textPreview
   if (el.blockId) return `#${el.blockId}`
   if (el.loc) return `源码 ${el.loc}`
   if (el.selector) return el.selector.slice(0, 36)
@@ -93,7 +95,9 @@ export function AnnotationComposer({
           <div className="flex min-w-0 items-center gap-1.5">
             <Target size={12} className="shrink-0 text-violet-600" />
             <span className="truncate font-mono font-medium">{elementLabel(selectedElement)}</span>
-            {selectedElement.textPreview ? (
+            {selectedElement.textPreview &&
+            !selectedElement.dataPoints &&
+            !selectedElement.blockId?.startsWith('pr-line:') ? (
               <span className="truncate text-violet-700/80">
                 「{selectedElement.textPreview.slice(0, 24)}」
               </span>
@@ -110,6 +114,21 @@ export function AnnotationComposer({
         </div>
       ) : null}
 
+      {selectedElement?.dataPoints && (
+        <details className="mb-2 rounded-lg border border-violet-200 px-2.5 py-1.5 text-xs text-violet-950">
+          <summary className="cursor-pointer">
+            {selectedElement.dataPoints.valueLabel} · 所选数据点
+          </summary>
+          <ul className="mt-1 max-h-36 list-disc space-y-1 overflow-auto pl-4">
+            {selectedElement.dataPoints.points.map((point) => (
+              <li key={point.id} className="break-words">
+                {point.label || '（空白）'}：{point.value}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
       <textarea
         ref={textareaRef}
         aria-label="批注内容"
@@ -119,7 +138,7 @@ export function AnnotationComposer({
         placeholder={
           selectedElement
             ? '说明希望 Agent 对这个元素做什么修改…'
-            : '输入评审意见，或先点击顶栏「指认元素」精准框选页面元素…'
+            : '给这一版留批注，或先在画布工具栏指认元素…'
         }
         className="w-full resize-none rounded-lg border border-border bg-surface p-2 text-xs text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none"
       />
@@ -129,7 +148,6 @@ export function AnnotationComposer({
           <Button
             variant="outline"
             size="sm"
-            leftIcon={<Sparkles size={12} />}
             loading={submitMutation.isPending}
             onClick={() => {
               if (!draftText.trim()) {

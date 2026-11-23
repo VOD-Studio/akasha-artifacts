@@ -55,7 +55,7 @@ export class AkashaWsClient {
 
   connect(): void {
     this.closedByUser = false
-    this.openSocket()
+    if (!this.ws && this.retryTimer === undefined) this.openSocket()
   }
 
   updateTarget(next: WsSubscriptionTarget): void {
@@ -122,7 +122,7 @@ export class AkashaWsClient {
       }
       const parsed = RealtimeServerEventSchema.safeParse(raw)
       if (!parsed.success) return
-      if (parsed.data.seq > this.lastSeq) {
+      if (parsed.data.type === 'resync' || parsed.data.seq > this.lastSeq) {
         this.lastSeq = parsed.data.seq
       }
       this.onEvent(parsed.data)
@@ -132,13 +132,17 @@ export class AkashaWsClient {
       // 由 onclose 统一触发退避重连
     }
 
-    socket.onclose = () => {
+    socket.onclose = (event) => {
       if (this.pingTimer !== undefined) {
         clearInterval(this.pingTimer)
         this.pingTimer = undefined
       }
       this.ws = null
       if (this.closedByUser) return
+      if (event?.code === 4403) {
+        this.onStatusChange?.('closed')
+        return
+      }
       this.scheduleReconnect()
     }
   }

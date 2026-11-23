@@ -4,6 +4,7 @@ import {
   type ArtifactType,
   type Author,
   type DaemonStatus,
+  type EditOp,
   type ElementRef,
   ErrorEnvelopeSchema,
   type Feedback,
@@ -296,6 +297,58 @@ export async function publishHumanVersion(
       ...input,
       author: input.author ?? 'human:web',
     }),
+  })
+}
+
+export interface VisualEditTarget {
+  tagName: string
+  text: string | null
+  className: string
+  order: { parentLoc: string; siblings: Array<{ loc: string; label: string }> } | null
+}
+
+export type VisualEditCommand = { op: EditOp } | { undoVersion: number }
+
+export async function fetchVisualEditTarget(
+  id: string,
+  input: { project: string; baseVersion: number; loc: string },
+): Promise<{ target: VisualEditTarget | null }> {
+  const query = new URLSearchParams({
+    project: input.project,
+    baseVersion: String(input.baseVersion),
+    loc: input.loc,
+  })
+  return requestJson(`/api/v1/artifacts/${encodeURIComponent(id)}/visual-edit?${query}`)
+}
+
+export async function fetchVisualUndo(
+  id: string,
+  input: { project: string; baseVersion: number },
+): Promise<{ undoVersion: number | null }> {
+  const query = new URLSearchParams({
+    project: input.project,
+    baseVersion: String(input.baseVersion),
+  })
+  return requestJson(`/api/v1/artifacts/${encodeURIComponent(id)}/visual-edit?${query}`)
+}
+
+export async function previewVisualEdit(
+  id: string,
+  input: { project: string; baseVersion: number } & VisualEditCommand,
+): Promise<{ source: string }> {
+  return requestJson(`/api/v1/artifacts/${encodeURIComponent(id)}/visual-edit/preview`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function saveVisualEdit(
+  id: string,
+  input: { project: string; baseVersion: number } & VisualEditCommand,
+): Promise<{ artifact: Artifact; version: Version }> {
+  return requestJson(`/api/v1/artifacts/${encodeURIComponent(id)}/visual-edit`, {
+    method: 'POST',
+    body: JSON.stringify(input),
   })
 }
 

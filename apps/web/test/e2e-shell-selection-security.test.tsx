@@ -31,7 +31,7 @@ afterEach(() => {
   useWorkspaceStore.setState({
     selectedProjectId: null,
     commandPaletteOpen: false,
-    inspectorOpen: true,
+    inspectorTab: null,
     viewMode: 'preview',
     wsStatus: 'closed',
     agentActivityByProject: {},
@@ -94,6 +94,7 @@ describe('Web 外壳端到端回归（iframe 安全隔离 + 选区防抖同步 +
         headers: { 'content-type': 'application/json' },
       })
     })
+    useWorkspaceStore.getState().setInspectorTab('review')
 
     const activeRound: ReviewRound = {
       id: 'rnd_e2e',

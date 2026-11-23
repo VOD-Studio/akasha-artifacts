@@ -22,7 +22,8 @@ export interface SandboxErrorRecord {
 export interface WorkspaceStoreState {
   selectedProjectId: string | null
   commandPaletteOpen: boolean
-  inspectorOpen: boolean
+  inspectorTab: 'review' | 'props' | null
+  artifactViewId: string | null
   viewMode: WorkspaceViewMode
   wsStatus: WsConnectionStatus
   agentActivityByProject: Record<string, AgentActivityRecord>
@@ -32,9 +33,10 @@ export interface WorkspaceStoreState {
   sandboxErrorByArtifact: Record<string, SandboxErrorRecord | null>
   sentErrorFingerprints: Record<string, boolean>
 
+  openArtifactView: (publicId: string | null) => void
   setSelectedProjectId: (projectId: string | null) => void
   setCommandPaletteOpen: (open: boolean) => void
-  setInspectorOpen: (open: boolean) => void
+  setInspectorTab: (tab: WorkspaceStoreState['inspectorTab']) => void
   setViewMode: (mode: WorkspaceViewMode) => void
   setWsStatus: (status: WsConnectionStatus) => void
   setAgentActivity: (projectId: string, record: AgentActivityRecord) => void
@@ -49,7 +51,8 @@ export interface WorkspaceStoreState {
 export const useWorkspaceStore = create<WorkspaceStoreState>((set) => ({
   selectedProjectId: null,
   commandPaletteOpen: false,
-  inspectorOpen: true,
+  inspectorTab: null,
+  artifactViewId: null,
   viewMode: 'preview',
   wsStatus: 'closed',
   agentActivityByProject: {},
@@ -59,9 +62,15 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set) => ({
   sandboxErrorByArtifact: {},
   sentErrorFingerprints: {},
 
+  openArtifactView: (artifactViewId) =>
+    set((state) =>
+      state.artifactViewId === artifactViewId
+        ? state
+        : { artifactViewId, viewMode: 'preview', inspectorTab: null },
+    ),
   setSelectedProjectId: (selectedProjectId) => set({ selectedProjectId }),
   setCommandPaletteOpen: (commandPaletteOpen) => set({ commandPaletteOpen }),
-  setInspectorOpen: (inspectorOpen) => set({ inspectorOpen }),
+  setInspectorTab: (inspectorTab) => set({ inspectorTab }),
   setViewMode: (viewMode) => set({ viewMode }),
   setWsStatus: (wsStatus) => set({ wsStatus }),
   setAgentActivity: (projectId, record) =>

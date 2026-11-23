@@ -18,7 +18,6 @@ import {
   Layers,
   MoreHorizontal,
   Search,
-  Sparkles,
   Trash2,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -27,7 +26,11 @@ import { useArtifactsQuery } from '../../entities/artifact/queries'
 import { useProjectsQuery, useRemoveProjectMutation } from '../../entities/project/queries'
 import { useWorkspaceStore } from '../../entities/workspace/store'
 import { DaemonStatusPill } from '../../features/daemon-control/DaemonStatusPill'
+import { HubAccountButton } from '../../features/hub/HubActions'
+import { isCloudHub } from '../../shared/config/runtime'
 import { ARTIFACT_TYPE_LABELS, formatRelativeTime } from '../../shared/lib/format'
+
+const HUB_LIBRARY_REFRESH_MS = 10_000
 
 export interface LibraryShellProps {
   onOpenArtifact: (publicId: string) => void
@@ -42,8 +45,13 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
   const [showDormant, setShowDormant] = useState(false)
   const [contextProject, setContextProject] = useState<string | null>(null)
 
-  const { data: projects = [], isLoading: projectsLoading } = useProjectsQuery()
-  const { data: allArtifacts = [], isLoading: artifactsLoading } = useArtifactsQuery()
+  const cloudHub = isCloudHub()
+  const interval = cloudHub ? HUB_LIBRARY_REFRESH_MS : undefined
+  const { data: projects = [], isLoading: projectsLoading } = useProjectsQuery(interval)
+  const { data: allArtifacts = [], isLoading: artifactsLoading } = useArtifactsQuery(
+    undefined,
+    interval,
+  )
   const removeProjectMutation = useRemoveProjectMutation()
 
   const sortedProjects = useMemo(
@@ -159,14 +167,9 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
   return (
     <div className="flex h-screen flex-col bg-canvas text-ink">
       <header className="flex h-13 shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4">
-        <div className="flex items-center gap-2.5">
-          <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-xs font-bold text-white">
-            <Sparkles size={15} />
-          </span>
-          <div>
-            <div className="text-sm font-semibold leading-none text-ink">Akasha Terminal</div>
-            <div className="mt-0.5 text-[11px] text-ink-muted">多项目交互式 Artifact 工作台</div>
-          </div>
+        <div>
+          <div className="text-sm font-semibold leading-none text-ink">Akasha Terminal</div>
+          <div className="mt-0.5 text-[11px] text-ink-muted">多项目交互式 Artifact 工作台</div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -179,7 +182,7 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
             快速跳转
             <Kbd size="sm" keys={['mod', 'K']} className="ml-1.5" />
           </Button>
-          <DaemonStatusPill />
+          {cloudHub ? <HubAccountButton /> : <DaemonStatusPill />}
         </div>
       </header>
 

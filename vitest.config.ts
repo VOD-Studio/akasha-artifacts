@@ -9,7 +9,7 @@ export default defineConfig({
   },
   ssr: {
     resolve: {
-      conditions: ['@akasha/source', 'import', 'module', 'node', 'default'],
+      conditions: ['@akasha/source', 'node', 'default'],
     },
   },
   test: {

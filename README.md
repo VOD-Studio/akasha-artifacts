@@ -46,7 +46,7 @@ Anthropic's official _Claude Code Artifacts_ solved this by publishing live web 
 | Feature                   | Official Claude Code Artifacts     | Akasha (`VOD-Studio/akasha-artifacts`)                                                                       |
 | :------------------------ | :--------------------------------- | :----------------------------------------------------------------------------------------------------------- |
 | **Supported Agents**      | Claude Code only                   | **Antigravity, Codex CLI, Claude Code, Cursor, Gemini CLI, Aider** (via MCP & CLI)                           |
-| **Hosting & Privacy**     | Mandatory `claude.ai` cloud upload | **Dual-Mode**: `localhost` zero-config daemon **+ Self-Hosted Cloud Hub** (Docker / Cloudflare / Vercel)     |
+| **Hosting & Privacy**     | Mandatory `claude.ai` cloud upload | **Dual-Mode**: `localhost` zero-config daemon **+ Self-Hosted Cloud Hub** (Docker)                           |
 | **Live In-Place Updates** | Yes                                | **Yes** — full version publishing (`v1..vn`) **+ zero-flicker JSON state streaming (`artifact_push_state`)** |
 | **Engineering UI Kit**    | Raw HTML/React from scratch        | **Built-in `@akasha/kit`**: `<PRWalkthrough />`, `<LiveTimeline />`, `<OptionCompare />`, `<DataStory />`    |
 | **Interaction Direction** | One-way (Read-only capture)        | **Two-way HITL**: inline diff comments, plan approvals, and option selections route back to the CLI agent    |
@@ -75,8 +75,8 @@ Akasha pre-bundles an engineering component kit inside its sandbox so agents can
 ### 3. Local-First + Cloud Hub Dual-Mode Architecture
 
 - **Local Daemon Mode**: Instant `http://localhost:24321/a/:id` preview with zero external dependencies.
-- **Self-Hosted Cloud Hub**: Deploy to your own domain (`https://akasha.your-team.dev/a/:id`) via a single Docker image or serverless Cloudflare Workers (Durable Objects + D1 + R2).
-  - **Origin-Isolated Sandbox**: Untrusted AI-generated HTML/React runs in a dedicated sandbox origin (`*.sandbox.your-team.dev`) with strict CSP headers to prevent cookie/token exfiltration.
+- **Self-Hosted Cloud Hub**: Deploy to your own domain (`https://akasha.your-team.dev/a/:id`) via a single Docker image.
+  - **Origin-Isolated Sandbox**: Untrusted artifact HTML/React runs under a different registrable domain with its own strict CSP.
   - **Visibility Scopes**: `private` (creator & signed token), `team` (SSO / GitHub OAuth), or `public`.
   - **Live + Async Feedback Queue**: When your CLI is online (`● Live with Agent`), reviewer approvals wake the agent immediately. When your laptop is closed (`○ Snapshot`), teammate annotations are queued in the Cloud Hub and pulled automatically on your next session.
 
@@ -95,7 +95,7 @@ flowchart TB
 
     subgraph Modes["Unified Local + Cloud Protocol"]
         LOCAL["Local Daemon (localhost:24321 · Memory / SQLite)"]
-        CLOUD["Cloud Artifact Hub (Docker / Cloudflare Workers · Postgres/D1 + S3/R2)"]
+        CLOUD["Cloud Artifact Hub (Docker · SQLite or PostgreSQL + optional S3)"]
     end
 
     subgraph Browser["Interactive Artifact Canvas"]
@@ -117,22 +117,22 @@ flowchart TB
 
 > Akasha is under active development. See the [Architecture Design](docs/design/architecture.md), [Domain Glossary](CONTEXT.md), [ADR-0001](docs/adr/0001-server-runtime-typescript-hono.md), and [v1 PRD (#5)](https://github.com/VOD-Studio/akasha-artifacts/issues/5) for the full specification.
 
-| Milestone | Scope                                                                                                                                                        | Status    |
-| :-------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------- |
-| **M0**    | Monorepo workspace, `@akasha/ui` shell kit, `@akasha/protocol` (zod + JSON Schema), immutable versions & RFC 6902 StateStream                                | Completed |
-| **M1**    | Machine-wide Local Daemon (Hono + SQLite), WebSocket resync, MCP tools, `check` gate, isolated sandbox with view-state preservation, multi-project web shell | Completed |
-| **M2**    | L1 element picker & overlay, `ReviewRound` draft/submit anti-interruption loop, `receipt/ack`, multi-harness Hooks & Skills, runtime error fix loop          | Completed |
-| **M3**    | `@akasha/kit` schema engine & L2 props panel, `artboard` / `document` / `verify`, L3 split code editor, `.artifacts/` native file storage                    | Completed |
-| **M4**    | L4 visual direct editing (AST rewrite with undo/redo) & `window.akasha.storage`                                                                              | Planned   |
-| **M5**    | Self-hosted Docker Cloud Hub (OAuth, visibility scopes, offline queue, local-daemon direct fallback)                                                         | Planned   |
-| **M6**    | Cloudflare Workers (D1 + R2 + Durable Objects) & multi-user CRDT collaboration                                                                               | Planned   |
+| Milestone | Scope                                                                                                                                                        | Status          |
+| :-------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------- |
+| **M0**    | Monorepo workspace, `@akasha/ui` shell kit, `@akasha/protocol` (zod + JSON Schema), immutable versions & RFC 6902 StateStream                                | Completed       |
+| **M1**    | Machine-wide Local Daemon (Hono + SQLite), WebSocket resync, MCP tools, `check` gate, isolated sandbox with view-state preservation, multi-project web shell | Completed       |
+| **M2**    | L1 element picker & overlay, `ReviewRound` draft/submit anti-interruption loop, `receipt/ack`, multi-harness Hooks & Skills, runtime error fix loop          | Completed       |
+| **M3**    | `@akasha/kit` schema engine & L2 props panel, `artboard` / `document` / `verify`, L3 split code editor, `.artifacts/` native file storage                    | Completed       |
+| **M4**    | L4 visual direct editing (AST rewrite and undo), scoped storage, PR walkthrough and data story templates                                                     | Completed       |
+| **M5**    | Self-hosted Docker Cloud Hub (OAuth, visibility scopes, offline queue, local-daemon direct fallback)                                                         | Completed       |
+| **M6**    | Cloudflare Workers (D1 + R2 + Durable Objects) & multi-user CRDT collaboration                                                                               | Not implemented |
 
 ---
 
 ## Quick Start
 
 > [!NOTE]
-> Local Daemon (`akasha serve`, supporting both default SQLite and `--storage fs` project `.artifacts/` native file mode), full MCP server (`akasha mcp`), isolated sandbox runtime, `@akasha/kit` templates (`artboard`, `document`, `verify`, `live-timeline`, `option-compare`), L1/L2/L3 workspace editing, and multi-harness plugin installer (`akasha install` / `akasha doctor`) are available today (**M3**). Self-hosted Cloud Hub container deployment is scheduled for **M5**.
+> `akasha serve` runs the local workbench, MCP backend and isolated sandbox. Open an artifact on the interactive canvas, use the comments drawer or visually edit static HTML/React nodes. The Kit also includes `pr-walkthrough` and `data-story`. The Hub deployment options below require your own origins and OAuth App.
 
 ### 1. Connect to Your Coding Agent (MCP & Hooks — M1/M2)
 
@@ -169,22 +169,29 @@ Or with Claude Code CLI:
 claude mcp add akasha -- npx -y akasha-artifacts mcp
 ```
 
-### 2. Cloud Hub Deployment (Self-Hosted — M5)
+### 2. Cloud Hub Deployment (Docker)
+
+Follow the [single-image deployment guide](deploy/docker/README.md) and configure [environment variables](deploy/docker/.env.example). SQLite is the default; PostgreSQL and S3-compatible blob storage are optional. The shell and sandbox require separate registrable domains in production.
+
+Sign in, then connect the MCP process to your team's Hub:
 
 ```bash
-# Single-container Docker deployment (SQLite by default, Postgres/S3 optional)
-docker run -d \
-  --name akasha-hub \
-  -p 24321:24321 \
-  -v ./akasha-data:/data \
-  ghcr.io/vod-studio/akasha-artifacts:latest
+npx akasha-artifacts login --hub https://akasha.example.com
+npx akasha-artifacts mcp --hub https://akasha.example.com
 ```
 
-Authenticate your local CLI with your team's Cloud Hub:
+A Hub link uses the local workbench instead when it is paired to that Hub and already holds the same artifact.
 
-```bash
-npx akasha-artifacts login --hub https://akasha.your-team.dev
+### 3. Artifact-scoped storage
+
+```js
+await window.akasha.storage.set('layout', { compact: true })
+const layout = await window.akasha.storage.get('layout')
+const keys = await window.akasha.storage.list({ scope: 'shared', prefix: 'team:' })
+await window.akasha.storage.delete('layout')
 ```
+
+The default scope is `private`, isolated by user and artifact. `shared` is readable by viewers of that artifact and writable by its editors. Limits per scope: 128 keys and 64 KiB in total; each key is limited to 128 bytes and each JSON value to 16 KiB. A missing key returns `null`. Storage is proxied through the shell; the sandbox does not make network requests.
 
 ---
 

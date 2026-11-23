@@ -17,7 +17,7 @@ const ALLOWED_PACKAGE_DEPS = {
   '@akasha/mcp': new Set(['@akasha/protocol']),
   '@akasha/hooks': new Set(['@akasha/protocol']),
   '@akasha/skills': new Set(['@akasha/protocol']),
-  '@akasha/server': new Set(['@akasha/protocol', '@akasha/jsx-source']),
+  '@akasha/server': new Set(['@akasha/protocol', '@akasha/jsx-source', '@akasha/kit']),
   '@akasha/web': new Set(['@akasha/protocol', '@akasha/ui']),
   '@akasha/sandbox': new Set(['@akasha/protocol', '@akasha/jsx-source', '@akasha/kit']),
   'akasha-artifacts': new Set([

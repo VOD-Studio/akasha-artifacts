@@ -6,20 +6,26 @@ import {
   ArtifactPublishInputSchema,
   ArtifactPushStateInputSchema,
   ArtifactRecordVerdictInputSchema,
+  ArtifactStorageOperationSchema,
   ArtifactTypeSchema,
   ArtifactUpdateInputSchema,
   AuthorSchema,
+  EditOpSchema,
   ElementRefSchema,
   type ErrorCode,
   FeedbackKindSchema,
+  PublicIdSchema,
   ReviewGroupSchema,
 } from '@akasha/protocol'
 import { Hono } from 'hono'
+import { bodyLimit } from 'hono/body-limit'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { z } from 'zod'
 import type { ArtifactService } from '../../application/artifact-service.js'
+import { executeArtifactStorage } from '../../application/artifact-storage.js'
 import type { CheckService } from '../../application/check-service.js'
 import type { SpecRegistry } from '../../application/spec-registry.js'
+import type { ArtifactStorageRepository } from '../../domain/artifact-storage.js'
 import { DomainError } from '../../domain/errors.js'
 import type {
   ArtifactRepository,
@@ -65,6 +71,8 @@ export interface HttpAppDeps {
   clock: Clock
   daemon: DaemonInfoProvider
   security?: HttpSecurityConfig
+  artifactStorage?: ArtifactStorageRepository
+  storagePrincipal?: (request: Request) => Promise<string | null>
 }
 
 const RegisterProjectBodySchema = z.object({
@@ -87,6 +95,26 @@ const RevertBodySchema = z.object({
   baseVersion: z.number().int().min(1),
   author: AuthorSchema.optional().default('human:local'),
 })
+
+const VisualTargetQuerySchema = z.object({
+  project: z.string().min(1).optional(),
+  baseVersion: z.coerce.number().int().positive(),
+  loc: z
+    .string()
+    .regex(/^\d+:\d+$/)
+    .optional(),
+})
+
+const VisualEditBaseSchema = z.object({
+  project: z.string().min(1).optional(),
+  baseVersion: z.number().int().positive(),
+  author: AuthorSchema.optional().default('human:web'),
+})
+
+const VisualEditBodySchema = z.union([
+  VisualEditBaseSchema.extend({ op: EditOpSchema }).strict(),
+  VisualEditBaseSchema.extend({ undoVersion: z.number().int().positive() }).strict(),
+])
 
 const OpenRoundBodySchema = z.object({
   project: z.string().min(1).optional(),
@@ -430,6 +458,38 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
     return c.json(result)
   })
 
+  app.get('/api/v1/artifacts/:id/visual-edit', async (c) => {
+    const query = VisualTargetQuerySchema.safeParse(c.req.query())
+    if (!query.success) throw new DomainError('BAD_REQUEST', '无效的源码位置或基准版本')
+    const result = await deps.service.inspectVisualEdit({
+      id: c.req.param('id'),
+      projectId: query.data.project,
+      baseVersion: query.data.baseVersion,
+      loc: query.data.loc,
+    })
+    return c.json(result)
+  })
+
+  app.post('/api/v1/artifacts/:id/visual-edit/preview', async (c) => {
+    const body = await parseJsonBody(c.req.raw, VisualEditBodySchema)
+    const source = await deps.service.previewVisualEdit({
+      ...body,
+      id: c.req.param('id'),
+      projectId: body.project,
+    })
+    return c.json({ source })
+  })
+
+  app.post('/api/v1/artifacts/:id/visual-edit', async (c) => {
+    const body = await parseJsonBody(c.req.raw, VisualEditBodySchema)
+    const result = await deps.service.visualEdit({
+      ...body,
+      id: c.req.param('id'),
+      projectId: body.project,
+    })
+    return c.json(result)
+  })
+
   app.post('/api/v1/artifacts/:id/revert', async (c) => {
     const id = c.req.param('id')
     const body = await parseJsonBody(c.req.raw, RevertBodySchema)
@@ -449,6 +509,33 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
     const versions = await deps.service.getHistory(id, projectId)
     return c.json({ versions })
   })
+
+  app.post(
+    '/api/v1/artifacts/:id/storage',
+    bodyLimit({
+      maxSize: 128 * 1024,
+      onError: () => {
+        throw new DomainError('BAD_REQUEST', '制品存储请求过大')
+      },
+    }),
+    async (c) => {
+      if (!deps.artifactStorage) throw new DomainError('NOT_FOUND', '制品存储未启用')
+      const id = PublicIdSchema.safeParse(c.req.param('id'))
+      if (!id.success || !(await deps.artifacts.findByPublicId(id.data))) {
+        throw new DomainError('NOT_FOUND', '未找到制品')
+      }
+      const operation = await parseJsonBody(c.req.raw, ArtifactStorageOperationSchema)
+      const principal = deps.storagePrincipal ? await deps.storagePrincipal(c.req.raw) : 'local'
+      const value = await executeArtifactStorage(
+        deps.artifactStorage,
+        id.data,
+        principal,
+        operation,
+      )
+      c.header('Cache-Control', 'no-store')
+      return c.json({ value })
+    },
+  )
 
   app.get('/api/v1/artifacts/:id/state', async (c) => {
     const id = c.req.param('id')

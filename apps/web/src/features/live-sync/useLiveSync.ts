@@ -7,7 +7,7 @@ import { projectKeys } from '../../entities/project/queries'
 import { useWorkspaceStore } from '../../entities/workspace/store'
 import type { ArtifactDetailResponse } from '../../shared/api/client'
 import { AkashaWsClient } from '../../shared/api/ws'
-import { getWsUrl } from '../../shared/config/runtime'
+import { getWsUrl, isCloudHub } from '../../shared/config/runtime'
 import { applyJsonPatchClient } from '../../shared/lib/json-patch'
 
 export interface StatePatchedCallbackPayload {
@@ -148,12 +148,16 @@ export function useLiveSync(options: UseLiveSyncOptions = {}): void {
   const setWsStatus = useWorkspaceStore((s) => s.setWsStatus)
   const onStatePatchedRef = useRef(onStatePatched)
   onStatePatchedRef.current = onStatePatched
-  const clientRef = useRef<AkashaWsClient | null>(null)
 
   useEffect(() => {
     if (!enabled || typeof WebSocket === 'undefined') return
+    const url = new URL(getWsUrl())
+    if (isCloudHub()) {
+      if (artifactId) url.searchParams.set('artifactId', artifactId)
+      if (projectId) url.searchParams.set('projectId', projectId)
+    }
     const client = new AkashaWsClient({
-      url: getWsUrl(),
+      url: url.href,
       target: { artifactId, projectId },
       onStatusChange: (status) => setWsStatus(status),
       onEvent: (event) => {
@@ -162,11 +166,7 @@ export function useLiveSync(options: UseLiveSyncOptions = {}): void {
         })
       },
     })
-    clientRef.current = client
     client.connect()
-    return () => {
-      client.close()
-      clientRef.current = null
-    }
+    return () => client.close()
   }, [enabled, queryClient, setWsStatus, artifactId, projectId])
 }

@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
+import { ArtifactSchema } from '@akasha/protocol'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { runCli } from '../src/cli.js'
 import { ensureDaemon, probeDaemon, stopDaemon } from '../src/daemon/lifecycle.js'
@@ -123,6 +124,60 @@ describe('Local singleton Daemon lifecycle & security', () => {
       headers: { authorization: `Bearer ${first.state.token}` },
     })
     expect(delRes.status).toBe(200)
+  })
+
+  it('只为已绑定的 Hub 确认本机制品版本，不向其传出制品或凭据', async () => {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-hub-probe-'))
+    tempDirs.push(homeDir)
+    const daemon = await startAkashaDaemon({ homeDir, port: 0, sandboxPort: 0, dbPath: 'memory' })
+    closers.push(daemon.close)
+    const published = await fetch(`${daemon.baseUrl}/api/v1/artifacts`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${daemon.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        slug: 'local-copy',
+        title: '本机副本',
+        type: 'html',
+        source: '<b>A</b>',
+      }),
+    })
+    expect(published.status).toBe(201)
+    const payload: unknown = await published.json()
+    const artifact = ArtifactSchema.parse(
+      payload && typeof payload === 'object' && 'artifact' in payload
+        ? payload.artifact
+        : undefined,
+    )
+    const url = `${daemon.baseUrl}/api/v1/local-artifact/${artifact.publicId}`
+    const origin = 'https://hub.example.test'
+    const probe = (target: string, requestOrigin: string) =>
+      fetch(target, { headers: { Origin: requestOrigin } })
+    expect((await probe(url, origin)).status).toBe(404)
+
+    fs.writeFileSync(
+      path.join(homeDir, 'hub-login.json'),
+      JSON.stringify({ origin, token: 'fixture', expiresAt: new Date(Date.now() + 60_000) }),
+      { mode: 0o600 },
+    )
+    const preflight = await fetch(url, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: origin,
+        'Access-Control-Request-Method': 'GET',
+        'Access-Control-Request-Private-Network': 'true',
+      },
+    })
+    expect(preflight.status).toBe(204)
+    expect(preflight.headers.get('access-control-allow-private-network')).toBe('true')
+    const hit = await probe(`${url}?version=1`, origin)
+    expect(hit.status).toBe(204)
+    expect(hit.headers.get('access-control-allow-origin')).toBe(origin)
+    expect(hit.headers.has('set-cookie')).toBe(false)
+    expect(await hit.text()).toBe('')
+    expect((await probe(`${url}?version=2`, origin)).status).toBe(404)
+    const wrongHub = await probe(url, 'https://other.example.test')
+    expect(wrongHub.status).toBe(404)
+    expect(wrongHub.headers.has('access-control-allow-origin')).toBe(false)
   })
 
   it('injects window.__AKASHA_CONFIG__ on root "/" as well as SPA fallback routes', async () => {

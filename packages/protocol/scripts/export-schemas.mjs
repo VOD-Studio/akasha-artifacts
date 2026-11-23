@@ -29,6 +29,7 @@ const SCHEMAS = {
   RealtimeClientMessage: protocol.RealtimeClientMessageSchema,
   ShellToSandboxMessage: protocol.ShellToSandboxMessageSchema,
   SandboxToShellMessage: protocol.SandboxToShellMessageSchema,
+  ArtifactStorageOperation: protocol.ArtifactStorageOperationSchema,
   ArtifactPublishInput: protocol.ArtifactPublishInputSchema,
   ArtifactPublishOutput: protocol.ArtifactPublishOutputSchema,
   ArtifactUpdateInput: protocol.ArtifactUpdateInputSchema,

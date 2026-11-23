@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { EditOpSchema, ElementRectSchema, ElementRefSchema, JsonPatchOpSchema } from './domain.js'
 import { ArtifactTypeSchema, PROTOCOL_VERSION } from './primitives.js'
+import { ArtifactStorageOperationSchema } from './storage.js'
 
 // 外壳与沙盒热更新时共享的视图与控件保态快照
 export const PreservedViewStateSchema = z.object({
@@ -16,9 +17,6 @@ const BridgeEnvelopeBase = {
   v: z.literal(PROTOCOL_VERSION),
   nonce: z.string().min(1),
 }
-
-export const StorageScopeSchema = z.enum(['private', 'shared'])
-export type StorageScope = z.infer<typeof StorageScopeSchema>
 
 // 外壳 → 沙盒
 export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
@@ -64,6 +62,18 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
     ...BridgeEnvelopeBase,
     type: z.literal('apply.preview'),
     op: EditOpSchema,
+    version: z.number().int().positive(),
+    source: z.string(),
+  }),
+  z.object({
+    ...BridgeEnvelopeBase,
+    type: z.literal('apply.rollback'),
+    version: z.number().int().positive(),
+  }),
+  z.object({
+    ...BridgeEnvelopeBase,
+    type: z.literal('visual.inspect'),
+    active: z.boolean(),
   }),
   z.object({
     ...BridgeEnvelopeBase,
@@ -127,12 +137,21 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
   z.object({
     ...BridgeEnvelopeBase,
     type: z.literal('storage.request'),
-    requestId: z.string().min(1),
-    action: z.enum(['get', 'set', 'delete', 'list']),
-    scope: StorageScopeSchema,
-    key: z.string().optional(),
-    prefix: z.string().optional(),
-    value: z.unknown().optional(),
+    requestId: z.string().min(1).max(64),
+    operation: ArtifactStorageOperationSchema,
+  }),
+  z.object({
+    ...BridgeEnvelopeBase,
+    type: z.literal('annotation.request'),
+    version: z.number().int().positive(),
+    element: ElementRefSchema,
+  }),
+  z.object({
+    ...BridgeEnvelopeBase,
+    type: z.literal('visual.select'),
+    version: z.number().int().positive(),
+    element: ElementRefSchema,
+    loc: z.string().optional(),
   }),
 ])
 export type SandboxToShellMessage = z.infer<typeof SandboxToShellMessageSchema>

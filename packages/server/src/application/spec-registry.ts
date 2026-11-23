@@ -1,3 +1,8 @@
+import {
+  DATA_STORY_TEMPLATE,
+  type KitTemplateDefinition,
+  PR_WALKTHROUGH_TEMPLATE,
+} from '@akasha/kit'
 import type { ArtifactSpecOutput, ArtifactType, CheckDiagnostic } from '@akasha/protocol'
 
 export const SANDBOX_DEPENDENCY_WHITELIST = [
@@ -108,6 +113,16 @@ function validateArrayItemsHaveTitle(
     }
   }
   return diagnostics
+}
+
+function kitSpec(template: KitTemplateDefinition): ArtifactSpecDefinition {
+  return {
+    type: template.type,
+    guide: template.guide,
+    schema: template.propsSchema,
+    example: template.example,
+    validate: template.validate,
+  }
 }
 
 const BUILTIN_SPECS: ArtifactSpecDefinition[] = [
@@ -261,12 +276,7 @@ const BUILTIN_SPECS: ArtifactSpecDefinition[] = [
     ),
     validate: (source) => validateArrayItemsHaveTitle(source, 'claims', 'verify'),
   },
-  {
-    type: 'pr-walkthrough',
-    guide:
-      'JSON 格式 PR 走查：包含 summary、chapters 与 files（含 diff 与导读说明），支持行级批注。',
-    schema: { type: 'object', required: ['chapters'], properties: { chapters: { type: 'array' } } },
-  },
+  kitSpec(PR_WALKTHROUGH_TEMPLATE),
   {
     type: 'live-timeline',
     guide:
@@ -311,9 +321,5 @@ const BUILTIN_SPECS: ArtifactSpecDefinition[] = [
     },
     validate: (source) => validateArrayItemsHaveTitle(source, 'options', 'option-compare'),
   },
-  {
-    type: 'data-story',
-    guide: 'JSON 格式会话数据看板：包含 datasets 与 charts/tables 定义，支持筛选与下钻。',
-    schema: { type: 'object', required: ['datasets'], properties: { datasets: { type: 'array' } } },
-  },
+  kitSpec(DATA_STORY_TEMPLATE),
 ]

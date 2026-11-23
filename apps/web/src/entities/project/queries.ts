@@ -5,7 +5,7 @@ export const projectKeys = {
   all: ['projects'] as const,
 }
 
-export function useProjectsQuery() {
+export function useProjectsQuery(refetchInterval?: number) {
   return useQuery({
     queryKey: projectKeys.all,
     queryFn: async () => {
@@ -13,6 +13,7 @@ export function useProjectsQuery() {
       return res.projects
     },
     staleTime: 10_000,
+    refetchInterval,
   })
 }
 

@@ -13,11 +13,19 @@ import {
 } from '../src/index.js'
 
 describe('@akasha/kit 模板注册表、解析器与静态校验', () => {
-  it('默认注册 5 类核心工程与决策模板，且均声明 L2 属性表单字段', () => {
+  it('默认注册 7 类核心工程与决策模板，且均声明 L2 属性表单字段', () => {
     const types = listKitTemplates()
       .map((t) => t.type)
       .sort()
-    expect(types).toEqual(['artboard', 'document', 'live-timeline', 'option-compare', 'verify'])
+    expect(types).toEqual([
+      'artboard',
+      'data-story',
+      'document',
+      'live-timeline',
+      'option-compare',
+      'pr-walkthrough',
+      'verify',
+    ])
 
     for (const tpl of listKitTemplates()) {
       expect(tpl.propFields.length).toBeGreaterThan(0)

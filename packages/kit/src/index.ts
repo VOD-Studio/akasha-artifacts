@@ -5,6 +5,21 @@ export const PACKAGE_KIT_VERSION = '0.3.0'
 registerBuiltinKitTemplates()
 
 export {
+  DATA_STORY_TEMPLATE,
+  type DataStoryData,
+  type StoryChart,
+  type StoryRow,
+  type StoryTable,
+} from './data-story.js'
+export {
+  PR_WALKTHROUGH_TEMPLATE,
+  type PrWalkthroughData,
+  type WalkthroughDiffMode,
+  type WalkthroughFile,
+  type WalkthroughLine,
+} from './pr-walkthrough.js'
+
+export {
   buildPropsJsonSchema,
   getKitTemplate,
   type KitParseResult,

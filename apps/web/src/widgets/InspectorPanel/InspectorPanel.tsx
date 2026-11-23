@@ -1,14 +1,15 @@
 import type { ArtifactType, ElementRef, Feedback, ReviewRound } from '@akasha/protocol'
 import { Badge } from '@akasha/ui/badge'
-import { Empty } from '@akasha/ui/empty'
-import { ScrollArea } from '@akasha/ui/scroll-area'
-import { MessageSquare, SlidersHorizontal, Target, X } from 'lucide-react'
-import { useState } from 'react'
+import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@akasha/ui/sheet'
+import { SlidersHorizontal, Target } from 'lucide-react'
+import { useLayoutEffect, useRef } from 'react'
 import { useSelectionStore } from '../../entities/selection/store'
+import { useWorkspaceStore } from '../../entities/workspace/store'
 import { AnnotationComposer } from '../../features/annotations/AnnotationComposer'
 import { PropsPanel } from '../../features/props-panel/PropsPanel'
 import { ReviewActionsBar } from '../../features/review-actions/ReviewActionsBar'
 import { formatRelativeTime } from '../../shared/lib/format'
+import { RoundSubmitBar } from '../RoundSubmitBar/RoundSubmitBar'
 
 export interface InspectorPanelProps {
   artifactId: string
@@ -20,7 +21,6 @@ export interface InspectorPanelProps {
   activeRound: ReviewRound | null
   feedbacks: readonly Feedback[]
   onHighlightElement?: (element: ElementRef) => void
-  onClose: () => void
 }
 
 function feedbackStatusBadge(fb: Feedback): {
@@ -58,8 +58,7 @@ function feedbackKindLabel(kind: Feedback['kind']): string {
 
 const EMPTY_STATE_SNAPSHOT: Record<string, unknown> = {}
 
-// 右侧评审与属性面板：支持 L1 批注/评审线程与 L2 Kit 模板属性表单切换（无属性 schema 时自动降级为 L1）。
-export function InspectorPanel({
+function InspectorContent({
   artifactId,
   projectId,
   artifactType,
@@ -69,9 +68,15 @@ export function InspectorPanel({
   activeRound,
   feedbacks,
   onHighlightElement,
-  onClose,
 }: InspectorPanelProps) {
-  const [tab, setTab] = useState<'review' | 'props'>('review')
+  const activeTab = useWorkspaceStore((s) => s.inspectorTab)
+  const previousTab = useRef<'review' | 'props'>('review')
+  // 抽屉滑出时保留原页签，避免关闭属性面板时短暂闪回批注页。
+  useLayoutEffect(() => {
+    if (activeTab !== null) previousTab.current = activeTab
+  }, [activeTab])
+  const tab = activeTab ?? previousTab.current
+  const setTab = useWorkspaceStore((s) => s.setInspectorTab)
   const selectedElement = useSelectionStore((s) => s.selectedByArtifact[artifactId] ?? null)
   const focusedFeedbackId = useSelectionStore((s) => s.focusedFeedbackId)
   const setFocusedFeedbackId = useSelectionStore((s) => s.setFocusedFeedbackId)
@@ -79,52 +84,44 @@ export function InspectorPanel({
   const ordered = [...feedbacks].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
 
   return (
-    <aside
-      aria-label="批注与评审面板"
-      data-testid="inspector-panel"
-      className="flex w-[348px] shrink-0 flex-col border-l border-border bg-surface-subtle"
-    >
-      <div className="flex items-center justify-between border-b border-border bg-surface px-3 py-2">
-        <div className="flex items-center gap-1" role="tablist" aria-label="右侧面板切换">
+    <>
+      <SheetHeader>
+        <SheetTitle>批注与评审</SheetTitle>
+      </SheetHeader>
+      <div
+        className="mb-2 flex shrink-0 items-center gap-1 px-5"
+        role="tablist"
+        aria-label="面板切换"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'review'}
+          onClick={() => setTab('review')}
+          className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-semibold transition ${
+            tab === 'review' ? 'bg-muted text-ink' : 'text-ink-muted hover:text-ink'
+          }`}
+        >
+          <span>批注</span>
+          {feedbacks.length > 0 ? <span>{feedbacks.length}</span> : null}
+        </button>
+        {artifactType ? (
           <button
             type="button"
             role="tab"
-            aria-selected={tab === 'review'}
-            onClick={() => setTab('review')}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-semibold transition ${
-              tab === 'review' ? 'bg-muted text-ink' : 'text-ink-muted hover:text-ink'
+            aria-selected={tab === 'props'}
+            onClick={() => setTab('props')}
+            className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold transition ${
+              tab === 'props' ? 'bg-muted text-ink' : 'text-ink-muted hover:text-ink'
             }`}
           >
-            <MessageSquare size={13} />
-            <span>批注与评审</span>
-            <Badge tone="neutral">{feedbacks.length}</Badge>
+            <SlidersHorizontal size={12} />
+            <span>属性</span>
           </button>
-          {artifactType ? (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === 'props'}
-              onClick={() => setTab('props')}
-              className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold transition ${
-                tab === 'props' ? 'bg-muted text-ink' : 'text-ink-muted hover:text-ink'
-              }`}
-            >
-              <SlidersHorizontal size={12} />
-              <span>属性</span>
-            </button>
-          ) : null}
-        </div>
-        <button
-          type="button"
-          aria-label="收起批注面板"
-          onClick={onClose}
-          className="rounded p-1 text-ink-muted hover:bg-muted hover:text-ink"
-        >
-          <X size={14} />
-        </button>
+        ) : null}
       </div>
 
-      <ScrollArea aria-label="批注与评审详情" className="flex-1 p-3">
+      <SheetBody>
         {tab === 'props' && artifactType ? (
           <PropsPanel
             artifactId={artifactId}
@@ -157,21 +154,21 @@ export function InspectorPanel({
               </div>
 
               {ordered.length === 0 ? (
-                <Empty
-                  variant="compact"
-                  title="暂无批注与反馈"
-                  description="点击顶栏「指认元素」或直接在此输入批注。"
-                />
+                <p className="py-2 text-xs text-ink-muted">暂无批注与反馈。</p>
               ) : (
                 ordered.map((fb) => {
                   const statusMeta = feedbackStatusBadge(fb)
                   const isOldVersion = fb.version !== activeVersion
                   const isFocused = fb.id === focusedFeedbackId
-                  const locator = fb.element?.blockId
-                    ? `#${fb.element.blockId}`
-                    : fb.element?.loc
-                      ? `@${fb.element.loc}`
-                      : fb.element?.selector?.slice(0, 28)
+                  const points = fb.element?.dataPoints
+                  const locator = points
+                    ? `${points.chartTitle} · ${points.points.length} 个数据点`
+                    : fb.element?.textPreview ||
+                      (fb.element?.blockId
+                        ? `#${fb.element.blockId}`
+                        : fb.element?.loc
+                          ? `@${fb.element.loc}`
+                          : fb.element?.selector?.slice(0, 28))
 
                   return (
                     <div
@@ -213,6 +210,18 @@ export function InspectorPanel({
                           <span className="truncate">{locator}</span>
                         </button>
                       ) : null}
+                      {points ? (
+                        <details className="mt-1 text-ink-muted">
+                          <summary className="cursor-pointer">查看圈选数据</summary>
+                          <ul className="mt-1 space-y-1">
+                            {points.points.map((point) => (
+                              <li key={point.id}>
+                                {point.label}：{point.value} {points.valueLabel}
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      ) : null}
 
                       <p className="mt-1.5 whitespace-pre-wrap break-words text-xs leading-relaxed text-ink">
                         {fb.body}
@@ -224,7 +233,33 @@ export function InspectorPanel({
             </div>
           </div>
         )}
-      </ScrollArea>
-    </aside>
+      </SheetBody>
+      {activeRound && tab === 'review' ? (
+        <RoundSubmitBar
+          artifactId={artifactId}
+          projectId={projectId}
+          activeRound={activeRound}
+          feedbacks={feedbacks}
+        />
+      ) : null}
+    </>
+  )
+}
+
+export function InspectorPanel(props: InspectorPanelProps) {
+  const open = useWorkspaceStore((s) => s.inspectorTab !== null)
+  const setTab = useWorkspaceStore((s) => s.setInspectorTab)
+
+  return (
+    <Sheet modal={false} open={open} onOpenChange={(next) => setTab(next ? 'review' : null)}>
+      <SheetContent
+        id="artifact-inspector"
+        size="sm"
+        aria-describedby={undefined}
+        className="top-16 bottom-14 overflow-hidden"
+      >
+        <InspectorContent {...props} />
+      </SheetContent>
+    </Sheet>
   )
 }

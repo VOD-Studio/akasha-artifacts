@@ -12,6 +12,7 @@ import {
   resolveArtifactFileLayout,
 } from '../infrastructure/storage/fs/index.js'
 import { FsArtifactsWatcher } from '../infrastructure/storage/fs/watcher.js'
+import { InMemoryArtifactStorage } from '../infrastructure/storage/memory/artifact-kv.js'
 import {
   CryptoIdGenerator,
   InMemoryArtifactRepository,
@@ -123,6 +124,7 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
     ? persistentBackend.feedbacks
     : new InMemoryFeedbackRepository()
   const receipts = persistentBackend ? persistentBackend.receipts : new InMemoryReceiptRepository()
+  const artifactStorage = persistentBackend?.artifactStorage ?? new InMemoryArtifactStorage()
 
   const service = new ArtifactService({
     projects,
@@ -340,6 +342,7 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
     clock,
     daemon: daemonState,
     security,
+    artifactStorage,
   })
 
   const syncBoundPort = (actualPort: number) => {

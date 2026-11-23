@@ -1,0 +1,169 @@
+import { ArtifactPullFeedbackOutputSchema, ArtifactSchema, type EditOp } from '@akasha/protocol'
+import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
+import { startNodeServer } from '../src/entry/node.js'
+
+async function createFixture(source: string, type: 'html' | 'react') {
+  const server = await startNodeServer({ dbPath: 'memory', port: 0 })
+  async function request(path: string, body?: unknown) {
+    const params = body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) }
+    return fetch(`${server.baseUrl}/api/v1${path}`, {
+      ...params,
+      headers: { authorization: `Bearer ${server.token}`, 'content-type': 'application/json' },
+    })
+  }
+  try {
+    const response = await request('/artifacts', {
+      slug: 'visual-edit',
+      title: '可视化直改',
+      type,
+      source,
+    })
+    expect(response.status).toBe(201)
+    const { artifact } = z.object({ artifact: ArtifactSchema }).parse(await response.json())
+    const path = `/artifacts/${artifact.publicId}/visual-edit`
+    return { request, path, close: server.close, id: artifact.publicId }
+  } catch (error) {
+    await server.close()
+    throw error
+  }
+}
+
+describe('可视化直改版本与反馈', () => {
+  it('预览不写入版本，对四种修改分别保存并逐步撤销', async () => {
+    const source = '<ul>\n  <li class="text-sm">A</li>\n  <li>B</li>\n</ul>'
+    const fixture = await createFixture(source, 'html')
+    const { request, path, id } = fixture
+    try {
+      const capability = await request(`${path}?baseVersion=1&loc=2:3`)
+      expect(await capability.json()).toMatchObject({
+        target: { text: 'A', className: 'text-sm', order: { parentLoc: '1:1' } },
+      })
+      const steps: Array<{ op: EditOp; source: string }> = [
+        {
+          op: { kind: 'text', loc: '2:3', value: 'AA' },
+          source: '<ul>\n  <li class="text-sm">AA</li>\n  <li>B</li>\n</ul>',
+        },
+        {
+          op: { kind: 'className', loc: '2:3', value: 'font-bold' },
+          source: '<ul>\n  <li class="font-bold">AA</li>\n  <li>B</li>\n</ul>',
+        },
+        {
+          op: { kind: 'move', loc: '2:3', targetParentLoc: '1:1', index: 1 },
+          source: '<ul>\n  <li>B</li>\n  <li class="font-bold">AA</li>\n</ul>',
+        },
+        {
+          op: { kind: 'remove', loc: '2:3' },
+          source: '<ul>\n  \n  <li class="font-bold">AA</li>\n</ul>',
+        },
+      ]
+      let baseVersion = 1
+      for (const step of steps) {
+        const command = { baseVersion, op: step.op }
+        const preview = await request(`${path}/preview`, command)
+        expect(preview.status).toBe(200)
+        expect(await preview.json()).toEqual({ source: step.source })
+        expect(await (await request(`/artifacts/${id}`)).json()).toMatchObject({
+          artifact: { headVersion: baseVersion },
+        })
+        const response = await request(path, command)
+        expect(response.status).toBe(200)
+        expect(await response.json()).toMatchObject({
+          version: {
+            version: baseVersion + 1,
+            parentVersion: baseVersion,
+            source: step.source,
+            author: 'human:web',
+          },
+        })
+        baseVersion++
+      }
+      for (let undoVersion = baseVersion; undoVersion > 1; undoVersion--) {
+        expect(await (await request(`${path}?baseVersion=${baseVersion}`)).json()).toEqual({
+          undoVersion,
+        })
+        const result = await request(path, { baseVersion, undoVersion })
+        expect(result.status).toBe(200)
+        expect(await result.json()).toMatchObject({
+          version: {
+            version: baseVersion + 1,
+            parentVersion: baseVersion,
+            source: steps[undoVersion - 3]?.source ?? source,
+          },
+        })
+        baseVersion++
+      }
+      expect(await (await request(`${path}?baseVersion=${baseVersion}`)).json()).toEqual({
+        undoVersion: null,
+      })
+      const feedback = ArtifactPullFeedbackOutputSchema.parse(
+        await (await request(`/feedback?id=${id}&detail=false`)).json(),
+      )
+      expect(feedback.items).toHaveLength(8)
+      expect(feedback.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: 'edit',
+            author: 'human:web',
+            version: 2,
+            body: expect.stringContaining('修改文字'),
+          }),
+          expect.objectContaining({
+            kind: 'edit',
+            author: 'human:web',
+            version: 9,
+            body: expect.stringContaining('撤销'),
+          }),
+        ]),
+      )
+    } finally {
+      await fixture.close()
+    }
+  })
+
+  it('拒绝动态节点和基准版本过期的并发写入', async () => {
+    const fixture = await createFixture(
+      'export default () => <p>{items.map(i => <b>{i}</b>)}<em>静态</em></p>',
+      'react',
+    )
+    const { request, path, id } = fixture
+    try {
+      const dynamicLoc = '1:41'
+      expect(await (await request(`${path}?baseVersion=1&loc=${dynamicLoc}`)).json()).toEqual({
+        target: null,
+      })
+      const refused = await request(path, {
+        baseVersion: 1,
+        op: { kind: 'remove', loc: dynamicLoc },
+      })
+      expect(refused.status).toBe(400)
+      expect(await refused.json()).toMatchObject({ error: { details: { annotationOnly: true } } })
+      const op = { kind: 'text', loc: '1:53', value: '修改' }
+      const writes = await Promise.all([
+        request(path, { baseVersion: 1, op }),
+        request(path, { baseVersion: 1, op }),
+      ])
+      expect(writes.map(({ status }) => status).sort()).toEqual([200, 409])
+      const conflict = writes.find(({ status }) => status === 409)
+      expect(await conflict?.json()).toMatchObject({
+        error: {
+          code: 'VERSION_CONFLICT',
+          details: {
+            artifactId: id,
+            baseVersion: 1,
+            headVersion: 2,
+            authors: ['human:web'],
+            diff: expect.any(String),
+          },
+        },
+      })
+      const staleUndo = await request(path, { baseVersion: 1, undoVersion: 2 })
+      expect(staleUndo.status).toBe(409)
+      expect(await (await request(`/artifacts/${id}`)).json()).toMatchObject({
+        artifact: { headVersion: 2 },
+      })
+    } finally {
+      await fixture.close()
+    }
+  })
+})

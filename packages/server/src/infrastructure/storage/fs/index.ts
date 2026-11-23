@@ -929,6 +929,7 @@ export class FsArtifactsStorage {
   readonly rounds: RoundRepository
   readonly feedbacks: FeedbackRepository
   readonly receipts: ReceiptRepository
+  readonly artifactStorage: SqliteStorage['artifactStorage']
 
   constructor(options: FsArtifactsStorageOptions) {
     this.artifactsRoot = path.resolve(options.artifactsRoot)
@@ -997,6 +998,7 @@ export class FsArtifactsStorage {
     this.rounds = this.sqlite.rounds
     this.feedbacks = this.sqlite.feedbacks
     this.receipts = this.sqlite.receipts
+    this.artifactStorage = this.sqlite.artifactStorage
   }
 
   getEventSeq(): number {

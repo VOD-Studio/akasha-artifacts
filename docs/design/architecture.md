@@ -286,16 +286,16 @@ sequenceDiagram
 
 ### 5.2 HTTP 与 WebSocket
 
-- REST 前缀 `/api/v1`，资源包括 `projects`、`artifacts`（同时支持 `publicId` 与 `project + slug` 寻址）、`artifacts/:id/versions`、`artifacts/:id/state`、`artifacts/:id/rounds`、`artifacts/:id/feedback`、`artifacts/:id/edits`、`artifacts/:id/check`、`daemon/status`、`daemon/logs`。
+- REST 前缀 `/api/v1`，资源包括 `projects`、`artifacts`（同时支持 `publicId` 与 `project + slug` 寻址）、`artifacts/:id/versions`、`artifacts/:id/state`、`artifacts/:id/rounds`、`artifacts/:id/feedback`、`artifacts/:id/edits`、`artifacts/:id/storage`、`artifacts/:id/check`、`daemon/status`、`daemon/logs`。
 - 错误统一为 `{ error: { code, message, details } }`。冲突用 `409 VERSION_CONFLICT`，`details` 中附带 `headVersion` 和对应 diff。
 - WebSocket 按项目或 Artifact 订阅。事件包括 `version.created`、`state.patched`、`round.updated`、`feedback.created`、`feedback.updated`、`agent.activity`、`presence.changed`。每条事件带 `seq`；客户端重连时带上 `lastSeq`，服务端补发之间的事件，无法补发时返回 `resync`。
 
 ### 5.3 Bridge（外壳 ↔ 沙盒）
 
-| 方向        | 消息                                                                                                               |
-| :---------- | :----------------------------------------------------------------------------------------------------------------- |
-| 外壳 → 沙盒 | `render`（含 `preservedState`）、`state`、`inspect.start`、`inspect.stop`、`highlight`、`apply.preview`            |
-| 沙盒 → 外壳 | `ready`、`rendered`、`error`、`resize`、`viewState.snapshot`、`inspect.hover`、`inspect.select`、`storage.request` |
+| 方向        | 消息                                                                                                                                                            |
+| :---------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 外壳 → 沙盒 | `render`（含 `preservedState`）、`state`、`inspect.start`、`inspect.stop`、`highlight`、`apply.preview`、`apply.rollback`、`visual.inspect`、`storage.response` |
+| 沙盒 → 外壳 | `ready`、`rendered`、`error`、`resize`、`viewState.snapshot`、`inspect.hover`、`inspect.select`、`visual.select`、`annotation.request`、`storage.request`       |
 
 规则：每条消息都带 `v`（协议版本）和 `nonce`（会话标识）。接收方必须校验 `event.origin` 并用 zod 解析消息；校验失败的消息直接丢弃。
 
@@ -325,6 +325,8 @@ sequenceDiagram
 
 ### 7.2 渲染流水线与 Artifact 形态
 
+制品页默认直接进入画布，项目库另作导航入口。外壳在画布上为制品提供独立画板与缩放、适应视口、放大后平移；网页预览和元素批注叠层使用同一画板坐标，缩放不改变沙盒内的视口尺寸。批注、评审和属性使用右侧非模态抽屉，开合不改变画布尺寸，也不拦截抽屉外的操作。源码、版本对比、代码编辑和导出放在更多操作中。
+
 ```mermaid
 flowchart LR
     S["源码"] --> P["解析<br/>@babel/parser / parse5 / 块解析器"]
@@ -347,7 +349,7 @@ flowchart LR
 | `pr-walkthrough`               | 分章节代码走查、并排/统一 diff 与行级批注                                                                                            |
 | `live-timeline`                | 实时排障与任务进度看板，随 `push_state` 自动推进                                                                                     |
 | `option-compare`               | 结构化架构方案对比表，可与 `artboard` 共享分轮单选模型                                                                               |
-| `data-story`                   | 会话查询数据转可筛选图表与表格                                                                                                       |
+| `data-story`                   | 可筛选图表与表格，支持拖动框选数据点并提交带结构化数据的批注                                                                         |
 
 - **依赖白名单**：React、Tailwind v4、lucide-react、recharts、shiki、mermaid，以及 `@akasha/kit`。全部预先打包并随沙盒一起分发，运行时不联网。
 - **Tailwind**：在沙盒内按需生成样式，支持任意值写法，这样 L4 样式面板就能写回任意类名。
@@ -367,6 +369,8 @@ flowchart LR
 ### 7.5 持久化存储
 
 沙盒内提供 `window.akasha.storage`，接口为 `get`、`set`、`delete`、`list`，作用域分为 `private`（仅当前用户）和 `shared`（所有可访问者共享），并有容量上限。调用链是：沙盒 → Bridge → 外壳 → 服务端，沙盒自己不直接联网。
+
+同一制品的多个版本共享存储命名空间。服务端从当前认证身份计算私有命名空间，不采信沙盒提供的身份。单个作用域最多 128 个键、64 KiB，键和 JSON 值的上限分别为 128 字节与 16 KiB；仓储用 CAS 同时保护写入和配额。
 
 ---
 
@@ -444,13 +448,10 @@ sequenceDiagram
 
 ### 10.2 Cloud Hub 与本机直连降级
 
-| 形态               | 适配器组合                                                    |
-| :----------------- | :------------------------------------------------------------ |
-| Docker 单容器      | Node 入口 + SQLite 或 Postgres + 文件系统或 S3 + node-ws      |
-| Cloudflare Workers | Worker 入口 + D1 + R2 + Durable Objects（实时通道与多人协作） |
+Docker 单容器：Node 入口 + SQLite 或 PostgreSQL，版本源码可选 S3 兼容对象存储。实时通道使用 `node-ws`。
 
-- **本机直连优先**：作者在本机浏览器打开 Cloud Hub 链接时，页面优先探测本地 Daemon 的固定端口；若本机 Daemon 在线且持有该 Artifact，则直接走本地 WebSocket 实时同步，不占用 Cloud Hub / Durable Object 连接额度，也不因云端连接休眠而掉线；仅在同事设备或移动端访问时才走 Hub 中继。
-- **中继限流透明**：云端中继返回连接数或额度上限（如 `429`）时，页面停止盲目自动重连，明确告知原因并提供手动重连按钮。
+- Hub 项目库在前台每 10 秒通过权限过滤后的列表接口刷新，不使用全局 WebSocket 订阅。制品页仍按范围订阅；实时序号存入数据库，重启预留一个序号，让携带旧游标的客户端收到 `resync` 并重读制品。
+- **本机直连优先**：已用 CLI 绑定该 Hub 的机器先探测固定端口段；Daemon 仅允许该 Hub origin 查询相同制品 ID／历史版本是否已存在，不返回内容或凭据。命中后打开本机工作台，使用本机同源 API 和 WebSocket，不创建 Hub 实时连接；未命中走 Hub。两边的数据不会自动复制。
 - Hub 额外提供：鉴权（GitHub OAuth / 团队 SSO）、可见性（`private` / `team` / `public`）、离线反馈队列，以及 `akasha login` 下发的 CLI 访问令牌。
 
 ---
@@ -504,10 +505,10 @@ akasha-artifacts/
 packages/server/src/
 ├── domain/          # 不变量：project、artifact、state、round、feedback、edit。纯 TS，不做 IO
 ├── application/     # 用例编排：publish、update、check、pushState、roundSubmit、awaitFeedback、ack、applyEdit
-├── infrastructure/  # 适配器：storage/{memory,sqlite,fs,d1,postgres}、blob/*、realtime/*、auth/*
+├── infrastructure/  # 适配器：storage/{memory,sqlite,fs,postgres,s3}、realtime/*
 ├── interfaces/      # http（Hono 路由）、realtime（WS 编解码）
 ├── app/             # 手工装配：createLocalContainer、createHubContainer
-└── entry/           # node.ts、worker.ts
+└── entry/           # node.ts、hub-node.ts
 ```
 
 - 领域层定义端口接口（如 `ProjectRepository`、`ArtifactRepository`、`FeedbackRepository`、`RealtimePublisher`），基础设施层负责实现。
@@ -518,8 +519,8 @@ packages/server/src/
 ```
 apps/web/src/
 ├── routes/      # 文件路由：/（多项目库）、/a/$publicId、/a/$publicId/v/$version
-├── widgets/     # 页面级组合：LibraryShell（左侧项目栏+⌘K）、ArtifactWorkspace、TopBar（含运维胶囊）、
-│                #   InspectorPanel、RoundSubmitBar
+├── widgets/     # 页面级组合：LibraryShell（项目库、运维与 ⌘K）、ArtifactWorkspace（交互画布）、TopBar、
+│                #   InspectorPanel（批注、属性与轮次提交）
 ├── features/    # 用户能力切片：live-sync、daemon-control、command-palette、version-timeline、version-diff、
 │                #   element-picker、annotations、review-rounds、review-actions、props-panel、code-editor、
 │                #   visual-edit、export-html

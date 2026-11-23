@@ -1,4 +1,4 @@
-import { parse, parseFragment } from 'parse5'
+import { type DefaultTreeAdapterMap, parse, parseFragment } from 'parse5'
 import {
   applyInsertions,
   type BlockEntry,
@@ -34,7 +34,7 @@ interface Parse5Node {
   sourceCodeLocation?: Parse5Location | null
 }
 
-const SKIP_HTML_TAGS = new Set([
+export const SKIP_HTML_TAGS = new Set([
   'html',
   'head',
   'body',
@@ -48,12 +48,17 @@ const SKIP_HTML_TAGS = new Set([
   'template',
 ])
 
+export function parseHtmlSource(
+  source: string,
+): DefaultTreeAdapterMap['document'] | DefaultTreeAdapterMap['documentFragment'] {
+  return /<!doctype\b|<html\b/i.test(source)
+    ? parse(source, { sourceCodeLocationInfo: true })
+    : parseFragment(source, { sourceCodeLocationInfo: true })
+}
+
 // 使用 parse5 的 sourceCodeLocationInfo 为 HTML/文档元素注入 data-ak-loc="line:col"，不破坏原有格式。
 export function injectHtmlLocations(source: string): InjectLocationsResult {
-  const isFullDocument = /<!doctype\b|<html\b/i.test(source)
-  const root = (isFullDocument
-    ? parse(source, { sourceCodeLocationInfo: true })
-    : parseFragment(source, { sourceCodeLocationInfo: true })) as unknown as Parse5Node
+  const root = parseHtmlSource(source) as unknown as Parse5Node
 
   const insertions: StringInsertion[] = []
   const locations: InjectedLocationEntry[] = []
