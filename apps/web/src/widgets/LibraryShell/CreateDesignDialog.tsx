@@ -105,16 +105,13 @@ export function CreateDesignDialog({
   const connection = connections.data?.connections.find((entry) => entry.projectId === projectId)
   const denied =
     sessionQuery.error instanceof ApiError && [401, 403, 404].includes(sessionQuery.error.status)
+  const missing = sessionQuery.error instanceof ApiError && sessionQuery.error.status === 404
   const session = denied || hub ? undefined : sessionQuery.data
-  const turn = session?.turns.at(-1)
+  const turn = session?.turns[0]
+  // 服务端只在确认真实 v1 后写 artifactId；会话的最近轮次可以滚动淘汰首次回执。
   const published =
-    session?.projectId === attempt?.projectId &&
-    session?.id === attempt?.id &&
-    session?.artifactId &&
-    turn?.publications.some(
-      ({ artifactId, version }) => artifactId === session.artifactId && version === 1,
-    )
-      ? session.artifactId
+    session?.projectId === attempt?.projectId && session?.id === attempt?.id
+      ? session?.artifactId
       : undefined
   const locked = Boolean(attempt) || send.isPending
   const canSend =
@@ -143,6 +140,7 @@ export function CreateDesignDialog({
 
   function clearAttempt() {
     setAttempt(null)
+    setAgent('')
     writeAttempt(null)
   }
 
@@ -247,10 +245,20 @@ export function CreateDesignDialog({
         {send.error ? <p role="alert">未受理：{send.error.message}。草稿已保留。</p> : null}
         {sessionQuery.isError ? (
           <div role="alert" className="flex flex-wrap items-center gap-2">
-            <span>暂时查不到原会话；没有重新发送。</span>
-            <Button variant="ghost" size="sm" onClick={() => void sessionQuery.refetch()}>
-              重新查询
-            </Button>
+            <span>
+              {missing
+                ? '原会话已不存在；需求草稿仍保留，未重新发送。'
+                : '暂时查不到原会话；没有重新发送。'}
+            </span>
+            {missing ? (
+              <Button variant="outline" size="sm" onClick={clearAttempt}>
+                保留草稿，重新选择
+              </Button>
+            ) : (
+              <Button variant="ghost" size="sm" onClick={() => void sessionQuery.refetch()}>
+                重新查询
+              </Button>
+            )}
           </div>
         ) : null}
         {attempt && !session && !sessionQuery.isError ? (

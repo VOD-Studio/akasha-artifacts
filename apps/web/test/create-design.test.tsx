@@ -171,3 +171,57 @@ it('收到受理响应前关闭并重开，继续跟踪同一个会话且不重�
   expect(requests.filter((path) => path === '/api/v1/agent/design')).toHaveLength(1)
   expect(screen.queryByRole('button', { name: '打开已发布设计' })).toBeNull()
 })
+
+it('失效记录须明确清除，不重发草稿；可打开已确认首发且回执已滚出的会话', async () => {
+  const expired = '8b519967-1cd9-41cd-adea-4ce498161945'
+  const message = '保留的预约需求'
+  sessionStorage.setItem(
+    'akasha:agent-design-attempt',
+    JSON.stringify({ id: expired, projectId: 'p-alpha' }),
+  )
+  const current: AgentConversation = {
+    id: 'ff8303ec-a2eb-4dcc-a24b-3c3e42838518',
+    projectId: 'p-alpha',
+    harness: 'codex',
+    artifactId: 'FirstPublishedArtifact1',
+    turns: [
+      {
+        id: '225d384b-deab-4b49-9ef7-ab708a907f3e',
+        message: '后续对话',
+        status: 'complete',
+        reply: '已核对。',
+        publications: [],
+      },
+    ],
+  }
+  const sends: unknown[] = []
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    switch (String(input)) {
+      case '/api/v1/agent/connections':
+        return Response.json({
+          connections: [{ projectId: 'p-alpha', harness: 'codex', availability: 'ready' }],
+        })
+      case '/api/v1/agent/design':
+        sends.push(JSON.parse(String(init?.body)))
+        return Response.json(current, { status: 202 })
+      case `/api/v1/agent/sessions/${current.id}`:
+        return Response.json(current)
+      default:
+        return new Response(null, { status: 404 })
+    }
+  })
+  const open = vi.fn()
+  show(open)
+  const editor = screen.getByRole<HTMLTextAreaElement>('textbox', { name: '设计需求' })
+  fireEvent.change(editor, { target: { value: message } })
+  fireEvent.click(await screen.findByRole('button', { name: '保留草稿，重新选择' }))
+  expect(editor.value).toBe(message)
+  expect(sends).toEqual([])
+  fireEvent.change(screen.getByRole('combobox', { name: '发布 Agent' }), {
+    target: { value: 'codex' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: '发送设计需求' }))
+  fireEvent.click(await screen.findByRole('button', { name: '打开已发布设计' }))
+  expect(sends).toEqual([{ projectId: 'p-alpha', message }])
+  expect(open).toHaveBeenCalledWith('FirstPublishedArtifact1')
+})
