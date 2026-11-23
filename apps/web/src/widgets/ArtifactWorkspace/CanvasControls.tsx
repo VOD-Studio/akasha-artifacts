@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { ElementPickerButton } from '../../features/element-picker/ElementPickerButton'
+import { DRAWING_TOOLS, type DrawingTool } from './BoardDrawingSurface'
 import { CanvasPageActions, type CanvasPageEditing } from './CanvasPageActions'
 import type { Camera } from './canvas-camera'
 import type { CanvasPage } from './canvas-model'
@@ -164,6 +165,7 @@ export function CanvasToolbar({
   camera,
   hand,
   onChangeTool,
+  designTools,
   canZoom,
   onZoom,
   onFitPage,
@@ -179,6 +181,11 @@ export function CanvasToolbar({
   camera: Camera
   hand: boolean
   onChangeTool: (hand: boolean) => void
+  designTools?: {
+    value: DrawingTool | null
+    change: (tool: DrawingTool) => void
+    disabled: boolean
+  }
   canZoom: boolean
   onZoom: (factor: number) => void
   onFitPage: (() => void) | undefined
@@ -246,12 +253,12 @@ export function CanvasToolbar({
       </section>
       <section aria-label="画布工具" className="artifact-canvas-tools">
         <Button
-          variant={hand ? 'ghost' : 'secondary'}
+          variant={hand || designTools?.value ? 'ghost' : 'secondary'}
           size="sm"
           iconOnly
           aria-label="选择"
           title="选择"
-          aria-pressed={!hand}
+          aria-pressed={!hand && !designTools?.value}
           onClick={() => onChangeTool(false)}
         >
           <MousePointer2 size={15} />
@@ -267,6 +274,23 @@ export function CanvasToolbar({
         >
           <Hand size={15} />
         </Button>
+        {designTools
+          ? DRAWING_TOOLS.map((tool) => (
+              <Button
+                key={tool.kind}
+                variant={designTools.value === tool ? 'secondary' : 'ghost'}
+                size="sm"
+                iconOnly
+                aria-label={tool.label}
+                title={tool.label}
+                aria-pressed={designTools.value === tool}
+                disabled={designTools.disabled}
+                onClick={() => designTools.change(tool)}
+              >
+                <tool.icon size={15} />
+              </Button>
+            ))
+          : null}
         {onAddBoard ? (
           <Button
             variant="ghost"

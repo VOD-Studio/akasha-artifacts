@@ -12,6 +12,7 @@ import {
 } from 'react'
 import { useSelectionStore } from '../../entities/selection/store'
 import type { BoardFramePurpose } from './ArtifactFrame'
+import { BoardDrawingSurface, type DrawingTool } from './BoardDrawingSurface'
 import { BoardPresentation } from './BoardPresentation'
 import { CanvasArrangeMenu } from './CanvasArrangeMenu'
 import { CanvasBoardActions, CanvasBoardEditNotice } from './CanvasBoardActions'
@@ -135,6 +136,7 @@ export function ArtifactCanvas({
   const [dismissedAddress, setDismissedAddress] = useState('')
   const [navigatorOpen, setNavigatorOpen] = useState(false)
   const [copyStatus, setCopyStatus] = useState('')
+  const [drawingTool, setDrawingTool] = useState<DrawingTool | null>(null)
   const hand = view.hand ?? false
   const setHand = (next: boolean) =>
     setView((prev) => ((prev.hand ?? false) === next ? prev : { ...prev, hand: next }))
@@ -285,6 +287,7 @@ export function ArtifactCanvas({
 
   const navigate = (target: CanvasPage, boardId?: string | null) => {
     clearAddress()
+    setDrawingTool(null)
     setNavigatorOpen(false)
     setCopyStatus('')
     pendingFocus.current = boardId && !measurable ? { pageId: target.id, boardId } : null
@@ -379,7 +382,8 @@ export function ArtifactCanvas({
   const boundsFor = (id: string) =>
     (boardGesture.preview?.pageId === pageId ? boardGesture.preview?.bounds.get(id) : undefined) ??
     layout.bounds.get(id)
-  const canDragBoards = boardEditing?.available && !handActive && !pickerActive && !modifier
+  const canDragBoards =
+    boardEditing?.available && !handActive && !pickerActive && !modifier && !drawingTool
 
   const keyDown = useEffectEvent((event: KeyboardEvent) => {
     if (event.defaultPrevented || navigatorOpen) return
@@ -419,6 +423,7 @@ export function ArtifactCanvas({
     if (event.key !== 'Escape' || target?.closest('input, textarea, [contenteditable="true"]'))
       return
     boardGesture.cancel()
+    setDrawingTool(null)
     setHand(false)
     setSpace(false)
     setPickerActive(false)
@@ -451,7 +456,8 @@ export function ArtifactCanvas({
     const viewport = viewportRef.current
     if (!viewport || !event.deltaY || pageId === undefined || invalidAddress) return
     event.preventDefault()
-    if (boardGesture.preview?.phase === 'dragging') return
+    // 绘制工具用按下时的坐标映射；退出该工具前不让滚轮改变相机。
+    if (drawingTool || boardGesture.preview?.phase === 'dragging') return
     const rect = viewport.getBoundingClientRect()
     const anchor = { x: event.clientX - rect.left, y: event.clientY - rect.top }
     const delta =
@@ -533,6 +539,7 @@ export function ArtifactCanvas({
 
   const setCanvasTool = (next: boolean) => {
     boardGesture.cancel()
+    setDrawingTool(null)
     setHand(next)
     setPickerActive(false)
     visualEdit?.cancel()
@@ -540,6 +547,7 @@ export function ArtifactCanvas({
 
   const pauseCanvasTools = () => {
     boardGesture.cancel()
+    setDrawingTool(null)
     setNavigatorOpen(false)
     setPickerActive(false)
     setSpace(false)
@@ -774,6 +782,21 @@ export function ArtifactCanvas({
                           data-gesture
                           className="artifact-canvas-board-hit"
                         />
+                      ) : showOverview && drawingTool && board.scoped && boardEditing?.available ? (
+                        <BoardDrawingSurface
+                          key={drawingTool.kind}
+                          board={board}
+                          tool={drawingTool}
+                          version={boardEditing.version}
+                          onCreate={(layer, base) => {
+                            selectBoard(board.id)
+                            setDrawingTool(null)
+                            boardEditing.change(
+                              { kind: 'layerCreate', boardId: board.id, layer },
+                              base,
+                            )
+                          }}
+                        />
                       ) : !interactive ? (
                         <button
                           type="button"
@@ -818,6 +841,18 @@ export function ArtifactCanvas({
           camera={camera}
           hand={hand}
           onChangeTool={setCanvasTool}
+          designTools={
+            boardEditing && page?.boards.length && !invalidAddress
+              ? {
+                  value: drawingTool,
+                  disabled: !boardEditing.available,
+                  change: (tool) => {
+                    setCanvasTool(false)
+                    setDrawingTool(tool)
+                  },
+                }
+              : undefined
+          }
           onAddBoard={
             boardEditing && page && !invalidAddress
               ? () => {
@@ -855,11 +890,13 @@ export function ArtifactCanvas({
           }
           onStartPicker={() => {
             setHand(false)
+            setDrawingTool(null)
             visualEdit?.cancel()
           }}
           visualEditActive={visualEdit?.isPicking}
           onToggleVisualEdit={() => {
             setHand(false)
+            setDrawingTool(null)
             setPickerActive(false)
             visualEdit?.toggle()
           }}

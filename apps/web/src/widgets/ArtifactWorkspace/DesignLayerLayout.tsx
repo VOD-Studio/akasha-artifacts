@@ -125,6 +125,31 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
       ) : (
         <p className="text-xs text-ink-muted">按住 Shift 可在树中选取多个原生图层。</p>
       )}
+      <div className="flex gap-1 border-t border-border pt-2">
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={!editing.available}
+          onClick={() =>
+            editing.change({
+              kind: 'layerDuplicate',
+              boardId,
+              layerId: layer.id,
+              id: crypto.randomUUID(),
+            })
+          }
+        >
+          复制图层
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={!editing.available}
+          onClick={() => editing.change({ kind: 'layerDelete', boardId, layerId: layer.id })}
+        >
+          删除图层
+        </Button>
+      </div>
     </section>
   )
 }
