@@ -6,7 +6,7 @@
   "description": "Akasha monorepo — open-source live interactive web artifacts for CLI coding agents.",
   "type": "module",
   "scripts": {
-    "build": "pnpm -r --filter '!akasha-workspace' build",
+    "build": "pnpm -r --filter '!akasha-workspace' build && node scripts/stage-offline-runtime.mjs",
     "typecheck": "pnpm -r --filter '!akasha-workspace' typecheck",
     "test": "vitest run",
     "lint": "biome check && node scripts/check-deps.mjs",
