@@ -100,6 +100,7 @@ export function TopBar({
           size="sm"
           leftIcon={<MessageSquare size={14} />}
           aria-expanded={inspectorOpen}
+          aria-haspopup="dialog"
           aria-controls="artifact-inspector"
           onClick={() => setInspectorTab(inspectorOpen ? null : 'review')}
         >

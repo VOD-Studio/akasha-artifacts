@@ -301,7 +301,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     expect(iframe).toBeTruthy()
     expect(iframe?.getAttribute('sandbox')).toBe('allow-scripts')
     expect(screen.getByRole('region', { name: '制品画布' }).contains(iframe)).toBe(true)
-    expect(screen.queryByRole('complementary', { name: '批注与评审面板' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: '批注与评审' })).toBeNull()
     expect(screen.queryByText('导出 HTML')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: '放大画布' }))
@@ -349,10 +349,19 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     })
 
     fireEvent.click(screen.getByRole('button', { name: '批注' }))
+    const drawer = screen.getByRole('dialog', { name: '批注与评审' })
+    expect(drawer.getAttribute('aria-modal')).toBe('false')
+    const zoomIn = screen.getByRole('button', { name: '放大画布' })
+    act(() => zoomIn.focus())
+    expect(document.activeElement).toBe(zoomIn)
+    fireEvent.click(zoomIn)
+    expect(screen.getByLabelText('画布缩放比例').textContent).toBe('150%')
+    expect(screen.getByRole('dialog', { name: '批注与评审' })).toBe(drawer)
     const draftInput = screen.getByLabelText('批注内容') as HTMLTextAreaElement
     fireEvent.change(draftInput, { target: { value: '请把按钮改成次要描边样式' } })
     expect(draftInput.value).toBe('请把按钮改成次要描边样式')
-    fireEvent.click(screen.getByRole('button', { name: '收起批注面板' }))
+    fireEvent.keyDown(draftInput, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: '批注与评审' })).toBeNull()
 
     // 模拟 WS 推送 version.created 写入 Query 缓存并触发工作区重绘 v2
     queryClient.setQueryData(artifactKeys.detail(SAMPLE_ARTIFACT.publicId, undefined), detailV1)
@@ -378,7 +387,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       scrollY: 180,
     })
     expect(container.querySelector('iframe')).toBe(iframe)
-    expect(screen.getByLabelText('画布缩放比例').textContent).toBe('125%')
+    expect(screen.getByLabelText('画布缩放比例').textContent).toBe('150%')
     fireEvent.click(screen.getByRole('button', { name: '批注' }))
     expect((screen.getByLabelText('批注内容') as HTMLTextAreaElement).value).toBe(
       '请把按钮改成次要描边样式',
@@ -816,11 +825,9 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       queryClient.getQueryData<ArtifactDetailResponse>(versionDetailKey)
     expect(refreshedVersionDetail?.rounds[0]?.status).toBe('submitted')
 
-    // 选中画布元素打开评审面板，轮次动作随面板出现。
+    // 选中画布元素打开批注抽屉，轮次动作随抽屉出现。
     const roundBar = screen.getByTestId('round-submit-bar')
-    expect(screen.getByRole('complementary', { name: '批注与评审面板' }).contains(roundBar)).toBe(
-      true,
-    )
+    expect(screen.getByRole('dialog', { name: '批注与评审' }).contains(roundBar)).toBe(true)
     expect(roundBar.textContent).toContain('已决策 1 / 2')
     expect(roundBar.textContent).toContain('草稿评论 2 条')
     expect(screen.getByRole('button', { name: '提交本轮' })).toBeTruthy()
@@ -885,7 +892,6 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
           activeVersion={2}
           activeRound={null}
           feedbacks={[{ ...currentVersionPin, draft: false, status: 'resolved' }]}
-          onClose={() => {}}
         />
         <RoundSubmitBar
           artifactId={SAMPLE_ARTIFACT.publicId}

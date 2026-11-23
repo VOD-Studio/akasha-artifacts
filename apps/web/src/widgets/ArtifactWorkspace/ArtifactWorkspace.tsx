@@ -63,7 +63,6 @@ export function ArtifactWorkspace({
       setEditorMounted(true)
     }
   }, [viewMode])
-  const inspectorOpen = useWorkspaceStore((s) => s.inspectorTab !== null)
   const setInspectorTab = useWorkspaceStore((s) => s.setInspectorTab)
   const sandboxError = useWorkspaceStore((s) => s.sandboxErrorByArtifact[artifact.publicId] ?? null)
   const setSandboxError = useWorkspaceStore((s) => s.setSandboxError)
@@ -341,83 +340,76 @@ export function ArtifactWorkspace({
         </div>
       ) : null}
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
-          {editorMounted ? (
-            <div
-              className={
-                viewMode === 'edit' ? 'h-1/2 min-h-0 shrink-0 md:h-auto md:w-1/2' : 'hidden'
-              }
-            >
-              <SplitCodeEditor
-                artifact={artifact}
-                version={version}
-                latestVersion={latestVersion}
-                onLivePreviewChange={setLiveEditSource}
-                onVersionSaved={onVersionSaved}
-                onVersionAdopted={onVersionAdopted}
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
+        {editorMounted ? (
+          <div
+            className={viewMode === 'edit' ? 'h-1/2 min-h-0 shrink-0 md:h-auto md:w-1/2' : 'hidden'}
+          >
+            <SplitCodeEditor
+              artifact={artifact}
+              version={version}
+              latestVersion={latestVersion}
+              onLivePreviewChange={setLiveEditSource}
+              onVersionSaved={onVersionSaved}
+              onVersionAdopted={onVersionAdopted}
+            />
+          </div>
+        ) : null}
+
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {/* 工具视图只隐藏画布；切回时保留同一沙盒与用户视角。 */}
+          <ArtifactCanvas visible={showCanvas}>
+            <iframe
+              ref={iframeRef}
+              title={`${artifact.title} 隔离沙盒`}
+              src={iframeSrc}
+              sandbox={SANDBOX_IFRAME_SANDBOX_ATTR}
+              referrerPolicy="no-referrer"
+              className="block h-full w-full border-0 bg-white"
+            />
+            {showCanvas ? (
+              <ElementOverlay
+                hovered={hoveredElement}
+                selected={selectedElement}
+                pins={versionPins}
+                livePinRects={livePinRects}
+                focusedFeedbackId={focusedFeedbackId}
+                onSelectPin={(fb) => {
+                  setFocusedFeedbackId(fb.id)
+                  setInspectorTab('review')
+                  if (fb.element) handleHighlightElement(fb.element)
+                }}
               />
+            ) : null}
+          </ArtifactCanvas>
+
+          {viewMode === 'diff' ? (
+            <div className="h-full w-full">
+              <VersionDiffView versions={versions} activeVersion={version.version} />
             </div>
           ) : null}
 
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            {/* 工具视图只隐藏画布；切回时保留同一沙盒与用户视角。 */}
-            <ArtifactCanvas visible={showCanvas}>
-              <iframe
-                ref={iframeRef}
-                title={`${artifact.title} 隔离沙盒`}
-                src={iframeSrc}
-                sandbox={SANDBOX_IFRAME_SANDBOX_ATTR}
-                referrerPolicy="no-referrer"
-                className="block h-full w-full border-0 bg-white"
-              />
-              {showCanvas ? (
-                <ElementOverlay
-                  hovered={hoveredElement}
-                  selected={selectedElement}
-                  pins={versionPins}
-                  livePinRects={livePinRects}
-                  focusedFeedbackId={focusedFeedbackId}
-                  onSelectPin={(fb) => {
-                    setFocusedFeedbackId(fb.id)
-                    setInspectorTab('review')
-                    if (fb.element) handleHighlightElement(fb.element)
-                  }}
-                />
-              ) : null}
-            </ArtifactCanvas>
+          {viewMode === 'source' ? (
+            <div className="h-full w-full overflow-auto bg-surface p-4">
+              <pre className="rounded-xl border border-border bg-surface-subtle p-4 font-mono text-xs leading-6 text-ink">
+                <code>{version.source}</code>
+              </pre>
+            </div>
+          ) : null}
+        </div>
+      </main>
 
-            {viewMode === 'diff' ? (
-              <div className="h-full w-full">
-                <VersionDiffView versions={versions} activeVersion={version.version} />
-              </div>
-            ) : null}
-
-            {viewMode === 'source' ? (
-              <div className="h-full w-full overflow-auto bg-surface p-4">
-                <pre className="rounded-xl border border-border bg-surface-subtle p-4 font-mono text-xs leading-6 text-ink">
-                  <code>{version.source}</code>
-                </pre>
-              </div>
-            ) : null}
-          </div>
-        </main>
-
-        {inspectorOpen ? (
-          <InspectorPanel
-            artifactId={artifact.publicId}
-            projectId={artifact.projectId}
-            artifactType={artifact.type}
-            source={version.source}
-            stateSnapshot={state.snapshot}
-            activeVersion={version.version}
-            activeRound={activeRound}
-            feedbacks={feedbacks}
-            onHighlightElement={handleHighlightElement}
-            onClose={() => setInspectorTab(null)}
-          />
-        ) : null}
-      </div>
+      <InspectorPanel
+        artifactId={artifact.publicId}
+        projectId={artifact.projectId}
+        artifactType={artifact.type}
+        source={version.source}
+        stateSnapshot={state.snapshot}
+        activeVersion={version.version}
+        activeRound={activeRound}
+        feedbacks={feedbacks}
+        onHighlightElement={handleHighlightElement}
+      />
     </div>
   )
 }
