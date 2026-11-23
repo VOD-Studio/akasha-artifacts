@@ -54,6 +54,11 @@ interface ArtifactFrameProps {
   watchLayers: boolean
   onLayers: (id: string, version: number, layers: CanvasLayer[], truncated: boolean) => void
   onLayerPicked: (id: string) => void
+  /** 仅把当前设计帧的命中回报交给工作区；请求标识由工作区核对。 */
+  onTextTarget: (
+    boardId: string,
+    message: Extract<SandboxToShellMessage, { type: 'inspect.text.target' }>,
+  ) => void
   /** 直改模式下沙盒上报选中元素时调用。 */
   onVisualSelect: (message: Extract<SandboxToShellMessage, { type: 'visual.select' }>) => void
 }
@@ -98,6 +103,7 @@ export function ArtifactFrame({
   watchLayers,
   onLayers,
   onLayerPicked,
+  onTextTarget,
   onVisualSelect,
 }: ArtifactFrameProps) {
   const artifactId = artifact.publicId
@@ -179,6 +185,7 @@ export function ArtifactFrame({
     watchLayers,
     onLayers,
     onLayerPicked,
+    onTextTarget,
   })
   latest.current = {
     state,
@@ -192,6 +199,7 @@ export function ArtifactFrame({
     watchLayers,
     onLayers,
     onLayerPicked,
+    onTextTarget,
   }
 
   useEffect(() => {
@@ -244,6 +252,14 @@ export function ArtifactFrame({
         case 'inspect.layers.snapshot':
           if (!isolated && latest.current.watchLayers && message.version === activeVersion) {
             latest.current.onLayers(id, activeVersion, message.layers, message.truncated)
+          }
+          break
+        case 'inspect.text.target':
+          if (!isolated && message.version === activeVersion) {
+            const element = message.element
+              ? bindSandboxReference(message.element, latest.current.board)
+              : null
+            latest.current.onTextTarget(id, { ...message, element })
           }
           break
         case 'inspect.hover':

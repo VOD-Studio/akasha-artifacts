@@ -85,6 +85,17 @@ function readLoc(el: Element, rootEl?: Element | null): string | undefined {
   return undefined
 }
 
+/** AST 直改只接受目标本身的唯一静态位置，不使用批注允许的祖先定位。 */
+export function uniqueStaticSourceLocation(target: Element, root: Element) {
+  const loc = target.getAttribute('data-ak-loc')
+  return loc &&
+    /^\d{1,8}:\d{1,8}$/.test(loc) &&
+    !target.closest('[data-ak-dynamic]') &&
+    root.querySelectorAll(`[data-ak-loc="${loc}"]`).length === 1
+    ? loc
+    : undefined
+}
+
 function readRect(el: Element): { x: number; y: number; width: number; height: number } {
   const r = el.getBoundingClientRect()
   return {
@@ -208,6 +219,21 @@ export class SandboxInspector {
       rects[pin.id] = el?.isConnected ? readRect(el) : null
     }
     this.bridge.send({ type: 'pins.rects', rects })
+  }
+
+  /** 只命中当前已渲染的视口，不模拟任何作者脚本可以接到的点击。 */
+  inspectTextAt(message: Extract<ShellToSandboxMessage, { type: 'inspect.text.at' }>): void {
+    if (message.version !== this.getVersion()) return
+    const root = this.getRootEl()
+    if (!root) return
+    const target = this.resolveTarget(root.ownerDocument.elementFromPoint(message.x, message.y))
+    this.bridge.send({
+      type: 'inspect.text.target',
+      requestId: message.requestId,
+      version: message.version,
+      element: target ? buildElementRef(target, root) : null,
+      loc: target ? uniqueStaticSourceLocation(target, root) : undefined,
+    })
   }
 
   private resolveTarget(rawTarget: EventTarget | null): Element | null {

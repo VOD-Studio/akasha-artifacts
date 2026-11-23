@@ -18,6 +18,7 @@ export type CanvasBoardEdit =
   | { kind: 'layerCreate'; boardId: string; layer: DesignLayer }
   | { kind: 'layerDuplicate'; boardId: string; layerId: string; id: string }
   | { kind: 'layerDelete'; boardId: string; layerId: string }
+  | { kind: 'layerText'; boardId: string; layerId: string; text: string }
 
 /** 版本重放用真实源码，而不是可变 DOM 或相机快照。 */
 export interface CanvasSourceChange {
@@ -107,6 +108,7 @@ export function editCanvasBoards(
         Object.assign(target.raw, geometry(bounds))
       }
       break
+    case 'layerText':
     case 'layerCreate':
     case 'layerDuplicate':
     case 'layerDelete': {
@@ -119,7 +121,13 @@ export function editCanvasBoards(
         const index = layers.findIndex((layer) => layer.id === edit.layerId)
         if (index === -1) throw new Error('图层已不存在')
         if (edit.kind === 'layerDelete') layers.splice(index, 1)
-        else {
+        else if (edit.kind === 'layerText') {
+          const layer = layers[index]
+          if (layer.kind !== 'text' && layer.kind !== 'note')
+            throw new Error('该图层没有可编辑的文字')
+          if (layer.text === edit.text) return { before, after: source }
+          layer.text = edit.text
+        } else {
           const original = board.board.designLayers?.[index]
           if (!original) throw new Error('图层已不存在')
           const copy = {
