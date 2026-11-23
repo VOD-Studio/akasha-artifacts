@@ -585,6 +585,8 @@ export class FsArtifactRepository implements ArtifactRepository {
           updatedAt: artifact.updatedAt,
         }
       : artifact
+    // 变更目录索引前同样执行物理目录占用校验，防止移入已被短 slug（如 card）占用的同一物理目录
+    this.assertNoPhysicalDirCollisionSync(merged, nextLayout)
     if (previous) {
       const prevLayout = resolveArtifactFileLayout(this.artifactsRoot, previous.type, previous.slug)
       for (const filename of CANONICAL_ENTRY_FILENAMES[previous.type]) {

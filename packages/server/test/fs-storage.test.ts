@@ -1315,4 +1315,73 @@ describe('.artifacts/ 原生文件存储适配器与外部编辑监听', () => {
     expect(pub3.artifact.headVersion).toBe(3)
     expect(fs.readFileSync(path.join(movedDir, 'index.html'), 'utf8')).toBe('<div>v3 ok</div>')
   })
+
+  it('外部移动目录撞上已被短 slug 占用的物理目录时拒绝改名元数据更新，保持两个 Artifact 各自可独立更新', async () => {
+    const projRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fs-move-collision-'))
+    const artifactsDir = path.join(projRoot, '.artifacts')
+    tempDirs.push(projRoot)
+
+    const container = createLocalContainer({
+      storageMode: 'fs',
+      artifactsDir,
+      fsProjectId: 'proj_move_col',
+      fsWatchDebounceMs: 30,
+    })
+    closers.push(container.close)
+    await container.ready
+
+    const cardPub = await container.service.publish({
+      projectId: 'proj_move_col',
+      slug: 'card',
+      title: 'Card',
+      type: 'html',
+      source: '<div>card v1</div>',
+      author: 'agent:cli',
+    })
+    const otherPub = await container.service.publish({
+      projectId: 'proj_move_col',
+      slug: 'html/other',
+      title: 'Other',
+      type: 'html',
+      source: '<div>other v1</div>',
+      author: 'agent:cli',
+    })
+
+    // 删除 html/card 后将 html/other 重命名为 html/card：虽 slug 字符串 'html/card' !== 'card'，但物理目录已被 'card' 占用
+    const cardDir = path.join(artifactsDir, 'html', 'card')
+    const otherDir = path.join(artifactsDir, 'html', 'other')
+    fs.rmSync(cardDir, { recursive: true, force: true })
+    fs.renameSync(otherDir, cardDir)
+
+    await expect(container.fsWatcher?.syncFile(path.join(cardDir, 'index.html'))).rejects.toThrow(
+      /物理目录 "html\/card" 已被 Artifact/,
+    )
+
+    // other 仍保留原 slug='html/other'，且两者在清理冲突目录后都可独立正常更新
+    const otherState = await container.service.getArtifact({ id: otherPub.artifact.publicId })
+    expect(otherState.artifact.slug).toBe('html/other')
+
+    fs.renameSync(cardDir, otherDir)
+    const cardV2 = await container.service.publish({
+      projectId: 'proj_move_col',
+      slug: 'card',
+      title: 'Card v2',
+      type: 'html',
+      source: '<div>card v2 ok</div>',
+      baseVersion: 1,
+      author: 'agent:cli',
+    })
+    const otherV2 = await container.service.publish({
+      projectId: 'proj_move_col',
+      slug: 'html/other',
+      title: 'Other v2',
+      type: 'html',
+      source: '<div>other v2 ok</div>',
+      baseVersion: 1,
+      author: 'agent:cli',
+    })
+    expect(cardV2.artifact.publicId).toBe(cardPub.artifact.publicId)
+    expect(cardV2.artifact.headVersion).toBe(2)
+    expect(otherV2.artifact.headVersion).toBe(2)
+  })
 })
