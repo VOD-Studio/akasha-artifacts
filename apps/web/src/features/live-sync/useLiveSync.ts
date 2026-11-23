@@ -106,6 +106,11 @@ export function applyRealtimeEventToCache(
       return
     }
 
+    case 'annotation.changed': {
+      void queryClient.invalidateQueries({ queryKey: feedbackKeys.list(event.artifactId) })
+      return
+    }
+
     case 'feedback.created':
     case 'feedback.updated': {
       void queryClient.invalidateQueries({ queryKey: feedbackKeys.list(event.artifactId) })

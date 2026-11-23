@@ -47,6 +47,9 @@ export function createPostgresStorage({ connectionString, blobs }: PostgresStora
             const result = await client.query(toPostgres(statement))
             rows = result.rows as unknown as Row[]
           }
+          if (lock === 'schema') {
+            await client.query('ALTER TABLE feedbacks ADD COLUMN IF NOT EXISTS audience TEXT')
+          }
           await client.query('COMMIT')
           return rows
         } catch (error) {

@@ -954,8 +954,20 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       version: 2,
       roundId: 'round_1',
       kind: 'comment',
+      audience: 'human',
       element: selectedEl,
       body: '圆角稍微加大一点',
+    })
+
+    fireEvent.change(screen.getByLabelText('批注内容'), { target: { value: '请调整标题间距' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: '同时发送给 Agent' }))
+    fireEvent.click(screen.getByRole('button', { name: '存为本轮草稿' }))
+    await vi.waitFor(() => expect(submittedPayloads).toHaveLength(2))
+    expect(submittedPayloads[1]).toMatchObject({
+      roundId: 'round_1',
+      audience: 'agent',
+      element: selectedEl,
+      body: '请调整标题间距',
     })
 
     fireEvent.click(screen.getByRole('button', { name: '提交本轮' }))

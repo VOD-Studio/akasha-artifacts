@@ -176,7 +176,7 @@ export function createAkashaMcpServer(options: AkashaMcpServerOptions): McpServe
     'artifact_pull_feedback',
     {
       description:
-        '非阻塞拉取网页端的批注、方案选择与验收裁决。仅 detail=true 时签发 receipt；处理完成后须调用 artifact_ack_feedback(receipt) 确认消费。',
+        '非阻塞拉取已经投递的网页反馈和评审结果，不含只供讨论的批注。仅 detail=true 时签发 receipt；处理完成后须调用 artifact_ack_feedback(receipt) 确认消费。',
       inputSchema: ArtifactPullFeedbackInputSchema.shape,
     },
     async (args) => {

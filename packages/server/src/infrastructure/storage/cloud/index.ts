@@ -29,7 +29,7 @@ const versionColumns =
 const roundColumns =
   'id, artifact_id AS "artifactId", status, groups_json, submitted_at AS "submittedAt", created_at AS "createdAt"'
 const feedbackColumns =
-  'id, artifact_id AS "artifactId", version, round_id AS "roundId", group_id AS "groupId", kind, element_json, body, author, draft, status, created_at AS "createdAt", updated_at AS "updatedAt"'
+  'id, artifact_id AS "artifactId", version, round_id AS "roundId", group_id AS "groupId", kind, element_json, body, author, audience, draft, status, created_at AS "createdAt", updated_at AS "updatedAt"'
 const receiptColumns =
   'receipt, artifact_id AS "artifactId", cursor, feedback_ids_json, issued_at AS "issuedAt"'
 
@@ -37,7 +37,8 @@ type VersionRow = Omit<Version, 'source'> & { source_json: string | null; blob_k
 type SnapshotRow = Omit<StateStreamSnapshot, 'snapshot'> & { snapshot_json: string }
 type PatchRow = Omit<StatePatchEntry, 'ops'> & { ops_json: string }
 type RoundRow = Omit<ReviewRound, 'groups'> & { groups_json: string }
-type FeedbackRow = Omit<Feedback, 'draft' | 'element'> & {
+type FeedbackRow = Omit<Feedback, 'audience' | 'draft' | 'element'> & {
+  audience: Feedback['audience'] | null
   draft: number
   element_json: string | null
 }
@@ -47,8 +48,9 @@ const mapRound = ({ groups_json, ...round }: RoundRow): ReviewRound => ({
   ...round,
   groups: JSON.parse(groups_json) as ReviewRound['groups'],
 })
-const mapFeedback = ({ draft, element_json, ...feedback }: FeedbackRow): Feedback => ({
+const mapFeedback = ({ audience, draft, element_json, ...feedback }: FeedbackRow): Feedback => ({
   ...feedback,
+  ...(audience && { audience }),
   draft: draft === 1,
   element: element_json === null ? null : (JSON.parse(element_json) as Feedback['element']),
 })
@@ -299,11 +301,12 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
     async save(feedback) {
       // 投递序号与记录在同一事务提交，避免靠序列取号导致提交乱序、跳过反馈。
       const draft = feedback.draft ? 1 : 0
+      const deliver = !feedback.draft && feedback.audience !== 'human' ? 1 : 0
       await write('feedbacks', [
         `INSERT INTO feedbacks (id, artifact_id, version, round_id, group_id, kind, element_json, body, author,
-           draft, status, insertion_seq, delivery_seq, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(insertion_seq), 0) + 1 FROM feedbacks),
-           CASE WHEN ? = 1 THEN NULL ELSE (SELECT COALESCE(MAX(delivery_seq), 0) + 1 FROM feedbacks) END, ?, ?)
+           audience, draft, status, insertion_seq, delivery_seq, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(insertion_seq), 0) + 1 FROM feedbacks),
+           CASE WHEN ? = 1 THEN (SELECT COALESCE(MAX(delivery_seq), 0) + 1 FROM feedbacks) ELSE NULL END, ?, ?)
          ON CONFLICT(id) DO UPDATE SET draft = excluded.draft, status = excluded.status,
            delivery_seq = COALESCE(feedbacks.delivery_seq, excluded.delivery_seq), updated_at = excluded.updated_at`,
         feedback.id,
@@ -315,9 +318,10 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
         feedback.element === null ? null : JSON.stringify(feedback.element),
         feedback.body,
         feedback.author,
+        feedback.audience ?? null,
         draft,
         feedback.status,
-        draft,
+        deliver,
         feedback.createdAt,
         feedback.updatedAt,
       ])
@@ -340,7 +344,7 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
           : seq || '0'
       const where = [
         filter.includeDrafts
-          ? '(delivery_seq IS NULL OR delivery_seq > CAST(? AS BIGINT))'
+          ? "(audience IS NULL OR (audience = 'agent' AND draft = 0)) AND (delivery_seq IS NULL OR delivery_seq > CAST(? AS BIGINT))"
           : 'draft = 0 AND delivery_seq > CAST(? AS BIGINT)',
       ]
       const params: SqlValue[] = [boundedSeq]
@@ -366,13 +370,22 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
       })
       return { items, cursor }
     },
-    // 转正的草稿按插入顺序接在当前最大投递序号之后
+    async listForReview(artifactId, includeDrafts) {
+      const rows = await query<FeedbackRow>(
+        `SELECT ${feedbackColumns} FROM feedbacks WHERE artifact_id = ?${includeDrafts ? '' : ' AND draft = 0'} ORDER BY insertion_seq`,
+        artifactId,
+      )
+      return rows.map(mapFeedback)
+    },
+    // 只为可投递的草稿分配顺序号，并接在当前最大序号之后。
     async promoteRoundDrafts(artifactId, roundId, updatedAt) {
       const promoted = await write('feedbacks', [
         `UPDATE feedbacks SET draft = 0, delivery_seq = promoted.next_seq, updated_at = ?
          FROM (
-           SELECT id, (SELECT COALESCE(MAX(delivery_seq), 0) FROM feedbacks)
-             + ROW_NUMBER() OVER (ORDER BY insertion_seq) AS next_seq
+           SELECT id, CASE WHEN audience = 'human' THEN NULL ELSE
+             (SELECT COALESCE(MAX(delivery_seq), 0) FROM feedbacks) +
+             SUM(CASE WHEN audience = 'human' THEN 0 ELSE 1 END) OVER (ORDER BY insertion_seq)
+           END AS next_seq
            FROM feedbacks WHERE artifact_id = ? AND round_id = ? AND draft = 1
          ) AS promoted WHERE feedbacks.id = promoted.id RETURNING 1`,
         updatedAt,

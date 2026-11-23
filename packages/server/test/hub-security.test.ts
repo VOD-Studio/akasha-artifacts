@@ -1,19 +1,25 @@
-import { ArtifactAwaitFeedbackOutputSchema, ArtifactSchema, VersionSchema } from '@akasha/protocol'
+import {
+  ArtifactAwaitFeedbackOutputSchema,
+  ArtifactSchema,
+  ReviewRoundSchema,
+  VersionSchema,
+} from '@akasha/protocol'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { createHubContainer } from '../src/app/create-hub-container.js'
+import { createHubContainer, type HubContainerOptions } from '../src/app/create-hub-container.js'
 import { createMemoryContainer } from '../src/app/create-memory-container.js'
 import { RealtimeEventHub } from '../src/infrastructure/realtime/event-hub.js'
 import { InMemoryArtifactStorage } from '../src/infrastructure/storage/memory/artifact-kv.js'
+import { createSqliteHubStorage } from '../src/infrastructure/storage/sqlite/hub-storage.js'
 
 const origin = 'https://hub.example.com'
 const sandboxOrigin = 'https://preview.example.net'
 const publishedArtifact = z.object({ artifact: ArtifactSchema, version: VersionSchema })
 
-function setup() {
+function setup(storage?: HubContainerOptions['repositories']) {
   let now = Date.parse('2026-11-23T10:00:00.000Z')
   const clock = { now: () => new Date(now).toISOString() }
-  const { repositories } = createMemoryContainer({ clock })
+  const repositories = storage ?? createMemoryContainer({ clock }).repositories
   const realtime = new RealtimeEventHub({ clock })
   const users = { alice: 101, bob: 202, eve: 303 }
   const artifactStorage = new InMemoryArtifactStorage()
@@ -269,8 +275,12 @@ describe('Cloud Hub 身份与制品权限', () => {
     expect((await post(storage, { action: 'get', scope: 'private', key: 'flag' })).status).toBe(401)
   })
 
-  it('分享链接仅授权指定制品并可持久提交反馈，回执只可由制品所有者消费', async () => {
-    const { hub, request, send, post, login, advance } = setup()
+  it('分享链接限定制品，只供讨论的批注不进入回执，回执仅项目所有者可消费', async ({
+    onTestFinished,
+  }) => {
+    const storage = createSqliteHubStorage(':memory:')
+    onTestFinished(storage.close)
+    const { hub, request, send, post, login, advance } = setup(storage)
     const alice = await login('alice')
     const bob = await login('bob')
     const publish = await post(
@@ -303,12 +313,46 @@ describe('Cloud Hub 身份与制品权限', () => {
     expect(
       (await send(`/api/v1/artifacts/${otherArtifact.publicId}`, { headers: { cookie } })).status,
     ).toBe(404)
+    const roundResponse = await post(
+      `${path}/rounds`,
+      { groups: [{ id: 'choice', title: '布局', kind: 'choose', options: ['A', 'B'] }] },
+      alice,
+    )
+    expect(roundResponse.status).toBe(201)
+    const { round } = z.object({ round: ReviewRoundSchema }).parse(await roundResponse.json())
+    const anchor = {
+      version: 1,
+      roundId: round.id,
+      kind: 'comment',
+      element: { blockId: 'heading' },
+    }
+    const reviewPath = `${path}/feedback?includeDrafts=true`
+    expect(
+      (await post(`${path}/feedback`, { ...anchor, body: '只供讨论', audience: 'human' }, cookie))
+        .status,
+    ).toBe(201)
     const feedback = await post(
       `${path}/feedback`,
-      { version: 1, kind: 'comment', body: '离线意见' },
+      { ...anchor, body: '离线意见', audience: 'agent' },
       cookie,
     )
     expect(feedback.status).toBe(201)
+    const preflight = await send(`/api/v1/feedback?id=${id}&includeDrafts=true`, {
+      headers: { cookie: alice },
+    })
+    expect(await preflight.json()).toMatchObject({ items: [], cursor: '' })
+    const shareDrafts = await send(reviewPath, { headers: { cookie } })
+    expect(await shareDrafts.json()).toEqual({ items: [] })
+    expect((await post(`${path}/rounds/${round.id}/submit`, {}, alice)).status).toBe(200)
+    const review = await send(reviewPath, { headers: { cookie } })
+    expect(review.headers.get('cache-control')).toBe('private, no-store')
+    expect(await review.json()).toMatchObject({
+      items: [
+        { body: '只供讨论', draft: false },
+        { body: '离线意见', draft: false },
+      ],
+    })
+    expect((await send(reviewPath, { headers: { cookie: bob } })).status).toBe(404)
     const pull = await post('/api/v1/feedback/await', { id, timeoutSec: 1 }, alice)
     expect(pull.status).toBe(200)
     const delivered = ArtifactAwaitFeedbackOutputSchema.parse(await pull.json())

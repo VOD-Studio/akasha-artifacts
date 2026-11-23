@@ -97,7 +97,6 @@ export function ArtifactWorkspace({
   }, [viewMode])
   const setInspectorTab = useWorkspaceStore((s) => s.setInspectorTab)
   const inspectorOpen = useWorkspaceStore((s) => s.inspectorTab !== null)
-  const unsentDraft = useWorkspaceStore((s) => s.unsentDraftsByArtifact[artifact.publicId] ?? '')
 
   const selectedElement = useSelectionStore((s) =>
     selectionForVersion(s, artifact.publicId, version.version),
@@ -156,14 +155,12 @@ export function ArtifactWorkspace({
   }, [inspectorOpen, cancelVisual])
 
   const lastSyncedSelectionRef = useRef<string | null>(null)
-  // 将浏览器当前选区与未提交草稿防抖同步至本机 Daemon，供终端 Hook 在用户提问时无感注入上下文。
+  // 终端只同步选区。批注正文必须通过明确的投递动作才能抵达 Agent。
   useEffect(() => {
-    const trimmedDraft = unsentDraft.trim()
     const sig = JSON.stringify({
       projectId: artifact.projectId,
       artifactId: artifact.publicId,
       element: selectedElement,
-      draftText: trimmedDraft,
     })
     if (sig === lastSyncedSelectionRef.current) return
     const timer = setTimeout(() => {
@@ -171,11 +168,10 @@ export function ArtifactWorkspace({
       void syncProjectSelection(artifact.projectId, {
         artifactId: artifact.publicId,
         element: selectedElement,
-        ...(trimmedDraft ? { draftText: trimmedDraft } : {}),
       })
     }, 150)
     return () => clearTimeout(timer)
-  }, [artifact.projectId, artifact.publicId, selectedElement, unsentDraft])
+  }, [artifact.projectId, artifact.publicId, selectedElement])
 
   const effectivePreviewSource =
     viewMode === 'edit' && liveEditSource !== null ? liveEditSource : version.source

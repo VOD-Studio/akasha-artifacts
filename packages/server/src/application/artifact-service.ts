@@ -769,8 +769,7 @@ export class ArtifactService {
   /**
    * 写入一条反馈；所属轮次处于 `drafting` 时标记为草稿。
    *
-   * @remarks 草稿照常落库但不广播，非草稿广播 `feedback.created`。`idPrefix` 区分来源，
-   * 可视化直改传入 `visualedit`。
+   * @remarks 只供讨论的意见和草稿不会唤醒 Agent。`idPrefix` 区分可视化直改的 `visualedit`。
    * @throws {NotFoundError} 反馈绑定的版本不存在。
    */
   async submitFeedback(
@@ -781,6 +780,7 @@ export class ArtifactService {
       roundId?: string | null
       groupId?: string | null
       kind: FeedbackKind
+      audience?: Feedback['audience']
       element?: ElementRef | null
       body: string
       author: Author
@@ -803,6 +803,7 @@ export class ArtifactService {
       roundId: input.roundId ?? null,
       groupId: input.groupId ?? null,
       kind: input.kind,
+      ...(input.audience && { audience: input.audience }),
       element: input.element ?? null,
       body: input.body,
       author: input.author,
@@ -821,8 +822,23 @@ export class ArtifactService {
         },
         { projectId: artifact.projectId },
       )
+    } else if (feedback.audience !== undefined) {
+      await this.deps.realtime.publish(
+        { type: 'annotation.changed', artifactId: artifact.publicId },
+        { projectId: artifact.projectId },
+      )
     }
     return feedback
+  }
+
+  /** 读取制品的审阅记录，不签发 Agent 消费回执。 */
+  async listFeedbackForReview(input: {
+    id: ArtifactIdentifier
+    projectId?: string
+    includeDrafts: boolean
+  }): Promise<readonly Feedback[]> {
+    const artifact = await this.resolveArtifact(input.id, input.projectId)
+    return this.deps.feedbacks.listForReview(artifact.publicId, input.includeDrafts)
   }
 
   /**

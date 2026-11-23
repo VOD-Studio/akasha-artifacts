@@ -16,7 +16,7 @@ const EventEnvelopeBase = {
 /**
  * 服务端 → 客户端的实时事件。
  *
- * @remarks 草稿反馈不产生 `feedback.created`；收到 `resync` 表示无法续传，须整体重读。
+ * @remarks 草稿与仅供讨论的意见均不产生 `feedback.created`。收到 `resync` 须整体重读。
  */
 export const RealtimeServerEventSchema = z.discriminatedUnion('type', [
   // 任何途径写入新版本后发出
@@ -34,6 +34,12 @@ export const RealtimeServerEventSchema = z.discriminatedUnion('type', [
     // 状态流序号，与事件信封的 `seq` 无关
     stateSeq: z.number().int().min(1),
     ops: z.array(JsonPatchOpSchema).min(1),
+  }),
+  // 浏览器重读批注；不附正文，不唤醒 Agent
+  z.object({
+    ...EventEnvelopeBase,
+    type: z.literal('annotation.changed'),
+    artifactId: PublicIdSchema,
   }),
   // 轮次开启、写入分组决定、提交或撤回后发出
   z.object({

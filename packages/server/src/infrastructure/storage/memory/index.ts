@@ -204,8 +204,7 @@ export class InMemoryRoundRepository implements RoundRepository {
 
 interface StoredFeedback {
   feedback: Feedback
-  // 可投递顺序号：草稿为 null，首次进入可投递状态（直接创建或轮次提交转正）时分配单调递增序号，
-  // 保证转正后的草稿永远位于已下发游标之后，不被永久跳过。
+  // 草稿与仅供讨论的记录没有游标；转正后的可投递草稿排在已下发游标之后。
   deliverySeq: number | null
 }
 
@@ -218,7 +217,7 @@ export class InMemoryFeedbackRepository implements FeedbackRepository {
   async save(feedback: Feedback): Promise<void> {
     const existing = this.byId.get(feedback.id)
     let deliverySeq = existing?.deliverySeq ?? null
-    if (!feedback.draft && deliverySeq === null) {
+    if (!feedback.draft && feedback.audience !== 'human' && deliverySeq === null) {
       this.nextDeliverySeq += 1
       deliverySeq = this.nextDeliverySeq
     }
@@ -249,6 +248,8 @@ export class InMemoryFeedbackRepository implements FeedbackRepository {
       const { feedback, deliverySeq } = entry
       if (filter.artifactId && feedback.artifactId !== filter.artifactId) continue
       if (filter.artifactIds && !filter.artifactIds.has(feedback.artifactId)) continue
+      if (feedback.audience === 'human' || (feedback.audience === 'agent' && feedback.draft))
+        continue
       if (!filter.includeDrafts) {
         if (feedback.draft || deliverySeq === null) continue
         if (deliverySeq <= validAfter) continue
@@ -279,6 +280,17 @@ export class InMemoryFeedbackRepository implements FeedbackRepository {
     }
   }
 
+  async listForReview(artifactId: PublicId, includeDrafts: boolean): Promise<readonly Feedback[]> {
+    const items: Feedback[] = []
+    for (const id of this.orderedIds) {
+      const feedback = this.byId.get(id)?.feedback
+      if (feedback?.artifactId === artifactId && (includeDrafts || !feedback.draft)) {
+        items.push(structuredClone(feedback))
+      }
+    }
+    return items
+  }
+
   async promoteRoundDrafts(
     artifactId: PublicId,
     roundId: string,
@@ -290,10 +302,10 @@ export class InMemoryFeedbackRepository implements FeedbackRepository {
       if (!entry) continue
       const { feedback } = entry
       if (feedback.artifactId === artifactId && feedback.roundId === roundId && feedback.draft) {
-        this.nextDeliverySeq += 1
+        const deliverySeq = feedback.audience === 'human' ? null : ++this.nextDeliverySeq
         this.byId.set(id, {
           feedback: { ...feedback, draft: false, updatedAt },
-          deliverySeq: this.nextDeliverySeq,
+          deliverySeq,
         })
         count++
       }

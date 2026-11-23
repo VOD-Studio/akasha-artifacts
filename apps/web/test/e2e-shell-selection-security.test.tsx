@@ -174,7 +174,7 @@ describe('Web 外壳端到端回归（iframe 安全隔离 + 选区防抖同步 +
     expect(screen.queryByText('forged origin error')).toBeNull()
     expect(screen.queryByText('forged nonce error')).toBeNull()
 
-    // 3. 在批注撰写器输入未发草稿，并模拟合法沙盒指认选中元素 → 防抖同步至 Daemon selection 接口
+    // 3. 指认元素会同步定位，但未显式投递的批注正文不能随选区发给 Daemon。
     const textarea = screen.getByLabelText('批注内容') as HTMLTextAreaElement
     fireEvent.change(textarea, { target: { value: '请保留这段尚未发送的评审草稿' } })
     fireEvent.click(screen.getByRole('button', { name: '指认元素' }))
@@ -206,11 +206,11 @@ describe('Web 外壳端到端回归（iframe 安全隔离 + 选区防抖同步 +
         fetchCalls.some(
           (c) =>
             c.url.includes(`/api/v1/projects/${ARTIFACT.projectId}/selection`) &&
-            c.body?.includes('"blockId":"panel"') &&
-            c.body?.includes('请保留这段尚未发送的评审草稿'),
+            c.body?.includes('"blockId":"panel"'),
         ),
       ).toBe(true)
     })
+    expect(fetchCalls.some((c) => c.body?.includes('请保留这段尚未发送的评审草稿'))).toBe(false)
 
     // 4. Agent 推送 v2 热更新重绘后，未发送的批注草稿依然完整保留
     rerender(

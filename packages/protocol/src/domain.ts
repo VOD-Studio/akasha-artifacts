@@ -264,6 +264,7 @@ export const FeedbackSchema = z.object({
   roundId: z.string().min(1).nullable(),
   // 所属分组；不属于分组时为 null
   groupId: z.string().min(1).nullable(),
+  // 评审动作或普通文字批注；只有 comment 可指定 audience
   kind: FeedbackKindSchema,
   // 所指元素；不针对具体元素时为 null
   element: ElementRefSchema.nullable(),
@@ -271,8 +272,11 @@ export const FeedbackSchema = z.object({
   body: z.string(),
   // 发起人；服务端自动写入的 `edit` 沿用操作者
   author: AuthorSchema,
+  // human 只供讨论，agent 表示显式投递；缺省沿用旧反馈与草稿预览契约
+  audience: z.enum(['human', 'agent']).optional(),
   // true 时不触发即时唤醒；所属轮次提交后转为 false
   draft: z.boolean(),
+  // Agent 回执状态；只供讨论的批注不参与此状态机
   status: FeedbackStatusSchema,
   // 创建时间
   createdAt: ISODateTimeSchema,

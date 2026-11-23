@@ -46,6 +46,38 @@ it.skipIf(!postgresUrl)('PostgreSQL 多实例共享有序反馈、回执和制�
       expect(tail.items).toEqual(received.items.slice(-1))
       expect(tail.cursor).toBe('20')
 
+      const last = tail.items[0]
+      if (!last) throw new Error('缺少待投递反馈')
+      const { feedbacks } = first
+      await feedbacks.save({
+        ...last,
+        id: 'human-draft',
+        roundId: 'round',
+        draft: true,
+        audience: 'human',
+      })
+      await feedbacks.save({
+        ...last,
+        id: 'agent-draft',
+        roundId: 'round',
+        draft: true,
+        audience: 'agent',
+      })
+      const preview = await second.feedbacks.list({
+        artifactId,
+        afterCursor: '20',
+        includeDrafts: true,
+      })
+      expect(preview).toEqual({ items: [], cursor: '20' })
+      expect(await feedbacks.promoteRoundDrafts(artifactId, 'round', now)).toBe(2)
+      const promoted = await second.feedbacks.list({ artifactId, afterCursor: '20' })
+      expect(promoted.items).toMatchObject([{ id: 'agent-draft', draft: false }])
+      expect(promoted.cursor).toBe('21')
+      expect(await second.feedbacks.findById('human-draft')).toMatchObject({
+        draft: false,
+        audience: 'human',
+      })
+
       const receipt = {
         receipt: 'receipt-1',
         artifactId,
