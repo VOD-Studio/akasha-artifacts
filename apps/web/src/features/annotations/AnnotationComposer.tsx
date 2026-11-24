@@ -1,8 +1,10 @@
 import type { ElementRef, Feedback, FeedbackKind, ReviewRound } from '@akasha/protocol'
 import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
+import { Checkbox } from '@akasha/ui/checkbox'
+import { Textarea } from '@akasha/ui/textarea'
 import { Send, Target, X } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   type AnnotationDraft,
@@ -40,6 +42,13 @@ function elementLabel(el: ElementRef): string {
   return el.textPreview?.slice(0, 28) ?? '已选元素'
 }
 
+function submittedMessage(audience: Feedback['audience'], roundId: string | null) {
+  if (roundId && audience === 'human') return '已保存讨论草稿'
+  if (roundId) return '已保存草稿，提交本轮时发给 Agent'
+  if (audience === 'human') return '已发送，仅供讨论'
+  return '已发送给 Agent'
+}
+
 /**
  * L1 批注撰写器：基于选中的元素或块创建批注，或发起「让 Agent 改这里」。
  *
@@ -55,6 +64,8 @@ export function AnnotationComposer({
   onSubmitFeedback,
 }: AnnotationComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const notifyId = useId()
+  const [pendingKind, setPendingKind] = useState<'comment' | 'request_changes' | null>(null)
   const [draft, setDraft] = useState(() => readAnnotationDraft(artifactId))
   const draftText = draft?.body ?? ''
   const target = draft?.body ? draft.element : selectedElement
@@ -64,14 +75,16 @@ export function AnnotationComposer({
   const roundChanged = roundId !== null && roundId !== activeDraftingRound?.id
   const clearSelection = useSelectionStore((s) => s.clearSelection)
   const submitMutation = useSubmitFeedbackMutation(artifactId)
-  const locked = wrongVersion || roundChanged || submitMutation.isPending
+  const locked = wrongVersion || roundChanged || pendingKind !== null
+  const showAgentAction = Boolean(target && notifyAgent)
+  const canSaveDraft = roundId !== null && !wrongVersion && !roundChanged
 
-  function replaceDraft(next: AnnotationDraft | null) {
+  const replaceDraft = (next: AnnotationDraft | null) => {
     setDraft(next)
     writeAnnotationDraft(artifactId, next)
   }
 
-  function changeDraft(changes: Partial<AnnotationDraft>) {
+  const changeDraft = (changes: Partial<AnnotationDraft>) => {
     replaceDraft({
       body: draftText,
       sendToAgent: draft?.sendToAgent ?? false,
@@ -82,15 +95,15 @@ export function AnnotationComposer({
     })
   }
 
-  const handleSubmit = async (kind: FeedbackKind) => {
+  const handleSubmit = async (kind: 'comment' | 'request_changes') => {
     if (locked) return
     const body = draftText.trim()
     if (!body) {
       textareaRef.current?.focus()
       return
     }
-    const audience: Feedback['audience'] =
-      kind === 'comment' ? (notifyAgent && draft?.sendToAgent ? 'agent' : 'human') : undefined
+    const commentAudience = notifyAgent && draft?.sendToAgent ? 'agent' : 'human'
+    const audience: Feedback['audience'] = kind === 'comment' ? commentAudience : undefined
     const payload = {
       project: projectId,
       version,
@@ -100,6 +113,7 @@ export function AnnotationComposer({
       element: target,
       body,
     }
+    setPendingKind(kind)
     try {
       if (onSubmitFeedback) {
         await onSubmitFeedback(payload)
@@ -107,28 +121,30 @@ export function AnnotationComposer({
         await submitMutation.mutateAsync(payload)
       }
       replaceDraft(null)
-      toast.success(
-        audience === 'human'
-          ? roundId
-            ? '已存为本轮讨论草稿'
-            : '已保存批注，仅供讨论'
-          : roundId
-            ? '已存为草稿，提交本轮后送达 Agent'
-            : '批注已发送给 Agent',
-      )
+      toast.success(submittedMessage(audience, roundId))
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '提交批注失败')
+    } finally {
+      setPendingKind(null)
     }
+  }
+
+  const requestChanges = () => {
+    if (!target || !notifyAgent || locked) return
+    if (!draftText.trim()) {
+      changeDraft({ body: `请调整 ${elementLabel(target)}：` })
+      textareaRef.current?.focus()
+      return
+    }
+    void handleSubmit('request_changes')
   }
 
   return (
     <div className="rounded-xl border border-border bg-surface p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-ink">
-          {target ? '针对选中元素批注' : '全局批注'}
-        </span>
-        {roundId && !wrongVersion && !roundChanged ? (
-          <Badge tone="warning">本轮草稿模式</Badge>
+        <span className="text-xs font-semibold text-ink">{target ? '元素批注' : '版本批注'}</span>
+        {canSaveDraft ? (
+          <Badge tone="warning">本轮草稿</Badge>
         ) : (
           <Badge tone="neutral">v{targetVersion}</Badge>
         )}
@@ -143,18 +159,20 @@ export function AnnotationComposer({
               <span className="truncate text-ink-muted">「{target.textPreview.slice(0, 24)}」</span>
             ) : null}
           </div>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
+            iconOnly
             aria-label="清除选中元素"
             disabled={locked}
             onClick={() => {
               clearSelection(artifactId)
               if (draft?.body) changeDraft({ element: null })
             }}
-            className="shrink-0 rounded p-0.5 hover:bg-selected-hover"
+            className="shrink-0"
           >
             <X size={12} />
-          </button>
+          </Button>
         </div>
       ) : null}
 
@@ -171,75 +189,68 @@ export function AnnotationComposer({
         </details>
       )}
 
-      {wrongVersion || roundChanged ? (
+      {(wrongVersion || roundChanged) && (
         <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
-          {wrongVersion ? (
+          {wrongVersion && (
             <a
               className="font-medium text-accent underline underline-offset-2"
               href={`/a/${encodeURIComponent(artifactId)}/v/${targetVersion}${window.location.search}`}
             >
               回 v{targetVersion} 继续
             </a>
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => changeDraft({ roundId: null, sendToAgent: false })}
-            >
-              原轮次已变更，转为独立批注
-            </Button>
+          )}
+          {!wrongVersion && (
+            <>
+              <span>原轮次已变更。</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => changeDraft({ roundId: null, sendToAgent: false })}
+              >
+                转为独立批注
+              </Button>
+            </>
           )}
           <Button variant="ghost" size="sm" onClick={() => replaceDraft(null)}>
             放弃草稿
           </Button>
         </div>
-      ) : null}
+      )}
 
-      <textarea
+      <Textarea
         ref={textareaRef}
         aria-label="批注内容"
         rows={3}
         value={draftText}
         readOnly={locked}
-        onChange={(e) => changeDraft({ body: e.target.value })}
-        placeholder={target ? '对选中目标留下意见…' : '给这一版留批注，或先在画布工具栏指认元素…'}
-        className="w-full resize-none rounded-lg border border-border bg-surface p-2 text-xs text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none"
+        onChange={(event) => changeDraft({ body: event.target.value })}
+        placeholder="输入批注"
       />
 
-      {notifyAgent ? (
-        <label className="mt-2 flex items-center gap-2 text-xs text-ink">
-          <input
-            type="checkbox"
+      {notifyAgent && (
+        <label htmlFor={notifyId} className="mt-2 flex items-center gap-2 text-xs text-ink">
+          <Checkbox
+            id={notifyId}
             checked={draft?.sendToAgent ?? false}
             disabled={locked}
-            onChange={(event) => changeDraft({ sendToAgent: event.target.checked })}
+            onCheckedChange={(checked) => changeDraft({ sendToAgent: checked === true })}
           />
-          同时发送给 Agent
+          {roundId ? '随本轮发给 Agent' : '同时发送给 Agent'}
         </label>
-      ) : null}
+      )}
 
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-1.5">
-        {target && notifyAgent ? (
+      <div className="mt-2 flex flex-wrap items-center justify-end gap-1.5">
+        {showAgentAction && (
           <Button
             variant="outline"
             size="sm"
             disabled={locked}
-            loading={submitMutation.isPending}
-            onClick={() => {
-              if (!draftText.trim()) {
-                changeDraft({ body: `请调整 ${elementLabel(target)}：` })
-                textareaRef.current?.focus()
-                return
-              }
-              void handleSubmit('request_changes')
-            }}
+            loading={pendingKind === 'request_changes'}
+            onClick={requestChanges}
+            className="me-auto"
           >
             让 Agent 改这里
           </Button>
-        ) : (
-          <span className="text-[11px] text-ink-muted">
-            {roundId ? '草稿不中途打断 Agent' : '提交后携带当前版本与定位'}
-          </span>
         )}
 
         <Button
@@ -247,10 +258,10 @@ export function AnnotationComposer({
           size="sm"
           leftIcon={<Send size={12} />}
           disabled={locked || !draftText.trim()}
-          loading={submitMutation.isPending}
+          loading={pendingKind === 'comment'}
           onClick={() => void handleSubmit('comment')}
         >
-          {roundId ? '存为本轮草稿' : '发送批注'}
+          {roundId ? '保存草稿' : '发送'}
         </Button>
       </div>
     </div>

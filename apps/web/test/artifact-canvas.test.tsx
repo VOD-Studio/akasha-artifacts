@@ -527,11 +527,11 @@ it('图层双向定位只在该画板与版本生效，悬停和旧坐标不改�
   expect(within(inspector).getByText('140 × 25 px')).toBeTruthy()
   fireEvent.click(within(inspector).getByRole('button', { name: '批注该图层' }))
   const review = screen.getByRole('dialog', { name: '批注与评审' })
-  expect(within(review).getByText('针对选中元素批注')).toBeTruthy()
+  expect(within(review).getByText('元素批注')).toBeTruthy()
   expect(within(review).getByText(displaced.slice(0, 36))).toBeTruthy()
 
   view.update(workspace(detailFor(2)))
-  expect(within(review).getByText('全局批注')).toBeTruthy()
+  expect(within(review).getByText('版本批注')).toBeTruthy()
   expect(screen.queryByTestId('overlay-select-box')).toBeNull()
 })
 

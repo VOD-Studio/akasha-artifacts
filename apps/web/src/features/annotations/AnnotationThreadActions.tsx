@@ -1,5 +1,6 @@
 import type { AnnotationThread } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
+import { Textarea } from '@akasha/ui/textarea'
 import { useId, useState } from 'react'
 import { readReplyDraft, writeReplyDraft } from '../../entities/feedback/annotation-draft'
 import { useAnnotationThreadMutation } from '../../entities/feedback/queries'
@@ -25,8 +26,10 @@ export function AnnotationThreadActions({
   const [replyOpen, setReplyOpen] = useState(Boolean(body))
   const update = useAnnotationThreadMutation(artifactId, feedbackId)
   const resolution = thread?.resolution
+  const sending = update.isPending && update.variables?.kind === 'reply'
+  const resolving = update.isPending && update.variables?.kind === 'resolve'
 
-  async function sendReply() {
+  const sendReply = async () => {
     const reply = body.trim()
     if (!reply || update.isPending) return
     try {
@@ -58,9 +61,8 @@ export function AnnotationThreadActions({
       ) : null}
       {resolution ? (
         <p className="text-[11px] text-ink-muted">
-          {resolution.author} ·{' '}
+          {resolution.author} 已解决 ·{' '}
           <time dateTime={resolution.resolvedAt}>{formatRelativeTime(resolution.resolvedAt)}</time>
-          解决
         </p>
       ) : null}
       {!readOnly ? (
@@ -82,9 +84,10 @@ export function AnnotationThreadActions({
             size="sm"
             variant="ghost"
             disabled={update.isPending}
+            loading={resolving}
             onClick={() => update.mutate({ kind: 'resolve', resolved: !resolution })}
           >
-            {resolution ? '重新打开' : '解决线程'}
+            {resolution ? '重新打开' : '标为已解决'}
           </Button>
         </div>
       ) : null}
@@ -96,7 +99,7 @@ export function AnnotationThreadActions({
             void sendReply()
           }}
         >
-          <textarea
+          <Textarea
             aria-label="回复内容"
             value={body}
             rows={2}
@@ -106,15 +109,15 @@ export function AnnotationThreadActions({
               setBody(event.target.value)
               writeReplyDraft(artifactId, feedbackId, event.target.value)
             }}
-            className="block w-full rounded-md border border-border bg-surface p-2 text-xs text-ink"
           />
           <Button
             size="sm"
             type="submit"
             className="mt-1.5"
             disabled={!body.trim() || update.isPending}
+            loading={sending}
           >
-            发送回复
+            发送
           </Button>
         </form>
       ) : null}

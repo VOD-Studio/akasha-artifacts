@@ -286,12 +286,12 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
 
     const restored = render(composer(2, other))
     expect(screen.getByDisplayValue('恢复原目标的意见')).toBeTruthy()
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: '发送批注' }).disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '发送' }).disabled).toBe(true)
     expect(screen.getByRole('link', { name: '回 v1 继续' }).getAttribute('href')).toBe(
       `/a/${SAMPLE_ARTIFACT.publicId}/v/1`,
     )
     restored.rerender(composer(1, other))
-    fireEvent.click(screen.getByRole('button', { name: '发送批注' }))
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
     expect(submit).toHaveBeenCalledWith(
       expect.objectContaining({
         body: '恢复原目标的意见',
@@ -955,8 +955,8 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     // 选中画布元素打开批注抽屉，轮次动作随抽屉出现。
     const roundBar = screen.getByTestId('round-submit-bar')
     expect(screen.getByRole('dialog', { name: '批注与评审' }).contains(roundBar)).toBe(true)
-    expect(roundBar.textContent).toContain('已决策 1 / 2')
-    expect(roundBar.textContent).toContain('草稿评论 2 条')
+    expect(roundBar.textContent).toContain('已评审 1 / 2 项')
+    expect(roundBar.textContent).toContain('草稿 2 条')
     expect(screen.getByRole('button', { name: '提交本轮' })).toBeTruthy()
 
     cleanup()
@@ -997,7 +997,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     fireEvent.change(screen.getByLabelText('批注内容'), {
       target: { value: '圆角稍微加大一点' },
     })
-    fireEvent.click(screen.getByRole('button', { name: '存为本轮草稿' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存草稿' }))
     await vi.waitFor(() => expect(submittedPayloads).toHaveLength(1))
     expect(submittedPayloads[0]).toMatchObject({
       version: 2,
@@ -1009,8 +1009,8 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     })
 
     fireEvent.change(screen.getByLabelText('批注内容'), { target: { value: '请调整标题间距' } })
-    fireEvent.click(screen.getByRole('checkbox', { name: '同时发送给 Agent' }))
-    fireEvent.click(screen.getByRole('button', { name: '存为本轮草稿' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '随本轮发给 Agent' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存草稿' }))
     await vi.waitFor(() => expect(submittedPayloads).toHaveLength(2))
     expect(submittedPayloads[1]).toMatchObject({
       roundId: 'round_1',
@@ -1022,7 +1022,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     fireEvent.click(screen.getByRole('button', { name: '提交本轮' }))
     await vi.waitFor(() => expect(submittedRounds).toEqual(['round_1']))
 
-    // 切换为已提交态后应展示「撤回修改」按钮
+    // 提交后可撤回当前轮次
     rerender(
       <QueryClientProvider client={queryClient}>
         <InspectorPanel
@@ -1049,7 +1049,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     )
 
     expect(screen.getByText('Agent 已处理')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '撤回修改' }))
+    fireEvent.click(screen.getByRole('button', { name: '撤回本轮' }))
     await vi.waitFor(() => expect(withdrawnRounds).toEqual(['round_1']))
   })
 })

@@ -4,17 +4,15 @@ import {
   isAnnotationKind,
   type ReviewRound,
 } from '@akasha/protocol'
-import { Badge } from '@akasha/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@akasha/ui/sheet'
-import { Target } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { selectionForVersion, useSelectionStore } from '../../entities/selection/store'
 import { useWorkspaceStore } from '../../entities/workspace/store'
 import { AnnotationComposer } from '../../features/annotations/AnnotationComposer'
-import { AnnotationThreadActions } from '../../features/annotations/AnnotationThreadActions'
 import { ReviewActionsBar } from '../../features/review-actions/ReviewActionsBar'
-import { formatRelativeTime } from '../../shared/lib/format'
 import { RoundSubmitBar } from '../RoundSubmitBar/RoundSubmitBar'
+import { InspectorFeedbackCard } from './InspectorFeedbackCard'
 
 export interface InspectorPanelProps {
   artifactId: string
@@ -30,41 +28,6 @@ export interface InspectorPanelProps {
   /** 讨论记录以根批注 ID 为键。Agent 回执状态仍在 feedbacks 中。 */
   threads?: Readonly<Record<string, AnnotationThread>>
   onFocusThread?: (feedback: Feedback) => void
-}
-
-function feedbackStatusBadge(fb: Feedback): {
-  label: string
-  tone: 'warning' | 'accent' | 'ok' | 'neutral'
-} {
-  if (fb.draft) return { label: '草稿', tone: 'warning' }
-  if (fb.audience === 'human') return { label: '仅讨论', tone: 'neutral' }
-  if (fb.status === 'resolved')
-    return { label: isAnnotationKind(fb.kind) ? 'Agent 已处理' : '已解决', tone: 'ok' }
-  if (fb.status === 'delivered') return { label: '已送达', tone: 'accent' }
-  return { label: '待处理', tone: 'neutral' }
-}
-
-function feedbackKindLabel(kind: Feedback['kind']): string {
-  switch (kind) {
-    case 'approve':
-      return '批准'
-    case 'request_changes':
-      return '请求修改'
-    case 'runtime_error':
-      return '运行异常'
-    case 'vote':
-      return '方案选择'
-    case 'pass':
-      return 'Pass'
-    case 'reject':
-      return 'Reject'
-    case 'waive':
-      return 'Waive'
-    case 'edit':
-      return '直接修改'
-    default:
-      return '批注'
-  }
 }
 
 function InspectorContent({
@@ -92,6 +55,21 @@ function InspectorContent({
     if (focusedFeedbackId) focusedCard.current?.scrollIntoView?.({ block: 'nearest' })
   }, [focusedFeedbackId])
 
+  const changeScope = (next: string) => {
+    setFocusedFeedbackId(null)
+    setScope(next)
+  }
+
+  const changeResolution = (next: string) => {
+    setFocusedFeedbackId(null)
+    setResolution(next)
+  }
+
+  const focusFeedback = (feedback: Feedback) => {
+    setFocusedFeedbackId(feedback.id)
+    onFocusThread?.(feedback)
+  }
+
   const ordered = feedbacks
     .filter((fb) => {
       if (fb.id === focusedFeedbackId) return true
@@ -103,6 +81,7 @@ function InspectorContent({
       )
     })
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  const draftingRound = notifyAgent && activeRound?.status === 'drafting' ? activeRound : null
 
   return (
     <>
@@ -116,7 +95,7 @@ function InspectorContent({
               artifactId={artifactId}
               projectId={projectId}
               version={activeVersion}
-              activeDraftingRound={activeRound?.status === 'drafting' ? activeRound : null}
+              activeDraftingRound={draftingRound}
               notifyAgent={notifyAgent}
               selectedElement={selectedElement}
             />
@@ -132,163 +111,60 @@ function InspectorContent({
           ) : null}
 
           <div className="space-y-2 pt-1">
-            <div className="text-[11px] font-medium text-ink-muted">
-              反馈记录（{ordered.length}）
-            </div>
+            <div className="text-[11px] font-medium text-ink-muted">反馈（{ordered.length}）</div>
             <div className="flex flex-wrap gap-2">
-              {pageFeedbackIds ? (
-                <select
-                  aria-label="批注范围"
-                  value={scope}
-                  onChange={(event) => {
-                    setFocusedFeedbackId(null)
-                    setScope(event.target.value)
-                  }}
-                  className="rounded-md border border-border bg-surface px-2 py-1 text-xs"
-                >
-                  <option value="all">全部页面</option>
-                  <option value="page">当前页</option>
-                </select>
-              ) : null}
-              <select
-                aria-label="解决状态"
-                value={resolution}
-                onChange={(event) => {
-                  setFocusedFeedbackId(null)
-                  setResolution(event.target.value)
-                }}
-                className="rounded-md border border-border bg-surface px-2 py-1 text-xs"
-              >
-                <option value="all">全部状态</option>
-                <option value="open">未解决</option>
-                <option value="resolved">已解决</option>
-              </select>
+              {pageFeedbackIds && (
+                <Select value={scope} onValueChange={changeScope}>
+                  <SelectTrigger aria-label="批注范围" controlSize="sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部页面</SelectItem>
+                    <SelectItem value="page">当前页面</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+              <Select value={resolution} onValueChange={changeResolution}>
+                <SelectTrigger aria-label="解决状态" controlSize="sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部状态</SelectItem>
+                  <SelectItem value="open">未解决</SelectItem>
+                  <SelectItem value="resolved">已解决</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
-            {ordered.length === 0 ? (
-              <p className="py-2 text-xs text-ink-muted">没有符合条件的批注与反馈。</p>
-            ) : (
-              ordered.map((fb) => {
-                const statusMeta = feedbackStatusBadge(fb)
-                const thread = threads?.[fb.id]
-                const isOldVersion = fb.version !== activeVersion
-                const isFocused = fb.id === focusedFeedbackId
-                const points = fb.element?.dataPoints
-                const locator = points
-                  ? `${points.chartTitle} · ${points.points.length} 个数据点`
-                  : fb.element?.textPreview ||
-                    (fb.element?.blockId
-                      ? `#${fb.element.blockId}`
-                      : fb.element?.loc
-                        ? `@${fb.element.loc}`
-                        : fb.element?.selector?.slice(0, 28))
-
-                return (
-                  <div
-                    key={fb.id}
-                    ref={isFocused ? focusedCard : undefined}
-                    aria-current={isFocused || undefined}
-                    data-testid={`feedback-item-${fb.id}`}
-                    className={`rounded-xl border p-2.5 text-xs transition ${
-                      fb.draft
-                        ? 'border-dashed border-amber-300 bg-amber-50/50'
-                        : 'border-border bg-surface'
-                    } ${isFocused ? 'ring-2 ring-ring' : ''}`}
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <Badge tone={statusMeta.tone}>{statusMeta.label}</Badge>
-                        {thread?.resolution ? <Badge tone="ok">线程已解决</Badge> : null}
-                        <span className="text-[11px] font-medium text-ink-muted">
-                          {feedbackKindLabel(fb.kind)}
-                        </span>
-                        {isOldVersion ? (
-                          <Badge tone="off" data-testid={`old-version-badge-${fb.id}`}>
-                            针对 v{fb.version}
-                          </Badge>
-                        ) : (
-                          <span className="text-[11px] text-ink-muted">v{fb.version}</span>
-                        )}
-                      </div>
-                      <span className="flex items-center gap-1.5 text-[10px] text-ink-muted">
-                        <span>{fb.author}</span>
-                        <time
-                          dateTime={fb.createdAt}
-                          title={new Date(fb.createdAt).toLocaleString()}
-                        >
-                          {formatRelativeTime(fb.createdAt)}
-                        </time>
-                      </span>
-                    </div>
-                    {isOldVersion && locator ? (
-                      <p className="mt-1 truncate text-[11px] text-ink-muted">
-                        {fb.element?.boardId ? `${fb.element.boardId} · ` : ''}
-                        {locator}
-                      </p>
-                    ) : null}
-
-                    {isOldVersion ? (
-                      <a
-                        className="mt-1.5 inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] text-ink hover:underline"
-                        href={`/a/${encodeURIComponent(artifactId)}/v/${fb.version}${window.location.search}#thread=${encodeURIComponent(fb.id)}`}
-                      >
-                        <Target size={10} />回 v{fb.version} 定位
-                      </a>
-                    ) : fb.element && locator ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFocusedFeedbackId(fb.id)
-                          onFocusThread?.(fb)
-                        }}
-                        className="mt-1.5 inline-flex max-w-full items-center gap-1 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-ink-muted hover:text-ink"
-                      >
-                        <Target size={10} className="shrink-0" />
-                        <span className="truncate">
-                          {fb.element.boardId ? `${fb.element.boardId} · ` : ''}
-                          {locator}
-                        </span>
-                      </button>
-                    ) : null}
-                    {points ? (
-                      <details className="mt-1 text-ink-muted">
-                        <summary className="cursor-pointer">查看圈选数据</summary>
-                        <ul className="mt-1 space-y-1">
-                          {points.points.map((point) => (
-                            <li key={point.id}>
-                              {point.label}：{point.value} {points.valueLabel}
-                            </li>
-                          ))}
-                        </ul>
-                      </details>
-                    ) : null}
-
-                    <p className="mt-1.5 whitespace-pre-wrap break-words text-xs leading-relaxed text-ink">
-                      {fb.body}
-                    </p>
-                    {isAnnotationKind(fb.kind) ? (
-                      <AnnotationThreadActions
-                        artifactId={artifactId}
-                        feedbackId={fb.id}
-                        thread={thread}
-                        readOnly={!canComment}
-                      />
-                    ) : null}
-                  </div>
-                )
-              })
+            {ordered.length === 0 && (
+              <p className="py-2 text-xs text-ink-muted">
+                {feedbacks.length ? '没有符合条件的反馈' : '暂无反馈'}
+              </p>
             )}
+            {ordered.map((feedback) => (
+              <InspectorFeedbackCard
+                key={feedback.id}
+                artifactId={artifactId}
+                activeVersion={activeVersion}
+                feedback={feedback}
+                thread={threads?.[feedback.id]}
+                canComment={canComment}
+                isFocused={feedback.id === focusedFeedbackId}
+                focusedCard={focusedCard}
+                onFocusFeedback={focusFeedback}
+              />
+            ))}
           </div>
         </div>
       </SheetBody>
-      {activeRound ? (
+      {notifyAgent && activeRound && (
         <RoundSubmitBar
           artifactId={artifactId}
           projectId={projectId}
           activeRound={activeRound}
           feedbacks={feedbacks}
         />
-      ) : null}
+      )}
     </>
   )
 }
