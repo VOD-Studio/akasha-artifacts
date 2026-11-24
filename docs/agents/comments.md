@@ -1,6 +1,6 @@
 # 代码注释规范
 
-本规范适用于 `packages/` 与 `apps/` 下的全部源码；`packages/ui` 随上游 `@violet/ui` 同步，不在本仓单独维护。
+本规范适用于 `packages/` 与 `apps/` 下的源码。`packages/ui` 源自上游 `@violet/ui`；在本仓做的局部扩展也遵循本规范。
 
 ## 语言
 
