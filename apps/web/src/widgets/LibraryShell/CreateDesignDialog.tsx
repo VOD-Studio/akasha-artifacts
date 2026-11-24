@@ -53,19 +53,16 @@ function writeAttempt(value: DesignAttempt | null) {
 interface CreateDesignProps {
   projects: readonly Project[]
   open: boolean
-  hub: boolean
   onClose: () => void
   onOpenArtifact: (publicId: string) => void
 }
 
 function getConnectionNotice(
-  hub: boolean,
   { error, status }: Pick<UseQueryResult, 'error' | 'status'>,
   hasProjects: boolean,
   project: Project | undefined,
   connection: AgentConnection | undefined,
 ): { text: string; command?: string } | null {
-  if (hub) return { text: '在本机创建设计', command: 'akasha open' }
   if (error instanceof ApiError && error.status === 401) {
     return { text: '登录本机制品库', command: 'akasha open' }
   }
@@ -80,23 +77,17 @@ function getConnectionNotice(
 }
 
 /** 只有同一受理会话的真实 v1 发布记录才允许打开制品；未发布时保留用户需求。 */
-export function CreateDesignDialog({
-  projects,
-  open,
-  hub,
-  onClose,
-  onOpenArtifact,
-}: CreateDesignProps) {
+export function CreateDesignDialog({ projects, open, onClose, onOpenArtifact }: CreateDesignProps) {
   const formId = useId()
   const cache = useQueryClient()
-  const [attempt, setAttempt] = useState(() => (hub ? null : readAttempt()))
+  const [attempt, setAttempt] = useState(readAttempt)
   const [projectId, setProjectId] = useState(attempt?.projectId ?? '')
   const [agent, setAgent] = useState<'codex' | ''>(attempt ? 'codex' : '')
   const [message, setMessage] = useAgentDraft('new-design')
   const connections = useQuery({
     queryKey: ['agent-connections'],
     queryFn: ({ signal }) => fetchAgentConnections(signal),
-    enabled: open && !hub,
+    enabled: open,
     retry: false,
     refetchInterval: 4000,
   })
@@ -106,7 +97,7 @@ export function CreateDesignDialog({
       if (!attempt) throw new Error('没有已受理的设计会话')
       return fetchAgentDesignSession(attempt.id, signal)
     },
-    enabled: open && Boolean(attempt) && !hub,
+    enabled: open && Boolean(attempt),
     retry: false,
     refetchInterval: (query) =>
       query.state.data?.turns.at(-1)?.status === 'running' ? 1000 : false,
@@ -130,7 +121,7 @@ export function CreateDesignDialog({
   const denied =
     sessionQuery.error instanceof ApiError && [401, 403, 404].includes(sessionQuery.error.status)
   const missing = sessionQuery.error instanceof ApiError && sessionQuery.error.status === 404
-  const session = denied || hub ? undefined : sessionQuery.data
+  const session = denied ? undefined : sessionQuery.data
   const turn = session?.turns[0]
   // 服务端只在确认真实 v1 后写 artifactId；会话的最近轮次可以滚动淘汰首次回执。
   const published =
@@ -139,14 +130,13 @@ export function CreateDesignDialog({
       : undefined
   const locked = Boolean(attempt) || send.isPending
   const canSend =
-    !hub &&
     !locked &&
     !!project &&
     !connections.isError &&
     agent === 'codex' &&
     connection?.availability === 'ready' &&
     !!message.trim()
-  const notice = getConnectionNotice(hub, connections, projects.length > 0, project, connection)
+  const notice = getConnectionNotice(connections, projects.length > 0, project, connection)
 
   const selectProject = (id: string) => {
     setProjectId(id)
@@ -220,7 +210,7 @@ export function CreateDesignDialog({
       >
         <div className="grid gap-2 sm:grid-cols-2">
           <Field label="项目">
-            <Select value={projectId} disabled={locked || hub} onValueChange={selectProject}>
+            <Select value={projectId} disabled={locked} onValueChange={selectProject}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="选择项目" />
               </SelectTrigger>
@@ -236,8 +226,8 @@ export function CreateDesignDialog({
           <Field label="发布 Agent">
             <Select
               value={agent}
-              disabled={locked || hub || connection?.availability !== 'ready'}
-              loading={!hub && connections.isPending}
+              disabled={locked || connection?.availability !== 'ready'}
+              loading={connections.isPending}
               onValueChange={selectAgent}
             >
               <SelectTrigger className="w-full">

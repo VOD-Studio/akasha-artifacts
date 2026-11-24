@@ -1,10 +1,11 @@
 import type { Artifact } from '@akasha/protocol'
-import { Badge } from '@akasha/ui/badge'
+import { CardFrameImage } from '@akasha/ui/card'
+import { Skeleton } from '@akasha/ui/skeleton'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
+import { FileText } from 'lucide-react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { fetchArtifactDetail } from '../../shared/api/client'
 import { captureBoardPng } from '../../shared/bridge/capture-png'
-import { ARTIFACT_TYPE_LABELS } from '../../shared/lib/format'
 import { createCanvasDocument } from '../ArtifactWorkspace/canvas-model'
 
 const PREVIEW_EDGE = 480
@@ -13,9 +14,9 @@ function previewKey(artifactId: string, version: number) {
   return ['artifact-thumbnail', artifactId, version] as const
 }
 
-/** 封面只读该版本的授权源码；无结果时保留标题和类型。 */
+/** 只为出现在视口的卡片读取授权版本；拿不到缩略时不替作品生成内容。 */
 export function LibraryArtwork({ artifact }: { artifact: Artifact }) {
-  const { publicId, headVersion, title, type } = artifact
+  const { publicId, headVersion } = artifact
   const target = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(false)
   const [image, setImage] = useState<{ png: Blob; url: string } | null>(null)
@@ -69,30 +70,21 @@ export function LibraryArtwork({ artifact }: { artifact: Artifact }) {
   }, [preview.data])
 
   const url = image && image.png === preview.data && image.url !== broken ? image.url : undefined
-  const label = (
-    <>
-      <h2 className="line-clamp-2 min-w-0 break-words text-sm font-semibold">{title}</h2>
-      <Badge tone="neutral">{ARTIFACT_TYPE_LABELS[type]}</Badge>
-    </>
-  )
+  const markImageBroken = () => {
+    if (url) setBroken(url)
+  }
 
-  return (
-    <div ref={target} className="w-full">
-      <div className="aspect-[16/10] overflow-hidden rounded-md bg-surface-subtle">
-        {url ? (
-          <img
-            src={url}
-            alt=""
-            className="h-full w-full object-contain"
-            onError={() => setBroken(url)}
-          />
-        ) : (
-          <div className="flex h-full flex-col items-start justify-center gap-2 px-4">{label}</div>
-        )}
+  let content: ReactNode
+  if (url) {
+    content = <img src={url} alt="" className="object-contain" onError={markImageBroken} />
+  } else if (preview.isFetching) {
+    content = <Skeleton className="size-full" />
+  } else {
+    content = (
+      <div className="grid size-full place-items-center text-ink-muted" aria-hidden="true">
+        <FileText className="size-7" strokeWidth={1.5} />
       </div>
-      <div className="flex min-h-8 items-center justify-between gap-2 pt-2">
-        {url ? label : null}
-      </div>
-    </div>
-  )
+    )
+  }
+  return <CardFrameImage ref={target}>{content}</CardFrameImage>
 }

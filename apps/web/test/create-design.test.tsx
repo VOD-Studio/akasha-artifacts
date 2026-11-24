@@ -18,7 +18,6 @@ function show(onOpenArtifact = vi.fn()) {
       <CreateDesignDialog
         projects={projects}
         open
-        hub={false}
         onClose={() => undefined}
         onOpenArtifact={onOpenArtifact}
       />

@@ -491,6 +491,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
         publicId: 'LegacyLibraryItemAbC123',
         projectId: 'proj_old',
         title: '旧任务参考',
+        type: 'markdown',
       },
     ])
 
@@ -503,6 +504,9 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       )
 
     const library = openLibrary()
+    expect(screen.getByRole('link', { name: '旧任务参考' }).getAttribute('href')).toBe(
+      '/a/LegacyLibraryItemAbC123',
+    )
     fireEvent.keyDown(window, { key: 'k', ctrlKey: true })
     const search = screen.getByRole('searchbox', { name: '搜索制品' })
     expect(document.activeElement).toBe(search)
@@ -550,7 +554,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
               : [],
           })
         case '/api/v1/auth/session':
-          return Response.json({ user: null })
+          return Response.json({ user: { login: 'reviewer', member: true } })
         default:
           throw new Error(`意外请求：${url}`)
       }
@@ -566,6 +570,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       )
       await act(() => vi.advanceTimersByTimeAsync(20))
       expect(screen.queryByText('新发布制品')).toBeNull()
+      expect(screen.queryByRole('button', { name: '新建设计' })).toBeNull()
 
       published = true
       await act(() => vi.advanceTimersByTimeAsync(15_000))

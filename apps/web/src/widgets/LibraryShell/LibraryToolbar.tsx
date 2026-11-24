@@ -62,7 +62,7 @@ export function LibraryToolbar({ projects, types, favoritesAvailable }: LibraryT
   const currentProject = projects.find((item) => item.id === currentProjectId)
 
   useEffect(() => {
-    function focusSearch(event: KeyboardEvent) {
+    const focusSearch = (event: KeyboardEvent) => {
       if (
         event.defaultPrevented ||
         !(event.ctrlKey || event.metaKey) ||
@@ -153,7 +153,7 @@ export function LibraryToolbar({ projects, types, favoritesAvailable }: LibraryT
           仅收藏
         </Button>
       ) : null}
-      <fieldset className="ml-auto flex items-center gap-1">
+      <fieldset className="ms-auto flex items-center gap-1">
         <legend className="sr-only">制品显示方式</legend>
         <Button
           size="sm"
