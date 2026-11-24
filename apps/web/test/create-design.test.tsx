@@ -26,6 +26,13 @@ function show(onOpenArtifact = vi.fn()) {
   )
 }
 
+async function choose(field: string, option: string) {
+  const trigger = screen.getByRole<HTMLButtonElement>('combobox', { name: field })
+  await waitFor(() => expect(trigger.disabled).toBe(false))
+  fireEvent.click(trigger)
+  fireEvent.click(await screen.findByRole('option', { name: option }))
+}
+
 afterEach(() => {
   cleanup()
   sessionStorage.clear()
@@ -67,7 +74,7 @@ it('未连接项目保留需求草稿；只有选中的已授权项目会接收�
   })
   const open = vi.fn()
   const form = show(open)
-  fireEvent.change(screen.getByRole('combobox', { name: '项目' }), { target: { value: 'p-beta' } })
+  await choose('项目', '未授权项目')
   fireEvent.change(screen.getByRole('textbox', { name: '设计需求' }), {
     target: { value: message },
   })
@@ -79,11 +86,8 @@ it('未连接项目保留需求草稿；只有选中的已授权项目会接收�
 
   show(open)
   expect(screen.getByRole<HTMLTextAreaElement>('textbox', { name: '设计需求' }).value).toBe(message)
-  fireEvent.change(screen.getByRole('combobox', { name: '项目' }), { target: { value: 'p-alpha' } })
-  await screen.findByRole('option', { name: '本机 Codex' })
-  fireEvent.change(screen.getByRole('combobox', { name: '发布 Agent' }), {
-    target: { value: 'codex' },
-  })
+  await choose('项目', '预约项目')
+  await choose('发布 Agent', '本机 Codex')
   fireEvent.click(screen.getByRole('button', { name: '发送设计需求' }))
   await screen.findByRole('button', { name: '返回编辑' })
   expect(sent).toEqual([{ projectId: 'p-alpha', message }])
@@ -146,12 +150,9 @@ it('收到受理响应前关闭并重开，继续跟踪同一个会话且不重�
     </QueryClientProvider>,
   )
   fireEvent.click(screen.getByRole('button', { name: '新建设计' }))
-  await screen.findByRole('option', { name: '预约项目' })
-  fireEvent.change(screen.getByRole('combobox', { name: '项目' }), { target: { value: 'p-alpha' } })
-  await screen.findByRole('option', { name: '本机 Codex' })
-  fireEvent.change(screen.getByRole('combobox', { name: '发布 Agent' }), {
-    target: { value: 'codex' },
-  })
+  await screen.findByRole('combobox', { name: '项目' })
+  await choose('项目', '预约项目')
+  await choose('发布 Agent', '本机 Codex')
   fireEvent.change(screen.getByRole('textbox', { name: '设计需求' }), {
     target: { value: message },
   })
@@ -220,9 +221,7 @@ it('失效记录须明确清除，不重发草稿；可打开已确认首发且�
   fireEvent.click(await screen.findByRole('button', { name: '返回编辑' }))
   expect(editor.value).toBe(message)
   expect(sends).toEqual([])
-  fireEvent.change(screen.getByRole('combobox', { name: '发布 Agent' }), {
-    target: { value: 'codex' },
-  })
+  await choose('发布 Agent', '本机 Codex')
   fireEvent.click(screen.getByRole('button', { name: '发送设计需求' }))
   fireEvent.click(await screen.findByRole('button', { name: '打开设计' }))
   expect(sends).toEqual([{ projectId: 'p-alpha', message }])

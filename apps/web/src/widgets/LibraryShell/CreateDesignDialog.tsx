@@ -1,8 +1,11 @@
 import type { AgentConnection, AgentConversation, Project } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Modal } from '@akasha/ui/dialog'
+import { Field } from '@akasha/ui/field'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
+import { Textarea } from '@akasha/ui/textarea'
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
-import { type ReactNode, useId, useState } from 'react'
+import { type ChangeEventHandler, type ReactNode, useId, useState } from 'react'
 import { artifactKeys } from '../../entities/artifact/queries'
 import { AgentTurnList } from '../../features/agent-conversation/AgentTurnList'
 import { useAgentDraft } from '../../features/agent-conversation/agent-draft'
@@ -67,7 +70,7 @@ function getConnectionNotice(
     return { text: '登录本机制品库', command: 'akasha open' }
   }
   if (status === 'error') return { text: '无法读取 Agent 连接' }
-  if (status === 'pending') return { text: '正在检查连接…' }
+  if (status === 'pending') return null
   if (!project && hasProjects) return null
   if (!connection) {
     return { text: '在项目目录连接 Codex', command: 'akasha agent connect --project .' }
@@ -145,6 +148,16 @@ export function CreateDesignDialog({
     !!message.trim()
   const notice = getConnectionNotice(hub, connections, projects.length > 0, project, connection)
 
+  const selectProject = (id: string) => {
+    setProjectId(id)
+    setAgent('')
+    send.reset()
+  }
+
+  const selectAgent = (value: string) => setAgent(value === 'codex' ? 'codex' : '')
+  const editBrief: ChangeEventHandler<HTMLTextAreaElement> = (event) =>
+    setMessage(event.currentTarget.value)
+
   const clearAttempt = () => {
     setAttempt(null)
     setAgent('')
@@ -206,38 +219,35 @@ export function CreateDesignDialog({
         }}
       >
         <div className="grid gap-2 sm:grid-cols-2">
-          <label className="space-y-1">
-            <span className="block font-medium">项目</span>
-            <select
-              value={projectId}
-              disabled={locked || hub}
-              className="w-full rounded-md border border-border bg-surface px-2 py-1.5"
-              onChange={(event) => {
-                setProjectId(event.target.value)
-                setAgent('')
-                send.reset()
-              }}
-            >
-              <option value="">选择项目</option>
-              {projects.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1">
-            <span className="block font-medium">发布 Agent</span>
-            <select
+          <Field label="项目">
+            <Select value={projectId} disabled={locked || hub} onValueChange={selectProject}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="选择项目" />
+              </SelectTrigger>
+              <SelectContent empty="无项目">
+                {projects.map((entry) => (
+                  <SelectItem key={entry.id} value={entry.id}>
+                    {entry.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="发布 Agent">
+            <Select
               value={agent}
               disabled={locked || hub || connection?.availability !== 'ready'}
-              className="w-full rounded-md border border-border bg-surface px-2 py-1.5"
-              onChange={(event) => setAgent(event.target.value === 'codex' ? 'codex' : '')}
+              loading={!hub && connections.isPending}
+              onValueChange={selectAgent}
             >
-              <option value="">选择 Agent</option>
-              {connection || attempt ? <option value="codex">本机 Codex</option> : null}
-            </select>
-          </label>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="选择 Agent" />
+              </SelectTrigger>
+              <SelectContent>
+                {(connection || attempt) && <SelectItem value="codex">本机 Codex</SelectItem>}
+              </SelectContent>
+            </Select>
+          </Field>
         </div>
         {notice && (
           <p className="text-xs leading-5 text-ink-muted" role="status">
@@ -245,17 +255,15 @@ export function CreateDesignDialog({
             {notice.command && <code className="block select-all text-ink">{notice.command}</code>}
           </p>
         )}
-        <label className="block space-y-1 font-medium">
-          <span>设计需求</span>
-          <textarea
+        <Field label="设计需求">
+          <Textarea
             rows={4}
-            className="block w-full resize-y rounded-md border border-border bg-canvas px-2 py-2 font-normal outline-primary"
             maxLength={8000}
             value={message}
             disabled={send.isPending}
-            onChange={(event) => setMessage(event.target.value)}
+            onChange={editBrief}
           />
-        </label>
+        </Field>
         {send.error && <p role="alert">提交失败：{send.error.message}</p>}
         {sessionQuery.isError ? (
           <div role="alert" className="flex flex-wrap items-center gap-2">
