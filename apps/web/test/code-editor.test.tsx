@@ -138,7 +138,7 @@ describe('apps/web L3 CodeMirror 6 分栏代码编辑与冲突处理', () => {
     await waitFor(() => expect(previewUpdates).toContain('<h1>Hello edited by human</h1>'))
     expect(screen.getByText('未保存')).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('button', { name: /保存为新版本/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^保存/ }))
 
     await waitFor(() => {
       const saveCall = fetchCalls.find((c) => c.url.endsWith('/api/v1/artifacts'))
@@ -187,17 +187,17 @@ describe('apps/web L3 CodeMirror 6 分栏代码编辑与冲突处理', () => {
     })
     await waitFor(() => expect(screen.getByText('未保存')).toBeTruthy())
 
-    fireEvent.click(screen.getByRole('button', { name: /保存为新版本/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^保存/ }))
     await waitFor(() => expect(screen.getByTestId('version-conflict-banner')).toBeTruthy())
     expect(screen.getByTestId('conflict-server-diff').textContent).toContain(
       '+<h1>Hello v2 from agent</h1>',
     )
 
-    // 点击「基于 v2 合并保存」后以 baseVersion=2 重试成功
-    fireEvent.click(screen.getByRole('button', { name: /基于 v2 合并保存/ }))
+    // 保留草稿，基于最新版本保存。
+    fireEvent.click(screen.getByRole('button', { name: '将草稿保存为新版本' }))
     await waitFor(() => expect(screen.queryByTestId('version-conflict-banner')).toBeNull())
     expect(attempts.map((a) => a.baseVersion)).toEqual([1, 2])
-    expect(screen.getByText('基线 v3')).toBeTruthy()
+    expect(screen.getByText('v3')).toBeTruthy()
   })
 
   it('编辑期间 Agent 并发推送新版本不覆盖未保存草稿，展示实时冲突差异并支持加载最新', async () => {
@@ -230,11 +230,11 @@ describe('apps/web L3 CodeMirror 6 分栏代码编辑与冲突处理', () => {
       'Hello v2 from agent',
     )
 
-    // 点击「加载最新 v2」恢复同步
-    fireEvent.click(screen.getByRole('button', { name: /加载最新 v2/ }))
+    fireEvent.click(screen.getByRole('button', { name: '放弃草稿并打开最新' }))
     await waitFor(() => expect(screen.queryByTestId('version-conflict-banner')).toBeNull())
-    expect(screen.getByText('基线 v2')).toBeTruthy()
-    expect(screen.getByText('已同步')).toBeTruthy()
+    expect(screen.getByText('v2')).toBeTruthy()
+    expect(screen.queryByText('未保存')).toBeNull()
+    expect(container.querySelector('.cm-content')?.textContent).toContain('Hello v2 from agent')
   })
 
   it('ArtifactWorkspace 在 edit 分栏模式下并排展示 CodeMirror 编辑器与实时隔离沙盒 iframe，切图保留草稿', async () => {
@@ -303,7 +303,7 @@ describe('apps/web L3 CodeMirror 6 分栏代码编辑与冲突处理', () => {
       editCodeMirrorText(container, '<h1>First edit</h1>')
     })
     await waitFor(() => expect(screen.getByText('未保存')).toBeTruthy())
-    fireEvent.click(screen.getByRole('button', { name: /保存为新版本/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^保存/ }))
 
     // 保存尚未返回时用户继续编辑，并等待 CodeMirror 异步观察器将改动写入编辑器状态
     act(() => {
@@ -327,7 +327,7 @@ describe('apps/web L3 CodeMirror 6 分栏代码编辑与冲突处理', () => {
     })
 
     // 基线推进到 v2，但在途期间新增的修改完整保留且保持未保存态
-    expect(screen.getByText('基线 v2')).toBeTruthy()
+    expect(screen.getByText('v2')).toBeTruthy()
     expect(screen.getByText('未保存')).toBeTruthy()
     expect(container.querySelector('.cm-content')?.textContent).toContain('typed while saving')
 
@@ -351,7 +351,7 @@ describe('apps/web L3 CodeMirror 6 分栏代码编辑与冲突处理', () => {
     })
     await waitFor(() => expect(screen.getByTestId('version-conflict-banner')).toBeTruthy())
 
-    fireEvent.click(screen.getByRole('button', { name: /加载最新 v2/ }))
+    fireEvent.click(screen.getByRole('button', { name: '放弃草稿并打开最新' }))
     await waitFor(() => expect(adopted).toHaveLength(1))
     expect(adopted[0]?.version).toBe(2)
     expect(previews.at(-1)).toBe(V2_AGENT.source)

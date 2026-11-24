@@ -213,7 +213,7 @@ export function SplitCodeEditor({
         }
         toast.success(
           editedWhileSaving
-            ? `已保存为 v${res.version.version}，已保留你在保存期间的新修改`
+            ? `已保存为 v${res.version.version}，还有未保存的改动`
             : `已保存为 v${res.version.version}`,
         )
         onVersionSaved?.(res.version)
@@ -230,9 +230,8 @@ export function SplitCodeEditor({
               effectiveLatest.version === details.headVersion ? effectiveLatest.source : undefined,
             localSource: draftSourceRef.current,
           })
-          toast.error(`版本冲突（409）：远端已更新至 v${details.headVersion}，请先确认差异`)
         } else {
-          toast.error(err instanceof Error ? err.message : '保存代码失败')
+          toast.error(err instanceof Error ? err.message : '保存失败')
         }
       } finally {
         savingRef.current = false
@@ -325,7 +324,7 @@ export function SplitCodeEditor({
         const fresh = await fetchArtifactDetail(artifact.publicId)
         target = fresh.version
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : '拉取最新版本失败')
+        toast.error(err instanceof Error ? err.message : '无法打开最新版本')
         return
       }
     }
@@ -337,7 +336,7 @@ export function SplitCodeEditor({
     // 立即将最新源码同步到相邻预览，并通知外层路由从历史版本切换回 HEAD
     onLivePreviewChange?.(target.source === version.source ? null : target.source)
     onVersionAdopted?.(target)
-    toast.success(`已加载最新 v${target.version}`)
+    toast.success(`已打开最新版本 v${target.version}`)
   }
 
   return (
@@ -348,9 +347,9 @@ export function SplitCodeEditor({
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-surface-subtle px-3 py-2">
         <div className="flex items-center gap-2 text-xs">
           <Code2 size={14} className="text-ink-muted" />
-          <span className="font-semibold text-ink">L3 代码编辑</span>
-          <Badge tone="neutral">基线 v{baseVersion}</Badge>
-          {isDirty ? <Badge tone="warning">未保存</Badge> : <Badge tone="ok">已同步</Badge>}
+          <span className="font-semibold text-ink">代码编辑</span>
+          <Badge tone="neutral">v{baseVersion}</Badge>
+          {isDirty && <Badge tone="warning">未保存</Badge>}
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -362,7 +361,7 @@ export function SplitCodeEditor({
               disabled={saving}
               onClick={handleDiscard}
             >
-              还原修改
+              放弃草稿
             </Button>
           ) : null}
           <Button
@@ -372,8 +371,9 @@ export function SplitCodeEditor({
             disabled={!isDirty}
             loading={saving}
             onClick={() => void performSave()}
+            title="保存为新版本"
           >
-            保存为新版本
+            保存
             <span className="ml-1 opacity-80">
               <Kbd size="sm" keys={['mod', 'S']} />
             </span>

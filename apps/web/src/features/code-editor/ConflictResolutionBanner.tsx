@@ -36,12 +36,11 @@ export function ConflictResolutionBanner({
   onSaveMerged,
   onDismiss,
 }: ConflictResolutionBannerProps) {
+  const { serverDiff, remoteSource, localSource } = conflict
   const computedLines = useMemo(() => {
-    if (conflict.remoteSource === undefined) return []
-    return computeLineDiff(conflict.remoteSource, conflict.localSource).filter(
-      (line) => line.kind !== 'context',
-    )
-  }, [conflict.remoteSource, conflict.localSource])
+    if (serverDiff || remoteSource === undefined) return []
+    return computeLineDiff(remoteSource, localSource).filter((line) => line.kind !== 'context')
+  }, [serverDiff, remoteSource, localSource])
 
   const authorSummary =
     conflict.authors.length > 0 ? conflict.authors.join('、') : '其他协作者或 Agent'
@@ -55,15 +54,11 @@ export function ConflictResolutionBanner({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <AlertTriangle size={14} className="shrink-0 text-amber-700" />
-          <span className="font-semibold">
-            {conflict.reason === 'http_409'
-              ? `保存冲突（409）：远端已推进至 v${conflict.headVersion}`
-              : `检测到并发更新：远端已推进至 v${conflict.headVersion}`}
-          </span>
+          <span className="font-semibold">有更新的版本</span>
           <Badge tone="warning">
-            你的基线 v{conflict.baseVersion} → 最新 v{conflict.headVersion}
+            草稿基于 v{conflict.baseVersion}，最新 v{conflict.headVersion}
           </Badge>
-          <span className="text-[11px] text-amber-800">更新作者：{authorSummary}</span>
+          <span className="text-[11px] text-amber-800">更新者：{authorSummary}</span>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
@@ -74,7 +69,7 @@ export function ConflictResolutionBanner({
             disabled={saving}
             onClick={onAdoptLatest}
           >
-            加载最新 v{conflict.headVersion}
+            放弃草稿并打开最新
           </Button>
           <Button
             variant="primary"
@@ -83,7 +78,7 @@ export function ConflictResolutionBanner({
             loading={saving}
             onClick={onSaveMerged}
           >
-            基于 v{conflict.headVersion} 合并保存
+            将草稿保存为新版本
           </Button>
           {onDismiss ? (
             <Button variant="ghost" size="sm" onClick={onDismiss}>
@@ -92,21 +87,23 @@ export function ConflictResolutionBanner({
           ) : null}
         </div>
       </div>
+      <p className="mt-1 text-amber-800">保存草稿不会合并最新版本的改动。</p>
 
-      {conflict.serverDiff ? (
+      {serverDiff && (
         <pre
           data-testid="conflict-server-diff"
           className="mt-2 max-h-36 overflow-auto rounded-lg border border-amber-200 bg-white/90 p-2 font-mono text-[11px] leading-5 text-slate-800"
         >
-          {conflict.serverDiff}
+          {serverDiff}
         </pre>
-      ) : computedLines.length > 0 ? (
+      )}
+      {!serverDiff && computedLines.length > 0 && (
         <div
           data-testid="conflict-computed-diff"
           className="mt-2 max-h-36 overflow-auto rounded-lg border border-amber-200 bg-white/90 p-2 font-mono text-[11px] leading-5"
         >
           <div className="mb-1 text-[10px] font-sans text-slate-500">
-            差异对照（- 远端 v{conflict.headVersion} / + 你的当前编辑）
+            − 最新 v{conflict.headVersion} / + 你的草稿
           </div>
           {computedLines.slice(0, 40).map((line) => (
             <div
@@ -121,7 +118,7 @@ export function ConflictResolutionBanner({
             </div>
           ))}
         </div>
-      ) : null}
+      )}
     </div>
   )
 }

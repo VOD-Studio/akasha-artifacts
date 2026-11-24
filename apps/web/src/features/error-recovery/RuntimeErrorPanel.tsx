@@ -126,9 +126,8 @@ export function RuntimeErrorPanel({
         body,
       })
       markErrorSent(fingerprint)
-      toast.success('已将该异常与源码位置提交给 Agent 修复')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '提交异常反馈失败')
+      toast.error(err instanceof Error ? err.message : '发送失败')
     } finally {
       setSubmitting(false)
     }
@@ -146,9 +145,9 @@ export function RuntimeErrorPanel({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-semibold">
-                沙盒{error.phase === 'compile' ? '编译' : '运行时'}异常
+                {error.phase === 'compile' ? '无法加载预览' : '预览出错'}
               </span>
-              {attributedLoc ? <Badge tone="danger">行:列 {attributedLoc}</Badge> : null}
+              {attributedLoc ? <Badge tone="danger">源码 {attributedLoc}</Badge> : null}
               <Badge tone="neutral">v{version}</Badge>
             </div>
             <p className="mt-1 break-words font-mono text-xs text-red-900">{error.message}</p>
@@ -171,14 +170,9 @@ export function RuntimeErrorPanel({
               交给 Agent 修复
             </Button>
           )}
-          <button
-            type="button"
-            aria-label="关闭错误面板"
-            onClick={onDismiss}
-            className="rounded p-1 text-red-700 hover:bg-red-100"
-          >
-            <X size={14} />
-          </button>
+          <Button variant="ghost" size="sm" iconOnly aria-label="关闭错误面板" onClick={onDismiss}>
+            <X size={14} aria-hidden />
+          </Button>
         </div>
       </div>
 
@@ -206,14 +200,15 @@ export function RuntimeErrorPanel({
 
       {error.stack ? (
         <div className="mt-2">
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-expanded={showStack}
             onClick={() => setShowStack((v) => !v)}
-            className="inline-flex items-center gap-1 text-[11px] font-medium text-red-700 hover:underline"
+            leftIcon={showStack ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           >
-            {showStack ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            {showStack ? '收起调用栈' : '查看调用栈'}
-          </button>
+            {showStack ? '收起详情' : '查看详情'}
+          </Button>
           {showStack ? (
             <pre className="mt-1 max-h-36 overflow-auto rounded-lg bg-red-950/95 p-2.5 font-mono text-[11px] text-red-100">
               {error.stack}

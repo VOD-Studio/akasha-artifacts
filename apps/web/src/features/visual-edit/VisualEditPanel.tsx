@@ -1,7 +1,10 @@
+import type { EditOp } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
+import { Field } from '@akasha/ui/field'
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@akasha/ui/sheet'
+import { Textarea } from '@akasha/ui/textarea'
 import { GripVertical, RotateCcw } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { type FormEvent, useId, useRef, useState } from 'react'
 import type { PickedTarget, VisualEditController } from './useVisualEdit'
 
 interface Props {
@@ -13,81 +16,88 @@ function LiteralEditor({ controller, picked }: Props & { picked: PickedTarget })
   const [text, setText] = useState(target.text ?? '')
   const [classes, setClasses] = useState(target.className)
   const [confirmRemove, setConfirmRemove] = useState(false)
+  const [saving, setSaving] = useState<'text' | 'className' | null>(null)
+  const orderHeadingId = useId()
   const dragged = useRef(false)
   const currentPosition = target.order?.siblings.findIndex((sibling) => sibling.loc === loc) ?? -1
   const busy = controller.busy
-  const fieldClass =
-    'w-full rounded-lg border border-border bg-surface p-2 text-sm text-ink focus-visible:outline-2 focus-visible:outline-accent'
 
-  function move(index: number) {
+  const saveField = async (operation: Extract<EditOp, { kind: 'text' | 'className' }>) => {
+    setSaving(operation.kind)
+    try {
+      await controller.apply(operation)
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  const saveText = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!busy && text !== target.text) void saveField({ kind: 'text', loc, value: text })
+  }
+
+  const saveStyle = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!busy && classes !== target.className)
+      void saveField({ kind: 'className', loc, value: classes })
+  }
+
+  const move = (index: number) => {
     if (!target.order || busy || currentPosition === index) return
     void controller.apply({ kind: 'move', loc, targetParentLoc: target.order.parentLoc, index })
   }
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-center justify-between gap-2 text-sm">
-        <span className="font-mono">
-          &lt;{target.tagName}&gt; · {loc}
-        </span>
-        <span className="text-xs text-ink-muted">静态源码</span>
-      </div>
+      <span className="font-mono text-sm">&lt;{target.tagName}&gt;</span>
       {target.text !== null ? (
-        <form
-          className="flex flex-col items-start gap-2"
-          onSubmit={(event) => {
-            event.preventDefault()
-            if (!busy && text !== target.text)
-              void controller.apply({ kind: 'text', loc, value: text })
-          }}
-        >
-          <label className="w-full space-y-1 text-sm font-medium">
-            <span>文字</span>
-            <textarea
-              className={fieldClass}
+        <form className="flex flex-col items-start gap-2" onSubmit={saveText}>
+          <Field label="文字" className="w-full">
+            <Textarea
               rows={3}
               value={text}
               onChange={(event) => setText(event.target.value)}
               disabled={busy}
             />
-          </label>
-          <Button size="sm" type="submit" disabled={busy || text === target.text}>
-            保存文字
+          </Field>
+          <Button
+            size="sm"
+            type="submit"
+            disabled={busy || text === target.text}
+            loading={saving === 'text'}
+          >
+            保存
           </Button>
         </form>
       ) : (
-        <p className="text-sm text-ink-muted">
-          该元素没有单独可改的字面量文字。请点选其子元素，或添加批注。
-        </p>
+        <p className="text-sm text-ink-muted">这段文字不能直接编辑。可选择子元素或添加批注。</p>
       )}
-      <form
-        className="flex flex-col items-start gap-2"
-        onSubmit={(event) => {
-          event.preventDefault()
-          if (!busy && classes !== target.className)
-            void controller.apply({ kind: 'className', loc, value: classes })
-        }}
-      >
-        <label className="w-full space-y-1 text-sm font-medium">
-          <span>Tailwind 类名</span>
-          <textarea
-            className={`${fieldClass} font-mono`}
+      <form className="flex flex-col items-start gap-2" onSubmit={saveStyle}>
+        <Field label="Tailwind 类名" hint="用空格分隔" className="w-full">
+          <Textarea
+            className="font-mono"
             rows={2}
             value={classes}
             onChange={(event) => setClasses(event.target.value)}
             disabled={busy}
             placeholder="text-sm hover:font-bold"
           />
-        </label>
-        <p className="text-xs text-ink-muted">用空格分隔类名，支持变体和任意值。</p>
-        <Button size="sm" type="submit" disabled={busy || classes === target.className}>
-          保存样式
+        </Field>
+        <Button
+          size="sm"
+          type="submit"
+          disabled={busy || classes === target.className}
+          loading={saving === 'className'}
+        >
+          保存
         </Button>
       </form>
       {target.order ? (
-        <section className="space-y-2" aria-label="同级元素排序">
-          <h3 className="text-sm font-medium">同级元素排序</h3>
-          <p className="text-xs text-ink-muted">拖动选中项到目标位置，或使用上移、下移。</p>
+        <section className="space-y-2" aria-labelledby={orderHeadingId}>
+          <h3 id={orderHeadingId} className="text-sm font-medium">
+            元素顺序
+          </h3>
+          <p className="text-xs text-ink-muted">拖动选中项，或使用上移、下移。</p>
           <ol className="max-h-40 space-y-1 overflow-auto">
             {target.order.siblings.map((sibling, index) => (
               <li
@@ -147,7 +157,7 @@ function LiteralEditor({ controller, picked }: Props & { picked: PickedTarget })
           disabled={busy}
           onClick={() => controller.annotate(element)}
         >
-          改用批注
+          添加批注
         </Button>
         <Button
           size="sm"
@@ -158,7 +168,7 @@ function LiteralEditor({ controller, picked }: Props & { picked: PickedTarget })
             else setConfirmRemove(true)
           }}
         >
-          {confirmRemove ? '确认删除元素' : '删除元素'}
+          {confirmRemove ? '确认删除' : '删除元素'}
         </Button>
         {confirmRemove ? (
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirmRemove(false)}>
@@ -166,6 +176,11 @@ function LiteralEditor({ controller, picked }: Props & { picked: PickedTarget })
           </Button>
         ) : null}
       </div>
+      {confirmRemove && (
+        <p role="status" className="text-xs text-ink-muted">
+          元素及其内容将被删除。
+        </p>
+      )}
     </div>
   )
 }
@@ -180,7 +195,7 @@ export function VisualEditPanel({ controller }: Props) {
           role="status"
           className="pointer-events-none absolute inset-x-0 top-16 z-10 mx-auto w-fit rounded-lg border border-border bg-surface px-3 py-2 text-xs text-ink"
         >
-          点选画布中的静态元素进行直改；动态元素将进入批注。
+          选择要编辑的元素。无法直接编辑时将打开批注。
         </p>
       ) : null}
       {canUndo && !active ? (
@@ -192,7 +207,7 @@ export function VisualEditPanel({ controller }: Props) {
             disabled={busy}
             onClick={() => void controller.undo()}
           >
-            <RotateCcw size={14} aria-hidden /> 撤销直改
+            <RotateCcw size={14} aria-hidden /> 撤销
           </Button>
         </div>
       ) : null}
@@ -209,7 +224,7 @@ export function VisualEditPanel({ controller }: Props) {
           className="top-16 bottom-14 overflow-hidden"
         >
           <SheetHeader>
-            <SheetTitle>可视化直改</SheetTitle>
+            <SheetTitle>编辑元素</SheetTitle>
           </SheetHeader>
           <SheetBody>
             {active ? (
@@ -227,7 +242,7 @@ export function VisualEditPanel({ controller }: Props) {
                 disabled={busy}
                 onClick={() => void controller.undo()}
               >
-                撤销上一步直改
+                撤销
               </Button>
             ) : null}
           </SheetBody>

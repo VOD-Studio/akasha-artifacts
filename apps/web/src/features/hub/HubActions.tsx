@@ -10,9 +10,9 @@ export function useHubSession() {
     queryKey: ['hub-session'],
     enabled: isCloudHub(),
     staleTime: 60_000,
-    async queryFn() {
+    queryFn: async () => {
       const response = await fetch('/api/v1/auth/session', { credentials: 'same-origin' })
-      if (!response.ok) throw new Error('读取 Hub 登录状态失败')
+      if (!response.ok) throw new Error('无法读取登录状态')
       return (await response.json()) as { user: { login: string; member: boolean } | null }
     },
   }).data?.user
@@ -21,18 +21,18 @@ export function useHubSession() {
 export function HubAccountButton() {
   const user = useHubSession()
   const logout = useMutation({
-    async mutationFn() {
+    mutationFn: async () => {
       const response = await fetch('/api/v1/auth/logout', {
         method: 'POST',
         credentials: 'same-origin',
       })
-      if (!response.ok) throw new Error('退出 Hub 失败')
+      if (!response.ok) throw new Error('退出失败')
     },
-    onSuccess() {
+    onSuccess: () => {
       clearAnnotationDrafts()
       window.location.reload()
     },
-    onError(error) {
+    onError: (error) => {
       toast.error(error.message)
     },
   })
@@ -45,12 +45,13 @@ export function HubAccountButton() {
     )
   }
   return (
-    <a
-      href={`/auth/login?next=${encodeURIComponent(window.location.pathname)}`}
-      onClick={clearAnnotationDrafts}
-      className="rounded px-2.5 py-1.5 text-sm font-medium text-ink hover:bg-muted"
-    >
-      GitHub 登录
-    </a>
+    <Button asChild variant="ghost" size="sm">
+      <a
+        href={`/auth/login?next=${encodeURIComponent(window.location.pathname)}`}
+        onClick={clearAnnotationDrafts}
+      >
+        使用 GitHub 登录
+      </a>
+    </Button>
   )
 }

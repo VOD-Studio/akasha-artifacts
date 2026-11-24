@@ -2,15 +2,27 @@
 import { type ArtifactSpecOutput, type JsonPatchOp, PROTOCOL_VERSION } from '@akasha/protocol'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { artifactKeys } from '../src/entities/artifact/queries'
 import { applyRealtimeEventToCache } from '../src/features/live-sync/useLiveSync'
 import { buildPropPatch, PropsPanel } from '../src/features/props-panel/PropsPanel'
 import type { ArtifactDetailResponse } from '../src/shared/api/client'
 
+beforeEach(() => {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
+})
+
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 describe('apps/web L2 PropsPanel 结构化属性面板', () => {
@@ -38,7 +50,7 @@ describe('apps/web L2 PropsPanel 结构化属性面板', () => {
             label: '每行画板列数',
             type: 'number',
             defaultValue: 2,
-            min: 1,
+            min: 0,
             max: 4,
           },
           { key: 'showFlows', label: '显示页面流程连线', type: 'boolean', defaultValue: true },
@@ -63,7 +75,7 @@ describe('apps/web L2 PropsPanel 结构化属性面板', () => {
           artifactId="AbCdEfGhIjKlMnOpQrStU"
           projectId="proj_1"
           artifactType="artboard"
-          source={JSON.stringify({ boards: [], columns: 2, showFlows: true })}
+          source={JSON.stringify({ boards: [], columns: 0, showFlows: true })}
           stateSnapshot={{}}
           specOverride={artboardSpec}
           onPushPatch={async (patch) => {
@@ -73,17 +85,23 @@ describe('apps/web L2 PropsPanel 结构化属性面板', () => {
       </QueryClientProvider>,
     )
 
-    const toggle = screen.getByLabelText('显示页面流程连线') as HTMLInputElement
-    expect(toggle.checked).toBe(true)
+    const toggle = screen.getByRole('checkbox', { name: '显示页面流程连线' })
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
     fireEvent.click(toggle)
 
     // 紧接着在首条请求返回前连续修改第二个控件：必须串行化并在第二条使用 /props/density，不得覆盖首条修改
-    const select = screen.getByLabelText('视图密度') as HTMLSelectElement
-    fireEvent.change(select, { target: { value: 'compact' } })
+    const select = screen.getByRole('combobox', { name: '视图密度' })
+    fireEvent.click(select)
+    fireEvent.click(screen.getByRole('option', { name: '紧凑' }))
 
-    await waitFor(() => expect(pushed).toHaveLength(2))
+    const slider = screen.getByRole('slider', { name: '每行画板列数' })
+    expect(slider.getAttribute('aria-valuenow')).toBe('0')
+    fireEvent.keyDown(slider, { key: 'ArrowRight' })
+
+    await waitFor(() => expect(pushed).toHaveLength(3))
     expect(pushed[0]).toEqual([{ op: 'add', path: '/props', value: { showFlows: false } }])
     expect(pushed[1]).toEqual([{ op: 'add', path: '/props/density', value: 'compact' }])
+    expect(pushed[2]).toEqual([{ op: 'add', path: '/props/columns', value: 1 }])
   })
 
   it('applyRealtimeEventToCache 将 WS state.patched 增量合入详情状态快照，保持 L2 面板与 Agent 推送同步', () => {
@@ -154,7 +172,7 @@ describe('apps/web L2 PropsPanel 结构化属性面板', () => {
     )
 
     expect(screen.getByTestId('props-panel-l1-fallback')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '返回 L1 批注' }))
+    fireEvent.click(screen.getByRole('button', { name: '打开批注' }))
     expect(onFallback).toHaveBeenCalledTimes(1)
   })
 })

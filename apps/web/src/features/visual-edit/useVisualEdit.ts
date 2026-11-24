@@ -113,7 +113,7 @@ export function useVisualEdit(options: Options): VisualEditController {
     if (!available) cancel()
   }, [available, cancel])
 
-  function toggle() {
+  const toggle = () => {
     if (!available || saving.current) return
     if (pickingRef.current) {
       cancel()
@@ -126,16 +126,16 @@ export function useVisualEdit(options: Options): VisualEditController {
     optionsRef.current.send({ type: 'visual.inspect', active: true })
   }
 
-  function annotate(element: ElementRef) {
+  const annotate = (element: ElementRef) => {
     cancel()
     optionsRef.current.onAnnotate(element)
   }
 
-  function requestFailure(error: unknown, fallback: string) {
+  const requestFailure = (error: unknown, fallback: string) => {
     const conflict = parseVersionConflictDetails(error)
     if (conflict) {
       toast.error(
-        `版本冲突：v${conflict.baseVersion} 已落后于 v${conflict.headVersion}，请在最新版本重新选取元素`,
+        `v${conflict.baseVersion} 已更新至 v${conflict.headVersion}。请在最新版本重新选择元素。`,
       )
       void queryClient.invalidateQueries({ queryKey: artifactKeys.detailPrefix(artifact.publicId) })
       void queryClient.invalidateQueries({ queryKey: artifactKeys.versions(artifact.publicId) })
@@ -144,7 +144,7 @@ export function useVisualEdit(options: Options): VisualEditController {
     toast.error(error instanceof Error ? error.message : fallback)
   }
 
-  async function onMessage(message: Extract<SandboxToShellMessage, { type: 'visual.select' }>) {
+  const onMessage = async (message: Extract<SandboxToShellMessage, { type: 'visual.select' }>) => {
     if (!available || !pickingRef.current || message.version !== version.version) return
     pickingRef.current = false
     setPicking(false)
@@ -152,7 +152,7 @@ export function useVisualEdit(options: Options): VisualEditController {
     const { loc, element } = message
     const request = ++revision.current
     if (!loc) {
-      toast.info('该元素由动态内容生成，仅支持批注')
+      toast.info('此元素仅支持批注')
       annotate(element)
       return
     }
@@ -165,17 +165,17 @@ export function useVisualEdit(options: Options): VisualEditController {
       if (request !== revision.current || optionsRef.current.version.version !== message.version)
         return
       if (!target) {
-        toast.info('该元素不是可直改的静态字面量，仅支持批注')
+        toast.info('此元素仅支持批注')
         annotate(element)
       } else {
         setPicked({ baseVersion: message.version, loc, element, target })
       }
     } catch (error) {
-      if (request === revision.current) requestFailure(error, '获取直改能力失败')
+      if (request === revision.current) requestFailure(error, '无法读取元素')
     }
   }
 
-  async function write(command: VisualEditCommand) {
+  const write = async (command: VisualEditCommand) => {
     if (!available || saving.current) return
     saving.current = true
     setBusy(true)
@@ -209,9 +209,7 @@ export function useVisualEdit(options: Options): VisualEditController {
       void queryClient.invalidateQueries({ queryKey: artifactKeys.all })
       void queryClient.invalidateQueries({ queryKey: feedbackKeys.list(artifact.publicId) })
       optionsRef.current.onVersionSaved?.(saved.version)
-      toast.success(
-        `已${'op' in command ? '保存直改' : '撤销直改'}，生成 v${saved.version.version}`,
-      )
+      toast.success(`已${'op' in command ? '保存' : '撤销'}，新版本为 v${saved.version.version}`)
     } catch (error) {
       if (sentPreview) optionsRef.current.send({ type: 'apply.rollback', version: version.version })
       if (
@@ -224,7 +222,7 @@ export function useVisualEdit(options: Options): VisualEditController {
         toast.info(error.message)
         annotate(active.element)
       } else {
-        requestFailure(error, '直改写入失败')
+        requestFailure(error, 'op' in command ? '保存失败' : '撤销失败')
       }
     } finally {
       saving.current = false

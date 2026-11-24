@@ -30,7 +30,7 @@ export function ElementPickerButton({ onStart }: { onStart?: () => void } = {}) 
         togglePicker()
       }}
     >
-      {pickerActive ? '指认中 · Esc 退出' : '指认元素'}
+      {pickerActive ? '取消指认（Esc）' : '指认元素'}
     </Button>
   )
 }
