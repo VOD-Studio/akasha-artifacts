@@ -93,6 +93,7 @@ function ArtifactRouteView({
     open: boolean
     target?: ConversationTarget
   } | null>(null)
+  const agentToggleRef = useRef<HTMLButtonElement>(null)
   const clearAddress = useCallback(() => {
     void navigate({
       hash: (previous) => {
@@ -259,9 +260,12 @@ function ArtifactRouteView({
         ...scope,
       },
     })
+  const cloudHub = isCloudHub()
+  const canTalkToAgent = !cloudHub && !shareAccess
   const agent =
-    !shareAccess && agentPanel?.artifactId === detail.artifact.publicId ? agentPanel : null
-  function openAgent(target?: ConversationTarget) {
+    canTalkToAgent && agentPanel?.artifactId === detail.artifact.publicId ? agentPanel : null
+
+  const openAgent = (target?: ConversationTarget) => {
     useWorkspaceStore.getState().setInspectorTab(null)
     setAgentPanel({
       artifactId: detail.artifact.publicId,
@@ -269,9 +273,32 @@ function ArtifactRouteView({
       target: target ?? agent?.target,
     })
   }
-  function closeAgent() {
+  const closeAgent = () => {
     setAgentPanel((current) => current && { ...current, open: false })
+    agentToggleRef.current?.focus({ preventScroll: true })
   }
+  const toggleAgent = () => {
+    if (agent?.open) closeAgent()
+    else openAgent()
+  }
+  const clearAgentTarget = () => {
+    setAgentPanel((current) => current && { ...current, target: undefined })
+  }
+  const askAgent = (
+    label: string,
+    scope: Pick<ArtifactHandoffReference, 'pageId' | 'boardId' | 'element'>,
+  ) => {
+    openAgent({
+      label,
+      reference: {
+        artifactId: detail.artifact.publicId,
+        projectId: detail.artifact.projectId,
+        version: detail.version.version,
+        ...scope,
+      },
+    })
+  }
+  const openShare = () => setShareTarget({ artifact: detail.artifact, version: detail.version })
 
   return (
     <div className="flex h-dvh flex-col bg-canvas text-ink">
@@ -282,11 +309,7 @@ function ArtifactRouteView({
         versions={versions}
         fixedVersion={viewingFixedVersion}
         shareAccess={shareAccess}
-        onShare={
-          isCloudHub() && !shareAccess
-            ? () => setShareTarget({ artifact: detail.artifact, version: detail.version })
-            : undefined
-        }
+        onShare={cloudHub && !shareAccess ? openShare : undefined}
         onTransfer={
           shareAccess
             ? undefined
@@ -301,7 +324,8 @@ function ArtifactRouteView({
         onExport={() => openExport()}
         onHandoff={() => openHandoff(detail.version.title)}
         agentOpen={Boolean(agent?.open)}
-        onToggleAgent={shareAccess ? undefined : () => (agent?.open ? closeAgent() : openAgent())}
+        agentToggleRef={agentToggleRef}
+        onToggleAgent={canTalkToAgent ? toggleAgent : undefined}
         onBackToLibrary={() => void navigate({ to: '/' })}
         onSelectVersion={(ver) => {
           if (ver === undefined) {
@@ -321,7 +345,18 @@ function ArtifactRouteView({
           }
         }}
       />
-      <div className="relative flex min-h-0 min-w-0 flex-1">
+      <main className="relative flex min-h-0 min-w-0 flex-1">
+        {agent && (
+          <AgentConversationPane
+            key={`${detail.artifact.projectId}:${detail.artifact.publicId}`}
+            artifactId={detail.artifact.publicId}
+            projectId={detail.artifact.projectId}
+            open={agent.open}
+            target={agent.target}
+            onClose={closeAgent}
+            onClearTarget={clearAgentTarget}
+          />
+        )}
         <div className={`flex min-h-0 min-w-0 flex-1 ${agent?.open ? 'max-lg:invisible' : ''}`}>
           <ArtifactWorkspace
             key={detail.artifact.publicId}
@@ -337,20 +372,7 @@ function ArtifactRouteView({
             onRememberThread={rememberThread}
             onExportBoard={openExport}
             onHandoff={openHandoff}
-            onAskAgent={
-              shareAccess
-                ? undefined
-                : (label, scope) =>
-                    openAgent({
-                      label,
-                      reference: {
-                        artifactId: detail.artifact.publicId,
-                        projectId: detail.artifact.projectId,
-                        version: detail.version.version,
-                        ...scope,
-                      },
-                    })
-            }
+            onAskAgent={canTalkToAgent ? askAgent : undefined}
             onRegisterStateForwarder={registerStateForwarder}
             onVersionSaved={() => {
               if (requestedVersion !== undefined) {
@@ -374,21 +396,7 @@ function ArtifactRouteView({
             }}
           />
         </div>
-        {agent ? (
-          <AgentConversationPane
-            key={`${detail.artifact.projectId}:${detail.artifact.publicId}`}
-            artifactId={detail.artifact.publicId}
-            projectId={detail.artifact.projectId}
-            open={agent.open}
-            hub={isCloudHub()}
-            target={agent.target}
-            onClose={closeAgent}
-            onClearTarget={() =>
-              setAgentPanel((current) => current && { ...current, target: undefined })
-            }
-          />
-        ) : null}
-      </div>
+      </main>
       {exportTarget?.artifact.publicId === detail.artifact.publicId ? (
         <ArtifactExportDialog target={exportTarget} onClose={() => setExportTarget(null)} />
       ) : null}

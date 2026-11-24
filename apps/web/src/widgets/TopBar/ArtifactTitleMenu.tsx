@@ -9,6 +9,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@akasha/ui/dropdown-menu'
+import { Field } from '@akasha/ui/field'
+import { Input } from '@akasha/ui/input'
 import {
   ChevronDown,
   Code2,
@@ -29,7 +31,6 @@ import { useId, useState } from 'react'
 import { toast } from 'sonner'
 import {
   useArtifactFavoritesQuery,
-  useArtifactManagementQuery,
   useReloadArtifactMutation,
   useRenameArtifactMutation,
   useSetArtifactFavoriteMutation,
@@ -42,11 +43,11 @@ interface ArtifactTitleMenuProps {
   artifact: Artifact
   /** 普通链接跟随头版本；固定版本的链接不携带授权参数。 */
   fixedVersion?: number
-  agentStatus: string
+  statusLabel?: string
+  canManage: boolean
   onShowTool: (tool: WorkspaceViewMode) => void
   onExport?: () => void
   onHandoff?: () => void
-  onShare?: () => void
   onTransfer?: (kind: ArtifactTransferInput['kind']) => void
   onWithdrawn?: () => void
   canEdit?: boolean
@@ -58,11 +59,11 @@ interface ArtifactTitleMenuProps {
 export function ArtifactTitleMenu({
   artifact,
   fixedVersion,
-  agentStatus,
+  statusLabel,
+  canManage,
   onShowTool,
   onExport,
   onHandoff,
-  onShare,
   onTransfer,
   onWithdrawn,
   canEdit = true,
@@ -70,7 +71,6 @@ export function ArtifactTitleMenu({
   onQuickJump,
 }: ArtifactTitleMenuProps) {
   const { publicId, title } = artifact
-  const management = useArtifactManagementQuery(publicId)
   const rename = useRenameArtifactMutation(publicId)
   const reload = useReloadArtifactMutation(publicId)
   const favorites = useArtifactFavoritesQuery()
@@ -81,7 +81,7 @@ export function ArtifactTitleMenu({
   const [name, setName] = useState<string | null>(null)
   const formId = useId()
 
-  async function copyLink() {
+  const copyLink = async () => {
     try {
       const path = `/a/${encodeURIComponent(publicId)}${fixedVersion === undefined ? '' : `/v/${fixedVersion}`}`
       await navigator.clipboard.writeText(new URL(path, window.location.origin).href)
@@ -103,7 +103,9 @@ export function ArtifactTitleMenu({
               title={title}
               className="max-w-full"
             >
-              <span className="truncate font-semibold">{title}</span>
+              <span dir="auto" className="truncate font-semibold">
+                {title}
+              </span>
               <ChevronDown size={14} className="shrink-0 text-ink-muted" />
             </Button>
           </DropdownMenuTrigger>
@@ -128,7 +130,7 @@ export function ArtifactTitleMenu({
               {isFavorite ? '取消收藏' : '收藏制品'}
             </DropdownMenuItem>
           ) : null}
-          {management.data?.canManage ? (
+          {canManage ? (
             <DropdownMenuItem
               onSelect={() => {
                 rename.reset()
@@ -139,7 +141,7 @@ export function ArtifactTitleMenu({
               重命名制品
             </DropdownMenuItem>
           ) : null}
-          {onTransfer && management.data?.canManage ? (
+          {onTransfer && canManage ? (
             <>
               <DropdownMenuItem onSelect={() => onTransfer('copy')}>
                 <Copy size={14} />
@@ -163,7 +165,7 @@ export function ArtifactTitleMenu({
             <RefreshCw size={14} />
             重新加载
           </DropdownMenuItem>
-          {management.data?.canManage ? (
+          {canManage ? (
             <DropdownMenuItem onSelect={() => setShowUsage(true)}>
               <HardDrive size={14} />
               存储用量
@@ -196,19 +198,17 @@ export function ArtifactTitleMenu({
               移交整份给 CLI Agent
             </DropdownMenuItem>
           ) : null}
-          {onShare && management.data?.canManage ? (
-            <DropdownMenuItem onSelect={onShare}>
-              <Link2 size={14} />
-              创建分享链接
-            </DropdownMenuItem>
-          ) : null}
           <DropdownMenuItem onSelect={onQuickJump}>
             <Search size={14} />
             快速跳转
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel>{agentStatus}</DropdownMenuLabel>
-          {onWithdrawn && management.data?.canManage ? (
+          {statusLabel && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>{statusLabel}</DropdownMenuLabel>
+            </>
+          )}
+          {onWithdrawn && canManage ? (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onSelect={() => setShowWithdrawal(true)}>
@@ -219,10 +219,10 @@ export function ArtifactTitleMenu({
           ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
-      {showUsage && management.data?.canManage ? (
+      {showUsage && canManage ? (
         <ArtifactStorageUsageDialog artifactId={publicId} onClose={() => setShowUsage(false)} />
       ) : null}
-      {showWithdrawal && onWithdrawn && management.data?.canManage ? (
+      {showWithdrawal && onWithdrawn && canManage ? (
         <ArtifactWithdrawalDialog
           artifact={artifact}
           onClose={() => setShowWithdrawal(false)}
@@ -236,7 +236,6 @@ export function ArtifactTitleMenu({
             if (!open && !rename.isPending) setName(null)
           }}
           title="重命名制品"
-          description="仅修改制品的展示名；链接、源码和已有版本不变。"
           footer={
             <>
               <Button variant="ghost" disabled={rename.isPending} onClick={() => setName(null)}>
@@ -263,22 +262,14 @@ export function ArtifactTitleMenu({
               rename.mutate(next, { onSuccess: () => setName(null) })
             }}
           >
-            <label className="block text-sm font-medium text-ink" htmlFor={`${formId}-name`}>
-              制品名称
-            </label>
-            <input
-              id={`${formId}-name`}
-              className="block w-full rounded-md border border-border bg-surface px-2.5 py-2 text-sm text-ink"
-              value={name}
-              maxLength={240}
-              readOnly={rename.isPending}
-              onChange={(event) => setName(event.target.value)}
-            />
-            {rename.error ? (
-              <p role="alert" className="text-sm text-error">
-                {rename.error.message}
-              </p>
-            ) : null}
+            <Field label="制品名称" error={rename.error?.message}>
+              <Input
+                value={name}
+                maxLength={240}
+                readOnly={rename.isPending}
+                onChange={(event) => setName(event.currentTarget.value)}
+              />
+            </Field>
           </form>
         </Modal>
       ) : null}
