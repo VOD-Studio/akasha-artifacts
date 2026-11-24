@@ -49,15 +49,15 @@ export function AgentTurnList({ turns }: { turns: readonly AgentConversationTurn
             </ul>
           ) : null}
           {turn.status === 'running' ? (
-            <p className="px-3 text-xs text-ink-muted">本机 Codex 正在处理，尚未返回最终回复。</p>
+            <p className="px-3 text-xs text-ink-muted">处理中…</p>
           ) : null}
           {turn.status === 'failed' ? (
             <p className="px-3 text-sm text-ink" role="alert">
-              未完成：{turn.error}
+              {turn.error ?? '处理失败'}
             </p>
           ) : null}
           {turn.status === 'complete' && !turn.publications.length ? (
-            <p className="px-3 text-xs text-ink-muted">此轮没有发布新版本。</p>
+            <p className="px-3 text-xs text-ink-muted">未发布新版本</p>
           ) : null}
         </li>
       ))}

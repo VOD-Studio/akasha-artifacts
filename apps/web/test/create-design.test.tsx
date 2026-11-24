@@ -71,7 +71,7 @@ it('未连接项目保留需求草稿；只有选中的已授权项目会接收�
   fireEvent.change(screen.getByRole('textbox', { name: '设计需求' }), {
     target: { value: message },
   })
-  await screen.findByText('该项目没有已连接的 Codex。')
+  await screen.findByText('akasha agent connect --project .')
   expect(screen.getByRole<HTMLButtonElement>('button', { name: '发送设计需求' }).disabled).toBe(
     true,
   )
@@ -85,9 +85,9 @@ it('未连接项目保留需求草稿；只有选中的已授权项目会接收�
     target: { value: 'codex' },
   })
   fireEvent.click(screen.getByRole('button', { name: '发送设计需求' }))
-  await screen.findByText('会话已结束，Agent 没有发布制品')
+  await screen.findByRole('button', { name: '返回编辑' })
   expect(sent).toEqual([{ projectId: 'p-alpha', message }])
-  expect(screen.queryByRole('button', { name: '打开已发布设计' })).toBeNull()
+  expect(screen.queryByRole('button', { name: '打开设计' })).toBeNull()
   expect(open).not.toHaveBeenCalled()
   expect(screen.getByRole<HTMLTextAreaElement>('textbox', { name: '设计需求' }).value).toBe(message)
 })
@@ -157,6 +157,9 @@ it('收到受理响应前关闭并重开，继续跟踪同一个会话且不重�
   })
   fireEvent.click(screen.getByRole('button', { name: '发送设计需求' }))
   await waitFor(() => expect(requests).toContain('/api/v1/agent/design'))
+  expect(screen.getByRole('button', { name: '发送设计需求' }).getAttribute('aria-busy')).toBe(
+    'true',
+  )
 
   const dialog = screen.getByRole('dialog', { name: '新建设计' })
   const close = within(dialog).getAllByRole('button', { name: '关闭' }).at(-1)
@@ -166,10 +169,10 @@ it('收到受理响应前关闭并重开，继续跟踪同一个会话且不重�
   fireEvent.click(screen.getByRole('button', { name: '新建设计' }))
   await screen.findByRole('dialog', { name: '新建设计' })
   act(() => finish(Response.json(session, { status: 202 })))
-  await screen.findByText('已交付本机 Codex，等待首次发布')
+  await screen.findByRole('log', { name: 'Agent 会话记录' })
   await waitFor(() => expect(requests).toContain(`/api/v1/agent/sessions/${session.id}`))
   expect(requests.filter((path) => path === '/api/v1/agent/design')).toHaveLength(1)
-  expect(screen.queryByRole('button', { name: '打开已发布设计' })).toBeNull()
+  expect(screen.queryByRole('button', { name: '打开设计' })).toBeNull()
 })
 
 it('失效记录须明确清除，不重发草稿；可打开已确认首发且回执已滚出的会话', async () => {
@@ -214,14 +217,14 @@ it('失效记录须明确清除，不重发草稿；可打开已确认首发且�
   show(open)
   const editor = screen.getByRole<HTMLTextAreaElement>('textbox', { name: '设计需求' })
   fireEvent.change(editor, { target: { value: message } })
-  fireEvent.click(await screen.findByRole('button', { name: '保留草稿，重新选择' }))
+  fireEvent.click(await screen.findByRole('button', { name: '返回编辑' }))
   expect(editor.value).toBe(message)
   expect(sends).toEqual([])
   fireEvent.change(screen.getByRole('combobox', { name: '发布 Agent' }), {
     target: { value: 'codex' },
   })
   fireEvent.click(screen.getByRole('button', { name: '发送设计需求' }))
-  fireEvent.click(await screen.findByRole('button', { name: '打开已发布设计' }))
+  fireEvent.click(await screen.findByRole('button', { name: '打开设计' }))
   expect(sends).toEqual([{ projectId: 'p-alpha', message }])
   expect(open).toHaveBeenCalledWith('FirstPublishedArtifact1')
 })
