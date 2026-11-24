@@ -120,7 +120,7 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
       <main className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col px-4 sm:px-6">
         <div className="flex flex-none flex-col gap-4 pb-5 pt-6 sm:pt-10">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h1 className="text-3xl font-semibold tracking-tight">制品</h1>
+            <h1 className="text-3xl font-semibold tracking-tight">作品</h1>
             {!cloudHub && (
               <Button leftIcon={<Plus size={16} />} onClick={openDesign}>
                 新建设计
@@ -135,7 +135,7 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
         </div>
         <ScrollArea
           ref={scrollRef}
-          aria-label="制品列表"
+          aria-label="作品列表"
           className="-mx-1 flex-1 px-1 pt-1 pb-6"
           aria-busy={!failure && isLoading}
           onScroll={rememberScroll}
@@ -143,7 +143,7 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
           {failure && (
             <Alert
               tone="danger"
-              title="无法读取制品库"
+              title="无法打开作品库"
               action={{ label: '重试', onClick: retryLibrary }}
             />
           )}

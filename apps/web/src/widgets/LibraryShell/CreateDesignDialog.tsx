@@ -64,7 +64,7 @@ function getConnectionNotice(
   connection: AgentConnection | undefined,
 ): { text: string; command?: string } | null {
   if (error instanceof ApiError && error.status === 401) {
-    return { text: '登录本机制品库', command: 'akasha open' }
+    return { text: '登录本机作品库', command: 'akasha open' }
   }
   if (status === 'error') return { text: '无法读取 Agent 连接' }
   if (status === 'pending') return null

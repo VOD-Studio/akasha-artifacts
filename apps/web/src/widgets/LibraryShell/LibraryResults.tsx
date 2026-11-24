@@ -43,11 +43,11 @@ export function LibraryResults({
   onOpenArtifact,
 }: LibraryResultsProps) {
   if (!hasArtifacts) {
-    if (cloudHub) return <Empty variant="plain" title="没有可访问的制品" />
+    if (cloudHub) return <Empty variant="plain" title="没有可访问的作品" />
     return (
       <Empty
         variant="plain"
-        title="还没有制品"
+        title="还没有作品"
         action={
           <Button asChild size="sm" variant="ghost">
             <a
@@ -66,7 +66,7 @@ export function LibraryResults({
     return (
       <Empty
         variant="plain"
-        title="未找到制品"
+        title="未找到作品"
         action={
           <Button size="sm" variant="outline" onClick={onResetFilters}>
             清除筛选

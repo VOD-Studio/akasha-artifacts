@@ -508,11 +508,11 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       '/a/LegacyLibraryItemAbC123',
     )
     fireEvent.keyDown(window, { key: 'k', ctrlKey: true })
-    const search = screen.getByRole('searchbox', { name: '搜索制品' })
+    const search = screen.getByRole('searchbox', { name: '搜索作品' })
     expect(document.activeElement).toBe(search)
     fireEvent.change(search, { target: { value: '状态' } })
     expect(screen.queryByText('旧任务参考')).toBeNull()
-    const scroller = screen.getByRole('region', { name: '制品列表' })
+    const scroller = screen.getByRole('region', { name: '作品列表' })
     scroller.scrollTop = 80
     fireEvent.scroll(scroller)
 
@@ -520,8 +520,8 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     expect(opened).toEqual([SAMPLE_ARTIFACT.publicId])
     library.unmount()
     openLibrary()
-    expect(screen.getByRole<HTMLInputElement>('searchbox', { name: '搜索制品' }).value).toBe('状态')
-    expect(screen.getByRole('region', { name: '制品列表' }).scrollTop).toBe(80)
+    expect(screen.getByRole<HTMLInputElement>('searchbox', { name: '搜索作品' }).value).toBe('状态')
+    expect(screen.getByRole('region', { name: '作品列表' }).scrollTop).toBe(80)
     expect(screen.queryByText('旧任务参考')).toBeNull()
   })
 

@@ -38,7 +38,7 @@ export function LibraryMenu({ projects, onOpenWithdrawn }: LibraryMenuProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" iconOnly aria-label="管理制品库" title="管理制品库">
+        <Button variant="ghost" size="sm" iconOnly aria-label="管理作品库" title="管理作品库">
           <Ellipsis size={16} />
         </Button>
       </DropdownMenuTrigger>
