@@ -78,16 +78,14 @@ it('未连接项目保留需求草稿；只有选中的已授权项目会接收�
     target: { value: message },
   })
   await screen.findByText('akasha agent connect --project .')
-  expect(screen.getByRole<HTMLButtonElement>('button', { name: '发送设计需求' }).disabled).toBe(
-    true,
-  )
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: '发送' }).disabled).toBe(true)
   form.unmount()
 
   show(open)
   expect(screen.getByRole<HTMLTextAreaElement>('textbox', { name: '设计需求' }).value).toBe(message)
   await choose('项目', '预约项目')
   await choose('发布 Agent', '本机 Codex')
-  fireEvent.click(screen.getByRole('button', { name: '发送设计需求' }))
+  fireEvent.click(screen.getByRole('button', { name: '发送' }))
   await screen.findByRole('button', { name: '返回编辑' })
   expect(sent).toEqual([{ projectId: 'p-alpha', message }])
   expect(screen.queryByRole('button', { name: '打开设计' })).toBeNull()
@@ -155,11 +153,9 @@ it('收到受理响应前关闭并重开，继续跟踪同一个会话且不重�
   fireEvent.change(screen.getByRole('textbox', { name: '设计需求' }), {
     target: { value: message },
   })
-  fireEvent.click(screen.getByRole('button', { name: '发送设计需求' }))
+  fireEvent.click(screen.getByRole('button', { name: '发送' }))
   await waitFor(() => expect(requests).toContain('/api/v1/agent/design'))
-  expect(screen.getByRole('button', { name: '发送设计需求' }).getAttribute('aria-busy')).toBe(
-    'true',
-  )
+  expect(screen.getByRole('button', { name: '发送' }).getAttribute('aria-busy')).toBe('true')
 
   const dialog = screen.getByRole('dialog', { name: '新建设计' })
   const close = within(dialog).getAllByRole('button', { name: '关闭' }).at(-1)
@@ -221,7 +217,7 @@ it('失效记录须明确清除，不重发草稿；可打开已确认首发且�
   expect(editor.value).toBe(message)
   expect(sends).toEqual([])
   await choose('发布 Agent', '本机 Codex')
-  fireEvent.click(screen.getByRole('button', { name: '发送设计需求' }))
+  fireEvent.click(screen.getByRole('button', { name: '发送' }))
   fireEvent.click(await screen.findByRole('button', { name: '打开设计' }))
   expect(sends).toEqual([{ projectId: 'p-alpha', message }])
   expect(open).toHaveBeenCalledWith('FirstPublishedArtifact1')

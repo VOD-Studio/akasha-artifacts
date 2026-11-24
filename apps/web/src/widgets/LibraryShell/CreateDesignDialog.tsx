@@ -189,7 +189,7 @@ export function CreateDesignDialog({ projects, open, onClose, onOpenArtifact }: 
               disabled={!canSend && !send.isPending}
               loading={send.isPending}
             >
-              发送设计需求
+              发送
             </Button>
           )}
         </>
