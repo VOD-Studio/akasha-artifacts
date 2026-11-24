@@ -25,7 +25,6 @@ import { type ArtifactDetailResponse, artifactKeys } from '../src/entities/artif
 import { projectKeys } from '../src/entities/project'
 import { useSelectionStore } from '../src/entities/selection'
 import { useWorkspaceStore } from '../src/entities/workspace'
-import { ElementPickerButton } from '../src/features/element-picker'
 import { RuntimeErrorPanel } from '../src/features/error-recovery'
 import { applyRealtimeEventToCache } from '../src/features/live-sync'
 import { AnnotationComposer, ArtifactReviewPanel } from '../src/features/review'
@@ -89,9 +88,8 @@ afterEach(() => {
     sentErrorFingerprints: {},
   })
   useSelectionStore.setState({
-    pickerActive: false,
-    hoveredElement: null,
     selectedByArtifact: {},
+    layersByArtifact: {},
     focusedFeedbackId: null,
   })
 })
@@ -693,21 +691,11 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     expect(container.querySelector('[data-error-line="true"]')).toBeNull()
   })
 
-  it('L1 元素指认、外壳叠层选中框与 ReviewRound 草稿/提交/撤回防打断闭环', async () => {
+  it('元素选区、图钉与 ReviewRound 草稿、提交和撤回互不打断', async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
 
-    // 1. 指认按钮与 Esc 快捷键退出
-    render(<ElementPickerButton />)
-    const pickerBtn = screen.getByRole('button', { name: '指认元素' })
-    fireEvent.click(pickerBtn)
-    expect(useSelectionStore.getState().pickerActive).toBe(true)
-    fireEvent.keyDown(window, { key: 'Escape' })
-    expect(useSelectionStore.getState().pickerActive).toBe(false)
-    cleanup()
-
-    // 2. 在外壳叠层中渲染悬停框、选中框与批注图钉（iframe 内零外壳 DOM）
     const posted: ShellToSandboxMessage[] = []
     const draftingRound: ReviewRound = {
       id: 'round_1',
@@ -793,7 +781,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     const hashParams = new URLSearchParams((iframe?.getAttribute('src') ?? '').split('#')[1] ?? '')
     const nonce = hashParams.get('nonce') ?? ''
 
-    // 开启指认 → 发送 inspect.start → 沙盒回传 hover & select → 外壳渲染叠层高亮框
+    // 外壳在画布内命中，沙盒只返回坐标与定位，不开启第二种工具。
     act(() => {
       window.dispatchEvent(
         new MessageEvent('message', {
@@ -802,54 +790,26 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
           source: iframeWin,
         }),
       )
-      useSelectionStore.getState().setPickerActive(true)
     })
-    expect(posted.some((m) => m.type === 'inspect.start')).toBe(true)
     // 同步向沙盒注册当前版本图钉跟踪
     expect(posted.some((m) => m.type === 'pins.track')).toBe(true)
 
-    // 滚动/重绘发回的 reason='sync' 坐标同步不得意外退出指认模式
+    const hit = screen.getByRole('button', { name: /^选择画板：/ })
+    vi.spyOn(hit, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 800, 600))
+    fireEvent.click(hit, { detail: 1, clientX: 70, clientY: 90 })
+    const request = posted.findLast((message) => message.type === 'inspect.at')
+    expect(request).toMatchObject({ purpose: 'select', version: 2 })
+    if (request?.type !== 'inspect.at') throw new Error('画布未请求命中')
     act(() => {
       window.dispatchEvent(
         new MessageEvent('message', {
           data: {
             v: PROTOCOL_VERSION,
             nonce,
-            type: 'inspect.select',
-            reason: 'sync',
-            element: {
-              blockId: 'hero',
-              loc: '4:5',
-              rect: { x: 10, y: 20, width: 120, height: 32 },
-            },
-          },
-          origin: 'null',
-          source: iframeWin,
-        }),
-      )
-    })
-    expect(useSelectionStore.getState().pickerActive).toBe(true)
-
-    act(() => {
-      window.dispatchEvent(
-        new MessageEvent('message', {
-          data: {
-            v: PROTOCOL_VERSION,
-            nonce,
-            type: 'inspect.hover',
-            element: { loc: '4:5', rect: { x: 10, y: 20, width: 120, height: 32 } },
-          },
-          origin: 'null',
-          source: iframeWin,
-        }),
-      )
-      window.dispatchEvent(
-        new MessageEvent('message', {
-          data: {
-            v: PROTOCOL_VERSION,
-            nonce,
-            type: 'inspect.select',
-            reason: 'click',
+            type: 'inspect.target',
+            purpose: 'select',
+            requestId: request.requestId,
+            version: 2,
             element: {
               blockId: 'hero',
               loc: '4:5',
@@ -878,10 +838,11 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       )
     })
 
-    expect(useSelectionStore.getState().pickerActive).toBe(false)
+    expect(screen.queryByRole('dialog', { name: '批注与评审' })).toBeNull()
     expect(screen.getByTestId('overlay-select-box')).toBeTruthy()
     const livePin = screen.getByTestId('annotation-pin-fb_cur')
     expect(livePin.getAttribute('style')).toContain('translate3d(238px, 130px, 0)')
+    act(() => useWorkspaceStore.getState().setInspectorTab('review'))
     // 旧版本图钉不叠加在新版本画布上，但在右侧面板中清晰标注「针对 v1」
     expect(screen.queryByTestId('annotation-pin-fb_old')).toBeNull()
     expect(screen.getByTestId('old-version-badge-fb_old').textContent).toBe('针对 v1')

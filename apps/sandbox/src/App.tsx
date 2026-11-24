@@ -189,8 +189,8 @@ export function SandboxApp({
       } else if (msg.type === 'apply.rollback') {
         const committed = committedPayloadRef.current
         if (committed?.version === msg.version) setPayload(committed)
-      } else if (msg.type === 'inspect.text.at' && !committedPayloadRef.current?.playback) {
-        inspector.inspectTextAt(msg)
+      } else if (msg.type === 'inspect.at' && !committedPayloadRef.current?.playback) {
+        inspector.inspectAt(msg)
       } else if (msg.type === 'visual.inspect') {
         visualInspector.setActive(msg.active)
       } else if (msg.type === 'state') {
@@ -203,10 +203,6 @@ export function SandboxApp({
             message: err instanceof Error ? err.message : String(err),
           })
         }
-      } else if (msg.type === 'inspect.start') {
-        inspector.startInspecting()
-      } else if (msg.type === 'inspect.stop') {
-        inspector.stopInspecting()
       } else if (msg.type === 'inspect.layers.watch') {
         setWatchLayers(msg.active)
       } else if (msg.type === 'highlight') {

@@ -92,14 +92,6 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     ...BridgeEnvelopeBase,
-    type: z.literal('inspect.start'),
-  }),
-  z.object({
-    ...BridgeEnvelopeBase,
-    type: z.literal('inspect.stop'),
-  }),
-  z.object({
-    ...BridgeEnvelopeBase,
     type: z.literal('highlight'),
     // null 表示清除高亮
     element: ElementRefSchema.nullable(),
@@ -165,8 +157,9 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     ...BridgeEnvelopeBase,
-    // 双击命中测试；坐标是沙盒视口 CSS 像素，不派发原型的点击事件。
-    type: z.literal('inspect.text.at'),
+    // 坐标用沙盒视口 CSS 像素；命中不派发作者的点击事件。
+    type: z.literal('inspect.at'),
+    purpose: z.enum(['select', 'text']),
     requestId: z.string().min(1).max(64),
     version: z.number().int().positive(),
     x: z.number().nonnegative(),
@@ -253,21 +246,13 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     ...BridgeEnvelopeBase,
-    // 指认模式下的悬停；`element` 为 null 表示没有悬停目标
-    type: z.literal('inspect.hover'),
-    element: ElementRefSchema.nullable(),
-  }),
-  z.object({
-    ...BridgeEnvelopeBase,
     type: z.literal('inspect.select'),
     element: ElementRefSchema,
-    // 区分用户真实点击选中（click）与滚动/缩放/高亮触发的几何坐标同步（sync）
-    reason: z.enum(['click', 'sync']).optional(),
+    // 已选对象在沙盒内滚动或重排后的坐标。
+    reason: z.literal('sync'),
     layerId: LayerIdSchema.optional(),
     // 图层定位和坐标同步使用精确选择器，不回退到祖先的块标识
     layerSelector: z.string().min(1).max(1024).optional(),
-    // 点击节点自身经唯一性检查的声明块；祖先块只属于普通批注定位。
-    layerBlockId: z.string().min(1).max(512).optional(),
     version: z.number().int().min(1).optional(),
   }),
   z.object({
@@ -306,11 +291,20 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     ...BridgeEnvelopeBase,
-    type: z.literal('inspect.text.target'),
+    type: z.literal('inspect.target'),
+    purpose: z.enum(['select', 'text']),
     requestId: z.string().min(1).max(64),
     version: z.number().int().positive(),
     // 未命中元素时为空；有元素但不能安全改写时只提供批注定位。
     element: ElementRefSchema.nullable(),
+    layer: z
+      .object({
+        id: LayerIdSchema,
+        selector: z.string().min(1).max(1024),
+        // 仅使用命中节点自身唯一的声明块，不回退到祖先。
+        blockId: z.string().min(1).max(512).optional(),
+      })
+      .optional(),
     // 仅为命中节点自身唯一的静态源码位置，不沿祖先查找。
     loc: z
       .string()

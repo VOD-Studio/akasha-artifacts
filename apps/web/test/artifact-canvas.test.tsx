@@ -434,7 +434,7 @@ it('重复从检查器选择同一画板，会找回已被移出视口的选板'
   ).toBeLessThanOrEqual(1000)
 })
 
-it('图层双向定位只在该画板与版本生效，悬停和旧坐标不改选区', () => {
+it('图层选择跟随画布点击，旧请求和旧坐标不改选区', () => {
   stubResizeObserver()
   const detail = detailFor()
   const view = showWorkspace(detail)
@@ -494,19 +494,29 @@ it('图层双向定位只在该画板与版本生效，悬停和旧坐标不改�
     within(inspector).getByText('<h1', { selector: 'mark' }).closest('code')?.textContent,
   ).toContain('<h1>桌面预约</h1>')
 
-  fireEvent.click(within(inspector).getByRole('button', { name: '指认元素' }))
   const element = { selector, rect: { x: 14, y: 7, width: 140, height: 25 } }
-  mobile.receive({ type: 'inspect.hover', element })
-  expect(desktopChoice.getAttribute('aria-pressed')).toBe('true')
-  // 只允许活动画板接收沙盒输入；跨板指认先选中另一块画板。
-  fireEvent.click(screen.getByRole('button', { name: '选择画板：手机首页' }))
   mobile.receive({
-    type: 'inspect.select',
-    reason: 'click',
+    type: 'inspect.target',
+    purpose: 'select',
+    requestId: 'old',
+    version: 1,
+    element,
+  })
+  expect(desktopChoice.getAttribute('aria-pressed')).toBe('true')
+  const hit = screen.getByRole('button', { name: '选择画板：手机首页' })
+  vi.spyOn(hit, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 50, 195, 422))
+  fireEvent.click(hit, { detail: 1, clientX: 120, clientY: 80 })
+  const request = mobile.post.mock.calls.find(
+    ([message]) => message.type === 'inspect.at' && message.purpose === 'select',
+  )?.[0]
+  expect(request).toMatchObject({ version: 1, x: 40, y: 60 })
+  mobile.receive({
+    type: 'inspect.target',
+    purpose: 'select',
+    requestId: request.requestId,
     element,
     version: 1,
-    layerId: mobileLayer.id,
-    layerSelector: selector,
+    layer: { id: mobileLayer.id, selector },
   })
   mobile.receive(report([mobileLayer]))
   expect(within(inspector).getByRole('button', { name: '手机首页', pressed: true })).toBeTruthy()
@@ -1215,10 +1225,13 @@ it('双击已有便签只修改同画板原生对象的文本并保留版本基�
   const hit = screen.getByRole('button', { name: '选择画板：宽屏首页' })
   vi.spyOn(hit, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 50, 720, 450))
   fireEvent.doubleClick(hit, { clientX: 135, clientY: 85 })
-  const request = frame.post.mock.calls.find(([message]) => message.type === 'inspect.text.at')?.[0]
+  const request = frame.post.mock.calls.find(
+    ([message]) => message.type === 'inspect.at' && message.purpose === 'text',
+  )?.[0]
   expect(request).toMatchObject({ version: 1, x: 70, y: 70 })
   frame.receive({
-    type: 'inspect.text.target',
+    type: 'inspect.target',
+    purpose: 'text',
     version: 1,
     requestId: request.requestId,
     element: { blockId: 'design-layer:note', selector: 'aside > div', textPreview: '原文' },

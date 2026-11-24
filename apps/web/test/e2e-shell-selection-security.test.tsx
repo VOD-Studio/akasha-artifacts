@@ -40,9 +40,8 @@ afterEach(() => {
     sentErrorFingerprints: {},
   })
   useSelectionStore.setState({
-    pickerActive: false,
-    hoveredElement: null,
     selectedByArtifact: {},
+    layersByArtifact: {},
     focusedFeedbackId: null,
   })
 })
@@ -173,10 +172,26 @@ describe('Web 外壳端到端回归（iframe 安全隔离 + 选区防抖同步 +
     expect(screen.queryByText('forged origin error')).toBeNull()
     expect(screen.queryByText('forged nonce error')).toBeNull()
 
-    // 3. 指认元素会同步定位，但未显式投递的批注正文不能随选区发给 Daemon。
+    // 3. 画布选中元素会同步定位，但当中的批注草稿必须留在浏览器。
     const textarea = screen.getByLabelText('批注内容') as HTMLTextAreaElement
     fireEvent.change(textarea, { target: { value: '请保留这段尚未发送的评审草稿' } })
-    fireEvent.click(screen.getByRole('button', { name: '指认元素' }))
+    const frameWindow = iframe?.contentWindow
+    if (!frameWindow) throw new Error('缺少画板窗口')
+    const post = vi.spyOn(frameWindow, 'postMessage').mockImplementation(() => {})
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          origin: 'null',
+          source: frameWindow,
+          data: { v: PROTOCOL_VERSION, nonce, type: 'ready' },
+        }),
+      )
+    })
+    const hit = screen.getByRole('button', { name: /^选择画板：/ })
+    vi.spyOn(hit, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 400, 300))
+    fireEvent.click(hit, { detail: 1, clientX: 20, clientY: 30 })
+    const request = post.mock.calls.find(([message]) => message.type === 'inspect.at')?.[0]
+    expect(request).toMatchObject({ purpose: 'select', version: 1 })
 
     act(() => {
       window.dispatchEvent(
@@ -186,8 +201,10 @@ describe('Web 外壳端到端回归（iframe 安全隔离 + 选区防抖同步 +
           data: {
             v: PROTOCOL_VERSION,
             nonce,
-            type: 'inspect.select',
-            reason: 'click',
+            type: 'inspect.target',
+            purpose: 'select',
+            version: 1,
+            requestId: request.requestId,
             element: {
               blockId: 'panel',
               loc: '1:1',

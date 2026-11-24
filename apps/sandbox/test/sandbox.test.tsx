@@ -62,17 +62,22 @@ describe('apps/sandbox 运行时与安全边界', () => {
 
     // 错误 origin 应被拒收
     dispatchFromHost(
-      { v: PROTOCOL_VERSION, nonce, type: 'inspect.start' },
+      { v: PROTOCOL_VERSION, nonce, type: 'highlight', element: null },
       { origin: 'https://evil.example' },
     )
     // 错误 nonce 应被拒收
-    dispatchFromHost({ v: PROTOCOL_VERSION, nonce: 'wrong-nonce', type: 'inspect.start' })
+    dispatchFromHost({
+      v: PROTOCOL_VERSION,
+      nonce: 'wrong-nonce',
+      type: 'highlight',
+      element: null,
+    })
     // 非法结构应被拒收
     dispatchFromHost({ v: PROTOCOL_VERSION, nonce, type: 'unknown.cmd' })
     expect(received).toHaveLength(0)
 
     // 合法消息应通过
-    dispatchFromHost({ v: PROTOCOL_VERSION, nonce, type: 'inspect.start' })
+    dispatchFromHost({ v: PROTOCOL_VERSION, nonce, type: 'highlight', element: null })
     expect(received).toHaveLength(1)
     bridge.stop()
   })
@@ -441,7 +446,7 @@ describe('apps/sandbox 运行时与安全边界', () => {
     consoleSpy.mockRestore()
   })
 
-  it('SandboxInspector 按 blockId > loc > selector 优先级命中元素且不在沙盒内绘制外壳 UI', async () => {
+  it('按画布坐标命中节点但不触发作者控件，保留批注定位', async ({ onTestFinished }) => {
     const { bridge, posted, dispatchFromHost, nonce } = createMockBridgeHarness()
     const stateStore = new ArtifactStateStore()
     const preserved = new PreservedStateManager({ debounceMs: 0 })
@@ -484,32 +489,49 @@ describe('apps/sandbox 运行时与安全边界', () => {
     const listItem = await screen.findByText('乙')
     const domCountBeforeInspect = container.querySelectorAll('*').length
 
-    // 启动元素指认模式
-    act(() => {
-      dispatchFromHost({ v: PROTOCOL_VERSION, nonce, type: 'inspect.start' })
+    const original = Object.getOwnPropertyDescriptor(document, 'elementFromPoint')
+    const hitTest = vi.fn<(x: number, y: number) => Element | null>()
+    Object.defineProperty(document, 'elementFromPoint', { value: hitTest, configurable: true })
+    onTestFinished(() => {
+      if (original) Object.defineProperty(document, 'elementFromPoint', original)
+      else Reflect.deleteProperty(document, 'elementFromPoint')
     })
-
-    // 点击带 data-ak-block 的结构化块子节点：优先解析出 blockId，同时附带精确 loc 与 rect
-    fireEvent.click(heading)
-    const selectHeading = [...posted].reverse().find((m) => m.data.type === 'inspect.select')
-    expect(
-      selectHeading?.data.type === 'inspect.select' && selectHeading.data.element,
-    ).toMatchObject({
+    const pick = (target: Element, version: number) => {
+      const requestId = `pick-${posted.length}`
+      hitTest.mockReturnValueOnce(target)
+      act(() =>
+        dispatchFromHost({
+          v: PROTOCOL_VERSION,
+          nonce,
+          type: 'inspect.at',
+          purpose: 'select',
+          x: 10,
+          y: 20,
+          requestId,
+          version,
+        }),
+      )
+      const result = posted.findLast(
+        ({ data }) => data.type === 'inspect.target' && data.requestId === requestId,
+      )
+      return result?.data.type === 'inspect.target' ? result.data.element : undefined
+    }
+    const clicked = vi.fn()
+    heading.addEventListener('click', clicked)
+    expect(pick(heading, 1)).toMatchObject({
       blockId: 'summary-card',
       loc: '6:9',
       textPreview: '概览标题',
     })
+    expect(clicked).not.toHaveBeenCalled()
 
-    // 点击 .map() 生成的动态列表项：无 blockId，降级到精确源码 loc 与 selector
-    fireEvent.click(listItem)
-    const selectItem = [...posted].reverse().find((m) => m.data.type === 'inspect.select')
-    expect(selectItem?.data.type === 'inspect.select' && selectItem.data.element).toMatchObject({
+    // .map() 生成的动态项没有块标识，仍可按精确源码位置锚定。
+    const selectedItem = pick(listItem, 1)
+    expect(selectedItem).toMatchObject({
       loc: '10:11',
       textPreview: '乙',
     })
-    expect(
-      selectItem?.data.type === 'inspect.select' && selectItem.data.element.blockId,
-    ).toBeUndefined()
+    expect(selectedItem?.blockId).toBeUndefined()
 
     // 验证沙盒内未注入任何外壳高亮 UI DOM
     expect(container.querySelectorAll('*').length).toBe(domCountBeforeInspect)
@@ -527,9 +549,7 @@ describe('apps/sandbox 运行时与安全边界', () => {
       })
     })
     const htmlPara = await screen.findByText('纯 HTML 段落')
-    fireEvent.click(htmlPara)
-    const selectHtml = [...posted].reverse().find((m) => m.data.type === 'inspect.select')
-    expect(selectHtml?.data.type === 'inspect.select' && selectHtml.data.element).toMatchObject({
+    expect(pick(htmlPara, 2)).toMatchObject({
       loc: '2:3',
       textPreview: '纯 HTML 段落',
     })

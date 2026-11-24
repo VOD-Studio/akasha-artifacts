@@ -24,7 +24,6 @@ import {
 } from '@/entities/artifact'
 import { useSelectionStore } from '@/entities/selection'
 import { useWorkspaceStore } from '@/entities/workspace'
-import { ElementPickerButton } from '@/features/element-picker'
 import { PropsPanel } from '@/features/props-panel'
 import { ARTIFACT_TYPE_LABELS } from '@/shared/lib/format'
 import {
@@ -63,7 +62,6 @@ interface BoardInspectorProps {
   onAskAgent?: BoardInspectorHandoff
   /** 树选区包含运行时节点 id；传 null 清除已有图层选区。 */
   onSelectLayer: (layer: CanvasLayer | null) => void
-  onStartPicking: () => void
   onNavigate: (location: CanvasLocation) => void
 }
 
@@ -87,7 +85,6 @@ export function BoardInspector({
   onHandoff,
   onAskAgent,
   onSelectLayer,
-  onStartPicking,
   onNavigate,
 }: BoardInspectorProps) {
   const open = useWorkspaceStore((state) => state.inspectorTab === 'inspect')
@@ -203,17 +200,7 @@ export function BoardInspector({
             <section aria-label="页面、画板与图层" className="border-b border-border pb-3">
               <div className="mb-2 flex items-center justify-between gap-2 text-sm font-medium">
                 <h2>页面、画板与图层</h2>
-                <div className="flex items-center gap-1.5">
-                  {layersAvailable ? (
-                    <ElementPickerButton
-                      onStart={() => {
-                        setExtraLayers(null)
-                        onStartPicking()
-                      }}
-                    />
-                  ) : null}
-                  <Badge tone="neutral">v{version.version}</Badge>
-                </div>
+                <Badge tone="neutral">v{version.version}</Badge>
               </div>
               <div className="max-h-[min(20rem,42dvh)] space-y-1 overflow-auto">
                 {document.pages.map((entry) => (

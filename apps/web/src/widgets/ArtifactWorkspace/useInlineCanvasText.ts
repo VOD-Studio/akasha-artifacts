@@ -33,7 +33,7 @@ export type CanvasTextDraft = { anchor: Point } & (
   | { kind: 'readOnly'; element: ElementRef; message: string }
 )
 
-type TextTarget = Extract<SandboxToShellMessage, { type: 'inspect.text.target' }>
+type TextTarget = Extract<SandboxToShellMessage, { type: 'inspect.target' }>
 interface Request {
   id: string
   board: CanvasBoard
@@ -140,7 +140,8 @@ export function useInlineCanvasText(input: TextEditingInput) {
       const id = crypto.randomUUID()
       pending.current = { id, board: loaded, anchor, base: input.version }
       input.send(board.id, {
-        type: 'inspect.text.at',
+        type: 'inspect.at',
+        purpose: 'text',
         requestId: id,
         version: input.version.version,
         x: point.x,

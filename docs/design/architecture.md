@@ -247,9 +247,9 @@ sequenceDiagram
     participant S as 服务端
     participant Sh as 外壳
     participant Sb as 沙盒
-    Sh->>Sb: Bridge inspect.start
-    Sb-->>Sh: inspect.select {blockId, loc, rect, selector}
-    Sh->>S: 保存选中态与草稿评论 (draft=true, 不唤醒)
+    Sh->>Sb: inspect.at {requestId, version, x, y, purpose}
+    Sb-->>Sh: inspect.target {requestId, version, element}
+    Sh->>S: 同步选区；显式保存批注草稿不唤醒 Agent
     Sh->>S: POST round/submit (锁定本轮)
     alt 支持异步 Monitor
         S-->>Hk: 事件通知 (round.submitted)
@@ -295,8 +295,8 @@ sequenceDiagram
 
 | 方向        | 消息                                                                                                                                                            |
 | :---------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 外壳 → 沙盒 | `render`（含 `preservedState`）、`state`、`inspect.start`、`inspect.stop`、`highlight`、`apply.preview`、`apply.rollback`、`visual.inspect`、`storage.response` |
-| 沙盒 → 外壳 | `ready`、`rendered`、`error`、`resize`、`viewState.snapshot`、`inspect.hover`、`inspect.select`、`visual.select`、`annotation.request`、`storage.request`       |
+| 外壳 → 沙盒 | `render`（含 `preservedState`）、`state`、`inspect.at`、`highlight`、`apply.preview`、`apply.rollback`、`visual.inspect`、`storage.response` |
+| 沙盒 → 外壳 | `ready`、`rendered`、`error`、`resize`、`viewState.snapshot`、`inspect.target`、`inspect.select`（几何同步）、`visual.select`、`annotation.request`、`storage.request` |
 
 规则：每条消息都带 `v`（协议版本）和 `nonce`（会话标识）。接收方必须校验 `event.origin` 并用 zod 解析消息；校验失败的消息直接丢弃。
 

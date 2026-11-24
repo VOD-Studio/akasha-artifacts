@@ -8,7 +8,6 @@ import { Button } from '@akasha/ui/button'
 import { ArrowLeft, PanelLeft, Share2 } from 'lucide-react'
 import type { Ref } from 'react'
 import { useArtifactManagementQuery } from '@/entities/artifact'
-import { useSelectionStore } from '@/entities/selection'
 import { useWorkspaceStore, type WorkspaceViewMode } from '@/entities/workspace'
 import { HubAccountButton } from '@/features/hub'
 import { VersionTimeline } from '@/features/version-timeline'
@@ -73,10 +72,7 @@ export function TopBar({
   const offline = !editing && wsStatus === 'closed'
   const statusLabel = shareAccess ? getShareRole(shareAccess, fixedVersion) : undefined
 
-  const showTool = (mode: WorkspaceViewMode) => {
-    useSelectionStore.getState().setPickerActive(false)
-    setViewMode(mode)
-  }
+  const showTool = (mode: WorkspaceViewMode) => setViewMode(mode)
   const showCanvas = () => showTool('preview')
   const openQuickJump = () => setCommandPaletteOpen(true)
 

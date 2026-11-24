@@ -60,11 +60,10 @@ interface ArtifactFrameProps {
   onPlayable: (board: CanvasBoard, version: number, playable: boolean) => void
   watchLayers: boolean
   onLayers: (id: string, version: number, layers: CanvasLayer[], truncated: boolean) => void
-  onLayerPicked: (id: string) => void
   /** 仅把当前设计帧的命中回报交给工作区；请求标识由工作区核对。 */
-  onTextTarget: (
+  onElementTarget: (
     boardId: string,
-    message: Extract<SandboxToShellMessage, { type: 'inspect.text.target' }>,
+    message: Extract<SandboxToShellMessage, { type: 'inspect.target' }>,
   ) => void
   /** 直改模式下沙盒上报选中元素时调用。 */
   onVisualSelect: (message: Extract<SandboxToShellMessage, { type: 'visual.select' }>) => void
@@ -125,8 +124,7 @@ export function ArtifactFrame({
   onPlayable,
   watchLayers,
   onLayers,
-  onLayerPicked,
-  onTextTarget,
+  onElementTarget,
   onVisualSelect,
 }: ArtifactFrameProps) {
   const artifactId = artifact.publicId
@@ -172,9 +170,7 @@ export function ArtifactFrame({
   }, [sandboxOrigin, nonce])
 
   const [error, setError] = useState<SandboxErrorRecord | null>(null)
-  const [hovered, setHovered] = useState<ElementRef | null>(null)
   const [livePinRects, setLivePinRects] = useState<Record<string, ElementRect | null>>({})
-  const pickerActive = useSelectionStore((s) => s.pickerActive)
   const selection = useSelectionStore((s) => selectionForVersion(s, artifactId, versionNumber))
   const selected =
     !playback && selection && belongsToBoard(selection, id, scoped) ? selection : null
@@ -199,7 +195,6 @@ export function ArtifactFrame({
     renderId: number | undefined
     overviewAnimation: boolean | undefined
     pins: readonly Feedback[]
-    inspecting: boolean
     watchingLayers: boolean
   } | null>(null)
   const latest = useRef({
@@ -216,8 +211,7 @@ export function ArtifactFrame({
     onPlayable,
     watchLayers,
     onLayers,
-    onLayerPicked,
-    onTextTarget,
+    onElementTarget,
   })
   latest.current = {
     nonce,
@@ -233,8 +227,7 @@ export function ArtifactFrame({
     onPlayable,
     watchLayers,
     onLayers,
-    onLayerPicked,
-    onTextTarget,
+    onElementTarget,
   }
 
   useEffect(() => {
@@ -394,68 +387,33 @@ export function ArtifactFrame({
             latest.current.onLayers(id, activeVersion, message.layers, message.truncated)
           }
           break
-        case 'inspect.text.target':
+        case 'inspect.target':
           if (!isolated && message.version === activeVersion) {
             const element = message.element
               ? bindSandboxReference(message.element, latest.current.board)
               : null
-            latest.current.onTextTarget(id, { ...message, element })
+            latest.current.onElementTarget(id, { ...message, element })
           }
-          break
-        case 'inspect.hover':
-          if (isolated || !latest.current.interactive || !selectionStore.pickerActive) break
-          setHovered(
-            message.element ? bindSandboxReference(message.element, latest.current.board) : null,
-          )
           break
         case 'inspect.select': {
           if (isolated) break
           if (message.version !== undefined && message.version !== activeVersion) break
           const element = bindSandboxReference(message.element, latest.current.board)
           if (!element) break
-          if (message.reason === 'sync') {
-            const currentSelection = selectionForVersion(selectionStore, artifactId, activeVersion)
-            const layer = selectionStore.layersByArtifact[artifactId]
-            if (!currentSelection || !belongsToBoard(currentSelection, id, scoped)) break
-            if (layer && (layer.id !== message.layerId || message.version !== activeVersion)) break
-            // 保留业务定位；运行节点重排后只跟踪同一个节点的新选择器。
-            selectionStore.setSelectedElement(
-              artifactId,
-              {
-                ...currentSelection,
-                ...(layer && message.layerSelector ? { selector: message.layerSelector } : {}),
-                rect: element.rect,
-              },
-              layer,
-            )
-          } else if (latest.current.interactive && selectionStore.pickerActive) {
-            const workspace = useWorkspaceStore.getState()
-            if (
-              workspace.inspectorTab === 'inspect' &&
-              message.layerId &&
-              message.layerSelector &&
-              message.version === activeVersion
-            ) {
-              selectionStore.setSelectedElement(
-                artifactId,
-                {
-                  selector: message.layerSelector,
-                  rect: element.rect,
-                  ...(element.blockId?.startsWith(DESIGN_LAYER_BLOCK_PREFIX)
-                    ? { blockId: element.blockId }
-                    : {}),
-                  ...(scoped ? { boardId: id } : {}),
-                  ...(message.layerBlockId ? { blockId: message.layerBlockId } : {}),
-                },
-                { id: message.layerId, version: activeVersion },
-              )
-              latest.current.onLayerPicked(id)
-            } else {
-              selectionStore.setSelectedElement(artifactId, element)
-              if (workspace.inspectorTab !== 'inspect') workspace.setInspectorTab('review')
-            }
-            selectionStore.setPickerActive(false)
-          }
+          const currentSelection = selectionForVersion(selectionStore, artifactId, activeVersion)
+          const layer = selectionStore.layersByArtifact[artifactId]
+          if (!currentSelection || !belongsToBoard(currentSelection, id, scoped)) break
+          if (layer && (layer.id !== message.layerId || message.version !== activeVersion)) break
+          // 重排后只跟踪同一个节点的新坐标，不改变批注归属。
+          selectionStore.setSelectedElement(
+            artifactId,
+            {
+              ...currentSelection,
+              ...(layer && message.layerSelector ? { selector: message.layerSelector } : {}),
+              rect: element.rect,
+            },
+            layer,
+          )
           break
         }
         case 'pins.rects':
@@ -538,7 +496,7 @@ export function ArtifactFrame({
     }
   }, [artifactId, id, scoped, isolated, playback, viewKey, host, nonce, register, scopedOverview])
 
-  // 未 ready 的新 render 会替换队列；重新下发属于该帧的图钉和指认设定。
+  // 未 ready 的新 render 会替换队列；重新下发属于该帧的图层和图钉订阅。
   useEffect(() => {
     const previous = applied.current
     const needsRender = previous?.render !== render
@@ -559,7 +517,6 @@ export function ArtifactFrame({
       })
       lastStateSeq.current = currentState.seq
       setError((current) => (current?.version === versionNumber ? current : null))
-      setHovered(null)
       setLivePinRects({})
     } else if (
       overviewAnimation !== undefined &&
@@ -572,27 +529,17 @@ export function ArtifactFrame({
       host.send({ type: 'inspect.layers.watch', active: watchingLayers })
     }
     if (!playback && (needsRender || previous?.pins !== versionPins)) trackPins(host, versionPins)
-    const inspecting = !isolated && pickerActive && interactive
-    if (inspecting && (needsRender || !previous?.inspecting)) {
-      host.send({ type: 'inspect.start' })
-    } else if (!inspecting && previous?.inspecting) {
-      host.send({ type: 'inspect.stop' })
-      setHovered(null)
-    }
     applied.current = {
       render,
       renderId,
       overviewAnimation,
       pins: versionPins,
-      inspecting,
       watchingLayers,
     }
   }, [
     host,
-    interactive,
     isolated,
     overviewAnimation,
-    pickerActive,
     playback,
     render,
     versionNumber,
@@ -635,7 +582,6 @@ export function ArtifactFrame({
       />
       {!playback && (
         <ElementOverlay
-          hovered={pickerActive && interactive ? hovered : null}
           selected={selected}
           pins={versionPins}
           livePinRects={livePinRects}

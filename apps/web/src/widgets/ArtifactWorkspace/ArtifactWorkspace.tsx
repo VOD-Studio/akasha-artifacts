@@ -179,14 +179,6 @@ export function ArtifactWorkspace({
     })
     return () => onRegisterStateForwarder?.(null)
   }, [onRegisterStateForwarder])
-  useEffect(
-    () => () => {
-      const selection = useSelectionStore.getState()
-      selection.setPickerActive(false)
-      selection.setHoveredElement(null)
-    },
-    [],
-  )
 
   const visual = useVisualEdit({
     artifact,
@@ -465,11 +457,9 @@ export function ArtifactWorkspace({
     },
     [artifact.publicId, resolveElement, setSelectedElement],
   )
-  const highlightLayer = useCallback(
-    (
-      boardId: string,
-      message: Extract<Parameters<FrameConnection['send']>[0], { type: 'highlight' }>,
-    ) => frames.current.get(boardId)?.send(message),
+  const sendBoard = useCallback(
+    (boardId: string, message: Parameters<FrameConnection['send']>[0]) =>
+      frames.current.get(boardId)?.send(message),
     [],
   )
   const inspection = useBoardInspection({
@@ -479,7 +469,7 @@ export function ArtifactWorkspace({
     document: savedCanvas,
     current: canvasLocation,
     reveal: revealBoard,
-    highlight: highlightLayer,
+    send: sendBoard,
   })
   const inlineText = useInlineCanvasText({
     artifact,
@@ -488,13 +478,21 @@ export function ArtifactWorkspace({
     activeBoardId: canvasLocation?.boardId,
     editing: boardEditing,
     readBoard: (board) => readLoadedBoard(board, resources),
-    send: (boardId, message) => frames.current.get(boardId)?.send(message),
+    send: sendBoard,
     annotate: (element) => {
       handleHighlightElement(element)
       setInspectorTab('review')
     },
   })
   const onTextTarget = inlineText.onTextTarget
+  const { onPointTarget } = inspection
+  const onElementTarget = useCallback(
+    (boardId: string, message: Extract<SandboxToShellMessage, { type: 'inspect.target' }>) => {
+      if (message.purpose === 'text') void onTextTarget(boardId, message)
+      else onPointTarget(boardId, message)
+    },
+    [onPointTarget, onTextTarget],
+  )
   const inspectedBoard = inspection.open ? canvasLocation?.boardId : inspection.pendingBoardId
   const watchBoard = canvas === savedCanvas ? inspectedBoard : undefined
   const renderBoard = useCallback(
@@ -524,8 +522,7 @@ export function ArtifactWorkspace({
           onPlayable={onPlayable}
           watchLayers={overview && watchBoard === board.id}
           onLayers={inspection.onLayers}
-          onLayerPicked={inspection.onLayerPicked}
-          onTextTarget={onTextTarget}
+          onElementTarget={onElementTarget}
           onVisualSelect={onVisualSelect}
         />
       )
@@ -552,8 +549,7 @@ export function ArtifactWorkspace({
       onPlayable,
       watchBoard,
       inspection.onLayers,
-      inspection.onLayerPicked,
-      onTextTarget,
+      onElementTarget,
       onVisualSelect,
       readBoards,
       resources,
@@ -598,6 +594,8 @@ export function ArtifactWorkspace({
             reveal={inspectorReveal}
             onRevealHandled={clearInspectorReveal}
             onLocationChange={setCanvasLocation}
+            onSelectPoint={canvas === savedCanvas ? inspection.pickPoint : undefined}
+            onClearElement={inspection.clearPoint}
             boardEditing={canEditBoards ? boardEditing : undefined}
             historyEditing={canEditText ? boardEditing : undefined}
             textTools={canEditText ? inlineText.tools : undefined}
@@ -680,10 +678,6 @@ export function ArtifactWorkspace({
         onHandoff={canvas === savedCanvas ? onHandoff : undefined}
         onAskAgent={canvas === savedCanvas ? onAskAgent : undefined}
         onSelectLayer={inspection.onSelect}
-        onStartPicking={() => {
-          if (canvasLocation) revealBoard(canvasLocation)
-          else useWorkspaceStore.getState().setViewMode('preview')
-        }}
         onNavigate={(location) => {
           if (canvasLocation?.boardId !== location.boardId)
             setSelectedElement(artifact.publicId, null)

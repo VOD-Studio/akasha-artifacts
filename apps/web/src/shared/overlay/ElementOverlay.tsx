@@ -2,7 +2,6 @@ import type { ElementRect, ElementRef, Feedback } from '@akasha/protocol'
 import { MessageSquare } from 'lucide-react'
 
 export interface ElementOverlayProps {
-  hovered: ElementRef | null
   selected: ElementRef | null
   pins: readonly Feedback[]
   // 由沙盒根据当前视口实时重算的图钉坐标；滚动、缩放或侧栏回流后优先采用实时坐标
@@ -25,12 +24,11 @@ function getPinTone(feedback: Feedback): string {
 }
 
 /**
- * 外壳的透明叠层：在主窗口的 DOM 里绘制悬停框、选中框与批注图钉。
+ * 外壳的透明叠层：绘制选中框与批注图钉。
  *
  * @remarks 不向沙盒 iframe 注入任何外壳节点。
  */
 export function ElementOverlay({
-  hovered,
   selected,
   pins,
   livePinRects,
@@ -43,25 +41,6 @@ export function ElementOverlay({
       data-testid="shell-element-overlay"
       className="pointer-events-none absolute inset-0 z-10 overflow-hidden"
     >
-      {hovered?.rect && hovered.rect.width > 0 && hovered.rect.height > 0 ? (
-        <div
-          data-testid="overlay-hover-box"
-          style={{
-            transform: `translate3d(${hovered.rect.x}px, ${hovered.rect.y}px, 0)`,
-            width: `${hovered.rect.width}px`,
-            height: `${hovered.rect.height}px`,
-          }}
-          className="absolute top-0 left-0 rounded border border-dashed border-primary shadow-[0_0_0_1px_var(--card)] transition-[transform,width,height] duration-75"
-        >
-          <span
-            style={{ top: hovered.rect.y < 24 ? '2px' : '-22px' }}
-            className="absolute left-0 rounded bg-primary px-1.5 py-0.5 font-mono text-[10px] leading-none text-primary-foreground shadow-sm"
-          >
-            {formatLocatorLabel(hovered)}
-          </span>
-        </div>
-      ) : null}
-
       {selected?.rect && selected.rect.width > 0 && selected.rect.height > 0 ? (
         <div
           data-testid="overlay-select-box"

@@ -17,7 +17,6 @@ import {
 } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import type { CanvasPage } from '@/entities/artifact'
-import { ElementPickerButton } from '@/features/element-picker'
 import { DRAWING_TOOLS, type DrawingTool } from './BoardDrawingSurface'
 import { CanvasPageActions, type CanvasPageEditing } from './CanvasPageActions'
 import type { Camera } from './canvas-camera'
@@ -160,7 +159,7 @@ export function PageNavigator({
   )
 }
 
-/** 画布工具栏：切换抓手工具、缩放、适配页面或选区，以及指认与直改的开关。 */
+/** 画布工具栏与相机控制。 */
 export function CanvasToolbar({
   camera,
   hand,
@@ -170,7 +169,6 @@ export function CanvasToolbar({
   onZoom,
   onFitPage,
   onFitSelection,
-  onStartPicker,
   visualEditActive,
   onToggleVisualEdit,
   onAddBoard,
@@ -190,7 +188,6 @@ export function CanvasToolbar({
   onZoom: (factor: number) => void
   onFitPage: (() => void) | undefined
   onFitSelection: (() => void) | undefined
-  onStartPicker: () => void
   visualEditActive: boolean | undefined
   onToggleVisualEdit: () => void
   onAddBoard?: () => void
@@ -305,7 +302,6 @@ export function CanvasToolbar({
           </Button>
         ) : null}
         {arrangementMenu}
-        <ElementPickerButton onStart={onStartPicker} />
         {history ? (
           <>
             <Button
