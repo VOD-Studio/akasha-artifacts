@@ -66,7 +66,7 @@ interface BoardActionsProps {
   bounds: CanvasBounds
   version: VersionSummary
   disabled: boolean
-  onChange: (edit: CanvasBoardEdit, base: VersionSummary) => void
+  onChange: CanvasBoardEditing['change']
 }
 
 /** 坐标和尺寸可以用键盘修改；四个字段作为一项版本变更提交。 */
@@ -85,10 +85,11 @@ export function CanvasBoardActions({
   } | null>(null)
   const { coordinate } = ARTBOARD_GEOMETRY_LIMITS
 
-  const apply = (edit: CanvasBoardEdit) => {
+  const apply = async (edit: CanvasBoardEdit) => {
     if (!form || disabled) return
-    onChange(edit, form.base)
-    setForm(null)
+    if (await onChange(edit, form.base)) {
+      setForm((current) => (current === form ? null : current))
+    }
   }
 
   return (
@@ -130,6 +131,7 @@ export function CanvasBoardActions({
               <Button
                 size="sm"
                 variant="destructive"
+                disabled={disabled}
                 onClick={() => apply({ kind: 'delete', ids: [board.id] })}
               >
                 删除

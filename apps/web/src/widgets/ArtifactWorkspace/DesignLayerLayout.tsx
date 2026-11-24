@@ -44,7 +44,7 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
     <section className="mt-4 space-y-3 border-t border-border pt-3" aria-label="图层布局">
       <form
         className="space-y-2"
-        onSubmit={(event) => {
+        onSubmit={async (event) => {
           event.preventDefault()
           if (!draft || !editing.available) return
           const { x, y, width, height } = draft.geometry
@@ -61,8 +61,9 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
               },
             ]
           })
-          editing.change({ kind: 'layerGeometry', boardId, changes }, draft.base)
-          setDraft(null)
+          if (await editing.change({ kind: 'layerGeometry', boardId, changes }, draft.base)) {
+            setDraft((current) => (current === draft ? null : current))
+          }
         }}
       >
         <CanvasGeometryFields

@@ -39,7 +39,12 @@ const detail: ArtifactDetailResponse = {
   rounds: [],
 }
 
-function openWorkspace(hub = false, canManage = true, detailFailure?: number) {
+function openWorkspace(
+  hub = false,
+  canManage = true,
+  detailFailure?: number,
+  sourceFailure?: number,
+) {
   vi.stubGlobal('__AKASHA_CONFIG__', { hub, sandboxOrigin: 'http://127.0.0.1:24331' })
   vi.stubGlobal('matchMedia', () => ({
     matches: false,
@@ -72,6 +77,9 @@ function openWorkspace(hub = false, canManage = true, detailFailure?: number) {
   let failDetailWith = detailFailure
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const { pathname, search } = new URL(String(input), window.location.origin)
+    if (pathname === endpoint && search === '?version=1') {
+      return sourceFailure ? new Response(null, { status: sourceFailure }) : Response.json(detail)
+    }
     if (pathname === endpoint && failDetailWith) {
       const status = failDetailWith
       failDetailWith = undefined
@@ -153,6 +161,16 @@ it('首次读取作品失败时可重试，成功后打开同一作品', async (
   fireEvent.click(screen.getByRole('button', { name: '重试' }))
   expect(await screen.findByTitle('画板内容：确认订单')).toBeTruthy()
   expect(screen.queryByText('无法打开作品')).toBeNull()
+})
+
+it('定版正文暂不可读时，设置画板保留填过的尺寸', async () => {
+  openWorkspace(false, true, undefined, 503)
+  await screen.findByTitle('画板内容：确认订单')
+  fireEvent.click(screen.getByRole('button', { name: '设置画板：确认订单' }))
+  fireEvent.change(screen.getByRole('spinbutton', { name: '宽度' }), { target: { value: '900' } })
+  fireEvent.click(screen.getByRole('button', { name: '应用' }))
+  await screen.findByText(/HTTP 503/)
+  expect(screen.getByRole<HTMLInputElement>('spinbutton', { name: '宽度' }).value).toBe('900')
 })
 
 it('Hub 登录与退出使用工作台同源，不把会话 Cookie 发往作品 API 地址', async () => {
