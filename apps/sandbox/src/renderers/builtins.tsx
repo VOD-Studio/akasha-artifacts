@@ -13,6 +13,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { preparePrototypeMedia } from '../prototype-media'
 import { ArtifactCompileError, compileReactArtifact } from '../runtime/compiler'
 import { usePersistentControl } from '../state/preserve'
 import { DataStoryRenderer } from './data-story'
@@ -134,6 +135,7 @@ function HtmlRenderer({
     const template = el.ownerDocument.createElement('template')
     template.innerHTML = markup
     const fragment = template.content
+    preparePrototypeMedia(fragment, artboardView === 'play')
     const mount = () => {
       el.replaceChildren(fragment)
       return rendered()

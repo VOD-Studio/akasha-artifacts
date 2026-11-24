@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { expect, it } from 'vitest'
 import { bindPrototype, hasPlayableControls } from '../src/prototype'
+import { preparePrototypeMedia } from '../src/prototype-media'
 
 it('保留表单校验，使用提交按钮声明的导航，并支持从输入框退出', () => {
   const root = document.createElement('main')
@@ -82,4 +83,52 @@ it('不把不可用的输入与导航当作试玩入口', () => {
     <div inert><select><option>茶席</option></select></div>
     <div hidden><a data-ak-next="done">继续</a></div>`
   expect(hasPlayableControls(root, { scoped: true })).toBe(false)
+})
+
+it('设计预览只保留视频封面，不挂载音视频资源或播放控件', () => {
+  const template = document.createElement('template')
+  template.innerHTML = `
+    <video autoplay controls poster="data:image/png;base64,AA">
+      <source src="data:video/webm;base64,AA">
+      <track src="blob:null/subtitles">
+    </video>
+    <audio autoplay controls src="data:audio/wav;base64,AA"></audio>
+    <picture><source srcset="data:image/png;base64,AA"><img alt=""></picture>`
+
+  preparePrototypeMedia(template.content, false)
+
+  const video = template.content.querySelector('video')
+  expect(video?.getAttribute('poster')).toBe('data:image/png;base64,AA')
+  expect(template.content.querySelectorAll('[autoplay], [controls], [src]')).toHaveLength(0)
+  expect(template.content.querySelector('picture source')?.getAttribute('srcset')).toBe(
+    'data:image/png;base64,AA',
+  )
+})
+
+it('试玩仅为内嵌媒体提供原生控件，媒体不构成独立的试玩能力', () => {
+  const template = document.createElement('template')
+  template.innerHTML = `
+    <audio autoplay src="https://example.test/sound">
+      <source src="/sound">
+      <source src=" data:audio/wav;base64,AA ">
+    </audio>
+    <video autoplay muted src="blob:null/video">
+      <track src="//example.test/subtitles">
+    </video>
+    <audio controls src="https://example.test/another-sound"></audio>`
+
+  preparePrototypeMedia(template.content, true)
+  const root = document.createElement('main')
+  root.append(template.content)
+
+  expect(root.querySelectorAll('[autoplay]')).toHaveLength(0)
+  expect(root.querySelector('video')?.hasAttribute('muted')).toBe(true)
+  expect([...root.querySelectorAll('[src]')].map((source) => source.getAttribute('src'))).toEqual([
+    'data:audio/wav;base64,AA',
+    'blob:null/video',
+  ])
+  expect(root.querySelectorAll('audio[controls]')).toHaveLength(1)
+  expect(root.querySelector('audio')?.controls).toBe(true)
+  expect(root.querySelector('video')?.controls).toBe(true)
+  expect(hasPlayableControls(root)).toBe(false)
 })

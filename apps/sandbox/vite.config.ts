@@ -25,6 +25,7 @@ export default defineConfig({
         "script-src 'self' 'unsafe-inline' blob:",
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data: blob:",
+        'media-src data: blob:',
         "font-src 'self' data:",
         `connect-src ws://${devHost}:${devSandboxPort}`,
         `frame-ancestors ${devWorkbenchOrigin}`,

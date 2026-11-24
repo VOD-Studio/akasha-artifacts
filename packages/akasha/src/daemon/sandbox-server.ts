@@ -36,6 +36,7 @@ export async function startSandboxServer(options: SandboxServerOptions) {
     "script-src 'self' blob:",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
+    'media-src data: blob:',
     "font-src 'self' data:",
     "connect-src 'none'",
     `frame-ancestors ${frameAncestors}`,
