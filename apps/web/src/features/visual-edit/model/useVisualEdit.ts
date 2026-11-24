@@ -9,11 +9,7 @@ import type {
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import {
-  type ArtifactDetailResponse,
-  artifactKeys,
-  parseVersionConflictDetails,
-} from '@/entities/artifact'
+import { artifactKeys, parseVersionConflictDetails } from '@/entities/artifact'
 import { feedbackKeys } from '@/entities/feedback'
 import { ApiError } from '@/shared/api/error'
 import type { ShellOutgoingPayload } from '@/shared/bridge/host'
@@ -94,7 +90,7 @@ export function useVisualEdit(options: Options): VisualEditController {
     (artifact.type === 'react' || artifact.type === 'html')
   const active = available && picked?.baseVersion === version.version ? picked : null
   const { data: undo } = useQuery({
-    queryKey: [...artifactKeys.detail(artifact.publicId, version.version), 'visual-undo'],
+    queryKey: [...artifactKeys.all, 'visual-undo', artifact.publicId, version.version],
     queryFn: () =>
       fetchVisualUndo(artifact.publicId, {
         project: artifact.projectId,
@@ -211,12 +207,9 @@ export function useVisualEdit(options: Options): VisualEditController {
       const saved = await saveVisualEdit(artifact.publicId, input)
       if (saved.version.version === version.version) return
       setPicked(null)
-      queryClient.setQueryData<ArtifactDetailResponse>(
-        artifactKeys.detail(artifact.publicId),
-        (previous) => {
-          if (!previous || previous.version.version >= saved.version.version) return previous
-          return { ...previous, artifact: saved.artifact, version: saved.version }
-        },
+      queryClient.setQueryData(
+        artifactKeys.source(artifact.publicId, saved.version.version),
+        saved.version,
       )
       void queryClient.invalidateQueries({ queryKey: artifactKeys.all })
       void queryClient.invalidateQueries({ queryKey: feedbackKeys.list(artifact.publicId) })

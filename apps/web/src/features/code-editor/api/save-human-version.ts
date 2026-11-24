@@ -1,6 +1,6 @@
 import type { Artifact, Version } from '@akasha/protocol'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { type ArtifactDetailResponse, artifactKeys, publishHumanVersion } from '@/entities/artifact'
+import { artifactKeys, publishHumanVersion } from '@/entities/artifact'
 import { feedbackKeys, notifyHumanVersionEdit } from '@/entities/feedback'
 
 interface SaveHumanVersionVariables {
@@ -41,13 +41,7 @@ export function useSaveHumanVersionMutation(id: string, notifyAgent = true) {
       return saved
     },
     onSuccess: (saved) => {
-      queryClient.setQueryData<ArtifactDetailResponse | undefined>(
-        artifactKeys.detail(id, undefined),
-        (prev) => {
-          if (!prev) return prev
-          return { ...prev, artifact: saved.artifact, version: saved.version }
-        },
-      )
+      queryClient.setQueryData(artifactKeys.source(id, saved.version.version), saved.version)
       void queryClient.invalidateQueries({ queryKey: artifactKeys.versions(id) })
       void queryClient.invalidateQueries({ queryKey: artifactKeys.all })
       void queryClient.invalidateQueries({ queryKey: feedbackKeys.list(id) })

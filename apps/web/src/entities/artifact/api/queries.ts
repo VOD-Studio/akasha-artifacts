@@ -1,7 +1,6 @@
-import type { ArtifactType, JsonPatchOp } from '@akasha/protocol'
+import type { ArtifactType, ArtifactWorkspaceDetail, JsonPatchOp } from '@akasha/protocol'
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  type ArtifactDetailResponse,
   fetchArtifactDetail,
   fetchArtifactFavorites,
   fetchArtifactManagement,
@@ -18,15 +17,14 @@ import {
 
 const artifactListKey = ['artifacts', 'list'] as const
 
-/** `detailPrefix` 同时覆盖头版本与固定版本；更新单个快照用 `detail`。 */
+/** 工作区按版本缓存；源码与其它查询不落在详情前缀之下。 */
 export const artifactKeys = {
   all: ['artifacts'] as const,
   lists: artifactListKey,
   list: (projectId?: string) => [...artifactListKey, projectId ?? 'all'] as const,
   detailPrefix: (id: string) => ['artifacts', 'detail', id] as const,
-  detail: (id: string, version?: number) => ['artifacts', 'detail', id, version ?? 'head'] as const,
   canvas: (id: string, version?: number) =>
-    [...artifactKeys.detail(id, version), 'canvas'] as const,
+    [...artifactKeys.detailPrefix(id), version ?? 'head'] as const,
   source: (id: string, version: number) => ['artifacts', 'source', id, version] as const,
   versions: (id: string) => ['artifacts', 'versions', id] as const,
   management: (id: string) => ['artifacts', 'management', id] as const,
@@ -46,16 +44,6 @@ export function useArtifactsQuery(projectId?: string, refetchInterval?: number) 
     },
     staleTime: 5_000,
     refetchInterval,
-  })
-}
-
-/** 头版本与固定快照分开缓存；尚未解析出标识时不发请求。 */
-export function useArtifactDetailQuery(id: string, version?: number) {
-  return useQuery({
-    queryKey: artifactKeys.detail(id, version),
-    queryFn: () => fetchArtifactDetail(id, version),
-    enabled: Boolean(id),
-    staleTime: 2_000,
   })
 }
 
@@ -116,7 +104,7 @@ export function useRenameArtifactMutation(id: string) {
   return useMutation({
     mutationFn: (title: string) => renameArtifact(id, title),
     onSuccess: ({ artifact }) => {
-      queryClient.setQueriesData<ArtifactDetailResponse>(
+      queryClient.setQueriesData<ArtifactWorkspaceDetail>(
         { queryKey: artifactKeys.detailPrefix(id) },
         (previous) => (previous ? { ...previous, artifact } : previous),
       )
@@ -180,7 +168,7 @@ export function usePushArtifactStateMutation(id: string) {
   return useMutation({
     mutationFn: (input: { project?: string; patch: JsonPatchOp[] }) => pushArtifactState(id, input),
     onSuccess: (res) => {
-      queryClient.setQueriesData<ArtifactDetailResponse>(
+      queryClient.setQueriesData<ArtifactWorkspaceDetail>(
         { queryKey: artifactKeys.detailPrefix(id) },
         (prev) => {
           if (!prev) return prev

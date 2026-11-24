@@ -7,7 +7,6 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 import {
-  type ArtifactDetailResponse,
   artifactKeys,
   artifactSourceOptions,
   hasVersionSource,
@@ -118,13 +117,6 @@ export function useCanvasBoardEditing({
       )
       if (notifyAgent)
         await notifyHumanVersionEdit(artifact.projectId, saved.version, edit.base.source, 'canvas')
-      query.setQueryData<ArtifactDetailResponse>(
-        artifactKeys.detail(artifact.publicId),
-        (current) =>
-          !current || current.version.version >= saved.version.version
-            ? current
-            : { ...current, artifact: saved.artifact, version: saved.version },
-      )
       setHistory({
         artifactId: artifact.publicId,
         version: saved.version.version,
@@ -140,7 +132,7 @@ export function useCanvasBoardEditing({
         error: cause instanceof Error ? cause.message : '无法保存改动',
       })
       if (cause instanceof ApiError && cause.status === 409) {
-        void query.invalidateQueries({ queryKey: artifactKeys.detail(artifact.publicId) })
+        void query.invalidateQueries({ queryKey: artifactKeys.canvas(artifact.publicId) })
       }
     } finally {
       inFlight.current = false

@@ -16,7 +16,6 @@ export {
 export {
   artifactKeys,
   artifactSourceOptions,
-  useArtifactDetailQuery,
   useArtifactFavoritesQuery,
   useArtifactManagementQuery,
   useArtifactSourceQuery,

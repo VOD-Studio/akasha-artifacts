@@ -135,7 +135,7 @@ describe('apps/web L2 PropsPanel 结构化属性面板', () => {
       },
       rounds: [],
     }
-    qc.setQueryData(artifactKeys.detail('AbCdEfGhIjKlMnOpQrStU', undefined), detail)
+    qc.setQueryData(artifactKeys.canvas('AbCdEfGhIjKlMnOpQrStU'), detail)
 
     applyRealtimeEventToCache(qc, {
       v: PROTOCOL_VERSION,
@@ -148,7 +148,7 @@ describe('apps/web L2 PropsPanel 结构化属性面板', () => {
     })
 
     const updated = qc.getQueryData<ArtifactDetailResponse>(
-      artifactKeys.detail('AbCdEfGhIjKlMnOpQrStU', undefined),
+      artifactKeys.canvas('AbCdEfGhIjKlMnOpQrStU'),
     )
     expect(updated?.state.seq).toBe(1)
     expect(updated?.state.snapshot).toEqual({ props: { columns: 3 } })

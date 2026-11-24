@@ -5,7 +5,6 @@ import { Input } from '@akasha/ui/input'
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import {
-  type ArtifactDetailResponse,
   artifactKeys,
   artifactSourceOptions,
   type CanvasPage,
@@ -80,13 +79,6 @@ export function CanvasPageActions({ editing, page, pages, onNavigate }: CanvasPa
       queryClient.setQueryData(
         artifactKeys.source(artifact.publicId, saved.version.version),
         saved.version,
-      )
-      queryClient.setQueryData<ArtifactDetailResponse>(
-        artifactKeys.detail(artifact.publicId),
-        (previous) => {
-          if (!previous || previous.version.version >= saved.version.version) return previous
-          return { ...previous, artifact: saved.artifact, version: saved.version }
-        },
       )
       void queryClient.invalidateQueries({ queryKey: artifactKeys.all })
       onVersionSaved?.(saved.version)
