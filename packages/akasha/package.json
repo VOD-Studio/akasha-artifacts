@@ -1,6 +1,6 @@
 {
   "name": "akasha-artifacts",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Open-source live web artifacts for CLI coding agents (Claude Code, Codex CLI, Antigravity) — local & cloud self-hosted.",
   "license": "MIT",
   "type": "module",

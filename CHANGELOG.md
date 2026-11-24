@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/VOD-Studio/akasha-artifacts/compare/v0.4.1...v0.4.2) (2026-11-24)
+
+
+### 修复
+
+* **dev:** 修复本地开发环境的热更新 ([fa2d51e](https://github.com/VOD-Studio/akasha-artifacts/commit/fa2d51e9e5e56ab9f81234550a34239d3d0a7c62))
+
 ## [0.4.1](https://github.com/VOD-Studio/akasha-artifacts/compare/v0.4.0...v0.4.1) (2026-11-23)
 
 
