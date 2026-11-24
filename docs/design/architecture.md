@@ -458,7 +458,7 @@ sequenceDiagram
 Docker 是默认的 Hub 自托管方式，不依赖 Cloudflare。单容器运行 Node 入口，默认 SQLite，可选 PostgreSQL；版本源码可选 S3 兼容对象存储，实时通道使用 `node-ws`。
 
 - Hub 项目库在前台每 10 秒通过权限过滤后的列表接口刷新，不使用全局 WebSocket 订阅。制品页仍按范围订阅；实时序号存入数据库，重启预留一个序号，让携带旧游标的客户端收到 `resync` 并重读制品。
-- **本机直连优先**：已用 CLI 绑定该 Hub 的机器先探测固定端口段；Daemon 仅允许该 Hub origin 查询相同制品 ID／历史版本是否已存在，不返回内容或凭据。命中后打开本机工作台，使用本机同源 API 和 WebSocket，不创建 Hub 实时连接；未命中走 Hub。两边的数据不会自动复制。
+- **个人预览优先直连本机**：已用 CLI 绑定该 Hub 的机器先探测固定端口段；Daemon 仅允许该 Hub origin 查询相同制品 ID／历史版本是否已存在，不返回内容或凭据。命中后使用本机同源 API 和 WebSocket，未命中走 Hub。**加入多人编辑**是不同动作：即便本机命中，也加入 Hub 上的同一会话；两端不自动复制。
 - Hub 额外提供：鉴权（GitHub OAuth / 团队 SSO）、可见性（`private` / `team` / `public`）、离线反馈队列，以及 `akasha login` 下发的 CLI 访问令牌。
 
 Cloudflare Workers 是后置的可选部署方式（[#29](https://github.com/VOD-Studio/akasha-artifacts/issues/29)）。若接入，需另行适配运行时、存储和实时通道，保留现有协议契约与本机直连优先策略。
@@ -562,4 +562,4 @@ apps/web/src/
 - 不绑架用户的研发流程（不强制接管 TDD、Git 分支策略等工作流）；Skills 只覆盖「何时可视化、如何选型、如何消费反馈」。
 - 不在沙盒里运行任意 npm 包，依赖只来自白名单。
 - 不内置大模型调用能力。Artifact 内的智能来自 Agent 回路，而不是页面直接调用模型。
-- v1 不支持多人同时编辑同一个 Artifact。若后续立项，应与部署方式解耦。
+- 引擎的个人直连模式不做多人同步。团队同时编辑同一设计由默认 Docker Hub 承载（[#101](https://github.com/VOD-Studio/akasha-artifacts/issues/101)），是 [Design 产品首版](../prd/design-v1.md)的发布条件，不依赖可选的 Workers 部署。

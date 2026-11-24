@@ -1,6 +1,6 @@
 # Akasha UED 工作区改版
 
-> 本文记录 UED 工作区的目标和验收标准。各项实现进度以 [#5 的子议题](https://github.com/VOD-Studio/akasha-artifacts/issues/5) 为准。
+> 本文记录工作区的已交付基础与交互约定。完整首版范围、验收和后续 Artifacts／Figma 产品线见 [Design 产品 PRD](../prd/design-v1.md)；引擎建设历史见 [#5](https://github.com/VOD-Studio/akasha-artifacts/issues/5)。
 
 ## 已实现的画布基础
 
@@ -71,7 +71,7 @@
 - 对画板／图层发起批注、看回复、解决线程；可选择只留给人，或同时发送为 Agent 修改请求。能打开与发布 Agent 的对话，对整份设计提出要求，拿到真实响应与新版本。
 - 分享可查看、可批注、可编辑的链接；支持按画板导出 PNG、PDF、HTML（ZIP），以及导出整份设计的 PDF／可交互 HTML、交给 CLI Agent 继续实现。权限和导出都是真动作，不出现仅作摆设的按钮。
 
-沿用 Akasha 的版本快照、反馈轮次、沙盒隔离和本机优先。同步编辑已由用户排除（#29），不把异步的授权编辑称为多人同时编辑。参考工作区，不另做 Claude 模型、移动客户端、账号计费或第三方导出平台；Agent 可以继续使用所在项目的真实组件和设计规范，不在浏览器另开一个 AI。
+沿用 Akasha 的版本快照、反馈轮次、沙盒隔离和本机优先。异步授权编辑不等于多人共编；首版团队共编走 [#101 Docker Hub](https://github.com/VOD-Studio/akasha-artifacts/issues/101)，与 [#29 可选 Workers 部署](https://github.com/VOD-Studio/akasha-artifacts/issues/29) 无关。首版包括团队设计系统、外部目的地交付及移动端的使用流程；不另做 Claude 模型、原生客户端壳或账号计费。
 
 ## 全站界面
 
