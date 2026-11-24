@@ -33,6 +33,11 @@ function hasNativeAction(element: Element, root: HTMLElement): boolean {
   if (element.matches(NATIVE_CONTROL)) return true
   if (!(element instanceof HTMLButtonElement || element instanceof HTMLInputElement)) return false
   const { type, form } = element
+  if (type === 'button' || (!form && element instanceof HTMLButtonElement)) {
+    const id = element.getAttribute('popovertarget')
+    const popover = id ? root.ownerDocument.getElementById(id) : null
+    if (popover && root.contains(popover) && popover.hasAttribute('popover')) return true
+  }
   if (type === 'submit' || type === 'image' || type === 'reset') {
     return form !== null && root.contains(form)
   }

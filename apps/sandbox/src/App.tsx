@@ -359,6 +359,8 @@ export function SandboxApp({
         'id',
         'inert',
         'open',
+        'popover',
+        'popovertarget',
         'readonly',
         'role',
         'style',

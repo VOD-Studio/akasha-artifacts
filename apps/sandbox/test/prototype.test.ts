@@ -57,6 +57,7 @@ it.each([
   '<form data-ak-next="done"><button>提交</button></form>',
   '<form id="booking"></form><button form="booking">提交</button>',
   '<details><summary>更多</summary><p>详情</p></details>',
+  '<button type="button" popovertarget="menu">更多</button><div id="menu" popover>选项</div>',
   '<input type="text">',
   '<select><option>茶席</option></select>',
   '<textarea></textarea>',
@@ -79,6 +80,7 @@ it('不把不可用的输入与导航当作试玩入口', () => {
     <input readonly>
     <textarea readonly></textarea>
     <button data-ak-next="done" disabled>继续</button>
+    <button type="button" popovertarget="missing">不指向弹出层</button>
     <fieldset disabled><input></fieldset>
     <div inert><select><option>茶席</option></select></div>
     <div hidden><a data-ak-next="done">继续</a></div>`
