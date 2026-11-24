@@ -503,7 +503,12 @@ export const ARTBOARD_TEMPLATE: KitTemplateDefinition<ArtboardData> = {
   title: '并排多画板（Artboard）',
   description: '同一画布并排对比多套页面/交互方案，支持推荐角标、分轮单选与页面流程连线。',
   guide:
-    'JSON 格式定义：pages 用稳定 id 分组；页面的 includeSharedBoards 为 false 时不显示未分组画板。boards 含唯一稳定 id、title、html/description，可选 pageId、viewport（width/height 均为 1–8192 的整数）、position（画布绝对坐标 x/y，单位 CSS 像素）、layoutGroup（布局组合，不参与评审）与 recommended；flows 定义 { from, to, label }。每板可声明 designLayers，按从下到上排列，每层含画板内唯一 id、kind、相对板内的 x/y、width/height，可选 layoutGroup 和 color（ink/blue/rose/amber/mint）。text/note 还需要 text，rectangle/ellipse 只需几何，stroke 还需 2–2048 个按边界归一化为 0–1 的 [x, y] 采样。不要用 designLayers 取代网页的 DOM 或交互逻辑。',
+    'JSON 格式定义：pages 用稳定 id 分组；页面的 includeSharedBoards 为 false 时不显示未分组画板。boards 含唯一稳定 id、title、html/description，可选 pageId、viewport（width/height 均为 1–8192 的整数）、position（画布绝对坐标 x/y，单位 CSS 像素）、layoutGroup（布局组合，不参与评审）与 recommended；flows 定义 { from, to, label }。每板可声明 designLayers，按从下到上排列，每层含画板内唯一 id、kind、相对板内的 x/y、width/height，可选 layoutGroup 和 color（ink/blue/rose/amber/mint）。text/note 还需要 text，rectangle/ellipse 只需几何，stroke 还需 2–2048 个按边界归一化为 0–1 的 [x, y] 采样。不要用 designLayers 取代网页的 DOM 或交互逻辑。' +
+    '\n每板的 appearance 可指定 background（六位 #RRGGBB）和 cornerRadius（0–8192 整数 CSS 像素）。' +
+    'tweaks 最多 32 项；每项包含板内唯一 id（小写字母开头，可含小写字母、数字及连字符）、label、可选 labels（语言标签到文案）及 default。' +
+    'type 为 number 时必填 min/max；enum 使用 options: [{ value, label, labels? }]，value 是稳定单词，default 必须为其中一项；boolean 用 true/false；color 用六位 #RRGGBB。' +
+    '在当前板的 HTML 样式中以 var(--akasha-tweak-<id>) 消费该值；数值无单位，布尔为 1 或 0。' +
+    '界面覆写只预览当前画板，不写入版本或整份模板状态流；固定快照及导出使用源码默认值。',
   example: JSON.stringify(
     {
       title: '结账页布局探索',
@@ -513,7 +518,17 @@ export const ARTBOARD_TEMPLATE: KitTemplateDefinition<ArtboardData> = {
           id: 'opt-a',
           title: '方案 A · 双栏摘要',
           viewport: { width: 1280, height: 800 },
-          html: '<div class="p-4 rounded-lg border">左侧表单 / 右侧价格卡片</div>',
+          appearance: { background: '#f6f7f8', cornerRadius: 12 },
+          tweaks: [
+            {
+              id: 'accent',
+              type: 'color',
+              label: '强调色',
+              labels: { en: 'Accent color' },
+              default: '#23415e',
+            },
+          ],
+          html: '<div class="p-4 rounded-lg border" style="border-color: var(--akasha-tweak-accent)">左侧表单 / 右侧价格卡片</div>',
           designLayers: [
             {
               id: 'price-note',

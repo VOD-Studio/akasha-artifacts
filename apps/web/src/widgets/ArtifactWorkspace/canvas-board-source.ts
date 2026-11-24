@@ -1,5 +1,8 @@
 import {
   ARTBOARD_GEOMETRY_LIMITS,
+  ARTIFACT_DEFAULT_VIEWPORT,
+  ArtboardAppearanceSchema,
+  DEFAULT_ARTBOARD_APPEARANCE,
   type DesignLayer,
   DesignLayersSchema,
   readEditableArtboardSource,
@@ -13,11 +16,23 @@ export type CanvasBoardEdit =
   | { kind: 'duplicate'; boardId: string; id: string; bounds: CanvasBounds }
   | { kind: 'delete'; ids: readonly string[] }
   | { kind: 'geometry'; changes: readonly { id: string; bounds: CanvasBounds }[] }
+  | {
+      kind: 'boardProperties'
+      boardId: string
+      width: number
+      height: number
+      background: string
+      cornerRadius: number
+    }
   | { kind: 'group'; ids: readonly string[]; layoutGroup: string | null }
   | {
       kind: 'layerGeometry'
       boardId: string
-      changes: readonly { id: string; bounds: CanvasBounds }[]
+      changes: readonly {
+        id: string
+        bounds: CanvasBounds
+        color?: NonNullable<DesignLayer['color']> | null
+      }[]
     }
   | { kind: 'layerGroup'; boardId: string; ids: readonly string[]; layoutGroup: string | null }
   | { kind: 'layerCreate'; boardId: string; layer: DesignLayer }
@@ -31,17 +46,32 @@ export interface CanvasSourceChange {
   after: string
 }
 
+function viewport(width: number, height: number) {
+  const limit = ARTBOARD_GEOMETRY_LIMITS.viewport
+  if (![width, height].every((value) => Number.isInteger(value) && value >= 1 && value <= limit)) {
+    throw new Error(`画板宽高须在 1–${limit} CSS 像素之间`)
+  }
+  return { width, height }
+}
+
+function updateRecord(
+  record: Record<string, unknown>,
+  key: string,
+  fields: Record<string, unknown>,
+) {
+  const existing = record[key]
+  record[key] =
+    existing && typeof existing === 'object' && !Array.isArray(existing)
+      ? { ...existing, ...fields }
+      : fields
+}
+
 function geometry({ x, y, width, height }: CanvasBounds) {
-  const { coordinate, viewport } = ARTBOARD_GEOMETRY_LIMITS
+  const { coordinate } = ARTBOARD_GEOMETRY_LIMITS
   if (![x, y].every((value) => Number.isFinite(value) && Math.abs(value) <= coordinate)) {
     throw new Error('画板位置超出画布坐标范围')
   }
-  if (
-    ![width, height].every((value) => Number.isInteger(value) && value >= 1 && value <= viewport)
-  ) {
-    throw new Error(`画板宽高须在 1–${viewport} CSS 像素之间`)
-  }
-  return { position: { x, y }, viewport: { width, height } }
+  return { position: { x, y }, viewport: viewport(width, height) }
 }
 
 /** 应用已完成的画板操作，保留无关字段、旧定位和版本内的流程引用。 */
@@ -113,6 +143,28 @@ export function editCanvasBoards(
         Object.assign(target.raw, geometry(bounds))
       }
       break
+    case 'boardProperties': {
+      const target = boards.get(edit.boardId)
+      if (!target) throw new Error('要调整的画板已不存在')
+      const dimensions = viewport(edit.width, edit.height)
+      const { background, cornerRadius } = edit
+      if (!ArtboardAppearanceSchema.safeParse({ background, cornerRadius }).success)
+        throw new Error('画板背景或圆角不符合约束')
+      const currentViewport = target.board.viewport ?? ARTIFACT_DEFAULT_VIEWPORT
+      const currentBackground =
+        target.board.appearance?.background ?? DEFAULT_ARTBOARD_APPEARANCE.background
+      const currentRadius =
+        target.board.appearance?.cornerRadius ?? DEFAULT_ARTBOARD_APPEARANCE.cornerRadius
+      const resize =
+        dimensions.width !== currentViewport.width || dimensions.height !== currentViewport.height
+      const restyle =
+        background.toLowerCase() !== currentBackground.toLowerCase() ||
+        cornerRadius !== currentRadius
+      if (!resize && !restyle) return { before, after: source }
+      if (resize) updateRecord(target.raw, 'viewport', dimensions)
+      if (restyle) updateRecord(target.raw, 'appearance', { background, cornerRadius })
+      break
+    }
     case 'layerText':
     case 'layerCreate':
     case 'layerDuplicate':
@@ -162,11 +214,13 @@ export function editCanvasBoards(
         ]),
       )
       if (edit.kind === 'layerGeometry') {
-        for (const { id, bounds } of edit.changes) {
+        for (const { id, bounds, color } of edit.changes) {
           const layer = layers.get(id)
           if (!layer) throw new Error('要调整的图层已不存在')
           const { position, viewport } = geometry(bounds)
           Object.assign(layer, position, viewport)
+          if (color === null) delete layer.color
+          else if (color !== undefined) layer.color = color
         }
       } else {
         for (const id of edit.ids) {

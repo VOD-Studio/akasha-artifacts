@@ -77,6 +77,52 @@ describe('apps/sandbox 运行时与安全边界', () => {
     bridge.stop()
   })
 
+  it('只更新相同版本、相同画板的参数，保留正在输入的原型控件', () => {
+    const { bridge, dispatchFromHost, nonce } = createMockBridgeHarness()
+    const { container } = render(
+      <SandboxApp
+        bridge={bridge}
+        stateStore={new ArtifactStateStore()}
+        preserved={new PreservedStateManager({ debounceMs: 0 })}
+      />,
+    )
+    const send = (message: object) =>
+      act(() => dispatchFromHost({ v: PROTOCOL_VERSION, nonce, ...message }))
+    const board = {
+      type: 'render',
+      artifactType: 'html',
+      boardId: 'x2',
+      source: '<label>姓名 <input></label>',
+      boardAppearance: { background: '#dddddd', cornerRadius: 18 },
+      state: {},
+    }
+    send({ ...board, version: 1, boardTweaks: { duration: 2, visible: true } })
+    const input = screen.getByRole<HTMLInputElement>('textbox', { name: '姓名' })
+    fireEvent.input(input, { target: { value: '未提交' } })
+    const root = container.firstElementChild as HTMLElement
+    const duration = () => root.style.getPropertyValue('--akasha-tweak-duration')
+    expect(duration()).toBe('2')
+    expect(root.style.borderRadius).toBe('18px')
+
+    const preview = {
+      type: 'board.tweaks.preview',
+      boardId: 'x2',
+      version: 1,
+      values: { duration: 4, visible: false },
+    }
+    send({ ...preview, boardId: 'x3' })
+    expect(duration()).toBe('2')
+    send(preview)
+    expect(duration()).toBe('4')
+    expect(root.style.getPropertyValue('--akasha-tweak-visible')).toBe('0')
+    expect(screen.getByRole<HTMLInputElement>('textbox', { name: '姓名' }).value).toBe('未提交')
+
+    send({ ...board, version: 2, boardTweaks: { duration: 7 } })
+    send(preview)
+    expect(duration()).toBe('7')
+    expect(root.style.getPropertyValue('--akasha-tweak-visible')).toBe('')
+  })
+
   it('内置 html / markdown / svg / mermaid 四类渲染器可正确渲染并净化危险标签', async () => {
     const { bridge, posted, dispatchFromHost, nonce } = createMockBridgeHarness()
     const stateStore = new ArtifactStateStore()

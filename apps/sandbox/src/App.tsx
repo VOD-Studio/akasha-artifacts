@@ -1,10 +1,17 @@
-import type { ArtifactType, DesignLayer, PreservedViewState } from '@akasha/protocol'
+import type {
+  ArtboardAppearance,
+  ArtboardTweakValues,
+  ArtifactType,
+  DesignLayer,
+  PreservedViewState,
+} from '@akasha/protocol'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { SandboxBridgeClient } from './bridge/client'
 import { captureSandboxPng } from './capture-png'
 import { SandboxInspector } from './inspector/index'
 import { readCanvasLayers } from './inspector/layers'
 import { bindPrototype, hasPlayableControls } from './prototype'
+import { artboardStyle } from './renderers/artboard-style'
 import { registerBuiltinRenderers } from './renderers/builtins'
 import { DesignLayerScene } from './renderers/DesignLayerScene'
 import { getRenderer } from './renderers/registry'
@@ -30,6 +37,9 @@ export interface RenderPayload {
   version: number
   source: string
   designLayers?: DesignLayer[]
+  /** 仅 `boardId` 所属的持久外观与参数，不包含临时覆写。 */
+  boardAppearance?: ArtboardAppearance
+  boardTweaks?: ArtboardTweakValues
   /** 允许由制品的控件发出原型导航请求。 */
   playback?: true
 }
@@ -58,6 +68,7 @@ export function SandboxApp({
   initialPreservedState,
 }: SandboxAppProps) {
   const [payload, setPayload] = useState<RenderPayload | null>(initialRender)
+  const [tweakPreview, setTweakPreview] = useState<ArtboardTweakValues>()
   const committedPayloadRef = useRef<RenderPayload | null>(initialRender)
   const renderedVisualVersionRef = useRef(0)
   const [watchLayers, setWatchLayers] = useState(false)
@@ -110,12 +121,24 @@ export function SandboxApp({
             ? {
                 boardId: msg.boardId,
                 designLayers: msg.designLayers,
+                boardAppearance: msg.boardAppearance,
+                boardTweaks: msg.boardTweaks,
               }
             : {}),
           ...(msg.playback ? { playback: true } : {}),
         }
         committedPayloadRef.current = next
         setPayload(next)
+        setTweakPreview(undefined)
+      } else if (msg.type === 'board.tweaks.preview') {
+        const committed = committedPayloadRef.current
+        if (
+          committed?.boardTweaks &&
+          committed.boardId === msg.boardId &&
+          committed.version === msg.version
+        ) {
+          setTweakPreview(msg.values)
+        }
       } else if (msg.type === 'capture.png') {
         const root = rootRef.current
         if (!root || capturing || msg.version !== renderedVisualVersionRef.current) return
@@ -340,6 +363,10 @@ export function SandboxApp({
     [payload],
   )
   const designLayers = payload?.designLayers?.length ? payload.designLayers : undefined
+  const style = useMemo(
+    () => artboardStyle(payload?.boardAppearance, tweakPreview ?? payload?.boardTweaks),
+    [payload?.boardAppearance, payload?.boardTweaks, tweakPreview],
+  )
 
   return (
     <ArtifactStateContext.Provider value={stateStore}>
@@ -347,6 +374,7 @@ export function SandboxApp({
         <div
           ref={rootRef}
           className={`min-h-screen bg-white text-slate-900${designLayers ? ' relative' : ''}`}
+          style={style}
         >
           {designLayers ? (
             <DesignLayerScene layers={designLayers} interactive={!payload?.playback} />

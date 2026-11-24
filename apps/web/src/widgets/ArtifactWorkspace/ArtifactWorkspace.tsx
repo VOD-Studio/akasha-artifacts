@@ -25,6 +25,7 @@ import { useVisualEdit, VisualEditPanel } from '@/features/visual-edit'
 import { ArtifactCanvas, type InspectorReveal } from './ArtifactCanvas'
 import { ArtifactFrame, type BoardFramePurpose, type FrameConnection } from './ArtifactFrame'
 import { BoardInspector, type BoardInspectorHandoff } from './BoardInspector'
+import { createBoardTweakPreviewStore } from './board-tweak-previews'
 import { createCanvasElementResolver } from './feedback-location'
 import { InlineCanvasText } from './InlineCanvasText'
 import { useBoardInspection } from './useBoardInspection'
@@ -86,6 +87,8 @@ export function ArtifactWorkspace({
 }: ArtifactWorkspaceProps) {
   const { access, artifact, version, state } = detail
   const shareCanEdit = !access || (access.role === 'edit' && fixedVersion === undefined)
+  const canWriteVersion =
+    shareCanEdit && fixedVersion === undefined && version.version === artifact.headVersion
   const canComment = access?.role !== 'view'
   const rounds = roundsOverride ?? detail.rounds
   const [liveEditSource, setLiveEditSource] = useState<string | null>(null)
@@ -111,6 +114,11 @@ export function ArtifactWorkspace({
   }, [viewMode])
   const setInspectorTab = useWorkspaceStore((s) => s.setInspectorTab)
   const inspectorOpen = useWorkspaceStore((s) => s.inspectorTab !== null)
+  const tweakScope = JSON.stringify([artifact.publicId, version.version, fixedVersion])
+  const tweakPreviews = useMemo(() => {
+    void tweakScope
+    return createBoardTweakPreviewStore()
+  }, [tweakScope])
 
   const selectedElement = useSelectionStore((s) =>
     selectionForVersion(s, artifact.publicId, version.version),
@@ -146,7 +154,11 @@ export function ArtifactWorkspace({
   const visual = useVisualEdit({
     artifact,
     version,
-    enabled: !access && viewMode === 'preview' && latestVersion.version === version.version,
+    enabled:
+      !access &&
+      canWriteVersion &&
+      viewMode === 'preview' &&
+      latestVersion.version === version.version,
     send: (message) => frames.current.get(STANDALONE_BOARD_ID)?.send(message),
     onAnnotate: (element) => {
       setSelectedElement(artifact.publicId, element)
@@ -169,9 +181,9 @@ export function ArtifactWorkspace({
   }, [inspectorOpen, cancelVisual])
 
   const lastSyncedSelectionRef = useRef<string | null>(null)
-  // 终端只同步选区。批注正文必须通过明确的投递动作才能抵达 Agent。
+  // 终端只同步当前头版本的选区；读历史不改终端上下文。
   useEffect(() => {
-    if (access) return
+    if (access || fixedVersion !== undefined) return
     const sig = JSON.stringify({
       projectId: artifact.projectId,
       artifactId: artifact.publicId,
@@ -186,7 +198,7 @@ export function ArtifactWorkspace({
       })
     }, 150)
     return () => clearTimeout(timer)
-  }, [access, artifact.projectId, artifact.publicId, selectedElement])
+  }, [access, artifact.projectId, artifact.publicId, fixedVersion, selectedElement])
 
   const effectivePreviewSource =
     viewMode === 'edit' && liveEditSource !== null ? liveEditSource : version.source
@@ -224,16 +236,12 @@ export function ArtifactWorkspace({
     ],
   )
   const canEditBoards =
-    shareCanEdit &&
+    canWriteVersion &&
     artifact.type === 'artboard' &&
-    fixedVersion === undefined &&
-    version.version === artifact.headVersion &&
     viewMode === 'preview' &&
     savedCanvas.pages.every((page) => page.boards.every((board) => board.scoped))
   const canEditText =
-    shareCanEdit &&
-    fixedVersion === undefined &&
-    version.version === artifact.headVersion &&
+    canWriteVersion &&
     viewMode === 'preview' &&
     (canEditBoards || artifact.type === 'html' || artifact.type === 'react')
   const boardEditing = useCanvasBoardEditing({
@@ -378,10 +386,11 @@ export function ArtifactWorkspace({
     ) => frames.current.get(boardId)?.send(message),
     [],
   )
+  const followsEditableHead = fixedVersion === undefined && (!access || access.role === 'edit')
   const inspection = useBoardInspection({
     artifactId: artifact.publicId,
     version: version.version,
-    followHead: fixedVersion === undefined && !access,
+    followHead: followsEditableHead,
     document: savedCanvas,
     current: canvasLocation,
     reveal: revealBoard,
@@ -402,6 +411,7 @@ export function ArtifactWorkspace({
   const onTextTarget = inlineText.onTextTarget
   const inspectedBoard = inspection.open ? canvasLocation?.boardId : inspection.pendingBoardId
   const watchBoard = canvas === savedCanvas ? inspectedBoard : undefined
+  const useTweakPreview = canvas === savedCanvas
   const renderBoard = useCallback(
     (board: CanvasBoard, purpose: BoardFramePurpose) => {
       const overview = purpose.type === 'overview'
@@ -412,6 +422,8 @@ export function ArtifactWorkspace({
           board={board}
           version={version}
           state={state}
+          tweakPreviews={tweakPreviews}
+          useTweakPreview={useTweakPreview}
           sandboxOrigin={sandboxOrigin}
           pins={overview ? versionPins : EMPTY_FEEDBACKS}
           onFocusPin={(feedback) => focusAndRemember(feedback, false)}
@@ -430,6 +442,8 @@ export function ArtifactWorkspace({
       artifact,
       version,
       state,
+      tweakPreviews,
+      useTweakPreview,
       sandboxOrigin,
       versionPins,
       focusAndRemember,
@@ -443,6 +457,11 @@ export function ArtifactWorkspace({
       onVisualSelect,
     ],
   )
+
+  const openCodeEditor = () => {
+    setInspectorTab(null)
+    useWorkspaceStore.getState().setViewMode('edit')
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-canvas">
@@ -539,9 +558,11 @@ export function ArtifactWorkspace({
         stateSnapshot={state.snapshot}
         document={savedCanvas}
         location={canvasLocation}
-        readOnly={
-          Boolean(access) || fixedVersion !== undefined || version.version !== artifact.headVersion
-        }
+        readOnly={!canWriteVersion}
+        templateReadOnly={Boolean(access) || !canWriteVersion}
+        tweakPreviews={tweakPreviews}
+        onOpenEditor={canWriteVersion ? openCodeEditor : undefined}
+        followHead={followsEditableHead}
         canComment={canComment}
         editing={canEditBoards ? boardEditing : undefined}
         onEditText={canEditBoards && boardEditing.available ? inlineText.tools.edit : undefined}
@@ -556,8 +577,7 @@ export function ArtifactWorkspace({
           else useWorkspaceStore.getState().setViewMode('preview')
         }}
         onNavigate={(location) => {
-          if (canvasLocation?.boardId !== location.boardId)
-            setSelectedElement(artifact.publicId, null)
+          setSelectedElement(artifact.publicId, null)
           revealBoard({ ...location, fit: true })
         }}
       />

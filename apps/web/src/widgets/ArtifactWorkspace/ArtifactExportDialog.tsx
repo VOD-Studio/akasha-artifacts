@@ -1,4 +1,4 @@
-import type { Artifact, Version } from '@akasha/protocol'
+import { type Artifact, resolveArtboardTweaks, type Version } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Modal } from '@akasha/ui/dialog'
 import { Field, FieldSet } from '@akasha/ui/field'
@@ -156,6 +156,8 @@ export function ArtifactExportDialog({ target, onClose }: ExportDialogProps) {
               type: board.type,
               source: board.source,
               designLayers: board.designLayers,
+              boardAppearance: board.appearance,
+              boardTweaks: board.tweaks?.length ? resolveArtboardTweaks(board.tweaks) : undefined,
             })),
             flows,
           },

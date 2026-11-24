@@ -1,6 +1,8 @@
 import {
   ARTIFACT_DEFAULT_VIEWPORT,
+  type ArtboardAppearance,
   type ArtboardPage,
+  type ArtboardTweak,
   type ArtifactType,
   canvasIds,
   type DesignLayer,
@@ -23,6 +25,8 @@ export interface CanvasBoard {
   width: number
   /** 画板独立视口高度，单位为 CSS 像素。 */
   height: number
+  /** 未声明时使用白底与直角，只改变渲染外观。 */
+  appearance?: ArtboardAppearance
   /** 传给沙盒的渲染器类型；并排多画板的每块内容是 HTML。 */
   type: ArtifactType
   /** 未声明时沿用旧制品的网格布局。 */
@@ -31,6 +35,8 @@ export interface CanvasBoard {
   layoutGroup?: string
   /** 持久化图层与作者写的 HTML 独立渲染。 */
   designLayers?: DesignLayer[]
+  /** 固定版本声明的参数，不包含当前浏览会话的覆写。 */
+  tweaks?: ArtboardTweak[]
   /** 交给沙盒渲染的单板源码，不是外层画布文档。 */
   source: string
   /** 从说明合成的内容并非源码片段。 */
@@ -137,9 +143,11 @@ export function createCanvasDocument(
       ...(board.html === undefined ? { generated: true } : {}),
       scoped: true,
       ...(board.viewport ?? ARTIFACT_DEFAULT_VIEWPORT),
+      appearance: board.appearance,
       position: board.position,
       layoutGroup: board.layoutGroup,
       designLayers: board.designLayers,
+      tweaks: board.tweaks,
     }
     if (!board.pageId) {
       shared.push(entry)

@@ -6,11 +6,13 @@ import {
   type ElementRef,
   type Feedback,
   type JsonPatchOp,
+  resolveArtboardTweaks,
   type SandboxToShellMessage,
   type StateStreamSnapshot,
   type Version,
 } from '@akasha/protocol'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useStore } from 'zustand'
 import type { CanvasBoard } from '@/entities/artifact'
 import { submitArtifactFeedback } from '@/entities/feedback'
 import { selectionForVersion, useSelectionStore } from '@/entities/selection'
@@ -25,6 +27,7 @@ import {
 } from '@/shared/bridge/host'
 import { createStorageRelay } from '@/shared/bridge/storage-relay'
 import { ElementOverlay } from '@/shared/overlay/ElementOverlay'
+import type { BoardTweakPreviewStore } from './board-tweak-previews'
 
 /** 一块画板的沙盒向外壳提供的连接，登记到工作区后由工作区使用。 */
 export interface FrameConnection {
@@ -45,6 +48,9 @@ interface ArtifactFrameProps {
   version: Version
   board: CanvasBoard
   state: StateStreamSnapshot
+  /** 当前版本的浏览会话，不向历史、导出或其他画板转发。 */
+  tweakPreviews: BoardTweakPreviewStore
+  useTweakPreview: boolean
   sandboxOrigin: string
   pins: readonly Feedback[]
   /** 图钉只打开原线程，不覆盖正在撰写的选区。 */
@@ -102,6 +108,8 @@ export function ArtifactFrame({
   version,
   board,
   state,
+  tweakPreviews,
+  useTweakPreview,
   sandboxOrigin,
   pins,
   onFocusPin,
@@ -115,7 +123,7 @@ export function ArtifactFrame({
   onVisualSelect,
 }: ArtifactFrameProps) {
   const artifactId = artifact.publicId
-  const { id, scoped, source, type, designLayers } = board
+  const { id, scoped, source, type, designLayers, appearance, tweaks } = board
   const versionNumber = version.version
   const playback = purpose.type === 'play'
   const focused = purpose.type === 'focus'
@@ -160,19 +168,33 @@ export function ArtifactFrame({
     () => pins.filter((pin) => pin.element && belongsToBoard(pin.element, id, scoped)),
     [pins, id, scoped],
   )
+  const overrides = useStore(tweakPreviews, (state) =>
+    useTweakPreview && tweaks?.length ? state.byBoard.get(id) : undefined,
+  )
+  const boardTweaks = useMemo(
+    () => (tweaks?.length ? resolveArtboardTweaks(tweaks) : undefined),
+    [tweaks],
+  )
+  const tweakPreview = useMemo(
+    () => (tweaks && overrides ? resolveArtboardTweaks(tweaks, overrides) : undefined),
+    [tweaks, overrides],
+  )
   const render = useMemo(
     () => ({
       artifactType: type,
       version: versionNumber,
       source,
       designLayers,
+      boardAppearance: appearance,
+      boardTweaks,
       boardId: scoped ? id : undefined,
       playback: playback ? (true as const) : undefined,
     }),
-    [type, source, versionNumber, scoped, id, playback, designLayers],
+    [type, source, versionNumber, scoped, id, playback, designLayers, appearance, boardTweaks],
   )
   const applied = useRef<{
     render: typeof render
+    tweakPreview: typeof tweakPreview
     pins: readonly Feedback[]
     inspecting: boolean
     watchingLayers: boolean
@@ -185,6 +207,7 @@ export function ArtifactFrame({
     onVisualSelect,
     purpose,
     board,
+    tweakPreview,
     onPlayable,
     watchLayers,
     onLayers,
@@ -199,6 +222,7 @@ export function ArtifactFrame({
     onVisualSelect,
     purpose,
     board,
+    tweakPreview,
     onPlayable,
     watchLayers,
     onLayers,
@@ -228,6 +252,17 @@ export function ArtifactFrame({
       const activeVersion = latest.current.versionNumber
       const selectionStore = useSelectionStore.getState()
       switch (message.type) {
+        case 'ready':
+          // 握手前只保留最新覆写，不排队重放用户的每次输入。
+          if (scoped && latest.current.tweakPreview) {
+            host.send({
+              type: 'board.tweaks.preview',
+              boardId: id,
+              version: activeVersion,
+              values: latest.current.tweakPreview,
+            })
+          }
+          break
         case 'viewState.snapshot':
           if (!playback) useWorkspaceStore.getState().setPreservedView(viewKey, message.state)
           break
@@ -418,6 +453,19 @@ export function ArtifactFrame({
       setHovered(null)
       setLivePinRects({})
     }
+    if (
+      scoped &&
+      boardTweaks &&
+      host.isReady() &&
+      ((needsRender && tweakPreview !== undefined) || previous?.tweakPreview !== tweakPreview)
+    ) {
+      host.send({
+        type: 'board.tweaks.preview',
+        boardId: id,
+        version: versionNumber,
+        values: tweakPreview ?? boardTweaks,
+      })
+    }
     const watchingLayers = !isolated && watchLayers
     if ((needsRender && watchingLayers) || watchingLayers !== (previous?.watchingLayers ?? false)) {
       host.send({ type: 'inspect.layers.watch', active: watchingLayers })
@@ -430,14 +478,18 @@ export function ArtifactFrame({
       host.send({ type: 'inspect.stop' })
       setHovered(null)
     }
-    applied.current = { render, pins: versionPins, inspecting, watchingLayers }
+    applied.current = { render, tweakPreview, pins: versionPins, inspecting, watchingLayers }
   }, [
+    boardTweaks,
     host,
+    id,
     interactive,
     isolated,
     pickerActive,
     playback,
     render,
+    scoped,
+    tweakPreview,
     versionNumber,
     versionPins,
     viewKey,

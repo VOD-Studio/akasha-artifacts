@@ -1,8 +1,10 @@
+import { type ArtboardAppearance, ArtboardAppearanceSchema } from './artboard-appearance.js'
 import {
   ARTBOARD_GEOMETRY_LIMITS,
   type DesignLayer,
   DesignLayersSchema,
 } from './artboard-layers.js'
+import { type ArtboardTweak, ArtboardTweaksSchema } from './artboard-tweaks.js'
 
 /** 普通 HTML、React 等制品在画布上的唯一画板标识。 */
 export const STANDALONE_BOARD_ID = 'main'
@@ -42,6 +44,8 @@ export interface ArtboardBoard {
   layoutGroup?: string
   /** 画板固有尺寸；宽高均为 1–8192 的整数才保留，否则丢弃。 */
   viewport?: { width: number; height: number }
+  /** 位于作者内容下方的底色与画板边界圆角；不影响视口大小。 */
+  appearance?: ArtboardAppearance
   /** 绝对画布坐标，单位 CSS 像素；缺省时仍参加自动排列。 */
   position?: { x: number; y: number }
   /** 标记为推荐方案。 */
@@ -50,6 +54,8 @@ export interface ArtboardBoard {
   html?: string
   /** 作者声明的原生设计图层；任意 HTML 内容不会被解释为可拖拽对象。 */
   designLayers?: DesignLayer[]
+  /** 当前画板的可预览参数；与整份模板状态流及其他画板无关。 */
+  tweaks?: ArtboardTweak[]
   /** 没有 HTML 时用来生成画板内容的纯文本。 */
   description?: string
   /** 作者提供的画板标签。 */
@@ -187,6 +193,21 @@ export function parseArtboardValue(value: unknown): ArtboardParseResult {
         error: `boards[${i}].designLayers 无效：${designLayers.error.issues[0]?.message}`,
       }
     }
+    const appearance =
+      rec.appearance === undefined ? undefined : ArtboardAppearanceSchema.safeParse(rec.appearance)
+    if (appearance && !appearance.success) {
+      return {
+        ok: false,
+        error: `boards[${i}].appearance 无效：${appearance.error.issues[0]?.message}`,
+      }
+    }
+    const tweaks = rec.tweaks === undefined ? undefined : ArtboardTweaksSchema.safeParse(rec.tweaks)
+    if (tweaks && !tweaks.success) {
+      return {
+        ok: false,
+        error: `boards[${i}].tweaks 无效：${tweaks.error.issues[0]?.message}`,
+      }
+    }
     boards.push({
       id,
       title,
@@ -197,6 +218,7 @@ export function parseArtboardValue(value: unknown): ArtboardParseResult {
       groupId: asString(rec.groupId),
       layoutGroup: asString(rec.layoutGroup)?.trim() || undefined,
       ...(validSize(width) && validSize(height) ? { viewport: { width, height } } : {}),
+      appearance: appearance?.data,
       ...(x !== undefined &&
       y !== undefined &&
       Math.abs(x) <= ARTBOARD_GEOMETRY_LIMITS.coordinate &&
@@ -206,6 +228,7 @@ export function parseArtboardValue(value: unknown): ArtboardParseResult {
       recommended: asBoolean(rec.recommended),
       html: asString(rec.html),
       designLayers: designLayers?.data,
+      tweaks: tweaks?.data,
       description: asString(rec.description),
       tags: asStringArray(rec.tags),
     })

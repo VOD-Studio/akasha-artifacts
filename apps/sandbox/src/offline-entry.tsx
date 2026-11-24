@@ -1,9 +1,15 @@
 import './runtime/no-jit'
 import '@tailwindcss/browser'
 import './styles.css'
-import type { ArtifactType, DesignLayer } from '@akasha/protocol'
+import type {
+  ArtboardAppearance,
+  ArtboardTweakValues,
+  ArtifactType,
+  DesignLayer,
+} from '@akasha/protocol'
 import { createRoot } from 'react-dom/client'
 import { bindPrototype } from './prototype'
+import { artboardStyle } from './renderers/artboard-style'
 import { registerBuiltinRenderers } from './renderers/builtins'
 import { DesignLayerScene } from './renderers/DesignLayerScene'
 import { getRenderer } from './renderers/registry'
@@ -18,6 +24,8 @@ interface OfflineRender {
   source: string
   boardId?: string
   designLayers?: DesignLayer[]
+  boardAppearance?: ArtboardAppearance
+  boardTweaks?: ArtboardTweakValues
 }
 
 function notify(type: string, data?: { target?: string; message?: string }) {
@@ -82,7 +90,10 @@ try {
     exit: () => notify('exit'),
   })
   createRoot(rootElement).render(
-    <div className="relative min-h-screen bg-white text-slate-900">
+    <div
+      className="relative min-h-screen bg-white text-slate-900"
+      style={artboardStyle(payload.boardAppearance, payload.boardTweaks)}
+    >
       {payload.designLayers?.length ? (
         <DesignLayerScene layers={payload.designLayers} interactive={false} />
       ) : null}

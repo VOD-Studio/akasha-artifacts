@@ -1,5 +1,7 @@
 import { z } from 'zod'
+import { ArtboardAppearanceSchema } from './artboard-appearance.js'
 import { DesignLayersSchema } from './artboard-layers.js'
+import { ArtboardTweakValuesSchema } from './artboard-tweaks.js'
 import { EditOpSchema, ElementRectSchema, ElementRefSchema, JsonPatchOpSchema } from './domain.js'
 import { ArtifactTypeSchema, PROTOCOL_VERSION } from './primitives.js'
 import { ArtifactStorageOperationSchema } from './storage.js'
@@ -65,10 +67,21 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
     version: z.number().int().min(1),
     source: z.string(),
     designLayers: DesignLayersSchema.optional(),
+    // 单板持久外观和参数默认值；不从预览覆写构造固定版本载荷。
+    boardAppearance: ArtboardAppearanceSchema.optional(),
+    boardTweaks: ArtboardTweakValuesSchema.optional(),
     // 完整的初始状态快照
     state: z.record(z.string(), z.unknown()),
     // 上一次沙盒上报的保态快照
     preservedState: PreservedViewStateSchema.optional(),
+  }),
+  z.object({
+    ...BridgeEnvelopeBase,
+    type: z.literal('board.tweaks.preview'),
+    boardId: z.string().min(1),
+    version: z.number().int().min(1),
+    // 当前板的完整预览值。重置也发送完整的默认值，不写作品状态流。
+    values: ArtboardTweakValuesSchema,
   }),
   z.object({
     ...BridgeEnvelopeBase,

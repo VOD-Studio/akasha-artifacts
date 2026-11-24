@@ -12,7 +12,9 @@ const coordinate = z
   .min(-ARTBOARD_GEOMETRY_LIMITS.coordinate)
   .max(ARTBOARD_GEOMETRY_LIMITS.coordinate)
 const dimension = z.number().int().min(1).max(ARTBOARD_GEOMETRY_LIMITS.viewport)
-const style = z.enum(['ink', 'blue', 'rose', 'amber', 'mint'])
+/** 原生图层可保存的调色板标识。 */
+export const DESIGN_LAYER_COLORS = ['ink', 'blue', 'rose', 'amber', 'mint'] as const
+const style = z.enum(DESIGN_LAYER_COLORS)
 const unitPoint = z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)])
 const geometry = {
   // 只要求在该画板内唯一；该 ID 不随位置、尺寸和文本改动变化

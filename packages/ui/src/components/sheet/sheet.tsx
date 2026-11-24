@@ -112,7 +112,7 @@ function initialFocus(content: HTMLElement): HTMLElement {
 
 /**
  * 侧边面板：离窗口上、下与侧边各 12，内容区单独滚动。
- * 打开时焦点落到标题栏后的第一个控件，关闭后回到打开它的按钮或行；无遮罩时 F6 在面板与页面之间跳转。
+ * 打开时聚焦第一个控件；关闭后焦点丢失时回到触发点，无遮罩时 F6 可在面板和页面间跳转。
  */
 function SheetContent({
   ref,
@@ -124,6 +124,7 @@ function SheetContent({
   overlay = true,
   contentKey,
   container,
+  inert,
   onOpenAutoFocus,
   onCloseAutoFocus,
   onInteractOutside,
@@ -196,6 +197,8 @@ function SheetContent({
             onCloseAutoFocus?.(event)
             if (event.defaultPrevented) return
             event.preventDefault()
+            const active = document.activeElement
+            if (!modal && active && active !== active.ownerDocument.body) return
             restoreFocus(openerRef.current.focus)
           }}
           onPointerDownOutside={(event) => {
@@ -208,6 +211,7 @@ function SheetContent({
             onInteractOutside?.(event)
           }}
           {...props}
+          inert={!open || inert}
           className={cn('v-sheet', `v-sheet--${size}`, className)}
         >
           {showCloseButton && (
