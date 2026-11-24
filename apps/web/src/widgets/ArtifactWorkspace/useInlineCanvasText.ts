@@ -118,7 +118,7 @@ export function useInlineCanvasText(input: TextEditingInput) {
           kind: 'readOnly',
           element,
           anchor,
-          message: cause instanceof Error ? cause.message : '无法检查静态文字',
+          message: cause instanceof Error ? cause.message : '无法检查文字',
         })
         return
       }
@@ -127,7 +127,7 @@ export function useInlineCanvasText(input: TextEditingInput) {
       kind: 'readOnly',
       element,
       anchor,
-      message: '此处没有可唯一定位的静态文字。动态内容可以批注，不能直接改写。',
+      message: '无法定位可编辑的静态文字。',
     })
   }, [])
 
@@ -167,8 +167,7 @@ export function useInlineCanvasText(input: TextEditingInput) {
     },
     async save(text: string) {
       if (!draft || draft.kind === 'readOnly') return
-      if (!input.editing.available)
-        throw new Error('当前不能保存文字，请保留草稿并返回可编辑版本。')
+      if (!input.editing.available) throw new Error('当前无法保存文字，输入已保留。')
       const { base } = draft
       let staged: boolean
       if (draft.kind === 'source') {
@@ -193,7 +192,7 @@ export function useInlineCanvasText(input: TextEditingInput) {
           base,
         )
       }
-      if (!staged) throw new Error('未能接收文字变更；请处理画布的保存提示后重试。')
+      if (!staged) throw new Error('无法保存文字，请处理画布上的提示后重试。')
       setDraft(null)
     },
   }

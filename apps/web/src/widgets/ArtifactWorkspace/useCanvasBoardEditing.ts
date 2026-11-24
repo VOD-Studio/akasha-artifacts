@@ -80,7 +80,7 @@ export function useCanvasBoardEditing({
       version.version !== edit.base.version ||
       artifact.headVersion !== edit.base.version
     ) {
-      setPending({ ...edit, status: 'failed', error: '头版本已更新，未保存的操作没有覆盖新版本。' })
+      setPending({ ...edit, status: 'failed', error: '作品已更新，未覆盖新版本。' })
       return
     }
     inFlight.current = true
@@ -116,7 +116,7 @@ export function useCanvasBoardEditing({
       setPending({
         ...edit,
         status: 'failed',
-        error: cause instanceof Error ? cause.message : '无法保存画板',
+        error: cause instanceof Error ? cause.message : '无法保存改动',
       })
       if (cause instanceof ApiError && cause.status === 409) {
         void query.invalidateQueries({ queryKey: artifactKeys.detail(artifact.publicId) })
@@ -168,7 +168,7 @@ export function useCanvasBoardEditing({
       try {
         return stage(editCanvasBoards(base.source, base.version, command), base)
       } catch (cause) {
-        setInputError(cause instanceof Error ? cause.message : '无法应用画板操作')
+        setInputError(cause instanceof Error ? cause.message : '无法应用改动')
         return false
       }
     },

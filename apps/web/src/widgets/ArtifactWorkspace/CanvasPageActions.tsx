@@ -1,5 +1,6 @@
 import type { Artifact, Version } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
+import { Field } from '@akasha/ui/field'
 import { Input } from '@akasha/ui/input'
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -27,6 +28,12 @@ type PageDraft =
   | { kind: 'rename'; page: CanvasPage; title: string; baseVersion: number }
   | { kind: 'delete'; page: CanvasPage; baseVersion: number }
 
+function toPageEdit(draft: PageDraft, title: string): CanvasPageEdit {
+  if (draft.kind === 'create') return { kind: 'create', id: crypto.randomUUID(), title }
+  if (draft.kind === 'rename') return { kind: 'rename', id: draft.page.id, title }
+  return { kind: 'delete', id: draft.page.id }
+}
+
 /** 只保存已确认的页面变更；基准版本过期时保留输入并给出错误。 */
 export function CanvasPageActions({ editing, page, pages, onNavigate }: CanvasPageActionsProps) {
   const queryClient = useQueryClient()
@@ -39,25 +46,20 @@ export function CanvasPageActions({ editing, page, pages, onNavigate }: CanvasPa
     draft?.kind === 'delete' ||
     (Boolean(title) && (draft?.kind !== 'rename' || title !== draft.page.title))
 
-  function begin(next: PageDraft) {
+  const begin = (next: PageDraft) => {
     setError('')
     setDraft(next)
   }
 
-  async function save() {
+  const save = async () => {
     if (!draft || saving || !canSave) return
     setError('')
     setSaving(true)
     try {
       if (draft.baseVersion !== version.version) {
-        throw new Error('制品已更新，请重新开始页面操作')
+        throw new Error('作品已更新，请重新操作')
       }
-      const edit: CanvasPageEdit =
-        draft.kind === 'create'
-          ? { kind: 'create', id: crypto.randomUUID(), title }
-          : draft.kind === 'rename'
-            ? { kind: 'rename', id: draft.page.id, title }
-            : { kind: 'delete', id: draft.page.id }
+      const edit = toPageEdit(draft, title)
       const source = editCanvasPages(version.source, draft.baseVersion, edit)
       const saved = await publishHumanVersion({
         project: artifact.projectId,
@@ -84,7 +86,7 @@ export function CanvasPageActions({ editing, page, pages, onNavigate }: CanvasPa
         onNavigate(fallback ?? { id: '', title: '总览', boards: [] })
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '无法保存画布页面')
+      setError(cause instanceof Error ? cause.message : '无法保存页面')
     } finally {
       setSaving(false)
     }
@@ -134,20 +136,20 @@ export function CanvasPageActions({ editing, page, pages, onNavigate }: CanvasPa
     >
       {draft.kind === 'delete' ? (
         <p className="text-sm text-ink">
-          删除「{draft.page.title}」会同时移除 {draft.page.ownedBoardCount} 张直属画板。
-          共享画板与旧版本不变。
+          删除「{draft.page.title}」及其 {draft.page.ownedBoardCount}{' '}
+          张直属画板？共享画板和旧版本不变。
         </p>
       ) : (
-        <Input
-          aria-label="页面名称"
-          placeholder="页面名称"
-          controlSize="sm"
-          value={draft.title}
-          disabled={saving}
-          onChange={(event) => setDraft({ ...draft, title: event.target.value })}
-        />
+        <Field label="页面名称" controlSize="sm" error={error}>
+          <Input
+            controlSize="sm"
+            value={draft.title}
+            disabled={saving}
+            onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+          />
+        </Field>
       )}
-      {error ? (
+      {draft.kind === 'delete' && error ? (
         <p role="alert" className="text-xs text-danger">
           {error}
         </p>
@@ -156,8 +158,8 @@ export function CanvasPageActions({ editing, page, pages, onNavigate }: CanvasPa
         <Button size="sm" variant="ghost" disabled={saving} onClick={() => setDraft(null)}>
           取消
         </Button>
-        <Button type="submit" size="sm" disabled={!canSave || saving}>
-          {saving ? '保存中…' : draft.kind === 'delete' ? '确认删除页面' : '保存页面'}
+        <Button type="submit" size="sm" disabled={!canSave} loading={saving}>
+          {draft.kind === 'delete' ? '删除' : '保存'}
         </Button>
       </div>
     </form>

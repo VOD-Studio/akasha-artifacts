@@ -136,14 +136,11 @@ export function useBoardInspection({
       if (!current || !board || !layers?.layers.includes(layer)) return
       const native =
         layer.designId && board.designLayers?.some((item) => item.id === layer.designId)
+      const blockId = native ? `${DESIGN_LAYER_BLOCK_PREFIX}${layer.designId}` : layer.blockId
       const element = {
         selector: layer.selector,
         ...(board.scoped ? { boardId: board.id } : {}),
-        ...(native
-          ? { blockId: `${DESIGN_LAYER_BLOCK_PREFIX}${layer.designId}` }
-          : layer.blockId
-            ? { blockId: layer.blockId }
-            : {}),
+        ...(blockId ? { blockId } : {}),
       }
       const target = { id: layer.id, version }
       useSelectionStore.getState().setSelectedElement(artifactId, element, target)

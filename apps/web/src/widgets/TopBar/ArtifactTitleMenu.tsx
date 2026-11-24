@@ -1,6 +1,5 @@
 import type { Artifact, ArtifactTransferInput } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
-import { Modal } from '@akasha/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,8 +8,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@akasha/ui/dropdown-menu'
-import { Field } from '@akasha/ui/field'
-import { Input } from '@akasha/ui/input'
 import {
   ChevronDown,
   Code2,
@@ -27,17 +24,17 @@ import {
   Star,
   Trash2,
 } from 'lucide-react'
-import { useId, useState } from 'react'
+import { useState } from 'react'
 import { toast } from 'sonner'
 import {
   useArtifactFavoritesQuery,
   useReloadArtifactMutation,
-  useRenameArtifactMutation,
   useSetArtifactFavoriteMutation,
 } from '../../entities/artifact/queries'
 import type { WorkspaceViewMode } from '../../entities/workspace/store'
 import { ArtifactStorageUsageDialog } from './ArtifactStorageUsageDialog'
 import { ArtifactWithdrawalDialog } from './ArtifactWithdrawalDialog'
+import { RenameArtifactDialog } from './RenameArtifactDialog'
 
 interface ArtifactTitleMenuProps {
   artifact: Artifact
@@ -71,21 +68,34 @@ export function ArtifactTitleMenu({
   onQuickJump,
 }: ArtifactTitleMenuProps) {
   const { publicId, title } = artifact
-  const rename = useRenameArtifactMutation(publicId)
   const reload = useReloadArtifactMutation(publicId)
   const favorites = useArtifactFavoritesQuery()
   const setFavorite = useSetArtifactFavoriteMutation(publicId)
   const isFavorite = favorites.data?.includes(publicId) ?? false
   const [showUsage, setShowUsage] = useState(false)
   const [showWithdrawal, setShowWithdrawal] = useState(false)
-  const [name, setName] = useState<string | null>(null)
-  const formId = useId()
+  const [showRename, setShowRename] = useState(false)
+  const openRename = () => setShowRename(true)
+  const closeRename = () => setShowRename(false)
+
+  const toggleFavorite = () => {
+    setFavorite.mutate(!isFavorite, {
+      onSuccess: ({ favorite }) => toast.success(favorite ? '已收藏' : '已取消收藏'),
+      onError: (error) => toast.error(error.message),
+    })
+  }
+  const reloadArtifact = () => {
+    reload.mutate(undefined, {
+      onSuccess: () => toast.success('已重新加载'),
+      onError: (error) => toast.error(error.message),
+    })
+  }
 
   const copyLink = async () => {
     try {
       const path = `/a/${encodeURIComponent(publicId)}${fixedVersion === undefined ? '' : `/v/${fixedVersion}`}`
       await navigator.clipboard.writeText(new URL(path, window.location.origin).href)
-      toast.success('制品链接已复制')
+      toast.success('已复制链接')
     } catch {
       toast.error('无法写入剪贴板')
     }
@@ -99,7 +109,7 @@ export function ArtifactTitleMenu({
             <Button
               variant="ghost"
               size="sm"
-              aria-label="制品菜单"
+              aria-label="作品菜单"
               title={title}
               className="max-w-full"
             >
@@ -113,39 +123,25 @@ export function ArtifactTitleMenu({
         <DropdownMenuContent align="start">
           <DropdownMenuItem onSelect={() => void copyLink()}>
             <Link2 size={14} />
-            复制制品链接
+            复制链接
           </DropdownMenuItem>
           {!shared && favorites.data ? (
-            <DropdownMenuItem
-              disabled={setFavorite.isPending}
-              onSelect={() => {
-                setFavorite.mutate(!isFavorite, {
-                  onSuccess: ({ favorite }) =>
-                    toast.success(favorite ? '已收藏制品' : '已取消收藏'),
-                  onError: (error) => toast.error(error.message),
-                })
-              }}
-            >
+            <DropdownMenuItem disabled={setFavorite.isPending} onSelect={toggleFavorite}>
               <Star size={14} />
-              {isFavorite ? '取消收藏' : '收藏制品'}
+              {isFavorite ? '取消收藏' : '收藏'}
             </DropdownMenuItem>
           ) : null}
           {canManage ? (
-            <DropdownMenuItem
-              onSelect={() => {
-                rename.reset()
-                setName(title)
-              }}
-            >
+            <DropdownMenuItem onSelect={openRename}>
               <Pencil size={14} />
-              重命名制品
+              重命名
             </DropdownMenuItem>
           ) : null}
           {onTransfer && canManage ? (
             <>
               <DropdownMenuItem onSelect={() => onTransfer('copy')}>
                 <Copy size={14} />
-                复制制品…
+                创建副本…
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onTransfer('move')}>
                 <FolderInput size={14} />
@@ -153,15 +149,7 @@ export function ArtifactTitleMenu({
               </DropdownMenuItem>
             </>
           ) : null}
-          <DropdownMenuItem
-            disabled={reload.isPending}
-            onSelect={() =>
-              reload.mutate(undefined, {
-                onSuccess: () => toast.success('已重新读取制品'),
-                onError: (error) => toast.error(error.message),
-              })
-            }
-          >
+          <DropdownMenuItem disabled={reload.isPending} onSelect={reloadArtifact}>
             <RefreshCw size={14} />
             重新加载
           </DropdownMenuItem>
@@ -189,13 +177,13 @@ export function ArtifactTitleMenu({
           {onExport ? (
             <DropdownMenuItem onSelect={onExport}>
               <Download size={14} />
-              导出设计
+              导出
             </DropdownMenuItem>
           ) : null}
           {onHandoff ? (
             <DropdownMenuItem onSelect={onHandoff}>
               <HandMetal size={14} />
-              移交整份给 CLI Agent
+              移交给 Agent
             </DropdownMenuItem>
           ) : null}
           <DropdownMenuItem onSelect={onQuickJump}>
@@ -213,7 +201,7 @@ export function ArtifactTitleMenu({
               <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onSelect={() => setShowWithdrawal(true)}>
                 <Trash2 size={14} />
-                撤下制品…
+                撤下…
               </DropdownMenuItem>
             </>
           ) : null}
@@ -229,50 +217,9 @@ export function ArtifactTitleMenu({
           onWithdrawn={onWithdrawn}
         />
       ) : null}
-      {name !== null ? (
-        <Modal
-          open
-          onOpenChange={(open) => {
-            if (!open && !rename.isPending) setName(null)
-          }}
-          title="重命名制品"
-          footer={
-            <>
-              <Button variant="ghost" disabled={rename.isPending} onClick={() => setName(null)}>
-                取消
-              </Button>
-              <Button
-                type="submit"
-                form={formId}
-                loading={rename.isPending}
-                disabled={!name.trim() || name.trim() === title}
-              >
-                保存名称
-              </Button>
-            </>
-          }
-        >
-          <form
-            id={formId}
-            className="space-y-2"
-            onSubmit={(event) => {
-              event.preventDefault()
-              const next = name.trim()
-              if (!next || next === title || rename.isPending) return
-              rename.mutate(next, { onSuccess: () => setName(null) })
-            }}
-          >
-            <Field label="制品名称" error={rename.error?.message}>
-              <Input
-                value={name}
-                maxLength={240}
-                readOnly={rename.isPending}
-                onChange={(event) => setName(event.currentTarget.value)}
-              />
-            </Field>
-          </form>
-        </Modal>
-      ) : null}
+      {showRename && canManage && (
+        <RenameArtifactDialog artifact={artifact} onClose={closeRename} />
+      )}
     </>
   )
 }

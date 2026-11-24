@@ -38,7 +38,7 @@ const detail: ArtifactDetailResponse = {
   rounds: [],
 }
 
-function openWorkspace(hub = false, canManage = true) {
+function openWorkspace(hub = false, canManage = true, detailFailure?: number) {
   vi.stubGlobal('__AKASHA_CONFIG__', { hub, sandboxOrigin: 'http://127.0.0.1:24331' })
   vi.stubGlobal('matchMedia', () => ({
     matches: false,
@@ -59,8 +59,14 @@ function openWorkspace(hub = false, canManage = true) {
     ['/api/v1/projects', { projects: [] }],
     ['/api/v1/artifacts', { artifacts: [detail.artifact] }],
   ])
+  let failDetailWith = detailFailure
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const { pathname } = new URL(String(input), window.location.origin)
+    if (pathname === endpoint && failDetailWith) {
+      const status = failDetailWith
+      failDetailWith = undefined
+      return new Response(null, { status })
+    }
     if (responses.has(pathname)) return Response.json(responses.get(pathname))
     return new Response(null, { status: 404 })
   })
@@ -87,7 +93,7 @@ afterEach(() => {
 
 it('切换会话不重建画板，保留选区、倍率、草稿并归还焦点', async () => {
   openWorkspace()
-  const frame = await screen.findByTitle('确认订单 隔离沙盒')
+  const frame = await screen.findByTitle('画板内容：确认订单')
   const board = screen.getByRole('button', { name: '确认订单' })
   fireEvent.click(board)
   fireEvent.click(screen.getByRole('button', { name: '放大' }))
@@ -104,7 +110,7 @@ it('切换会话不重建画板，保留选区、倍率、草稿并归还焦点'
   fireEvent.click(within(pane).getByRole('button', { name: '返回画布' }))
   expect(screen.queryByRole('complementary', { name: 'Agent 对话' })).toBeNull()
   expect(document.activeElement).toBe(trigger)
-  expect(screen.getByTitle('确认订单 隔离沙盒')).toBe(frame)
+  expect(screen.getByTitle('画板内容：确认订单')).toBe(frame)
   expect(board.getAttribute('aria-pressed')).toBe('true')
   expect(screen.getByLabelText('画布缩放比例').textContent).toBe(zoom)
 
@@ -116,7 +122,7 @@ it('切换会话不重建画板，保留选区、倍率、草稿并归还焦点'
 
 it('Hub 中管理者可从顶栏分享，普通读者不显示该入口', async () => {
   openWorkspace(true, false)
-  await screen.findByTitle('确认订单 隔离沙盒')
+  await screen.findByTitle('画板内容：确认订单')
   expect(screen.queryByRole('button', { name: 'Agent 对话' })).toBeNull()
   expect(screen.queryByRole('button', { name: '分享' })).toBeNull()
   cleanup()
@@ -124,4 +130,13 @@ it('Hub 中管理者可从顶栏分享，普通读者不显示该入口', async 
   openWorkspace(true)
   fireEvent.click(await screen.findByRole('button', { name: '分享' }))
   expect(screen.getByRole('dialog', { name: '创建分享链接' })).toBeTruthy()
+})
+
+it('首次读取作品失败时可重试，成功后打开同一作品', async () => {
+  openWorkspace(false, true, 503)
+  expect(await screen.findByText('无法打开作品')).toBeTruthy()
+  expect(screen.queryByTitle('画板内容：确认订单')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: '重试' }))
+  expect(await screen.findByTitle('画板内容：确认订单')).toBeTruthy()
+  expect(screen.queryByText('无法打开作品')).toBeNull()
 })

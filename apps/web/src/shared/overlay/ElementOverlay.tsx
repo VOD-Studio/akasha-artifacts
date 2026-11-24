@@ -15,7 +15,13 @@ function formatLocatorLabel(ref: ElementRef): string {
   if (ref.blockId) return `#${ref.blockId}`
   if (ref.loc) return `@${ref.loc}`
   if (ref.selector) return ref.selector.slice(0, 32)
-  return ref.textPreview?.slice(0, 24) ?? 'element'
+  return ref.textPreview?.slice(0, 24) ?? '元素'
+}
+
+function getPinTone(feedback: Feedback): string {
+  if (feedback.status === 'resolved') return 'border-success bg-card text-success'
+  if (feedback.draft) return 'border-dashed border-warning bg-card text-warning'
+  return 'border-primary bg-primary text-primary-foreground'
 }
 
 /**
@@ -70,7 +76,7 @@ export function ElementOverlay({
             style={{ top: selected.rect.y < 24 ? '2px' : '-22px' }}
             className="absolute left-0 rounded bg-primary px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-primary-foreground shadow"
           >
-            已选中 · {formatLocatorLabel(selected)}
+            {formatLocatorLabel(selected)}
           </span>
         </div>
       ) : null}
@@ -88,12 +94,6 @@ export function ElementOverlay({
           pinnedPositions.set(position, overlap + 1)
           pinY += overlap * 26
         }
-        const toneCls =
-          fb.status === 'resolved'
-            ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
-            : fb.draft
-              ? 'border-dashed border-amber-500 bg-amber-50 text-amber-800'
-              : 'border-primary bg-primary text-primary-foreground'
 
         return (
           <button
@@ -106,7 +106,7 @@ export function ElementOverlay({
             style={{
               transform: `translate3d(${pinX}px, ${pinY}px, 0)`,
             }}
-            className={`pointer-events-auto absolute top-0 left-0 inline-flex h-6 min-w-6 items-center justify-center gap-0.5 rounded-full border px-1.5 text-[10px] font-semibold shadow-sm transition hover:scale-105 ${toneCls} ${
+            className={`pointer-events-auto absolute top-0 left-0 inline-flex h-6 min-w-6 items-center justify-center gap-0.5 rounded-full border px-1.5 text-[10px] font-semibold shadow-sm transition hover:scale-105 ${getPinTone(fb)} ${
               isFocused ? 'ring-2 ring-ring ring-offset-1' : ''
             }`}
           >

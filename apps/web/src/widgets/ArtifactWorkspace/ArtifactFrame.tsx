@@ -87,6 +87,11 @@ function bindSandboxReference(element: ElementRef, board: CanvasBoard): ElementR
   return bound.blockId || bound.selector || bound.textPreview ? bound : null
 }
 
+function frameViewKey(artifactId: string, id: string, scoped: boolean, focused: boolean) {
+  if (focused) return JSON.stringify([artifactId, id, 'focus'])
+  return scoped ? JSON.stringify([artifactId, id]) : artifactId
+}
+
 /**
  * 单块画板的独立沙盒：每块画板一个隔离的 iframe，外壳叠层负责选区与图钉。
  *
@@ -116,11 +121,7 @@ export function ArtifactFrame({
   const focused = purpose.type === 'focus'
   const isolated = focused || playback
   const interactive = playback || (purpose.type === 'overview' && purpose.interactive)
-  const viewKey = focused
-    ? JSON.stringify([artifactId, id, 'focus'])
-    : scoped
-      ? JSON.stringify([artifactId, id])
-      : artifactId
+  const viewKey = frameViewKey(artifactId, id, scoped, focused)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const lastStateSeq = useRef(-1)
   const hadSelection = useRef(false)
@@ -333,7 +334,7 @@ export function ArtifactFrame({
               type: 'storage.response',
               requestId: message.requestId,
               ok: false,
-              error: '聚焦与试玩不能修改制品存储',
+              error: '画板查看和交互预览不能修改作品存储',
             })
             break
           }
@@ -465,7 +466,7 @@ export function ArtifactFrame({
       <iframe
         key={nonce}
         ref={iframeRef}
-        title={`${board.title} 隔离沙盒`}
+        title={`画板内容：${board.title}`}
         src={iframeSrc}
         width={board.width}
         height={board.height}
@@ -475,7 +476,7 @@ export function ArtifactFrame({
         tabIndex={interactive && (playback || !scoped) ? undefined : -1}
         className={`block h-full w-full border-0 bg-white ${interactive ? 'pointer-events-auto' : 'pointer-events-none'}`}
       />
-      {!playback ? (
+      {!playback && (
         <ElementOverlay
           hovered={pickerActive && interactive ? hovered : null}
           selected={selected}
@@ -484,14 +485,15 @@ export function ArtifactFrame({
           focusedFeedbackId={focusedFeedbackId}
           onSelectPin={onFocusPin}
         />
-      ) : null}
-      {error?.version === versionNumber ? (
+      )}
+      {error?.version === versionNumber && (
         <div className="pointer-events-auto absolute inset-x-0 bottom-0 z-20 max-h-full overflow-auto p-2">
-          {playback ? (
+          {playback && (
             <p role="alert" className="rounded border border-border bg-surface p-3 text-sm">
-              无法试玩该画板：{error.message}
+              无法播放原型：{error.message}
             </p>
-          ) : (
+          )}
+          {!playback && (
             <RuntimeErrorPanel
               artifactId={scoped ? viewKey : artifactId}
               projectId={artifact.projectId}
@@ -511,7 +513,7 @@ export function ArtifactFrame({
             />
           )}
         </div>
-      ) : null}
+      )}
     </div>
   )
 }

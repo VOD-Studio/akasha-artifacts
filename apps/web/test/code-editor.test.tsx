@@ -263,7 +263,7 @@ describe('apps/web L3 CodeMirror 6 分栏代码编辑与冲突处理', () => {
     expect(screen.getByTestId('l3-code-editor')).toBeTruthy()
     const iframe = container.querySelector('iframe')
     expect(iframe).toBeTruthy()
-    expect(screen.getByRole('region', { name: '制品画布' }).contains(iframe)).toBe(true)
+    expect(screen.getByRole('region', { name: '画布' }).contains(iframe)).toBe(true)
 
     // 切换视图（edit -> preview -> diff -> edit）必须保留未保存草稿而不重建编辑器
     act(() => {

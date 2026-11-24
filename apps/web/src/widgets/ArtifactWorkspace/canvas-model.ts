@@ -147,15 +147,13 @@ export function createCanvasDocument(
     const own = boardsByPage.get(id)
     const showShared = includeSharedBoards !== false
     showsSharedBoards ||= showShared
+    const fallback = own ?? (showShared ? shared : [])
+    const boards = showShared && own?.length && shared.length ? [...own, ...shared] : fallback
     pages.push({
       id: pageIds.get(id) ?? id,
       title,
       ownedBoardCount: own?.length ?? 0,
-      boards: showShared
-        ? own?.length && shared.length
-          ? [...own, ...shared]
-          : (own ?? shared)
-        : (own ?? []),
+      boards,
     })
   }
   if (pages.length === 0 || unplaced.length !== 0 || (shared.length !== 0 && !showsSharedBoards)) {

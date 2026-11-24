@@ -345,7 +345,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     const iframe = container.querySelector('iframe')
     expect(iframe).toBeTruthy()
     expect(iframe?.getAttribute('sandbox')).toBe('allow-scripts')
-    expect(screen.getByRole('region', { name: '制品画布' }).contains(iframe)).toBe(true)
+    expect(screen.getByRole('region', { name: '画布' }).contains(iframe)).toBe(true)
     expect(screen.queryByRole('dialog', { name: '批注与评审' })).toBeNull()
 
     const zoomRatio = () =>
@@ -354,9 +354,9 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     fireEvent.click(screen.getByRole('button', { name: '放大' }))
     const previewZoom = zoomRatio()
     expect(previewZoom).toBeGreaterThan(initialZoom)
-    fireEvent.keyDown(screen.getByRole('button', { name: '制品菜单' }), { key: 'Enter' })
+    fireEvent.keyDown(screen.getByRole('button', { name: '作品菜单' }), { key: 'Enter' })
     fireEvent.click(screen.getByRole('menuitem', { name: '查看源码' }))
-    expect(screen.queryByRole('region', { name: '制品画布' })).toBeNull()
+    expect(screen.queryByRole('region', { name: '画布' })).toBeNull()
     expect(screen.getByText(SAMPLE_V1.source)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '返回画布' }))
     expect(container.querySelector('iframe')).toBe(iframe)

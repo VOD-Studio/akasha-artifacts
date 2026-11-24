@@ -87,8 +87,8 @@ export function TopBar({
           variant="ghost"
           size="sm"
           iconOnly
-          aria-label="返回制品库"
-          title="返回制品库"
+          aria-label="返回作品库"
+          title="返回作品库"
           onClick={onBackToLibrary}
         >
           <ArrowLeft size={16} />

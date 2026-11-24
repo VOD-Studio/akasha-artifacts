@@ -30,12 +30,12 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
   const canGroup = canAlign && (!group || selected.some((item) => item.layoutGroup !== group))
   const canUngroup = editing.available && selected.some((item) => item.layoutGroup)
 
-  function layout(alignment: (typeof ALIGNMENTS)[number]['id']) {
+  const layout = (alignment: (typeof ALIGNMENTS)[number]['id']) => {
     const changes = alignItems(new Map(selected.map((item) => [item.id, item])), alignment)
     if (changes.length) editing.change({ kind: 'layerGeometry', boardId, changes })
   }
 
-  function groupLayers(layoutGroup: string | null) {
+  const groupLayers = (layoutGroup: string | null) => {
     const ids = selected.filter((item) => layoutGroup || item.layoutGroup).map((item) => item.id)
     editing.change({ kind: 'layerGroup', boardId, ids, layoutGroup })
   }
@@ -80,12 +80,12 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
           type="submit"
           disabled={!editing.available || !draft || sameGeometry(draft.geometry, draft.original)}
         >
-          应用图层布局
+          应用
         </Button>
       </form>
       {selected.length > 1 ? (
         <p className="text-xs text-ink-muted">
-          已选 {selected.length} 个图层，尺寸只作用于主选中的图层。
+          已选 {selected.length} 个图层，仅调整主选图层的尺寸。
         </p>
       ) : null}
       {selected.length > 1 || canUngroup ? (
@@ -118,12 +118,12 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
               disabled={!canUngroup}
               onClick={() => groupLayers(null)}
             >
-              取消图层分组
+              取消分组
             </Button>
           </div>
         </>
       ) : (
-        <p className="text-xs text-ink-muted">按住 Shift 可在树中选取多个原生图层。</p>
+        <p className="text-xs text-ink-muted">按住 Shift 多选原生图层。</p>
       )}
       <div className="flex gap-1 border-t border-border pt-2">
         <Button

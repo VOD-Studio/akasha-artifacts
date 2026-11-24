@@ -34,7 +34,7 @@ function getConnectionNotice(
   availability?: AgentAvailability,
 ) {
   if (error instanceof ApiError && error.status === 401) {
-    return { text: '登录本机制品库', command: `akasha open ${artifactId}` }
+    return { text: '登录本机作品库', command: `akasha open ${artifactId}` }
   }
   if (error) return { text: '无法读取会话' }
   if (availability === 'unbound') return { text: '未绑定会话' }

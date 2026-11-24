@@ -1,6 +1,6 @@
 import { ARTBOARD_GEOMETRY_LIMITS } from '@akasha/protocol'
+import { Field } from '@akasha/ui/field'
 import { Input } from '@akasha/ui/input'
-import { useId } from 'react'
 import type { CanvasBounds } from './canvas-camera'
 
 const titles = { x: '横坐标', y: '纵坐标', width: '宽度', height: '高度' } as const
@@ -20,18 +20,14 @@ interface GeometryFieldsProps {
 
 /** 四个值都以固有 CSS 像素计；空输入保持待填，不会被转为零。 */
 export function CanvasGeometryFields({ value, onChange }: GeometryFieldsProps) {
-  const prefix = useId()
   const { coordinate, viewport } = ARTBOARD_GEOMETRY_LIMITS
   return (
     <div className="grid grid-cols-2 gap-2">
       {keys.map((field) => {
         const position = field === 'x' || field === 'y'
-        const id = `${prefix}-${field}`
         return (
-          <div key={field} className="space-y-1 text-xs text-ink-muted">
-            <label htmlFor={id}>{titles[field]}</label>
+          <Field key={field} label={titles[field]}>
             <Input
-              id={id}
               type="number"
               controlSize="sm"
               required
@@ -41,7 +37,7 @@ export function CanvasGeometryFields({ value, onChange }: GeometryFieldsProps) {
               step={position ? 'any' : 1}
               onChange={(event) => onChange({ ...value, [field]: event.target.valueAsNumber })}
             />
-          </div>
+          </Field>
         )
       })}
     </div>
