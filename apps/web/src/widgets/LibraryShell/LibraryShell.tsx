@@ -1,17 +1,9 @@
 import type { ArtifactType, Project } from '@akasha/protocol'
 import { Alert } from '@akasha/ui/alert'
 import { Button } from '@akasha/ui/button'
-import { Empty } from '@akasha/ui/empty'
 import { ScrollArea } from '@akasha/ui/scroll-area'
 import { Plus } from 'lucide-react'
-import {
-  type ReactNode,
-  type UIEventHandler,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { type UIEventHandler, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useArtifactFavoritesQuery, useArtifactsQuery } from '../../entities/artifact/queries'
 import { useProjectsQuery } from '../../entities/project/queries'
 import { useWorkspaceStore } from '../../entities/workspace/store'
@@ -115,61 +107,6 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
     if (projectsQuery.isError) void projectsQuery.refetch()
   }
 
-  let results: ReactNode
-  if (failure) {
-    results = (
-      <Alert
-        tone="danger"
-        title="无法读取制品库"
-        action={{ label: '重试', onClick: retryLibrary }}
-      />
-    )
-  } else if (isLoading) {
-    results = <LibraryLoading cards={layout === 'cards'} />
-  } else if (!artifacts?.length) {
-    results = (
-      <Empty
-        variant="plain"
-        title={cloudHub ? '没有可访问的制品' : '还没有制品'}
-        action={
-          !cloudHub && (
-            <Button asChild size="sm" variant="ghost">
-              <a
-                href="https://github.com/VOD-Studio/akasha-artifacts/blob/main/README.zh-CN.md#1-接入你的编程-agentmcp-与-hooks--m1m2"
-                target="_blank"
-                rel="noreferrer"
-              >
-                接入 Agent
-              </a>
-            </Button>
-          )
-        }
-      />
-    )
-  } else if (!visible.length) {
-    results = (
-      <Empty
-        variant="plain"
-        title="未找到制品"
-        action={
-          <Button size="sm" variant="outline" onClick={resetFilters}>
-            清除筛选
-          </Button>
-        }
-      />
-    )
-  } else {
-    results = (
-      <LibraryResults
-        artifacts={visible}
-        projects={projectMap}
-        favorites={favorites}
-        cards={layout === 'cards'}
-        onOpenArtifact={onOpenArtifact}
-      />
-    )
-  }
-
   return (
     <div className="flex h-dvh flex-col bg-canvas text-ink">
       <header className="flex min-h-13 shrink-0 items-center justify-between gap-2 border-b border-border bg-surface px-4 sm:px-6">
@@ -203,7 +140,26 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
           aria-busy={!failure && isLoading}
           onScroll={rememberScroll}
         >
-          {results}
+          {failure && (
+            <Alert
+              tone="danger"
+              title="无法读取制品库"
+              action={{ label: '重试', onClick: retryLibrary }}
+            />
+          )}
+          {!failure && isLoading && <LibraryLoading cards={layout === 'cards'} />}
+          {!failure && !isLoading && (
+            <LibraryResults
+              artifacts={visible}
+              projects={projectMap}
+              favorites={favorites}
+              cards={layout === 'cards'}
+              hasArtifacts={Boolean(artifacts?.length)}
+              cloudHub={cloudHub}
+              onResetFilters={resetFilters}
+              onOpenArtifact={onOpenArtifact}
+            />
+          )}
         </ScrollArea>
       </main>
       {/* 保留同一个提交实例，关闭再重开不能丢掉还未返回的受理响应。 */}

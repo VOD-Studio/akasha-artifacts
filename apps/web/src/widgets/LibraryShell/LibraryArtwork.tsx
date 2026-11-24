@@ -3,7 +3,7 @@ import { CardFrameImage } from '@akasha/ui/card'
 import { Skeleton } from '@akasha/ui/skeleton'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileText } from 'lucide-react'
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { fetchArtifactDetail } from '../../shared/api/client'
 import { captureBoardPng } from '../../shared/bridge/capture-png'
 import { createCanvasDocument } from '../ArtifactWorkspace/canvas-model'
@@ -74,17 +74,16 @@ export function LibraryArtwork({ artifact }: { artifact: Artifact }) {
     if (url) setBroken(url)
   }
 
-  let content: ReactNode
-  if (url) {
-    content = <img src={url} alt="" className="object-contain" onError={markImageBroken} />
-  } else if (preview.isFetching) {
-    content = <Skeleton className="size-full" />
-  } else {
-    content = (
-      <div className="grid size-full place-items-center text-ink-muted" aria-hidden="true">
-        <FileText className="size-7" strokeWidth={1.5} />
-      </div>
-    )
-  }
-  return <CardFrameImage ref={target}>{content}</CardFrameImage>
+  const loading = !url && preview.isFetching
+  return (
+    <CardFrameImage ref={target}>
+      {url && <img src={url} alt="" className="object-contain" onError={markImageBroken} />}
+      {loading && <Skeleton className="size-full" />}
+      {!url && !loading && (
+        <div className="grid size-full place-items-center text-ink-muted" aria-hidden="true">
+          <FileText className="size-7" strokeWidth={1.5} />
+        </div>
+      )}
+    </CardFrameImage>
+  )
 }

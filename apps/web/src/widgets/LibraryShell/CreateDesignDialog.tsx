@@ -5,7 +5,7 @@ import { Field } from '@akasha/ui/field'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
 import { Textarea } from '@akasha/ui/textarea'
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
-import { type ChangeEventHandler, type ReactNode, useId, useState } from 'react'
+import { type ChangeEventHandler, useId, useState } from 'react'
 import { artifactKeys } from '../../entities/artifact/queries'
 import { AgentTurnList } from '../../features/agent-conversation/AgentTurnList'
 import { useAgentDraft } from '../../features/agent-conversation/agent-draft'
@@ -162,27 +162,7 @@ export function CreateDesignDialog({ projects, open, onClose, onOpenArtifact }: 
     onOpenArtifact(published)
   }
 
-  let primaryAction: ReactNode
-  if (published) {
-    primaryAction = <Button onClick={openPublished}>打开设计</Button>
-  } else if (turn && turn.status !== 'running') {
-    primaryAction = (
-      <Button variant="outline" onClick={clearAttempt}>
-        返回编辑
-      </Button>
-    )
-  } else {
-    primaryAction = (
-      <Button
-        type="submit"
-        form={formId}
-        disabled={!canSend && !send.isPending}
-        loading={send.isPending}
-      >
-        发送设计需求
-      </Button>
-    )
-  }
+  const canReturnToBrief = !published && turn !== undefined && turn.status !== 'running'
 
   return (
     <Modal
@@ -196,7 +176,22 @@ export function CreateDesignDialog({ projects, open, onClose, onOpenArtifact }: 
           <Button variant="ghost" onClick={onClose}>
             关闭
           </Button>
-          {primaryAction}
+          {published && <Button onClick={openPublished}>打开设计</Button>}
+          {canReturnToBrief && (
+            <Button variant="outline" onClick={clearAttempt}>
+              返回编辑
+            </Button>
+          )}
+          {!published && !canReturnToBrief && (
+            <Button
+              type="submit"
+              form={formId}
+              disabled={!canSend && !send.isPending}
+              loading={send.isPending}
+            >
+              发送设计需求
+            </Button>
+          )}
         </>
       }
     >

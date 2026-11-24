@@ -1,5 +1,6 @@
 import type { Artifact, Project } from '@akasha/protocol'
 import { Badge } from '@akasha/ui/badge'
+import { Button } from '@akasha/ui/button'
 import {
   CardFrame,
   CardFrameBody,
@@ -7,6 +8,7 @@ import {
   CardFrameMeta,
   CardFrameTitle,
 } from '@akasha/ui/card'
+import { Empty } from '@akasha/ui/empty'
 import { Skeleton } from '@akasha/ui/skeleton'
 import { Star } from 'lucide-react'
 import type { MouseEventHandler } from 'react'
@@ -22,6 +24,10 @@ interface LibraryResultsProps {
   projects: ReadonlyMap<string, Project>
   favorites: ReadonlySet<string> | null
   cards: boolean
+  /** 未筛选的库内存在制品时，空结果可以通过清除筛选恢复。 */
+  hasArtifacts: boolean
+  cloudHub: boolean
+  onResetFilters: () => void
   onOpenArtifact: (publicId: string) => void
 }
 
@@ -31,8 +37,45 @@ export function LibraryResults({
   projects,
   favorites,
   cards,
+  hasArtifacts,
+  cloudHub,
+  onResetFilters,
   onOpenArtifact,
 }: LibraryResultsProps) {
+  if (!hasArtifacts) {
+    if (cloudHub) return <Empty variant="plain" title="没有可访问的制品" />
+    return (
+      <Empty
+        variant="plain"
+        title="还没有制品"
+        action={
+          <Button asChild size="sm" variant="ghost">
+            <a
+              href="https://github.com/VOD-Studio/akasha-artifacts/blob/main/README.zh-CN.md#1-接入你的编程-agentmcp-与-hooks--m1m2"
+              target="_blank"
+              rel="noreferrer"
+            >
+              接入 Agent
+            </a>
+          </Button>
+        }
+      />
+    )
+  }
+  if (!artifacts.length) {
+    return (
+      <Empty
+        variant="plain"
+        title="未找到制品"
+        action={
+          <Button size="sm" variant="outline" onClick={onResetFilters}>
+            清除筛选
+          </Button>
+        }
+      />
+    )
+  }
+
   return (
     <ul className={cards ? CARD_GRID : 'divide-y divide-border'}>
       {artifacts.map((artifact) => (
