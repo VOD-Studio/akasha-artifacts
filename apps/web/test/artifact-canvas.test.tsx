@@ -1235,3 +1235,25 @@ it('双击已有便签只修改同画板原生对象的文本并保留版本基�
   ])
   expect(editor.submittedVersion).toBe(1)
 })
+
+it('双轴滚动平移画布，只有带缩放修饰键的滚轮才改变倍率', () => {
+  showWorkspace()
+  const viewport = screen.getByRole('region', { name: '画布' })
+  const title = screen.getByRole('button', { name: '宽屏首页' })
+  const board = title.closest<HTMLElement>('.artifact-canvas-board')
+  if (!board) throw new Error('缺少画板')
+  fireEvent.click(title)
+  const zoom = screen.getByLabelText('画布缩放比例')
+  const initial = zoom.textContent
+  const left = Number.parseFloat(board.style.left)
+  const top = Number.parseFloat(board.style.top)
+  fireEvent.wheel(viewport, { deltaX: 70, deltaY: 45 })
+  expect(Number.parseFloat(board.style.left)).toBe(left - 70)
+  expect(Number.parseFloat(board.style.top)).toBe(top - 45)
+  expect(zoom.textContent).toBe(initial)
+  fireEvent.wheel(viewport, { deltaY: -100, ctrlKey: true, clientX: 700, clientY: 400 })
+  expect(Number.parseFloat(zoom.textContent ?? '')).toBeGreaterThan(
+    Number.parseFloat(initial ?? ''),
+  )
+  expect(title.getAttribute('aria-pressed')).toBe('true')
+})

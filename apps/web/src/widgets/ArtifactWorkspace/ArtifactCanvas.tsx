@@ -568,18 +568,31 @@ export function ArtifactCanvas({
 
   const wheel = useEffectEvent((event: WheelEvent) => {
     const viewport = viewportRef.current
-    if (!viewport || !event.deltaY || pageId === undefined || invalidAddress) return
+    if (!viewport || !(event.deltaX || event.deltaY) || pageId === undefined || invalidAddress)
+      return
     event.preventDefault()
     // 绘制工具用按下时的坐标映射；退出该工具前不让滚轮改变相机。
     if (drawingTool || boardGesture.preview?.phase === 'dragging') return
     setZooming(true)
     window.clearTimeout(wheelIdle.current)
     wheelIdle.current = window.setTimeout(() => setZooming(false), 180)
-    const rect = viewport.getBoundingClientRect()
-    const anchor = { x: event.clientX - rect.left, y: event.clientY - rect.top }
-    const unit = event.deltaMode === 2 ? size.height : 1
-    const delta = event.deltaY * (event.deltaMode === 1 ? 16 : unit)
-    updateCamera((current) => zoomCamera(current, Math.exp(-delta * 0.002), anchor))
+    const multiplier = event.deltaMode === 1 ? 16 : 1
+    const x = event.deltaX * (event.deltaMode === 2 ? size.width : multiplier)
+    const y = event.deltaY * (event.deltaMode === 2 ? size.height : multiplier)
+    if (event.ctrlKey || event.metaKey) {
+      if (!y) return
+      const rect = viewport.getBoundingClientRect()
+      const anchor = { x: event.clientX - rect.left, y: event.clientY - rect.top }
+      updateCamera((current) => zoomCamera(current, Math.exp(-y * 0.002), anchor))
+      return
+    }
+    const horizontal = event.shiftKey && !x
+    updateCamera((current) => ({
+      ...current,
+      x: current.x - (horizontal ? y : x),
+      y: current.y - (horizontal ? 0 : y),
+      fit: null,
+    }))
   })
 
   useEffect(() => {
