@@ -6,6 +6,7 @@ import type {
   ArtifactIdentifier,
   ArtifactTransferInput,
   ArtifactType,
+  ArtifactWorkspaceDetail,
   Author,
   EditOp,
   ElementRef,
@@ -51,6 +52,7 @@ import {
 } from '../domain/round/index.js'
 import { applyJsonPatch, replayStateStream } from '../domain/state/index.js'
 import { visualBoardSource } from './artboard-visual-source.js'
+import { ArtifactWorkspaceRead } from './artifact-workspace-read.js'
 import { KeyedAsyncLock } from './keyed-lock.js'
 
 /** 用例依赖的端口集合，全部经构造参数注入。 */
@@ -105,7 +107,11 @@ export class ArtifactService {
   private readonly writeLocks = new KeyedAsyncLock()
   private readonly stateLocks = new KeyedAsyncLock()
 
-  constructor(private readonly deps: ArtifactServiceDeps) {}
+  readonly workspace: ArtifactWorkspaceRead
+
+  constructor(private readonly deps: ArtifactServiceDeps) {
+    this.workspace = new ArtifactWorkspaceRead(deps.artifacts)
+  }
 
   /** 登记项目；同一 `rootPath` 重复登记时沿用既有 `id`。 */
   async registerProject(input: { id?: string; rootPath: string; name: string }): Promise<Project> {
@@ -232,7 +238,7 @@ export class ArtifactService {
           updatedAt: now,
         }
         await this.deps.artifacts.saveArtifact(artifact)
-        await this.deps.artifacts.appendVersion(version)
+        await this.deps.artifacts.appendVersion(version, artifact.type)
         await this.deps.states.saveSnapshot({
           artifactId: publicId,
           seq: 0,
@@ -280,7 +286,7 @@ export class ArtifactService {
           headVersion: nextNumber,
           updatedAt: now,
         }
-        await this.deps.artifacts.appendVersion(version)
+        await this.deps.artifacts.appendVersion(version, updated.type)
         await this.deps.artifacts.saveArtifact(updated)
         await this.deps.realtime.publish(
           {
@@ -426,7 +432,7 @@ export class ArtifactService {
         headVersion: nextNumber,
         updatedAt: now,
       }
-      await this.deps.artifacts.appendVersion(version)
+      await this.deps.artifacts.appendVersion(version, updated.type)
       await this.deps.artifacts.saveArtifact(updated)
       await this.deps.realtime.publish(
         {
@@ -492,7 +498,7 @@ export class ArtifactService {
         createdAt: now,
       })
       const updated = { ...artifact, headVersion: version.version, updatedAt: now }
-      await this.deps.artifacts.appendVersion(version)
+      await this.deps.artifacts.appendVersion(version, updated.type)
       await this.deps.artifacts.saveArtifact(updated)
       await this.submitFeedback(
         {
@@ -641,7 +647,7 @@ export class ArtifactService {
         headVersion: nextNumber,
         updatedAt: now,
       }
-      await this.deps.artifacts.appendVersion(version)
+      await this.deps.artifacts.appendVersion(version, updated.type)
       await this.deps.artifacts.saveArtifact(updated)
       await this.deps.realtime.publish(
         {
@@ -735,14 +741,34 @@ export class ArtifactService {
     if (!version) {
       throw new NotFoundError(`未找到版本 v${targetNum}`)
     }
-    const state = (await this.deps.states.getSnapshot(artifact.publicId)) ?? {
+    return { artifact, version, ...(await this.readRuntime(artifact)) }
+  }
+
+  /** 工作区只打开布局索引；源码读取保留给编辑、导出和 Agent。 */
+  async getWorkspace(input: {
+    id: ArtifactIdentifier
+    projectId?: string
+    version?: number
+  }): Promise<ArtifactWorkspaceDetail> {
+    const artifact = await this.resolveArtifact(input.id, input.projectId)
+    const number = input.version ?? artifact.headVersion
+    const entry = await this.workspace.getVersion(artifact, number)
+    if (!entry) throw new NotFoundError(`未找到版本 v${number}`)
+    return { artifact, ...entry, ...(await this.readRuntime(artifact)) }
+  }
+
+  private async readRuntime(artifact: Artifact) {
+    const [snapshot, rounds] = await Promise.all([
+      this.deps.states.getSnapshot(artifact.publicId),
+      this.deps.rounds.listByArtifact(artifact.publicId),
+    ])
+    const state = snapshot ?? {
       artifactId: artifact.publicId,
       seq: 0,
       snapshot: {},
       updatedAt: artifact.updatedAt,
     }
-    const rounds = await this.deps.rounds.listByArtifact(artifact.publicId)
-    return { artifact, version, state, rounds }
+    return { state, rounds }
   }
 
   async getHistory(
@@ -751,6 +777,12 @@ export class ArtifactService {
   ): Promise<readonly Readonly<Version>[]> {
     const artifact = await this.resolveArtifact(id, projectId)
     return this.deps.artifacts.getVersions(artifact.publicId)
+  }
+
+  /** 源码不会随版本菜单一起下载。 */
+  async getHistorySummaries(id: ArtifactIdentifier, projectId?: string) {
+    const artifact = await this.resolveArtifact(id, projectId)
+    return this.deps.artifacts.getVersionSummaries(artifact.publicId)
   }
 
   /** 开启新一轮：此前未关闭的轮次自动转为 `closed`。 */

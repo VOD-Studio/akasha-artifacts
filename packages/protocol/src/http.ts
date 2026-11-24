@@ -1,4 +1,12 @@
 import { z } from 'zod'
+import type { ArtboardIndex } from './artboard-projection.js'
+import type {
+  Artifact,
+  ReviewRound,
+  StateStreamSnapshot,
+  Version,
+  VersionSummary,
+} from './domain.js'
 import { AuthorSchema, ISODateTimeSchema, PublicIdSchema, SlugSchema } from './primitives.js'
 
 /** 错误码；含义见行尾说明。 */
@@ -106,6 +114,19 @@ export interface ArtifactSharedAccess {
   /** 固定时只允许读取和讨论该快照；即使是 edit 角色也不能改写。 */
   version?: number
   expiresAt: string
+}
+
+/** 可分板的设计只返回布局和版本元数据；其他作品仍带单份源码。 */
+export type WorkspaceVersion =
+  | { version: VersionSummary; canvas: ArtboardIndex }
+  | { version: Version; canvas?: undefined }
+
+/** 打开工作台的首个读模型；分享视图不携带作者的运行状态或内部轮次。 */
+export type ArtifactWorkspaceDetail = WorkspaceVersion & {
+  artifact: Artifact
+  state: StateStreamSnapshot
+  rounds: readonly ReviewRound[]
+  access?: ArtifactSharedAccess
 }
 
 /** 复制固定快照或把原制品移动到当前服务内已登记的项目。 */

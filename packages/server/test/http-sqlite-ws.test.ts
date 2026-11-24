@@ -162,6 +162,67 @@ describe('Hono HTTP server & @akasha/protocol contract tests', () => {
     })
   })
 
+  it('重启后仍只读取固定版本的索引和单板正文', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-board-reads-'))
+    tempDirs.push(dir)
+    const dbPath = path.join(dir, 'akasha.db')
+    const original = await startNodeServer({ dbPath, port: 0 })
+    let pathToArtifact: string
+    try {
+      const publish = async (html: string, baseVersion?: number) => {
+        const result = await fetch(`${original.baseUrl}/api/v1/artifacts`, {
+          method: 'POST',
+          headers: authHeaders(original.token),
+          body: JSON.stringify({
+            slug: 'artboard/checkout',
+            title: '结账',
+            type: 'artboard',
+            baseVersion,
+            source: JSON.stringify({
+              boards: [
+                { id: 'checkout', title: '结账', html },
+                { id: 'away', title: '屏外板', html: `屏外大图${'x'.repeat(80_000)}` },
+              ],
+            }),
+          }),
+        })
+        expect(result.ok).toBe(true)
+        return (await result.json()) as { artifact: { publicId: string } }
+      }
+      const { artifact } = await publish('<h1>原结账页</h1>')
+      await publish('<h1>新结账页</h1>', 1)
+      pathToArtifact = `/api/v1/artifacts/${artifact.publicId}`
+    } finally {
+      await original.close()
+    }
+
+    const service = await startNodeServer({ dbPath, port: 0 })
+    closers.push(service.close)
+    const get = (suffix: string) => fetch(`${service.baseUrl}${pathToArtifact}${suffix}`)
+    const index = await (await get('?view=canvas&version=1')).text()
+    expect(index).not.toMatch(/source|屏外大图|原结账页/)
+    expect(JSON.parse(index)).toMatchObject({
+      version: { version: 1 },
+      artifact: { headVersion: 2 },
+      canvas: { boards: [{ id: 'checkout' }, { id: 'away' }] },
+    })
+    expect(await (await get('/boards/checkout?version=1')).json()).toMatchObject({
+      version: 1,
+      board: { id: 'checkout', html: '<h1>原结账页</h1>' },
+    })
+    expect(await (await get('/boards/checkout?version=2')).json()).toMatchObject({
+      version: 2,
+      board: { html: '<h1>新结账页</h1>' },
+    })
+    expect((await get('/boards/checkout')).status).toBe(400)
+    expect((await get('/boards/checkout?version=3')).status).toBe(404)
+    const history = await (await get('/versions?view=metadata')).text()
+    expect(history).not.toContain('source')
+    expect(JSON.parse(history).versions.map(({ version }: { version: number }) => version)).toEqual(
+      [1, 2],
+    )
+  })
+
   it('persists data across SQLite restarts and sends resync to reconnecting clients', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-sqlite-'))
     tempDirs.push(dir)

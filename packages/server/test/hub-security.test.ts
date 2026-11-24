@@ -596,6 +596,55 @@ describe('Cloud Hub 身份与制品权限', () => {
     expect((await send(url)).status).toBe(404)
   })
 
+  it('独立画板读取不会扩大固定版分享的访问范围', async () => {
+    const { send, post, login, advance } = setup()
+    const owner = await login('alice')
+    const payload = {
+      slug: 'artboard/versioned',
+      title: '固定版画板',
+      type: 'artboard',
+    }
+    const publish = (html: string, baseVersion?: number) =>
+      post(
+        '/api/v1/artifacts',
+        {
+          ...payload,
+          baseVersion,
+          source: JSON.stringify({ boards: [{ id: 'checkout/v1', title: '结账', html }] }),
+        },
+        owner,
+      )
+    const { artifact } = publishedArtifact.parse(await (await publish('<h1>原版</h1>')).json())
+    const path = `/api/v1/artifacts/${artifact.publicId}`
+    const board = `${path}/boards/checkout%2Fv1`
+    const entry = { kind: 'play', version: 1, pageId: '', boardId: 'checkout/v1' }
+    const share = await post(`${path}/share`, { role: 'view', entry, ttlSeconds: 30 }, owner)
+    expect(share.status).toBe(201)
+    const { url } = z.object({ url: z.string() }).parse(await share.json())
+    const redemption = await send(url)
+    const headers = { cookie: redemption.headers.get('set-cookie')?.split(';')[0] ?? '' }
+    expect((await publish('<h1>新版</h1>', 1)).status).toBe(200)
+
+    expect((await send(`${board}?version=1`)).status).toBe(404)
+    expect((await send(`${board}?version=2`, { headers })).status).toBe(404)
+    expect((await send(`${path}?view=canvas&version=2`, { headers })).status).toBe(404)
+    const detail = await (await send(`${path}?view=canvas`, { headers })).json()
+    expect(detail).toMatchObject({
+      artifact: { headVersion: 1 },
+      version: { version: 1 },
+      canvas: { boards: [{ id: 'checkout/v1' }] },
+    })
+    expect(detail.version).not.toHaveProperty('source')
+    expect(
+      (await (await send(`${path}/versions?view=metadata`, { headers })).json()).versions,
+    ).toEqual([expect.objectContaining({ version: 1 })])
+    const fixed = await send(`${board}?version=1`, { headers })
+    expect(await fixed.json()).toMatchObject({ version: 1, board: { html: '<h1>原版</h1>' } })
+    expect(fixed.headers.get('cache-control')).toBe('private, no-store')
+    advance(31)
+    expect((await send(`${board}?version=1`, { headers })).status).toBe(404)
+  })
+
   it('按签名角色和固定版本隔离分享读取、讨论、编辑和实时事件', async () => {
     const { hub, request, send, post, login, advance } = setup()
     const owner = await login('alice')

@@ -7,7 +7,9 @@ import type {
   StatePatchEntry,
   StateStreamSnapshot,
   Version,
+  VersionSummary,
 } from '@akasha/protocol'
+import { projectArtboard } from '@akasha/protocol'
 import type { ArtifactStorageRepository } from '../../../domain/artifact-storage.js'
 import { deepFreeze } from '../../../domain/freeze.js'
 import type {
@@ -26,12 +28,18 @@ import {
   artifactLifecycleTable,
   createSqlArtifactLifecycle,
 } from '../artifact-lifecycle.js'
+import {
+  boardProjectionSchema,
+  boardProjectionStatements,
+  createSqlBoardProjectionRepository,
+} from '../board-projections.js'
 import { schema } from './schema.js'
 import type { SqlDriver, SqlStatement, SqlValue, SqlWriteLock, VersionBlobs } from './types.js'
 
 const projectColumns = 'id, root_path AS "rootPath", name, last_active_at AS "lastActiveAt"'
-const versionColumns =
-  'artifact_id AS "artifactId", version, parent_version AS "parentVersion", author, title, source_json, blob_key, created_at AS "createdAt"'
+const versionSummaryColumns =
+  'artifact_id AS "artifactId", version, parent_version AS "parentVersion", author, title, created_at AS "createdAt"'
+const versionColumns = `${versionSummaryColumns}, source_json, blob_key`
 const roundColumns =
   'id, artifact_id AS "artifactId", status, groups_json, submitted_at AS "submittedAt", created_at AS "createdAt"'
 const feedbackColumns =
@@ -81,7 +89,10 @@ async function versionBlobKey(version: Readonly<Version>): Promise<string> {
  */
 export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
   const ready = driver
-    .batch([...schema, [artifactLifecycleTable], ...annotationStatements], 'schema')
+    .batch(
+      [...schema, ...boardProjectionSchema, [artifactLifecycleTable], ...annotationStatements],
+      'schema',
+    )
     .then(() => {})
   async function query<Row>(sql: string, ...params: SqlValue[]): Promise<Row[]> {
     await ready
@@ -131,6 +142,13 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
   }
 
   const artifacts: ArtifactRepository = {
+    boardProjections: createSqlBoardProjectionRepository(
+      <Row>([sql, ...params]: SqlStatement) => first<Row>(sql, ...params),
+      async (statements) => {
+        await ready
+        await driver.batch(statements)
+      },
+    ),
     lifecycle: createSqlArtifactLifecycle(([sql, ...args]) => query(sql, ...args)),
     async saveArtifact(artifact) {
       await query(
@@ -189,14 +207,14 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
             projectId,
           ),
     // 先写对象再写表行，表行指向的对象一定已经存在
-    async appendVersion(version) {
+    async appendVersion(version, type) {
       await ready
       let key: string | null = null
       if (blobs) {
         key = await versionBlobKey(version)
         await blobs.put(key, version.source)
       }
-      await query(
+      const insert: SqlStatement = [
         `INSERT INTO versions (artifact_id, version, parent_version, author, title, source_json, blob_key, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         version.artifactId,
@@ -207,7 +225,14 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
         blobs ? null : JSON.stringify(version.source),
         key,
         version.createdAt,
-      )
+      ]
+      if (type === 'artboard') {
+        const projection = projectArtboard(version.source, version.version)
+        await driver.batch([
+          insert,
+          ...boardProjectionStatements(version.artifactId, version.version, projection),
+        ])
+      } else await driver.execute(insert)
     },
     async getVersions(artifactId) {
       const rows = await query<VersionRow>(
@@ -226,6 +251,18 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
         version,
       )
       return row && mapVersion(row)
+    },
+    getVersionSummaries(artifactId, version) {
+      return version === undefined
+        ? query<VersionSummary>(
+            `SELECT ${versionSummaryColumns} FROM versions WHERE artifact_id = ? ORDER BY version`,
+            artifactId,
+          )
+        : query<VersionSummary>(
+            `SELECT ${versionSummaryColumns} FROM versions WHERE artifact_id = ? AND version = ?`,
+            artifactId,
+            version,
+          )
     },
   }
 

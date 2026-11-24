@@ -8,6 +8,7 @@ import {
 import type { Context, Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { z } from 'zod'
+import type { ArtifactWorkspaceRead } from '../../application/artifact-workspace-read.js'
 import type {
   ArtifactRepository,
   Clock,
@@ -40,6 +41,7 @@ interface HubGuardOptions {
   core: Hono
   auth: HubAuth
   access: HubArtifactAccess
+  workspace: ArtifactWorkspaceRead
   repositories: {
     artifacts: ArtifactRepository
     projects: ProjectRepository
@@ -85,6 +87,7 @@ const writeSuffixes: Readonly<Record<string, 'write' | 'authored'>> = {
 }
 const roundAction = /^\/rounds\/[^/]+\/(?:submit|withdraw)$/
 const discussionAction = /^\/feedback\/([^/]+)\/(?:replies|resolve)$/
+const boardRead = /^\/boards\/[^/]+$/
 const artifactPath = /^\/api\/v1\/artifacts\/([^/]+)(.*)$/
 
 // 无权访问与不存在统一返回 404，不泄露制品是否存在
@@ -148,7 +151,7 @@ function rewrite(
  */
 export function mountHubGuard(
   app: Hono,
-  { core, auth, access, repositories, origin, clock, ids }: HubGuardOptions,
+  { core, auth, access, workspace, repositories, origin, clock, ids }: HubGuardOptions,
 ) {
   app.use('*', async (c, next) => {
     if (
@@ -411,7 +414,7 @@ export function mountHubGuard(
     const discussion = discussionAction.exec(suffix)
     if (
       read
-        ? !Object.hasOwn(readSuffixes, suffix)
+        ? !Object.hasOwn(readSuffixes, suffix) && !boardRead.test(suffix)
         : !(method === 'PATCH' && (suffix === '' || suffix === '/metadata')) &&
           !(method === 'DELETE' && suffix === '') &&
           !(method === 'PUT' && suffix === '/favorite') &&
@@ -454,6 +457,13 @@ export function mountHubGuard(
         if (suffix === '/visual-edit' && canEditSharedArtifact(grant))
           return core.fetch(rewrite(request, url))
         if (suffix === '/versions') {
+          if (url.searchParams.get('view') === 'metadata') {
+            const versions = await repositories.artifacts.getVersionSummaries(
+              artifact.publicId,
+              fixed,
+            )
+            return fixed === undefined || versions.length ? c.json({ versions }) : hidden(c)
+          }
           const versions =
             fixed === undefined
               ? await repositories.artifacts.getVersions(artifact.publicId)
@@ -463,9 +473,18 @@ export function mountHubGuard(
         if (suffix === '') {
           if (rawVersion !== null && !/^[1-9]\d*$/.test(rawVersion)) return invalid(c)
           const number = fixed ?? (rawVersion === null ? artifact.headVersion : Number(rawVersion))
+          if (url.searchParams.get('view') === 'canvas') {
+            const entry = await workspace.getVersion(artifact, number)
+            if (!entry) return hidden(c)
+            return c.json({
+              ...sharedArtifactDetail(artifact, entry.version, grant),
+              ...(entry.canvas ? { canvas: entry.canvas } : {}),
+            })
+          }
           const version = await repositories.artifacts.getVersion(artifact.publicId, number)
           return version ? c.json(sharedArtifactDetail(artifact, version, grant)) : hidden(c)
         }
+        if (boardRead.test(suffix)) return core.fetch(rewrite(request, url))
         if (suffix !== '/feedback') return hidden(c)
         const feedbacks = repositories.feedbacks
         const items = (await feedbacks.listForReview(artifact.publicId, false)).filter((item) =>

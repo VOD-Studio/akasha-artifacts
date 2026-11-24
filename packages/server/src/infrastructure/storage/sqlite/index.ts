@@ -3,6 +3,7 @@ import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type {
   Artifact,
+  ArtifactType,
   Author,
   ElementRef,
   Feedback,
@@ -19,8 +20,10 @@ import type {
   StatePatchEntry,
   StateStreamSnapshot,
   Version,
+  VersionSummary,
   Visibility,
 } from '@akasha/protocol'
+import { projectArtboard } from '@akasha/protocol'
 import type { ArtifactStorageRepository } from '../../../domain/artifact-storage.js'
 import { deepFreeze } from '../../../domain/freeze.js'
 import type {
@@ -40,6 +43,11 @@ import {
   artifactLifecycleTable,
   createSqlArtifactLifecycle,
 } from '../artifact-lifecycle.js'
+import {
+  boardProjectionSchema,
+  boardProjectionStatements,
+  createSqlBoardProjectionRepository,
+} from '../board-projections.js'
 import type { SqlStatement } from '../cloud/types.js'
 import { createSqliteArtifactStorage } from './artifact-kv.js'
 import { migrateFeedbackAudience } from './feedback-migration.js'
@@ -170,6 +178,7 @@ export class SqliteStorage {
     runInTx(this.db, () => {
       this.db.exec(SCHEMA_SQL)
       this.db.exec(artifactLifecycleTable)
+      for (const [sql] of boardProjectionSchema) this.db.exec(sql)
       for (const [sql] of annotationStatements) this.db.exec(sql)
       migrateFeedbackAudience(this.db)
     })
@@ -327,6 +336,8 @@ interface VersionRow {
   created_at: string
 }
 
+const versionSummaryColumns = 'artifact_id, version, parent_version, author, title, created_at'
+
 function mapVersion(row: VersionRow): Readonly<Version> {
   return deepFreeze({
     artifactId: row.artifact_id,
@@ -342,10 +353,16 @@ function mapVersion(row: VersionRow): Readonly<Version> {
 /** `ArtifactRepository` 的 SQLite 实现；`FsArtifactRepository` 在其之上叠加文件落盘。 */
 export class SqliteArtifactRepository implements ArtifactRepository {
   readonly lifecycle: ArtifactLifecycleRepository
+  readonly boardProjections
 
   constructor(private readonly db: DatabaseSync) {
     this.lifecycle = createSqlArtifactLifecycle(
       async <Row>([sql, ...values]: SqlStatement) => db.prepare(sql).all(...values) as Row[],
+    )
+    this.boardProjections = createSqlBoardProjectionRepository(
+      async <Row>([sql, ...params]: SqlStatement) =>
+        db.prepare(sql).get(...params) as Row | undefined,
+      async (statements) => runInTx(db, () => this.writeBoardProjection(statements)),
     )
   }
 
@@ -379,7 +396,11 @@ export class SqliteArtifactRepository implements ArtifactRepository {
     }
   }
 
-  private insertVersionSync(version: Readonly<Version>): void {
+  private writeBoardProjection(statements: SqlStatement[]) {
+    for (const [sql, ...params] of statements) this.db.prepare(sql).run(...params)
+  }
+
+  private insertVersionSync(version: Readonly<Version>, type?: ArtifactType): void {
     this.db
       .prepare(
         `INSERT INTO versions (artifact_id, version, parent_version, author, title, source, created_at)
@@ -394,6 +415,15 @@ export class SqliteArtifactRepository implements ArtifactRepository {
         version.source,
         version.createdAt,
       )
+    if (type === 'artboard') {
+      this.writeBoardProjection(
+        boardProjectionStatements(
+          version.artifactId,
+          version.version,
+          projectArtboard(version.source, version.version),
+        ),
+      )
+    }
   }
 
   /**
@@ -402,7 +432,7 @@ export class SqliteArtifactRepository implements ArtifactRepository {
   saveArtifactWithVersionSync(artifact: Artifact, version?: Readonly<Version>): void {
     runInTx(this.db, () => {
       if (version) {
-        this.insertVersionSync(version)
+        this.insertVersionSync(version, artifact.type)
       }
       this.upsertArtifactSync(artifact)
     })
@@ -482,8 +512,9 @@ export class SqliteArtifactRepository implements ArtifactRepository {
     return row ? mapArtifact(row) : undefined
   }
 
-  async appendVersion(version: Readonly<Version>): Promise<void> {
-    this.insertVersionSync(version)
+  async appendVersion(version: Readonly<Version>, type?: ArtifactType): Promise<void> {
+    if (type === 'artboard') runInTx(this.db, () => this.insertVersionSync(version, type))
+    else this.insertVersionSync(version)
   }
 
   async getVersions(artifactId: PublicId): Promise<readonly Readonly<Version>[]> {
@@ -495,6 +526,28 @@ export class SqliteArtifactRepository implements ArtifactRepository {
 
   async getVersion(artifactId: PublicId, version: number): Promise<Readonly<Version> | undefined> {
     return this.getVersionSync(artifactId, version)
+  }
+
+  async getVersionSummaries(artifactId: PublicId, version?: number): Promise<VersionSummary[]> {
+    const rows = (version === undefined
+      ? this.db
+          .prepare(
+            `SELECT ${versionSummaryColumns} FROM versions WHERE artifact_id = ? ORDER BY version`,
+          )
+          .all(artifactId)
+      : this.db
+          .prepare(
+            `SELECT ${versionSummaryColumns} FROM versions WHERE artifact_id = ? AND version = ?`,
+          )
+          .all(artifactId, version)) as unknown as Omit<VersionRow, 'source'>[]
+    return rows.map((row) => ({
+      artifactId: row.artifact_id,
+      version: row.version,
+      parentVersion: row.parent_version,
+      author: row.author as Author,
+      title: row.title,
+      createdAt: row.created_at,
+    }))
   }
 
   getVersionSync(artifactId: PublicId, version: number): Readonly<Version> | undefined {

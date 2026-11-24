@@ -7,6 +7,7 @@ import {
   parseArtboard,
   STANDALONE_BOARD_ID,
   type Version,
+  type VersionSummary,
 } from '@akasha/protocol'
 import { fixedShareVersion, type HubShareClaim } from './hub-auth.js'
 
@@ -24,9 +25,9 @@ export function visibleSharedDiscussion(item: Feedback, share: HubShareClaim) {
   )
 }
 
-export function sharedArtifactDetail(
+export function sharedArtifactDetail<T extends VersionSummary>(
   artifact: Artifact,
-  version: Readonly<Version>,
+  version: Readonly<T>,
   share: HubShareClaim,
 ) {
   const fixed = fixedShareVersion(share)
