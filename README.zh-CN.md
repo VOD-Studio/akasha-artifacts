@@ -227,13 +227,13 @@ make lint      # 运行 Biome 检查、架构依赖方向检查、TypeScript 类
 make typecheck # 单独运行 TypeScript 类型检查
 make test      # 运行工作区 Vitest 单元测试
 make build     # 构建全部工作区包并导出协议 JSON Schema
-make serve     # 构建并启动工作台、后端和沙盒，不热更新源码
-make dev       # 启动前端和沙盒热更新，不启动后端
+make dev       # 启动全栈开发：前端与沙盒热更新，后端自动重启
+make serve     # 构建并运行完整应用，不监听源码
 ```
 
-运行 `make serve` 后，在 [http://127.0.0.1:24321](http://127.0.0.1:24321) 打开构建后的应用，或使用 Daemon 输出的工作台端口。该命令不监听源码；修改后端后，用 `Ctrl+C` 停止它，再运行 `make serve`。
+日常开发运行 `make dev`。看到 `开发 Daemon 已就绪` 后，打开 [http://127.0.0.1:5173](http://127.0.0.1:5173)。该命令会启动工作台、独立的开发沙盒（`5174`）和本地 Daemon。前端和沙盒会热更新；后端构建成功后自动重启，不会使浏览器登录失效。
 
-开发前端时，保留 `make serve` 运行，在另一个终端执行 `make dev`。打开 [http://127.0.0.1:5173](http://127.0.0.1:5173) 即可热更新；开发沙盒运行在 `5174`。如果 Daemon 输出了不同端口，例如 `24322`，用 `AKASHA_DEV_DAEMON_PORT=24322 make dev`。
+验收构建版时运行 `make serve`，打开 [http://127.0.0.1:24321](http://127.0.0.1:24321)，或使用 Daemon 输出的端口。两个命令使用同一 `AKASHA_HOME` 时，切换前先停止正在运行的命令。需要为开发环境指定不同的 API 端口时，例如运行 `AKASHA_DEV_DAEMON_PORT=24323 make dev`。
 
 ---
 

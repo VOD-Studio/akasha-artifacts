@@ -7,7 +7,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && vite build --config vite.offline.config.ts",
+    "build": "vite build && pnpm run build:offline",
+    "build:offline": "vite build --config vite.offline.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "engines": {

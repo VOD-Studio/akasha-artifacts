@@ -1,20 +1,21 @@
 import type { ClientRequest, IncomingMessage } from 'node:http'
+import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import {
+  devDaemonOrigin,
   devHost,
+  devPublicDir,
   devSandboxOrigin,
   devWorkbenchOrigin,
   devWorkbenchPort,
 } from '../../scripts/dev-endpoints.js'
 
-const daemonOrigin = `http://${devHost}:${process.env.AKASHA_DEV_DAEMON_PORT ?? 24321}`
-
 function forwardWorkbenchOrigin(outgoing: ClientRequest, incoming: IncomingMessage) {
   // 只翻译开发工作台的同源请求；沙盒和其他站点的 Origin 仍由 Daemon 拒绝。
   if (incoming.headers.origin === devWorkbenchOrigin) {
-    outgoing.setHeader('origin', daemonOrigin)
+    outgoing.setHeader('origin', devDaemonOrigin)
   }
 }
 
@@ -25,6 +26,7 @@ export default defineConfig({
     {
       name: 'akasha-dev-sandbox-origin',
       apply: 'serve',
+      config: () => ({ publicDir: fileURLToPath(devPublicDir) }),
       transformIndexHtml: () => [
         {
           tag: 'script',
@@ -48,17 +50,13 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '^/(?:api|auth)/': {
-        target: daemonOrigin,
+        target: devDaemonOrigin,
         changeOrigin: true,
         ws: true,
         configure(proxy) {
           proxy.on('proxyReq', forwardWorkbenchOrigin)
           proxy.on('proxyReqWs', forwardWorkbenchOrigin)
         },
-      },
-      '/assets/akasha-offline.bundle.txt': {
-        target: daemonOrigin,
-        changeOrigin: true,
       },
     },
   },

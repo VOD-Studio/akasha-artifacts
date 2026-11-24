@@ -1,3 +1,4 @@
+import { once } from 'node:events'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -62,6 +63,19 @@ function waitForEvent(
 }
 
 describe('Hono HTTP server & @akasha/protocol contract tests', () => {
+  it('停止时主动断开仍在线的 WebSocket', async () => {
+    const server = await startNodeServer({ dbPath: 'memory', port: 0 })
+    const socket = await connectWs(server.wsUrl)
+    const disconnected = once(socket, 'close', { signal: AbortSignal.timeout(2000) })
+    const stopping = server.close()
+    try {
+      await disconnected
+    } finally {
+      socket.terminate()
+      await stopping
+    }
+  })
+
   it('passes full protocol contract suite on Memory storage adapter', async () => {
     const srv = await startNodeServer({ dbPath: 'memory', port: 0 })
     closers.push(srv.close)

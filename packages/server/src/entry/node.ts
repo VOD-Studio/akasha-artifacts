@@ -27,7 +27,7 @@ export async function startNodeServer(options: NodeServerOptions = {}) {
   const { artifacts } = container.repositories
   const isActive = async (id: string) =>
     (await artifacts.lifecycle.activeShareGeneration(id)) !== undefined
-  const { injectWebSocket } = attachNodeWebSocket(container.app, container.realtime, {
+  const { injectWebSocket, wss } = attachNodeWebSocket(container.app, container.realtime, {
     authorizeSubscription: async (_request, { artifactId }) =>
       artifactId === undefined || isActive(artifactId),
     authorizeEvent: async (_request, _scope, event) =>
@@ -59,6 +59,8 @@ export async function startNodeServer(options: NodeServerOptions = {}) {
   const close = async () => {
     await new Promise<void>((resolve) => {
       server.close(() => resolve())
+      // HTTP 的 closeAllConnections 不会关闭已升级的连接；开发重启不能等浏览器主动断开。
+      for (const ws of wss.clients) ws.terminate()
       if ('closeAllConnections' in server && typeof server.closeAllConnections === 'function') {
         server.closeAllConnections()
       }

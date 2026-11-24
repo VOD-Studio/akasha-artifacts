@@ -69,6 +69,12 @@ export interface StartDaemonOptions {
   webDir?: string
   // 沙盒静态产物目录；缺省自动定位，找不到时返回占位页
   sandboxDir?: string
+  // 仅开发入口传入：页面由 Vite 托管，同一次开发会话内复用登录令牌。
+  development?: {
+    workbenchOrigin: string
+    sandboxOrigin: string
+    sessionToken: string
+  }
   // 没有实时连接且持续空闲超过该秒数时自动退出；省略或 0 表示常驻
   idleTimeoutSec?: number
 }
@@ -89,13 +95,14 @@ function defaultAssetDir(relFromWorkspace: string): string | undefined {
 }
 
 /**
- * 启动整机单例 Daemon：外壳主服务，以及独立 origin 的沙盒服务。
+ * 启动整机单例 Daemon；沙盒默认由独立静态服务托管，开发时由 Vite 接管。
  *
  * @remarks 先取单例锁再绑定端口，启动失败时释放已占用的端口与锁。就绪后写出 `daemon.json`。
  * 返回的 `close` 会清掉状态文件、关闭两个服务并释放锁。
  * @throws {Error} 已有 Daemon 在运行，或候选端口全部被占用。
  */
 export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
+  const { development } = options
   const homeDir = resolveAkashaHome(options.homeDir)
   const host = options.host ?? '127.0.0.1'
   const version = options.version ?? AKASHA_VERSION
@@ -105,6 +112,7 @@ export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
 
   let nodeSrv: Awaited<ReturnType<typeof startNodeServer>> | undefined
   let sandboxSrv: Awaited<ReturnType<typeof startSandboxServer>> | undefined
+  let sandboxOrigin: string
   let closeAll: (() => Promise<void>) | undefined
 
   try {
@@ -112,13 +120,16 @@ export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
       options.port !== undefined
         ? [options.port]
         : parsePortList(process.env.AKASHA_PORTS, DEFAULT_SHELL_PORTS)
-    const sandboxCandidates =
-      options.sandboxPort !== undefined
-        ? [options.sandboxPort]
-        : parsePortList(process.env.AKASHA_SANDBOX_PORTS, DEFAULT_SANDBOX_PORTS)
+    const chosenSandboxPort = development
+      ? Number(new URL(development.sandboxOrigin).port)
+      : await findAvailablePort(
+          options.sandboxPort !== undefined
+            ? [options.sandboxPort]
+            : parsePortList(process.env.AKASHA_SANDBOX_PORTS, DEFAULT_SANDBOX_PORTS),
+          host,
+        )
 
     const chosenShellPort = await findAvailablePort(shellCandidates, host)
-    const chosenSandboxPort = await findAvailablePort(sandboxCandidates, host)
 
     nodeSrv = await startNodeServer({
       host,
@@ -130,6 +141,7 @@ export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
       fsProjectRoot:
         options.projectRoot ?? (options.storageMode === 'fs' ? process.cwd() : undefined),
       version,
+      security: development ? { token: development.sessionToken } : undefined,
       agentRunner: createCodexRunner(fileURLToPath(new URL('../cli.js', import.meta.url))),
       agentHost: host === '::1' ? '[::1]' : host === 'localhost' ? host : '127.0.0.1',
       onShutdown: () => {
@@ -137,14 +149,19 @@ export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
       },
     })
 
-    const sandboxDir = options.sandboxDir ?? defaultAssetDir('apps/sandbox/dist')
-    sandboxSrv = await startSandboxServer({
-      host,
-      port: chosenSandboxPort,
-      shellOrigins: buildLoopbackOrigins(nodeSrv.port),
-      sandboxDir,
-    })
-    nodeSrv.daemonState.sandboxPort = sandboxSrv.port
+    if (development) {
+      sandboxOrigin = development.sandboxOrigin
+    } else {
+      const sandboxDir = options.sandboxDir ?? defaultAssetDir('apps/sandbox/dist')
+      sandboxSrv = await startSandboxServer({
+        host,
+        port: chosenSandboxPort,
+        shellOrigins: buildLoopbackOrigins(nodeSrv.port),
+        sandboxDir,
+      })
+      nodeSrv.daemonState.sandboxPort = sandboxSrv.port
+      sandboxOrigin = sandboxSrv.origin
+    }
   } catch (err) {
     await sandboxSrv?.close()
     await nodeSrv?.close()
@@ -153,7 +170,6 @@ export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
   }
 
   const activeNodeSrv = nodeSrv
-  const activeSandboxSrv = sandboxSrv
 
   // 仅向本机已登录的 Hub 公开命中与否，不返回制品数据、Cookie 或 Daemon 令牌。
   activeNodeSrv.app.on(['GET', 'OPTIONS'], '/api/v1/local-artifact/:id', async (c) => {
@@ -184,12 +200,18 @@ export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
   })
 
   // 挂载外壳 SPA 静态产物（排除 /api/* 与 /auth/*）
-  const webDir = options.webDir ?? defaultAssetDir('apps/web/dist')
+  const webDir = development ? undefined : (options.webDir ?? defaultAssetDir('apps/web/dist'))
   const resolvedWebDir = webDir ? path.resolve(webDir) : undefined
   activeNodeSrv.app.get('*', (c) => {
     const reqPath = c.req.path
     if (reqPath.startsWith('/api/') || reqPath.startsWith('/auth/')) {
       return c.json({ error: { code: 'NOT_FOUND', message: `路径 ${reqPath} 不存在` } }, 404)
+    }
+    if (development) {
+      // CLI 和登录仍走 Daemon；页面跳转到唯一的开发入口，保留原路径和查询参数。
+      const { pathname, search } = new URL(c.req.url)
+      c.header('Cache-Control', 'no-store')
+      return c.redirect(`${development.workbenchOrigin}${pathname}${search}`)
     }
     if (resolvedWebDir && fs.existsSync(resolvedWebDir)) {
       const indexHtml = path.join(resolvedWebDir, 'index.html')
@@ -198,11 +220,11 @@ export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
           .readFileSync(indexHtml, 'utf8')
           .replace(
             '</head>',
-            `<script>window.__AKASHA_CONFIG__=${JSON.stringify({ sandboxOrigin: activeSandboxSrv.origin })};</script></head>`,
+            `<script>window.__AKASHA_CONFIG__=${JSON.stringify({ sandboxOrigin })};</script></head>`,
           )
         return c.html(html, 200, {
           'Cache-Control': 'no-store',
-          'Content-Security-Policy': `frame-src ${activeSandboxSrv.origin}`,
+          'Content-Security-Policy': `frame-src ${sandboxOrigin}`,
         })
       }
 
@@ -227,7 +249,7 @@ export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
       }
     }
     return c.html(
-      `<!doctype html><html><head><meta charset="utf-8"><title>Akasha Terminal</title></head><body><h1>Akasha Terminal v${version}</h1><p>Daemon running on ${activeNodeSrv.baseUrl} · Sandbox ${activeSandboxSrv.origin}</p></body></html>`,
+      `<!doctype html><html><head><meta charset="utf-8"><title>Akasha Terminal</title></head><body><h1>Akasha Terminal v${version}</h1><p>Daemon running on ${activeNodeSrv.baseUrl} · Sandbox ${sandboxOrigin}</p></body></html>`,
     )
   })
 
@@ -235,7 +257,7 @@ export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
     pid: process.pid,
     host,
     port: activeNodeSrv.port,
-    sandboxPort: activeSandboxSrv.port,
+    sandboxPort: activeNodeSrv.daemonState.sandboxPort,
     token: activeNodeSrv.token,
     version,
     startedAt: activeNodeSrv.daemonState.startedAt,
@@ -271,7 +293,7 @@ export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
     if (idleTimer) clearInterval(idleTimer)
     removeDaemonState(homeDir, process.pid)
     try {
-      await Promise.all([activeNodeSrv.close(), activeSandboxSrv.close()])
+      await Promise.all([activeNodeSrv.close(), sandboxSrv?.close()])
     } finally {
       lock.release()
     }
@@ -281,10 +303,10 @@ export async function startAkashaDaemon(options: StartDaemonOptions = {}) {
     state,
     baseUrl: activeNodeSrv.baseUrl,
     wsUrl: activeNodeSrv.wsUrl,
-    sandboxOrigin: activeSandboxSrv.origin,
+    sandboxOrigin,
     token: activeNodeSrv.token,
     nodeSrv: activeNodeSrv,
-    sandboxSrv: activeSandboxSrv,
+    sandboxSrv,
     close: closeAll,
   }
 }
