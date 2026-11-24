@@ -1,4 +1,4 @@
-import { DESIGN_LAYER_COLORS, type DesignLayer, type Version } from '@akasha/protocol'
+import { DESIGN_LAYER_COLORS, type DesignLayer, type VersionSummary } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Field } from '@akasha/ui/field'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
@@ -29,7 +29,7 @@ export const DESIGN_LAYER_COLOR_LABELS = {
 } satisfies Record<NonNullable<DesignLayer['color']> | 'auto', string>
 
 interface LayoutDraft {
-  base: Version
+  base: VersionSummary
   original: DesignLayer
   geometry: CanvasBounds
   color: DesignLayer['color']
@@ -73,7 +73,7 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
     <section className="mt-4 space-y-3 border-t border-border pt-3" aria-label="图层布局">
       <form
         className="space-y-2"
-        onSubmit={(event) => {
+        onSubmit={async (event) => {
           event.preventDefault()
           if (!draft || !editing.available) return
           const { x, y, width, height } = draft.geometry
@@ -98,8 +98,8 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
               },
             ]
           })
-          if (editing.change({ kind: 'layerGeometry', boardId, changes }, draft.base)) {
-            setDraft(null)
+          if (await editing.change({ kind: 'layerGeometry', boardId, changes }, draft.base)) {
+            setDraft((current) => (current === draft ? null : current))
           }
         }}
       >

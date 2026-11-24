@@ -6,6 +6,9 @@ import { EditOpSchema, ElementRectSchema, ElementRefSchema, JsonPatchOpSchema } 
 import { ArtifactTypeSchema, PROTOCOL_VERSION } from './primitives.js'
 import { ArtifactStorageOperationSchema } from './storage.js'
 
+/** 常驻总览画板位图的最大边长（像素）；不限制用户导出。 */
+export const CANVAS_PREVIEW_MAX_EDGE = 256
+
 const LayerIdSchema = z.string().min(1).max(1024)
 const CanvasLayerSchema = z.object({
   // 同一沙盒的 DOM 节点标识；重排时不会指向占据旧位置的其他节点
@@ -64,7 +67,11 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
     boardId: z.string().min(1).optional(),
     // 仅显式试玩启用原型导航；缺省仍是设计视图
     playback: z.literal(true).optional(),
+    // 仅 scoped 总览下发；首帧可以直接停在原位，不先启动再暂停
+    overviewAnimation: z.boolean().optional(),
     version: z.number().int().min(1),
+    // 区分同一连接中版本号相同的不同渲染，仅常驻总览需要。
+    renderId: z.number().int().positive().optional(),
     source: z.string(),
     designLayers: DesignLayersSchema.optional(),
     // 单板持久外观和参数默认值；不从预览覆写构造固定版本载荷。
@@ -74,6 +81,12 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
     state: z.record(z.string(), z.unknown()),
     // 上一次沙盒上报的保态快照
     preservedState: PreservedViewStateSchema.optional(),
+  }),
+  z.object({
+    ...BridgeEnvelopeBase,
+    type: z.literal('animation.set'),
+    version: z.number().int().min(1),
+    animate: z.boolean(),
   }),
   z.object({
     ...BridgeEnvelopeBase,
@@ -89,14 +102,6 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('state'),
     seq: z.number().int().min(1),
     ops: z.array(JsonPatchOpSchema).min(1),
-  }),
-  z.object({
-    ...BridgeEnvelopeBase,
-    type: z.literal('inspect.start'),
-  }),
-  z.object({
-    ...BridgeEnvelopeBase,
-    type: z.literal('inspect.stop'),
   }),
   z.object({
     ...BridgeEnvelopeBase,
@@ -150,10 +155,17 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
     ...BridgeEnvelopeBase,
     type: z.literal('capture.png'),
     version: z.number().int().min(1),
+    // 常驻画板可多次捕获；区分过期响应。一次性导出不传此字段。
+    requestId: z.string().min(1).max(64).optional(),
     // 保持固有 CSS 视口；scale 只决定输出位图大小
     width: z.number().int().min(1).max(8192),
     height: z.number().int().min(1).max(8192),
     scale: z.number().positive().max(1),
+  }),
+  z.object({
+    ...BridgeEnvelopeBase,
+    type: z.literal('capture.cancel'),
+    requestId: z.string().min(1).max(64),
   }),
   z.object({
     ...BridgeEnvelopeBase,
@@ -163,8 +175,9 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     ...BridgeEnvelopeBase,
-    // 双击命中测试；坐标是沙盒视口 CSS 像素，不派发原型的点击事件。
-    type: z.literal('inspect.text.at'),
+    // 坐标用沙盒视口 CSS 像素；命中不派发作者的点击事件。
+    type: z.literal('inspect.at'),
+    purpose: z.enum(['select', 'text']),
     requestId: z.string().min(1).max(64),
     version: z.number().int().positive(),
     x: z.number().nonnegative(),
@@ -185,6 +198,7 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
     // 一次渲染完成；`height` 是内容高度，供外壳自适应
     type: z.literal('rendered'),
     version: z.number().int().min(1),
+    renderId: z.number().int().positive().optional(),
     height: z.number().nonnegative().optional(),
     // 该版本的沙盒内容包含至少一个可操作控件
     playable: z.boolean().optional(),
@@ -212,6 +226,7 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
     ...BridgeEnvelopeBase,
     type: z.literal('capture.png.result'),
     version: z.number().int().min(1),
+    requestId: z.string().min(1).max(64).optional(),
     // 通过结构化克隆发送 Blob，不把 PNG 放进 JSON 或源码
     png: z
       .instanceof(Blob)
@@ -223,6 +238,7 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
     ...BridgeEnvelopeBase,
     type: z.literal('capture.png.failure'),
     version: z.number().int().min(1),
+    requestId: z.string().min(1).max(64).optional(),
     message: z.string().min(1),
   }),
   z.object({
@@ -248,21 +264,13 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     ...BridgeEnvelopeBase,
-    // 指认模式下的悬停；`element` 为 null 表示没有悬停目标
-    type: z.literal('inspect.hover'),
-    element: ElementRefSchema.nullable(),
-  }),
-  z.object({
-    ...BridgeEnvelopeBase,
     type: z.literal('inspect.select'),
     element: ElementRefSchema,
-    // 区分用户真实点击选中（click）与滚动/缩放/高亮触发的几何坐标同步（sync）
-    reason: z.enum(['click', 'sync']).optional(),
+    // 已选对象在沙盒内滚动或重排后的坐标。
+    reason: z.literal('sync'),
     layerId: LayerIdSchema.optional(),
     // 图层定位和坐标同步使用精确选择器，不回退到祖先的块标识
     layerSelector: z.string().min(1).max(1024).optional(),
-    // 点击节点自身经唯一性检查的声明块；祖先块只属于普通批注定位。
-    layerBlockId: z.string().min(1).max(512).optional(),
     version: z.number().int().min(1).optional(),
   }),
   z.object({
@@ -301,11 +309,20 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     ...BridgeEnvelopeBase,
-    type: z.literal('inspect.text.target'),
+    type: z.literal('inspect.target'),
+    purpose: z.enum(['select', 'text']),
     requestId: z.string().min(1).max(64),
     version: z.number().int().positive(),
     // 未命中元素时为空；有元素但不能安全改写时只提供批注定位。
     element: ElementRefSchema.nullable(),
+    layer: z
+      .object({
+        id: LayerIdSchema,
+        selector: z.string().min(1).max(1024),
+        // 仅使用命中节点自身唯一的声明块，不回退到祖先。
+        blockId: z.string().min(1).max(512).optional(),
+      })
+      .optional(),
     // 仅为命中节点自身唯一的静态源码位置，不沿祖先查找。
     loc: z
       .string()

@@ -1,15 +1,17 @@
-import type {
-  ArtboardAppearance,
-  ArtboardTweakValues,
-  ArtifactType,
-  DesignLayer,
-  PreservedViewState,
+import {
+  type ArtboardAppearance,
+  type ArtboardTweakValues,
+  type ArtifactType,
+  CANVAS_PREVIEW_MAX_EDGE,
+  type DesignLayer,
+  type PreservedViewState,
 } from '@akasha/protocol'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { SandboxBridgeClient } from './bridge/client'
 import { captureSandboxPng } from './capture-png'
 import { SandboxInspector } from './inspector/index'
 import { readCanvasLayers } from './inspector/layers'
+import { type OverviewMotion, pauseOverviewMotion } from './overview-motion'
 import { bindPrototype, hasPlayableControls } from './prototype'
 import { artboardStyle } from './renderers/artboard-style'
 import { registerBuiltinRenderers } from './renderers/builtins'
@@ -35,6 +37,8 @@ export interface RenderPayload {
   /** HTML 画板的 id；给出时整段源码作为一个画板块渲染。 */
   boardId?: string
   version: number
+  /** 同一 scoped 总览会话的渲染编号。 */
+  renderId?: number
   source: string
   designLayers?: DesignLayer[]
   /** 仅 `boardId` 所属的持久外观与参数，不包含临时覆写。 */
@@ -68,9 +72,13 @@ export function SandboxApp({
   initialPreservedState,
 }: SandboxAppProps) {
   const [payload, setPayload] = useState<RenderPayload | null>(initialRender)
-  const [tweakPreview, setTweakPreview] = useState<ArtboardTweakValues>()
+  const [tweakPreview, setTweakPreview] = useState<{ values?: ArtboardTweakValues }>()
+  const requestedTweakPreview = useRef(false)
+  const paintedTweakPreview = useRef(false)
   const committedPayloadRef = useRef<RenderPayload | null>(initialRender)
   const renderedVisualVersionRef = useRef(0)
+  const renderedOverviewRef = useRef<RenderPayload | null>(null)
+  const overviewMotion = useRef<OverviewMotion | null>(null)
   const [watchLayers, setWatchLayers] = useState(false)
   const refreshLayers = useRef<(() => void) | null>(null)
   const lastPlayable = useRef<boolean | undefined>(undefined)
@@ -106,17 +114,38 @@ export function SandboxApp({
       () => renderedVisualVersionRef.current,
     )
 
-    let capturing = false
+    let capture: { requestId?: string; controller: AbortController } | null = null
+    let overviewVersion: number | undefined
+    const setOverviewAnimation = (animate: boolean) => {
+      if (animate) {
+        overviewMotion.current?.resume()
+        overviewMotion.current = null
+      } else if (!overviewMotion.current && rootRef.current) {
+        overviewMotion.current = pauseOverviewMotion(rootRef.current)
+      }
+    }
     const off = bridge.onMessage((msg) => {
       if (msg.type === 'render') {
+        capture?.controller.abort()
         renderedVisualVersionRef.current = 0
         lastPlayable.current = undefined
+        overviewVersion =
+          msg.artifactType === 'html' &&
+          msg.boardId &&
+          !msg.playback &&
+          msg.overviewAnimation !== undefined
+            ? msg.version
+            : undefined
+        setOverviewAnimation(overviewVersion === undefined || msg.overviewAnimation !== false)
         stateStore.replace(msg.state)
         preserved.hydrate(msg.preservedState)
         const next: RenderPayload = {
           artifactType: msg.artifactType,
           version: msg.version,
           source: msg.source,
+          ...(overviewVersion !== undefined && msg.renderId !== undefined
+            ? { renderId: msg.renderId }
+            : {}),
           ...(msg.artifactType === 'html' && msg.boardId
             ? {
                 boardId: msg.boardId,
@@ -129,7 +158,10 @@ export function SandboxApp({
         }
         committedPayloadRef.current = next
         setPayload(next)
+        requestedTweakPreview.current = false
         setTweakPreview(undefined)
+      } else if (msg.type === 'animation.set') {
+        if (msg.version === overviewVersion) setOverviewAnimation(msg.animate)
       } else if (msg.type === 'board.tweaks.preview') {
         const committed = committedPayloadRef.current
         if (
@@ -137,35 +169,72 @@ export function SandboxApp({
           committed.boardId === msg.boardId &&
           committed.version === msg.version
         ) {
-          setTweakPreview(msg.values)
+          const defaults = committed.boardTweaks
+          const entries = Object.entries(msg.values)
+          const isPreview =
+            entries.length !== Object.keys(defaults).length ||
+            entries.some(([key, value]) => defaults[key] !== value)
+          requestedTweakPreview.current = isPreview
+          if (isPreview) capture?.controller.abort()
+          setTweakPreview(isPreview ? { values: msg.values } : {})
         }
+      } else if (msg.type === 'capture.cancel') {
+        if (capture && capture.requestId === msg.requestId) capture.controller.abort()
       } else if (msg.type === 'capture.png') {
+        const { requestId, version, width, height, scale } = msg
         const root = rootRef.current
-        if (!root || capturing || msg.version !== renderedVisualVersionRef.current) return
-        capturing = true
-        void captureSandboxPng(root, msg.width, msg.height, msg.scale)
+        const correlation = requestId === undefined ? { version } : { version, requestId }
+        const failure = (message: string) => {
+          bridge.send({ type: 'capture.png.failure', ...correlation, message })
+        }
+        if (!root || capture || version !== renderedVisualVersionRef.current) {
+          if (requestId !== undefined) failure(capture ? '画板正在生成 PNG' : '画板尚未渲染')
+          return
+        }
+        // Bridge 消息可先于 React 提交到达；请求值和已经绘制的值都须是默认值。
+        if (requestedTweakPreview.current || paintedTweakPreview.current) {
+          failure('画板正在预览临时参数')
+          return
+        }
+        if (
+          requestId !== undefined &&
+          (version !== overviewVersion ||
+            renderedOverviewRef.current !== committedPayloadRef.current ||
+            Math.round(Math.max(width, height) * scale) > CANVAS_PREVIEW_MAX_EDGE)
+        ) {
+          failure('画板无法生成当前版本的预览')
+          return
+        }
+        const controller = new AbortController()
+        capture = { requestId, controller }
+        void captureSandboxPng(root, width, height, scale, controller.signal)
           .then((png) => {
+            controller.signal.throwIfAborted()
             if (png.size > 32 * 1024 * 1024) throw new Error('画板 PNG 超出传输上限')
-            bridge.send({ type: 'capture.png.result', version: msg.version, png })
+            bridge.send({ type: 'capture.png.result', ...correlation, png })
           })
-          .catch((error: unknown) =>
-            bridge.send({
-              type: 'capture.png.failure',
-              version: msg.version,
-              message: error instanceof Error && error.message ? error.message : '画板不能生成 PNG',
-            }),
-          )
+          .catch((error: unknown) => {
+            if (controller.signal.aborted) {
+              failure('已取消预览')
+              return
+            }
+            failure(error instanceof Error && error.message ? error.message : '画板不能生成 PNG')
+          })
           .finally(() => {
-            capturing = false
+            capture = null
           })
       } else if (msg.type === 'apply.preview') {
         const committed = committedPayloadRef.current
-        if (committed?.version === msg.version) setPayload({ ...committed, source: msg.source })
+        if (committed?.version === msg.version) {
+          capture?.controller.abort()
+          renderedOverviewRef.current = null
+          setPayload({ ...committed, source: msg.source })
+        }
       } else if (msg.type === 'apply.rollback') {
         const committed = committedPayloadRef.current
         if (committed?.version === msg.version) setPayload(committed)
-      } else if (msg.type === 'inspect.text.at' && !committedPayloadRef.current?.playback) {
-        inspector.inspectTextAt(msg)
+      } else if (msg.type === 'inspect.at' && !committedPayloadRef.current?.playback) {
+        inspector.inspectAt(msg)
       } else if (msg.type === 'visual.inspect') {
         visualInspector.setActive(msg.active)
       } else if (msg.type === 'state') {
@@ -178,10 +247,6 @@ export function SandboxApp({
             message: err instanceof Error ? err.message : String(err),
           })
         }
-      } else if (msg.type === 'inspect.start') {
-        inspector.startInspecting()
-      } else if (msg.type === 'inspect.stop') {
-        inspector.stopInspecting()
       } else if (msg.type === 'inspect.layers.watch') {
         setWatchLayers(msg.active)
       } else if (msg.type === 'highlight') {
@@ -218,6 +283,8 @@ export function SandboxApp({
     window.addEventListener('unhandledrejection', handleRejection)
 
     return () => {
+      capture?.controller.abort()
+      setOverviewAnimation(true)
       inspector.dispose()
       visualInspector.dispose()
       inspectorRef.current = null
@@ -341,7 +408,17 @@ export function SandboxApp({
     (version?: number) => {
       const ver = version ?? versionRef.current
       // 旧 DOM 仍显示时，不让直改用旧坐标修改新源码。
-      if (!bridge || ver < 1 || ver !== versionRef.current) return
+      if (
+        !bridge ||
+        ver < 1 ||
+        ver !== versionRef.current ||
+        payload?.renderId !== committedPayloadRef.current?.renderId
+      ) {
+        return
+      }
+      overviewMotion.current?.sync()
+      const renderId = payload === committedPayloadRef.current ? payload?.renderId : undefined
+      if (renderId !== undefined) renderedOverviewRef.current = payload
       renderedVisualVersionRef.current = ver
       const height = rootRef.current
         ? Math.max(0, Math.round(rootRef.current.scrollHeight))
@@ -350,13 +427,44 @@ export function SandboxApp({
       bridge.send({
         type: 'rendered',
         version: ver,
+        ...(renderId !== undefined ? { renderId } : {}),
         playable: lastPlayable.current,
         ...(height !== undefined ? { height } : {}),
       })
       refreshLayers.current?.()
     },
-    [bridge],
+    [bridge, payload],
   )
+
+  useLayoutEffect(() => {
+    paintedTweakPreview.current = tweakPreview?.values !== undefined
+    // 重置参数不重新挂载作者内容；默认样式提交后，重新允许总览安排截图。
+    if (
+      tweakPreview &&
+      !paintedTweakPreview.current &&
+      !requestedTweakPreview.current &&
+      renderedOverviewRef.current === payload &&
+      payload?.renderId !== undefined
+    ) {
+      handleRendered(payload.version)
+    }
+  }, [handleRendered, payload, tweakPreview])
+
+  // 原生图层变动但 HTML 片段未变时，HTML 渲染器不会再次挂载或上报。
+  useEffect(() => {
+    const previous = renderedOverviewRef.current
+    if (
+      payload?.renderId !== undefined &&
+      payload === committedPayloadRef.current &&
+      previous &&
+      previous.renderId !== payload.renderId &&
+      previous.version === payload.version &&
+      previous.boardId === payload.boardId &&
+      previous.source === payload.source
+    ) {
+      handleRendered(payload.version)
+    }
+  }, [payload, handleRendered])
 
   const renderer = useMemo(
     () => (payload ? getRenderer(payload.artifactType) : undefined),
@@ -364,8 +472,8 @@ export function SandboxApp({
   )
   const designLayers = payload?.designLayers?.length ? payload.designLayers : undefined
   const style = useMemo(
-    () => artboardStyle(payload?.boardAppearance, tweakPreview ?? payload?.boardTweaks),
-    [payload?.boardAppearance, payload?.boardTweaks, tweakPreview],
+    () => artboardStyle(payload?.boardAppearance, tweakPreview?.values ?? payload?.boardTweaks),
+    [payload?.boardAppearance, payload?.boardTweaks, tweakPreview?.values],
   )
 
   return (

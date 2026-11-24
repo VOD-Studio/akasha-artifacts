@@ -2,13 +2,12 @@ import type {
   Artifact,
   ArtifactSharedAccess,
   ArtifactTransferInput,
-  Version,
+  VersionSummary,
 } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { ArrowLeft, PanelLeft, Share2 } from 'lucide-react'
 import type { Ref } from 'react'
 import { useArtifactManagementQuery } from '@/entities/artifact'
-import { useSelectionStore } from '@/entities/selection'
 import { useWorkspaceStore, type WorkspaceViewMode } from '@/entities/workspace'
 import { HubAccountButton } from '@/features/hub'
 import { VersionTimeline } from '@/features/version-timeline'
@@ -17,8 +16,8 @@ import { WorkspacePanelButtons } from './WorkspacePanelButtons'
 
 export interface TopBarProps {
   artifact: Artifact
-  version: Version
-  versions: readonly Version[]
+  version: VersionSummary
+  versions: readonly VersionSummary[]
   /** 有值时普通制品链接固定到正在查看的历史版本。 */
   fixedVersion?: number
   feedbackCount?: number
@@ -73,10 +72,7 @@ export function TopBar({
   const offline = !editing && wsStatus === 'closed'
   const statusLabel = shareAccess ? getShareRole(shareAccess, fixedVersion) : undefined
 
-  const showTool = (mode: WorkspaceViewMode) => {
-    useSelectionStore.getState().setPickerActive(false)
-    setViewMode(mode)
-  }
+  const showTool = (mode: WorkspaceViewMode) => setViewMode(mode)
   const showCanvas = () => showTool('preview')
   const openQuickJump = () => setCommandPaletteOpen(true)
 

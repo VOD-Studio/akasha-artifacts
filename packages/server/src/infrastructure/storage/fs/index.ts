@@ -288,6 +288,10 @@ export class FsArtifactRepository implements ArtifactRepository {
     return this.inner.lifecycle
   }
 
+  get boardProjections() {
+    return this.inner.boardProjections
+  }
+
   /** 注册回调：服务端写入前补录了未入库的外部改动时触发，用于把补录的版本广播出去。 */
   setOnDiskReconciled(cb: (artifact: Artifact, version: Readonly<Version>) => void): void {
     this.onDiskReconciled = cb
@@ -942,7 +946,7 @@ export class FsArtifactRepository implements ArtifactRepository {
   /**
    * 追加版本；v2 及之后的版本先暂存，等随后的 `saveArtifact` 校验通过后一起提交。
    */
-  async appendVersion(version: Readonly<Version>): Promise<void> {
+  async appendVersion(version: Readonly<Version>, type?: ArtifactType): Promise<void> {
     const artifact = await this.inner.findByPublicId(version.artifactId)
     if (artifact) {
       this.assertOwnedProject(artifact.projectId)
@@ -954,7 +958,7 @@ export class FsArtifactRepository implements ArtifactRepository {
       }
       resolveArtifactFileLayout(this.artifactsRoot, artifact.type, artifact.slug, version.source)
     }
-    await this.inner.appendVersion(version)
+    await this.inner.appendVersion(version, type ?? artifact?.type)
     // 新建 v1（saveArtifact 先于 appendVersion，此时 version === headVersion）立即落盘原生文件
     if (artifact && version.version === artifact.headVersion) {
       this.syncToDisk(artifact, version.source)
@@ -967,6 +971,10 @@ export class FsArtifactRepository implements ArtifactRepository {
 
   getVersion(artifactId: PublicId, version: number): Promise<Readonly<Version> | undefined> {
     return this.inner.getVersion(artifactId, version)
+  }
+
+  getVersionSummaries(artifactId: PublicId, version?: number) {
+    return this.inner.getVersionSummaries(artifactId, version)
   }
 }
 

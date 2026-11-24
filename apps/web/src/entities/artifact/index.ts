@@ -1,8 +1,11 @@
 export {
   type ArtifactDetailResponse,
   createArtifactShare,
+  fetchArtifactBoard,
   fetchArtifactDetail,
+  fetchArtifactWorkspace,
   fetchWithdrawnArtifacts,
+  hasVersionSource,
   parseVersionConflictDetails,
   publishHumanVersion,
   restoreArtifact,
@@ -12,13 +15,15 @@ export {
 } from './api/client'
 export {
   artifactKeys,
-  useArtifactDetailQuery,
+  artifactSourceOptions,
   useArtifactFavoritesQuery,
   useArtifactManagementQuery,
+  useArtifactSourceQuery,
   useArtifactSpecQuery,
   useArtifactStorageUsageQuery,
   useArtifactsQuery,
   useArtifactVersionsQuery,
+  useArtifactWorkspaceQuery,
   usePushArtifactStateMutation,
   useRenameArtifactMutation,
   useRevertArtifactMutation,
@@ -30,4 +35,7 @@ export {
   type CanvasLocation,
   type CanvasPage,
   createCanvasDocument,
+  createCanvasDocumentFromIndex,
+  type LoadedCanvasBoard,
+  loadCanvasBoard,
 } from './model/canvas'

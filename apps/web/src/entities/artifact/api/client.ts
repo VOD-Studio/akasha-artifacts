@@ -1,4 +1,5 @@
 import {
+  type ArtboardContent,
   type Artifact,
   type ArtifactSharedAccess,
   type ArtifactShareInput,
@@ -7,11 +8,13 @@ import {
   ArtifactStorageUsageSchema,
   type ArtifactTransferInput,
   type ArtifactType,
+  type ArtifactWorkspaceDetail,
   type Author,
   type JsonPatchOp,
   type ReviewRound,
   type StateStreamSnapshot,
   type Version,
+  type VersionSummary,
   type Visibility,
   type WithdrawnArtifact,
 } from '@akasha/protocol'
@@ -125,11 +128,54 @@ export async function fetchArtifactDetail(
   )
 }
 
-/** 读取当前访问权限可见的版本目录，不能用它代替固定版本的详情读取。 */
-export async function fetchArtifactVersions(id: string): Promise<{ versions: Version[] }> {
-  return requestJson<{ versions: Version[] }>(
-    `/api/v1/artifacts/${encodeURIComponent(id)}/versions`,
-  )
+/** 版本摘要可由已读取的完整快照实现，但不能假定包含源码。 */
+export function hasVersionSource(version: VersionSummary): version is Version {
+  return 'source' in version && typeof version.source === 'string'
+}
+
+/** 画布先读取布局，非多板制品仍随同返回其渲染源码。 */
+export function fetchArtifactWorkspace(
+  id: string,
+  version?: number,
+  signal?: AbortSignal,
+): Promise<ArtifactWorkspaceDetail> {
+  const params = new URLSearchParams({ view: 'canvas' })
+  if (version !== undefined) params.set('version', String(version))
+  return requestJson(`/api/v1/artifacts/${encodeURIComponent(id)}?${params}`, { signal })
+}
+
+/** 取同一制品指定版本的一块画板；取消信号直达 HTTP 请求。 */
+export async function fetchArtifactBoard(
+  artifactId: string,
+  version: number,
+  boardId: string,
+  signal: AbortSignal,
+): Promise<ArtboardContent> {
+  const params = new URLSearchParams({ version: String(version), boardId })
+  const path = `/api/v1/artifacts/${encodeURIComponent(artifactId)}/boards?${params}`
+  const response = await requestJson<{
+    artifactId: string
+    version: number
+    board: ArtboardContent
+  }>(path, { signal })
+  if (
+    response?.artifactId !== artifactId ||
+    response.version !== version ||
+    response.board?.id !== boardId
+  ) {
+    throw new Error('画板响应与请求的版本或标识不一致')
+  }
+  return response.board
+}
+
+/** 版本菜单只读取当前访问权限范围内的元数据。 */
+export function fetchArtifactVersions(
+  id: string,
+  signal?: AbortSignal,
+): Promise<{ versions: VersionSummary[] }> {
+  return requestJson(`/api/v1/artifacts/${encodeURIComponent(id)}/versions?view=metadata`, {
+    signal,
+  })
 }
 
 /** 以历史快照创建新的头版本，不覆盖旧版本；`baseVersion` 防止覆盖并发提交。 */

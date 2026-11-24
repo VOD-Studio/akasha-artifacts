@@ -1,4 +1,10 @@
-import type { Artifact, ArtifactShareEntry, ArtifactShareInput, Version } from '@akasha/protocol'
+import type {
+  ArtboardIndex,
+  Artifact,
+  ArtifactShareEntry,
+  ArtifactShareInput,
+  VersionSummary,
+} from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Modal } from '@akasha/ui/dialog'
 import { Field } from '@akasha/ui/field'
@@ -7,12 +13,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useMutation } from '@tanstack/react-query'
 import { type FormEvent, useId, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { createArtifactShare, createCanvasDocument } from '@/entities/artifact'
+import {
+  type CanvasDocument,
+  createArtifactShare,
+  createCanvasDocument,
+  createCanvasDocumentFromIndex,
+  hasVersionSource,
+} from '@/entities/artifact'
 
 interface ArtifactShareDialogProps {
   artifact: Artifact
   /** 签发时使用打开面板时已经读到的快照；不跟随后台更新。 */
-  version: Version
+  version: VersionSummary
+  canvas?: ArtboardIndex
   onClose: () => void
 }
 
@@ -27,7 +40,12 @@ function shareEntry(
 }
 
 /** 签名授权与复制普通定位链接分开；只有确认后才签发。 */
-export function ArtifactShareDialog({ artifact, version, onClose }: ArtifactShareDialogProps) {
+export function ArtifactShareDialog({
+  artifact,
+  version,
+  canvas,
+  onClose,
+}: ArtifactShareDialogProps) {
   const formId = useId()
   const [role, setRole] = useState<ArtifactShareInput['role']>('view')
   const [entryKind, setEntryKind] = useState<ArtifactShareEntry['kind']>('artifact')
@@ -35,13 +53,19 @@ export function ArtifactShareDialog({ artifact, version, onClose }: ArtifactShar
   const [copying, setCopying] = useState(false)
   const [copied, setCopied] = useState(false)
   const boards = useMemo(() => {
-    const document = createCanvasDocument(
-      artifact.type,
-      version.title,
-      version.source,
-      version.version,
-      undefined,
-    )
+    let document: CanvasDocument | undefined
+    if (canvas) {
+      document = createCanvasDocumentFromIndex(canvas)
+    } else if (hasVersionSource(version)) {
+      document = createCanvasDocument(
+        artifact.type,
+        version.title,
+        version.source,
+        version.version,
+        undefined,
+      )
+    }
+    if (!document) return []
     return document.pages.flatMap((page) =>
       page.boards
         .filter((board) => board.type === 'html' || board.type === 'react')
@@ -51,7 +75,7 @@ export function ArtifactShareDialog({ artifact, version, onClose }: ArtifactShar
           label: `${page.title} / ${board.title}`,
         })),
     )
-  }, [artifact.type, version])
+  }, [artifact.type, canvas, version])
   const share = useMutation({
     mutationFn: (input: ArtifactShareInput) => createArtifactShare(artifact.publicId, input),
   })

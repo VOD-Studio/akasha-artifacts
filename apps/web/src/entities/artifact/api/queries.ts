@@ -1,7 +1,6 @@
-import type { ArtifactType, JsonPatchOp } from '@akasha/protocol'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { ArtifactType, ArtifactWorkspaceDetail, JsonPatchOp } from '@akasha/protocol'
+import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  type ArtifactDetailResponse,
   fetchArtifactDetail,
   fetchArtifactFavorites,
   fetchArtifactManagement,
@@ -9,6 +8,7 @@ import {
   fetchArtifactStorageUsage,
   fetchArtifacts,
   fetchArtifactVersions,
+  fetchArtifactWorkspace,
   pushArtifactState,
   renameArtifact,
   revertArtifactVersion,
@@ -17,13 +17,15 @@ import {
 
 const artifactListKey = ['artifacts', 'list'] as const
 
-/** `detailPrefix` 同时覆盖头版本与固定版本；更新单个快照用 `detail`。 */
+/** 工作区按版本缓存；源码与其它查询不落在详情前缀之下。 */
 export const artifactKeys = {
   all: ['artifacts'] as const,
   lists: artifactListKey,
   list: (projectId?: string) => [...artifactListKey, projectId ?? 'all'] as const,
   detailPrefix: (id: string) => ['artifacts', 'detail', id] as const,
-  detail: (id: string, version?: number) => ['artifacts', 'detail', id, version ?? 'head'] as const,
+  canvas: (id: string, version?: number) =>
+    [...artifactKeys.detailPrefix(id), version ?? 'head'] as const,
+  source: (id: string, version: number) => ['artifacts', 'source', id, version] as const,
   versions: (id: string) => ['artifacts', 'versions', id] as const,
   management: (id: string) => ['artifacts', 'management', id] as const,
   withdrawn: ['artifacts', 'withdrawn'] as const,
@@ -45,13 +47,31 @@ export function useArtifactsQuery(projectId?: string, refetchInterval?: number) 
   })
 }
 
-/** 头版本与固定快照分开缓存；尚未解析出标识时不发请求。 */
-export function useArtifactDetailQuery(id: string, version?: number) {
+/** 工作台使用布局详情；完整源码不与该查询共享缓存值。 */
+export function useArtifactWorkspaceQuery(id: string, version?: number) {
   return useQuery({
-    queryKey: artifactKeys.detail(id, version),
-    queryFn: () => fetchArtifactDetail(id, version),
+    queryKey: artifactKeys.canvas(id, version),
+    queryFn: ({ signal }) => fetchArtifactWorkspace(id, version, signal),
     enabled: Boolean(id),
     staleTime: 2_000,
+  })
+}
+
+/** 编辑和导出只读取正被操作的不可变版本。 */
+export function artifactSourceOptions(id: string, version: number) {
+  return queryOptions({
+    queryKey: artifactKeys.source(id, version),
+    queryFn: async ({ signal }) => (await fetchArtifactDetail(id, version, signal)).version,
+    staleTime: 20_000,
+    gcTime: 60_000,
+  })
+}
+
+/** 非源码工具不会启动全文请求；独立作品可直接重用详情中的全文。 */
+export function useArtifactSourceQuery(id: string, version?: number, enabled = true) {
+  return useQuery({
+    ...artifactSourceOptions(id, version ?? 0),
+    enabled: enabled && Boolean(id) && version !== undefined,
   })
 }
 
@@ -59,8 +79,8 @@ export function useArtifactDetailQuery(id: string, version?: number) {
 export function useArtifactVersionsQuery(id: string) {
   return useQuery({
     queryKey: artifactKeys.versions(id),
-    queryFn: async () => {
-      const res = await fetchArtifactVersions(id)
+    queryFn: async ({ signal }) => {
+      const res = await fetchArtifactVersions(id, signal)
       return res.versions
     },
     enabled: Boolean(id),
@@ -84,7 +104,7 @@ export function useRenameArtifactMutation(id: string) {
   return useMutation({
     mutationFn: (title: string) => renameArtifact(id, title),
     onSuccess: ({ artifact }) => {
-      queryClient.setQueriesData<ArtifactDetailResponse>(
+      queryClient.setQueriesData<ArtifactWorkspaceDetail>(
         { queryKey: artifactKeys.detailPrefix(id) },
         (previous) => (previous ? { ...previous, artifact } : previous),
       )
@@ -148,7 +168,7 @@ export function usePushArtifactStateMutation(id: string) {
   return useMutation({
     mutationFn: (input: { project?: string; patch: JsonPatchOp[] }) => pushArtifactState(id, input),
     onSuccess: (res) => {
-      queryClient.setQueriesData<ArtifactDetailResponse>(
+      queryClient.setQueriesData<ArtifactWorkspaceDetail>(
         { queryKey: artifactKeys.detailPrefix(id) },
         (prev) => {
           if (!prev) return prev

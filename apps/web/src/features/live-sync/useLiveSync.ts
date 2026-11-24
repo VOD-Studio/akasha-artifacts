@@ -1,7 +1,12 @@
-import type { JsonPatchOp, RealtimeServerEvent } from '@akasha/protocol'
+import type {
+  ArtifactWorkspaceDetail,
+  JsonPatchOp,
+  RealtimeServerEvent,
+  VersionSummary,
+} from '@akasha/protocol'
 import { type QueryClient, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
-import { type ArtifactDetailResponse, artifactKeys } from '@/entities/artifact'
+import { artifactKeys } from '@/entities/artifact'
 import { feedbackKeys } from '@/entities/feedback'
 import { projectKeys } from '@/entities/project'
 import { useWorkspaceStore } from '@/entities/workspace'
@@ -34,28 +39,30 @@ export function applyRealtimeEventToCache(
 
   switch (event.type) {
     case 'version.created': {
-      queryClient.setQueryData<ArtifactDetailResponse | undefined>(
-        artifactKeys.detail(event.artifactId, undefined),
+      queryClient.setQueryData<ArtifactWorkspaceDetail>(
+        artifactKeys.canvas(event.artifactId),
         (prev) => {
-          if (!prev) return prev
+          if (!prev || prev.access || prev.canvas || event.version.version <= prev.version.version)
+            return prev
           return {
             ...prev,
             artifact: {
               ...prev.artifact,
               title: event.version.title,
-              headVersion: Math.max(prev.artifact.headVersion, event.version.version),
+              headVersion: event.version.version,
               updatedAt: event.version.createdAt,
             },
             version: event.version,
           }
         },
       )
+      const { source: _source, ...summary } = event.version
       queryClient.setQueryData(
         artifactKeys.versions(event.artifactId),
-        (prev: ArtifactDetailResponse['version'][] | undefined) => {
-          if (!prev) return [event.version]
-          const filtered = prev.filter((v) => v.version !== event.version.version)
-          return [...filtered, event.version].sort((a, b) => a.version - b.version)
+        (prev: VersionSummary[] | undefined) => {
+          if (!prev) return [summary]
+          const filtered = prev.filter((v) => v.version !== summary.version)
+          return [...filtered, summary].sort((a, b) => a.version - b.version)
         },
       )
       void queryClient.invalidateQueries({ queryKey: artifactKeys.all, exact: false })
@@ -70,7 +77,7 @@ export function applyRealtimeEventToCache(
 
     case 'state.patched': {
       // 同步推进 TanStack Query 缓存中的状态快照，保证 L2 属性面板与 Agent 推送的 StateStream 实时一致
-      queryClient.setQueriesData<ArtifactDetailResponse | undefined>(
+      queryClient.setQueriesData<ArtifactWorkspaceDetail>(
         { queryKey: artifactKeys.detailPrefix(event.artifactId) },
         (prev) => {
           if (!prev || event.stateSeq <= prev.state.seq) return prev
@@ -95,7 +102,7 @@ export function applyRealtimeEventToCache(
 
     case 'round.updated': {
       // 同时刷新 head 与所有历史版本详情缓存中的 rounds，确保查看 /v/$version 时同样实时同步
-      queryClient.setQueriesData<ArtifactDetailResponse | undefined>(
+      queryClient.setQueriesData<ArtifactWorkspaceDetail>(
         { queryKey: artifactKeys.detailPrefix(event.artifactId) },
         (prev) => {
           if (!prev) return prev

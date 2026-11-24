@@ -58,6 +58,20 @@ export function parseHtmlSource(
     : parseFragment(source, { sourceCodeLocationInfo: true })
 }
 
+/** 读取 HTML 片段中的显式块标识，不进入嵌套模板的惰性内容。 */
+export function visitHtmlBlockIds(source: string, visit: (blockId: string) => void): void {
+  if (!/data-ak-block/i.test(source)) return
+  const pending: DefaultTreeAdapterMap['parentNode'][] = [parseFragment(source)]
+  for (let parent = pending.pop(); parent; parent = pending.pop()) {
+    for (const node of parent.childNodes) {
+      if (!('attrs' in node)) continue
+      const blockId = node.attrs.find(({ name }) => name === 'data-ak-block')?.value.trim()
+      if (blockId) visit(blockId)
+      if (node.childNodes.length) pending.push(node)
+    }
+  }
+}
+
 /**
  * 为 HTML 或文档源码里的元素注入 `data-ak-loc="line:col"`，不改写其余内容。
  *

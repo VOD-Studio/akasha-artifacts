@@ -2,7 +2,11 @@ import type {
   AnnotationReply,
   AnnotationResolution,
   AnnotationThread,
+  ArtboardContent,
+  ArtboardIndex,
+  ArtboardProjection,
   Artifact,
+  ArtifactType,
   Feedback,
   Project,
   PublicId,
@@ -13,6 +17,7 @@ import type {
   StatePatchEntry,
   StateStreamSnapshot,
   Version,
+  VersionSummary,
   WithdrawnArtifact,
 } from '@akasha/protocol'
 
@@ -50,9 +55,25 @@ export interface ArtifactLifecycleRepository {
   activeShareGeneration(id: PublicId): Promise<number | undefined>
 }
 
+/** 版本派生数据只用于读取；可以从不可变的整稿重建。 */
+export interface BoardProjectionRepository {
+  /** `undefined` 表示尚未构建；`null` 表示该版本不能解析成可分页读取的画板。 */
+  getIndex(artifactId: PublicId, version: number): Promise<ArtboardIndex | null | undefined>
+  /** 仅查询指定版本的一块板；不存在时不回落到当前头版。 */
+  getBoard(
+    artifactId: PublicId,
+    version: number,
+    boardId: string,
+  ): Promise<ArtboardContent | undefined>
+  /** 幂等补建旧版本的索引和正文；二者对读者同时可见。 */
+  save(artifactId: PublicId, version: number, projection: ArtboardProjection | null): Promise<void>
+}
+
 /** 制品与其不可变版本历史的仓储端口。 */
 export interface ArtifactRepository {
   readonly lifecycle: ArtifactLifecycleRepository
+  /** 不直接暴露给 HTTP；读请求仍从活动制品及其权限进入。 */
+  readonly boardProjections: BoardProjectionRepository
   /** 按 `publicId` 插入或更新；已有制品的项目归属只能经 `relocate` 更改。 */
   saveArtifact(artifact: Artifact): Promise<void>
   /** 单独更新展示标题与更新时间，不重写源码、版本或项目归属。 */
@@ -63,10 +84,12 @@ export interface ArtifactRepository {
   findBySlug(projectId: string, slug: Slug): Promise<Artifact | undefined>
   /** `projectId` 省略时跨项目列出全部。 */
   listByProject(projectId?: string): Promise<readonly Artifact[]>
-  /** 追加一个版本；同一制品出现重复版本号视为数据损坏并抛错。 */
-  appendVersion(version: Readonly<Version>): Promise<void>
+  /** 版本号重复时抛错；传入 `artboard` 时原子记录同版本的派生数据。 */
+  appendVersion(version: Readonly<Version>, type?: ArtifactType): Promise<void>
   getVersions(artifactId: PublicId): Promise<readonly Readonly<Version>[]>
   getVersion(artifactId: PublicId, version: number): Promise<Readonly<Version> | undefined>
+  /** 只读历史元数据，不加载源码或访问其对象存储。筛选精确版本时最多返回一条。 */
+  getVersionSummaries(artifactId: PublicId, version?: number): Promise<readonly VersionSummary[]>
 }
 
 /** 制品状态流的仓储端口：一份最新快照，加上按 `seq` 排列的补丁日志。 */

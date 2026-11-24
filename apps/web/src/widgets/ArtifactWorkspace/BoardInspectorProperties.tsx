@@ -3,7 +3,7 @@ import {
   type CanvasLayer,
   DEFAULT_ARTBOARD_APPEARANCE,
   type DesignLayer,
-  type Version,
+  type VersionSummary,
 } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Field } from '@akasha/ui/field'
@@ -164,7 +164,7 @@ interface BoardAppearanceFormProps {
 }
 
 function BoardAppearanceForm({ boardId, current, editing }: BoardAppearanceFormProps) {
-  const [draft, setDraft] = useState<{ values: Properties; base: Version } | null>(null)
+  const [draft, setDraft] = useState<{ values: Properties; base: VersionSummary } | null>(null)
   const values = draft?.values ?? current
   const changed =
     numericFields.some(({ key }) => current[key] !== values[key]) ||
@@ -175,11 +175,11 @@ function BoardAppearanceForm({ boardId, current, editing }: BoardAppearanceFormP
       values: { ...(previous?.values ?? current), ...patch },
     }))
   }
-  const save = (event: FormEvent<HTMLFormElement>) => {
+  const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!draft || !changed || !editing.available) return
-    if (editing.change({ kind: 'boardProperties', boardId, ...draft.values }, draft.base)) {
-      setDraft(null)
+    if (await editing.change({ kind: 'boardProperties', boardId, ...draft.values }, draft.base)) {
+      setDraft((current) => (current === draft ? null : current))
     }
   }
   return (

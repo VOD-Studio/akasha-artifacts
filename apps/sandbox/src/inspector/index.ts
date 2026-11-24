@@ -181,11 +181,9 @@ export function findElementByRef(rootEl: Element, ref: ElementRef): Element | nu
 /**
  * 沙盒内的元素命中探测器。
  *
- * @remarks 不在沙盒 DOM 里绘制任何高亮框或提示条，只把悬停、选中与图钉的坐标回传给外壳。
+ * @remarks 只回传命中、选区及图钉坐标，不在作品 DOM 内绘制外壳 UI。
  */
 export class SandboxInspector {
-  private active = false
-  private hoveredEl: Element | null = null
   private selectedEl: Element | null = null
   private trackedPins: Array<{ id: string; element: ElementRef }> = []
   private viewportListening = false
@@ -198,7 +196,7 @@ export class SandboxInspector {
   ) {}
 
   private ensureViewportListeners(): void {
-    const needed = this.active || Boolean(this.selectedEl) || this.trackedPins.length > 0
+    const needed = Boolean(this.selectedEl) || this.trackedPins.length > 0
     if (needed && !this.viewportListening) {
       this.viewportListening = true
       window.addEventListener('scroll', this.handleViewportChange, { passive: true, capture: true })
@@ -222,66 +220,41 @@ export class SandboxInspector {
   }
 
   /** 只命中当前已渲染的视口，不模拟任何作者脚本可以接到的点击。 */
-  inspectTextAt(message: Extract<ShellToSandboxMessage, { type: 'inspect.text.at' }>): void {
+  inspectAt(message: Extract<ShellToSandboxMessage, { type: 'inspect.at' }>): void {
     if (message.version !== this.getVersion()) return
     const root = this.getRootEl()
     if (!root) return
-    const target = this.resolveTarget(root.ownerDocument.elementFromPoint(message.x, message.y))
+    const target = root.ownerDocument.elementFromPoint(message.x, message.y)
+    const hit =
+      target && target !== root && root.contains(target) && !target.hasAttribute('data-ak-renderer')
+        ? target
+        : null
+    const picking = message.purpose === 'select'
+    if (picking) {
+      this.selectedEl = hit
+      this.ensureViewportListeners()
+    }
+    const selector = picking && hit ? layerSelector(hit, root) : undefined
     this.bridge.send({
-      type: 'inspect.text.target',
+      type: 'inspect.target',
+      purpose: message.purpose,
       requestId: message.requestId,
       version: message.version,
-      element: target ? buildElementRef(target, root) : null,
-      loc: target ? uniqueStaticSourceLocation(target, root) : undefined,
+      element: hit ? buildElementRef(hit, root) : null,
+      ...(hit && selector && selector.length <= 1024
+        ? { layer: { id: layerElementId(hit), selector, blockId: uniqueLayerBlock(hit, root) } }
+        : {}),
+      loc: hit && !picking ? uniqueStaticSourceLocation(hit, root) : undefined,
     })
   }
 
-  private resolveTarget(rawTarget: EventTarget | null): Element | null {
-    if (!(rawTarget instanceof Element)) return null
-    const root = this.getRootEl()
-    if (!root?.contains(rawTarget) || rawTarget === root) return null
-    if (rawTarget.hasAttribute('data-ak-renderer')) return null
-    return rawTarget
-  }
-
-  private readonly handlePointerMove = (event: PointerEvent) => {
-    if (!this.active) return
-    const target = this.resolveTarget(event.target)
-    if (target === this.hoveredEl) return
-    this.hoveredEl = target
-    this.bridge.send({
-      type: 'inspect.hover',
-      element: target ? buildElementRef(target, this.getRootEl()) : null,
-    })
-  }
-
-  private readonly handlePointerLeave = () => {
-    if (!this.active || !this.hoveredEl) return
-    this.hoveredEl = null
-    this.bridge.send({ type: 'inspect.hover', element: null })
-  }
-
-  private readonly handleClick = (event: MouseEvent) => {
-    if (!this.active) return
-    const target = this.resolveTarget(event.target)
-    const root = this.getRootEl()
-    if (!target || !root) return
-    event.preventDefault()
-    event.stopPropagation()
-    this.selectedEl = target
-    this.ensureViewportListeners()
-    this.emitSelection(target, root, 'click')
-  }
-
-  private emitSelection(target: Element, root: HTMLElement, reason: 'click' | 'sync') {
+  private emitSelection(target: Element, root: HTMLElement) {
     const selector = layerSelector(target, root)
     const version = this.getVersion()
-    const layerBlockId = reason === 'click' ? uniqueLayerBlock(target, root) : undefined
     this.bridge.send({
       type: 'inspect.select',
       element: buildElementRef(target, root),
-      reason,
-      ...(layerBlockId ? { layerBlockId } : {}),
+      reason: 'sync',
       ...(version > 0 ? { version } : {}),
       ...(selector && selector.length <= 1024
         ? { layerId: layerElementId(target), layerSelector: selector }
@@ -290,21 +263,13 @@ export class SandboxInspector {
   }
 
   private readonly handleViewportChange = () => {
-    if (!this.hoveredEl && !this.selectedEl && this.trackedPins.length === 0) return
+    if (!this.selectedEl && this.trackedPins.length === 0) return
     if (this.syncScheduled) return
     this.syncScheduled = true
 
     const emit = () => {
       this.syncScheduled = false
-      const root = this.getRootEl()
-      if (this.hoveredEl?.isConnected) {
-        this.bridge.send({
-          type: 'inspect.hover',
-          element: buildElementRef(this.hoveredEl, root),
-        })
-      }
-      if (root && this.selectedEl?.isConnected) this.emitSelection(this.selectedEl, root, 'sync')
-      this.emitPinRects()
+      this.syncRects()
     }
 
     if (typeof requestAnimationFrame === 'function') {
@@ -312,26 +277,6 @@ export class SandboxInspector {
     } else {
       emit()
     }
-  }
-
-  startInspecting(): void {
-    if (this.active) return
-    this.active = true
-    document.addEventListener('pointermove', this.handlePointerMove, true)
-    document.addEventListener('pointerleave', this.handlePointerLeave, true)
-    document.addEventListener('click', this.handleClick, true)
-    this.ensureViewportListeners()
-  }
-
-  stopInspecting(): void {
-    if (!this.active) return
-    this.active = false
-    this.hoveredEl = null
-    document.removeEventListener('pointermove', this.handlePointerMove, true)
-    document.removeEventListener('pointerleave', this.handlePointerLeave, true)
-    document.removeEventListener('click', this.handleClick, true)
-    this.bridge.send({ type: 'inspect.hover', element: null })
-    this.ensureViewportListeners()
   }
 
   highlight(
@@ -352,7 +297,7 @@ export class SandboxInspector {
     this.ensureViewportListeners()
     if (found) {
       if (reveal) found.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
-      this.emitSelection(found, root, 'sync')
+      this.emitSelection(found, root)
     }
   }
 
@@ -365,24 +310,13 @@ export class SandboxInspector {
   // 触发一次同步重算（供无 rAF 的测试、容器尺寸变化或强制刷新调用）
   syncRects(): void {
     const root = this.getRootEl()
-    if (this.hoveredEl?.isConnected) {
-      this.bridge.send({
-        type: 'inspect.hover',
-        element: buildElementRef(this.hoveredEl, root),
-      })
-    }
-    if (root && this.selectedEl?.isConnected) this.emitSelection(this.selectedEl, root, 'sync')
+    if (root && this.selectedEl?.isConnected) this.emitSelection(this.selectedEl, root)
     this.emitPinRects()
   }
 
   dispose(): void {
-    this.active = false
-    this.hoveredEl = null
     this.selectedEl = null
     this.trackedPins = []
-    document.removeEventListener('pointermove', this.handlePointerMove, true)
-    document.removeEventListener('pointerleave', this.handlePointerLeave, true)
-    document.removeEventListener('click', this.handleClick, true)
     this.ensureViewportListeners()
   }
 }

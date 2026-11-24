@@ -1,9 +1,15 @@
 // @vitest-environment jsdom
-import { type Artifact, type Feedback, PROTOCOL_VERSION, type Version } from '@akasha/protocol'
+import {
+  type Artifact,
+  type Feedback,
+  PROTOCOL_VERSION,
+  projectArtboard,
+  type Version,
+} from '@akasha/protocol'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { ArtifactDetailResponse } from '../src/entities/artifact'
 import { useSelectionStore } from '../src/entities/selection'
 import { useWorkspaceStore } from '../src/entities/workspace'
@@ -110,13 +116,59 @@ function sandbox(frame: HTMLIFrameElement) {
   }
 }
 
+beforeEach(() => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(2400)
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(2100)
+})
+
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   useSelectionStore.getState().clearSelection(artifact.publicId)
-  useWorkspaceStore.setState({ inspectorTab: null })
+  useWorkspaceStore.setState({ inspectorTab: null, viewMode: 'preview' })
   sessionStorage.clear()
+})
+
+it('切版读取源码期间隐藏旧版的保存入口，加载后打开当前版本', async () => {
+  const next = detailFor(
+    2,
+    JSON.stringify({ boards: [{ id: 'next', title: '下一版', html: '<h1>新稿</h1>' }] }),
+  )
+  const projection = projectArtboard(next.version.source, 2)
+  if (!projection) throw new Error('测试画稿未投影')
+  const { source: _source, ...summary } = next.version
+  const pending = Promise.withResolvers<Response>()
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = new URL(String(input), window.location.origin)
+    if (url.pathname.endsWith('/boards')) {
+      return Response.json({
+        artifactId: artifact.publicId,
+        version: 2,
+        board: projection.contents[0],
+      })
+    }
+    if (url.pathname.endsWith(artifact.publicId) && url.search === '?version=2') {
+      return await pending.promise
+    }
+    return Response.json({})
+  })
+  useWorkspaceStore.getState().setViewMode('edit')
+  const view = showWorkspace()
+  const editor = screen.getByRole('region', { name: '代码编辑区' })
+  view.update(
+    <ArtifactWorkspace
+      detail={{ ...next, version: summary, canvas: projection.index }}
+      versions={[summary]}
+      sandboxOrigin="http://127.0.0.1:24331"
+    />,
+  )
+  expect(screen.getByText('正在读取源码…')).toBeTruthy()
+  expect(screen.queryByRole('region', { name: '代码编辑区' })).toBeNull()
+  expect(screen.queryByRole('button', { name: /^保存/ })).toBeNull()
+  pending.resolve(Response.json(next))
+  expect(await screen.findByRole('region', { name: '代码编辑区' })).toBe(editor)
+  expect(screen.getByTestId('l3-code-editor').textContent).toContain('v2')
 })
 
 it('展开的画板报错时，仍用作品原始链接向 Agent 投递', async () => {
@@ -139,14 +191,18 @@ it('展开的画板报错时，仍用作品原始链接向 Agent 投递', async 
 })
 
 it('在同一画布页面比较独立视口的宽屏和手机画板', () => {
-  const legacyPin: Feedback = {
+  const pin: Feedback = {
     id: 'mobile-pin',
     artifactId: artifact.publicId,
     version: 1,
     roundId: null,
     groupId: null,
     kind: 'comment',
-    element: { blockId: 'mobile-details', rect: { x: 10, y: 12, width: 90, height: 30 } },
+    element: {
+      boardId: 'mobile',
+      blockId: 'mobile-details',
+      rect: { x: 10, y: 12, width: 90, height: 30 },
+    },
     body: '确认手机字号',
     author: 'human:local',
     draft: false,
@@ -154,7 +210,7 @@ it('在同一画布页面比较独立视口的宽屏和手机画板', () => {
     createdAt: artifact.createdAt,
     updatedAt: artifact.updatedAt,
   }
-  showWorkspace(detailFor(), [legacyPin])
+  showWorkspace(detailFor(), [pin])
   const desktop = screen.getByTitle<HTMLIFrameElement>('画板内容：宽屏首页')
   const mobile = screen.getByTitle<HTMLIFrameElement>('画板内容：手机首页')
   expect([desktop.width, desktop.height]).toEqual(['1440', '900'])
@@ -183,7 +239,7 @@ it('在同一画布页面比较独立视口的宽屏和手机画板', () => {
   expect(desktopSandbox.post).not.toHaveBeenCalledWith(
     expect.objectContaining({
       type: 'pins.track',
-      pins: expect.arrayContaining([expect.objectContaining({ id: legacyPin.id })]),
+      pins: expect.arrayContaining([expect.objectContaining({ id: pin.id })]),
     }),
     '*',
   )
@@ -440,22 +496,24 @@ it('重复从检查器选择同一画板，会找回已被移出视口的选板'
   )
   showWorkspace()
   const board = screen
-    .getByTitle('画板内容：宽屏首页')
+    .getByRole('button', { name: '宽屏首页', pressed: true })
     .closest<HTMLElement>('.artifact-canvas-board')
   if (!board) throw new Error('宽屏画板夹具不可用')
   expect(Number.parseFloat(board.style.left)).toBeGreaterThan(1000)
+  expect(screen.queryByTitle('画板内容：宽屏首页')).toBeNull()
 
   act(() => useWorkspaceStore.getState().setInspectorTab('inspect'))
   const inspector = screen.getByRole('dialog', { name: '检查器' })
   expect(Number.parseFloat(board.style.left)).toBeGreaterThan(1000)
   fireEvent.click(within(inspector).getByRole('button', { name: '宽屏首页', pressed: true }))
   expect(Number.parseFloat(board.style.left)).toBeGreaterThanOrEqual(0)
+  expect(screen.getByTitle('画板内容：宽屏首页')).toBeTruthy()
   expect(
     Number.parseFloat(board.style.left) + Number.parseFloat(board.style.width),
   ).toBeLessThanOrEqual(1000)
 })
 
-it('图层双向定位只在该画板与版本生效，悬停和旧坐标不改选区', () => {
+it('图层选择跟随画布点击，旧请求和旧坐标不改选区', () => {
   stubResizeObserver()
   const detail = detailFor()
   const view = showWorkspace(detail)
@@ -515,17 +573,29 @@ it('图层双向定位只在该画板与版本生效，悬停和旧坐标不改�
     within(inspector).getByText('<h1', { selector: 'mark' }).closest('code')?.textContent,
   ).toContain('<h1>桌面预约</h1>')
 
-  fireEvent.click(within(inspector).getByRole('button', { name: '指认元素' }))
   const element = { selector, rect: { x: 14, y: 7, width: 140, height: 25 } }
-  mobile.receive({ type: 'inspect.hover', element })
-  expect(desktopChoice.getAttribute('aria-pressed')).toBe('true')
   mobile.receive({
-    type: 'inspect.select',
-    reason: 'click',
+    type: 'inspect.target',
+    purpose: 'select',
+    requestId: 'old',
+    version: 1,
+    element,
+  })
+  expect(desktopChoice.getAttribute('aria-pressed')).toBe('true')
+  const hit = screen.getByRole('button', { name: '选择画板：手机首页' })
+  vi.spyOn(hit, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 50, 195, 422))
+  fireEvent.click(hit, { detail: 1, clientX: 120, clientY: 80 })
+  const request = mobile.post.mock.calls.find(
+    ([message]) => message.type === 'inspect.at' && message.purpose === 'select',
+  )?.[0]
+  expect(request).toMatchObject({ version: 1, x: 40, y: 60 })
+  mobile.receive({
+    type: 'inspect.target',
+    purpose: 'select',
+    requestId: request.requestId,
     element,
     version: 1,
-    layerId: mobileLayer.id,
-    layerSelector: selector,
+    layer: { id: mobileLayer.id, selector },
   })
   mobile.receive(report([mobileLayer]))
   expect(within(inspector).getByRole('button', { name: '手机首页', pressed: true })).toBeTruthy()
@@ -1149,6 +1219,7 @@ it('拖出矩形只预览，松开按画板固有坐标保存并可撤销重做'
   stubResizeObserver()
   vi.stubGlobal('PointerEvent', MouseEvent)
   const editor = showEditableWorkspace(detailFor())
+  fireEvent.click(screen.getByRole('button', { name: '形状' }))
   fireEvent.click(screen.getByRole('button', { name: '绘制矩形' }))
   const surface = screen.getByRole('button', { name: '在宽屏首页绘制矩形' })
   vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 50, 720, 450))
@@ -1234,10 +1305,13 @@ it('双击已有便签只修改同画板原生对象的文本并保留版本基�
   const hit = screen.getByRole('button', { name: '选择画板：宽屏首页' })
   vi.spyOn(hit, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 50, 720, 450))
   fireEvent.doubleClick(hit, { clientX: 135, clientY: 85 })
-  const request = frame.post.mock.calls.find(([message]) => message.type === 'inspect.text.at')?.[0]
+  const request = frame.post.mock.calls.find(
+    ([message]) => message.type === 'inspect.at' && message.purpose === 'text',
+  )?.[0]
   expect(request).toMatchObject({ version: 1, x: 70, y: 70 })
   frame.receive({
-    type: 'inspect.text.target',
+    type: 'inspect.target',
+    purpose: 'text',
     version: 1,
     requestId: request.requestId,
     element: { blockId: 'design-layer:note', selector: 'aside > div', textPreview: '原文' },
@@ -1253,4 +1327,26 @@ it('双击已有便签只修改同画板原生对象的文本并保留版本基�
     { id: 'note', kind: 'note', text: '版本化便签', x: 10, y: 30, width: 200, height: 90 },
   ])
   expect(editor.submittedVersion).toBe(1)
+})
+
+it('双轴滚动平移画布，只有带缩放修饰键的滚轮才改变倍率', () => {
+  showWorkspace()
+  const viewport = screen.getByRole('region', { name: '画布' })
+  const title = screen.getByRole('button', { name: '宽屏首页' })
+  const board = title.closest<HTMLElement>('.artifact-canvas-board')
+  if (!board) throw new Error('缺少画板')
+  fireEvent.click(title)
+  const zoom = screen.getByLabelText('画布缩放比例')
+  const initial = zoom.textContent
+  const left = Number.parseFloat(board.style.left)
+  const top = Number.parseFloat(board.style.top)
+  fireEvent.wheel(viewport, { deltaX: 70, deltaY: 45 })
+  expect(Number.parseFloat(board.style.left)).toBe(left - 70)
+  expect(Number.parseFloat(board.style.top)).toBe(top - 45)
+  expect(zoom.textContent).toBe(initial)
+  fireEvent.wheel(viewport, { deltaY: -100, ctrlKey: true, clientX: 700, clientY: 400 })
+  expect(Number.parseFloat(zoom.textContent ?? '')).toBeGreaterThan(
+    Number.parseFloat(initial ?? ''),
+  )
+  expect(title.getAttribute('aria-pressed')).toBe('true')
 })

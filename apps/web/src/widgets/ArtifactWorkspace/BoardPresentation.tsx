@@ -136,7 +136,7 @@ export function BoardPresentation({
             style={{
               width: board.width * scale,
               height: board.height * scale,
-              borderRadius: board.appearance?.cornerRadius && board.appearance.cornerRadius * scale,
+              borderRadius: board.cornerRadius && board.cornerRadius * scale,
             }}
           >
             <div

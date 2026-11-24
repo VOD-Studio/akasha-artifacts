@@ -2,7 +2,7 @@ import {
   type Artifact,
   type ArtifactTransferInput,
   ArtifactTransferInputSchema,
-  type Version,
+  type VersionSummary,
 } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Modal } from '@akasha/ui/dialog'
@@ -18,7 +18,7 @@ import { useProjectsQuery } from '@/entities/project'
 export interface ArtifactTransferTarget {
   artifact: Artifact
   /** 复制只读取打开对话框时选定的固定版本。 */
-  version: Version
+  version: VersionSummary
   kind: ArtifactTransferInput['kind']
 }
 

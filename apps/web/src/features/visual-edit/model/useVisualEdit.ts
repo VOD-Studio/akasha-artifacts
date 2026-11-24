@@ -1,12 +1,15 @@
-import type { Artifact, EditOp, ElementRef, SandboxToShellMessage, Version } from '@akasha/protocol'
+import type {
+  Artifact,
+  EditOp,
+  ElementRef,
+  SandboxToShellMessage,
+  Version,
+  VersionSummary,
+} from '@akasha/protocol'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import {
-  type ArtifactDetailResponse,
-  artifactKeys,
-  parseVersionConflictDetails,
-} from '@/entities/artifact'
+import { artifactKeys, parseVersionConflictDetails } from '@/entities/artifact'
 import { feedbackKeys } from '@/entities/feedback'
 import { ApiError } from '@/shared/api/error'
 import type { ShellOutgoingPayload } from '@/shared/bridge/host'
@@ -21,7 +24,7 @@ import {
 
 interface Options {
   artifact: Artifact
-  version: Version
+  version: VersionSummary
   enabled: boolean
   send: (message: ShellOutgoingPayload) => void
   onAnnotate: (element: ElementRef) => void
@@ -39,7 +42,7 @@ export interface PickedTarget {
 /**
  * 可视化直改控制器。
  *
- * @remarks `available` 只在查看头版本的 `react` 或 `html` 制品时为 true；
+ * @remarks `available` 只在已加载全文且查看头版本的 `react` 或 `html` 制品时为 true；
  * `active` 是当前生效的目标，所基于的版本不再是正在查看的版本时为 `null`。
  */
 export interface VisualEditController {
@@ -78,13 +81,16 @@ export function useVisualEdit(options: Options): VisualEditController {
   const [picked, setPicked] = useState<PickedTarget | null>(null)
   const [busy, setBusy] = useState(false)
   const saving = useRef(false)
+  const versionSource =
+    'source' in version && typeof version.source === 'string' ? version.source : undefined
   const available =
     enabled &&
+    versionSource !== undefined &&
     version.version === artifact.headVersion &&
     (artifact.type === 'react' || artifact.type === 'html')
   const active = available && picked?.baseVersion === version.version ? picked : null
   const { data: undo } = useQuery({
-    queryKey: [...artifactKeys.detail(artifact.publicId, version.version), 'visual-undo'],
+    queryKey: [...artifactKeys.all, 'visual-undo', artifact.publicId, version.version],
     queryFn: () =>
       fetchVisualUndo(artifact.publicId, {
         project: artifact.projectId,
@@ -189,7 +195,7 @@ export function useVisualEdit(options: Options): VisualEditController {
         const { source } = await previewVisualEdit(artifact.publicId, input)
         if (request !== revision.current || optionsRef.current.version.version !== version.version)
           return
-        if (source === version.source) return
+        if (source === versionSource) return
         optionsRef.current.send({
           type: 'apply.preview',
           version: version.version,
@@ -201,12 +207,9 @@ export function useVisualEdit(options: Options): VisualEditController {
       const saved = await saveVisualEdit(artifact.publicId, input)
       if (saved.version.version === version.version) return
       setPicked(null)
-      queryClient.setQueryData<ArtifactDetailResponse>(
-        artifactKeys.detail(artifact.publicId),
-        (previous) => {
-          if (!previous || previous.version.version >= saved.version.version) return previous
-          return { ...previous, artifact: saved.artifact, version: saved.version }
-        },
+      queryClient.setQueryData(
+        artifactKeys.source(artifact.publicId, saved.version.version),
+        saved.version,
       )
       void queryClient.invalidateQueries({ queryKey: artifactKeys.all })
       void queryClient.invalidateQueries({ queryKey: feedbackKeys.list(artifact.publicId) })

@@ -2,7 +2,6 @@ import type { CanvasLayer } from '@akasha/protocol'
 import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
 import type { CanvasDocument, CanvasLocation } from '@/entities/artifact'
-import { ElementPickerButton } from '@/features/element-picker'
 import { LayerTree } from './LayerTree'
 
 interface BoardInspectorTreeProps {
@@ -14,7 +13,6 @@ interface BoardInspectorTreeProps {
   selectedLayerId?: string
   selectedRuntimeIds?: ReadonlySet<string>
   onSelectLayer: (layer: CanvasLayer, additive: boolean) => void
-  onStartPicking: () => void
   onNavigate: (location: CanvasLocation) => void
 }
 
@@ -28,7 +26,6 @@ export function BoardInspectorTree({
   selectedLayerId,
   selectedRuntimeIds,
   onSelectLayer,
-  onStartPicking,
   onNavigate,
 }: BoardInspectorTreeProps) {
   const noLayers = layers ? '此画板没有可检查的图层' : '正在加载图层…'
@@ -37,10 +34,7 @@ export function BoardInspectorTree({
     <section aria-label="页面、画板与图层" className="border-b border-border pb-3">
       <div className="mb-2 flex items-center justify-between gap-2 text-sm font-medium">
         <h2>页面、画板与图层</h2>
-        <div className="flex items-center gap-1.5">
-          {layersAvailable && <ElementPickerButton onStart={onStartPicking} />}
-          <Badge tone="neutral">v{version}</Badge>
-        </div>
+        <Badge tone="neutral">v{version}</Badge>
       </div>
       <div className="flex max-h-[min(20rem,42dvh)] flex-col gap-1 overflow-auto">
         {document.pages.map((page) => (

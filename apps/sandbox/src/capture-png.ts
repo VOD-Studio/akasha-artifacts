@@ -8,7 +8,9 @@ export async function captureSandboxPng(
   width: number,
   height: number,
   scale: number,
+  signal?: AbortSignal,
 ): Promise<Blob> {
+  signal?.throwIfAborted()
   const outputWidth = Math.round(width * scale)
   const outputHeight = Math.round(height * scale)
   if (outputWidth < 1 || outputHeight < 1 || outputWidth * outputHeight > MAX_PIXELS) {
@@ -17,15 +19,18 @@ export async function captureSandboxPng(
   if (!root.firstElementChild) throw new Error('画板尚未渲染，不能生成 PNG')
 
   await root.ownerDocument.fonts.ready
+  signal?.throwIfAborted()
   // Tailwind 浏览器运行时通过 MutationObserver 更新样式；等样式和布局应用后再克隆。
   const painted = Promise.withResolvers<void>()
   requestAnimationFrame(() => requestAnimationFrame(() => painted.resolve()))
   await painted.promise
+  signal?.throwIfAborted()
   try {
     await Promise.all([...root.querySelectorAll('img')].map((image) => image.decode()))
   } catch (cause) {
     throw new Error('画板中有无法加载或解码的图片', { cause })
   }
+  signal?.throwIfAborted()
 
   const png = await toBlob(root, {
     width,
@@ -37,6 +42,7 @@ export async function captureSandboxPng(
     skipFonts: true,
     filter: (node) => !(node instanceof Element && node.matches('script, style, link')),
   })
+  signal?.throwIfAborted()
   if (!png?.size) throw new Error('浏览器无法生成画板 PNG')
   return png
 }

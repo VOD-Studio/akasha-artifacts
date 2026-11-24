@@ -1,25 +1,24 @@
 import {
   type CanvasLayer,
   DESIGN_LAYER_BLOCK_PREFIX,
-  type ShellToSandboxMessage,
+  type SandboxToShellMessage,
   STANDALONE_BOARD_ID,
 } from '@akasha/protocol'
-import { useCallback, useState } from 'react'
-import type { CanvasDocument, CanvasLocation } from '@/entities/artifact'
+import { useCallback, useRef, useState } from 'react'
+import type { CanvasBoard, CanvasLocation } from '@/entities/artifact'
 import { selectionForVersion, useSelectionStore } from '@/entities/selection'
 import { useWorkspaceStore } from '@/entities/workspace'
+import type { ShellOutgoingPayload } from '@/shared/bridge/host'
+import type { Point } from './canvas-camera'
 
 interface BoardInspectionInput {
   artifactId: string
   version: number
   followHead: boolean
-  document: CanvasDocument
+  board?: CanvasBoard
   current: CanvasLocation | null
   reveal: (target: CanvasLocation) => void
-  highlight: (
-    boardId: string,
-    message: Omit<Extract<ShellToSandboxMessage, { type: 'highlight' }>, 'v' | 'nonce'>,
-  ) => void
+  send: (boardId: string, message: ShellOutgoingPayload) => void
 }
 
 interface Scope {
@@ -33,15 +32,61 @@ export function useBoardInspection({
   artifactId,
   version,
   followHead,
-  document,
+  board,
   current,
   reveal,
-  highlight,
+  send,
 }: BoardInspectionInput) {
   const open = useWorkspaceStore((state) => state.inspectorTab === 'inspect')
   const [snapshot, setSnapshot] = useState<
     (Scope & { layers: CanvasLayer[]; truncated: boolean }) | null
   >(null)
+  const pendingPoint = useRef<(Scope & { requestId: string }) | null>(null)
+  const clearPoint = useCallback(() => {
+    pendingPoint.current = null
+    const store = useSelectionStore.getState()
+    if (store.selectedByArtifact[artifactId]) store.clearSelection(artifactId)
+  }, [artifactId])
+  const pickPoint = useCallback(
+    (boardId: string, point: Point) => {
+      const requestId = crypto.randomUUID()
+      pendingPoint.current = { artifactId, version, boardId, requestId }
+      send(boardId, { type: 'inspect.at', purpose: 'select', requestId, version, ...point })
+    },
+    [artifactId, version, send],
+  )
+  const onPointTarget = useCallback(
+    (boardId: string, message: Extract<SandboxToShellMessage, { type: 'inspect.target' }>) => {
+      const pending = pendingPoint.current
+      if (
+        !pending ||
+        pending.requestId !== message.requestId ||
+        pending.artifactId !== artifactId ||
+        pending.boardId !== boardId ||
+        current?.boardId !== boardId ||
+        pending.version !== version ||
+        message.version !== version
+      )
+        return
+      pendingPoint.current = null
+      const { element, layer } = message
+      if (!element) return
+      const selected = useSelectionStore.getState().setSelectedElement
+      if (!layer) {
+        selected(artifactId, element)
+        return
+      }
+      const blockId = layer.blockId?.startsWith(DESIGN_LAYER_BLOCK_PREFIX)
+        ? element.blockId
+        : layer.blockId
+      selected(
+        artifactId,
+        { ...element, blockId, selector: layer.selector },
+        { id: layer.id, version },
+      )
+    },
+    [artifactId, current?.boardId, version],
+  )
   const selectedId = useSelectionStore((state) => {
     const element = selectionForVersion(state, artifactId, version)
     return element && (element.boardId ?? STANDALONE_BOARD_ID) === current?.boardId
@@ -98,24 +143,10 @@ export function useBoardInspection({
                 loc: currentLayer.sourceLoc,
               }
         store.setSelectedElement(artifactId, element, layer)
-        highlight(boardId, { type: 'highlight', element, layer })
+        send(boardId, { type: 'highlight', element, layer })
       }
     },
-    [artifactId, followHead, highlight],
-  )
-
-  const onLayerPicked = useCallback(
-    (boardId: string) => {
-      const page =
-        document.pages.find(
-          (entry) =>
-            entry.id === current?.pageId && entry.boards.some((board) => board.id === boardId),
-        ) ?? document.pages.find((entry) => entry.boards.some((board) => board.id === boardId))
-      if (page && (page.id !== current?.pageId || boardId !== current.boardId)) {
-        reveal({ pageId: page.id, boardId })
-      }
-    },
-    [current, document, reveal],
+    [artifactId, followHead, send],
   )
 
   return {
@@ -124,16 +155,17 @@ export function useBoardInspection({
     selectedId,
     pendingBoardId,
     onLayers,
-    onLayerPicked,
+    clearPoint,
+    pickPoint,
+    onPointTarget,
     onSelect(layer: CanvasLayer | null) {
+      pendingPoint.current = null
       if (!layer) {
         useSelectionStore.getState().clearSelection(artifactId)
         return
       }
-      const board = document.pages
-        .find((page) => page.id === current?.pageId)
-        ?.boards.find((board) => board.id === current?.boardId)
-      if (!current || !board || !layers?.layers.includes(layer)) return
+      if (!current || !board || board.id !== current.boardId || !layers?.layers.includes(layer))
+        return
       const native =
         layer.designId && board.designLayers?.some((item) => item.id === layer.designId)
       const blockId = native ? `${DESIGN_LAYER_BLOCK_PREFIX}${layer.designId}` : layer.blockId
@@ -145,7 +177,7 @@ export function useBoardInspection({
       const target = { id: layer.id, version }
       useSelectionStore.getState().setSelectedElement(artifactId, element, target)
       reveal(current)
-      highlight(board.id, { type: 'highlight', element, reveal: true, layer: target })
+      send(board.id, { type: 'highlight', element, reveal: true, layer: target })
     },
   }
 }

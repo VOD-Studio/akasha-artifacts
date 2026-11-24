@@ -1,6 +1,8 @@
 import type {
   AnnotationThread,
+  ArtboardProjection,
   Artifact,
+  ArtifactType,
   Feedback,
   Project,
   PublicId,
@@ -11,14 +13,16 @@ import type {
   StatePatchEntry,
   StateStreamSnapshot,
   Version,
+  VersionSummary,
 } from '@akasha/protocol'
-import { PROTOCOL_VERSION } from '@akasha/protocol'
+import { PROTOCOL_VERSION, projectArtboard } from '@akasha/protocol'
 import { DomainError } from '../../../domain/errors.js'
 import type {
   AnnotationRepository,
   ArtifactLifecycleRepository,
   ArtifactRelocation,
   ArtifactRepository,
+  BoardProjectionRepository,
   Clock,
   FeedbackRepository,
   IdGenerator,
@@ -102,6 +106,30 @@ export class InMemoryArtifactRepository implements ArtifactRepository {
   private readonly slugIndex = new Map<string, PublicId>()
   private readonly versions = new Map<PublicId, Readonly<Version>[]>()
   private readonly withdrawals = new Map<PublicId, { at: string | null; generation: number }>()
+
+  private readonly projections = new Map<PublicId, Map<number, ArtboardProjection | null>>()
+
+  readonly boardProjections: BoardProjectionRepository = {
+    getIndex: async (id, version) => {
+      const projection = this.projections.get(id)?.get(version)
+      return projection ? structuredClone(projection.index) : projection
+    },
+    getBoard: async (id, version, boardId) => {
+      const found = this.projections
+        .get(id)
+        ?.get(version)
+        ?.contents.find((board) => board.id === boardId)
+      return found && structuredClone(found)
+    },
+    save: async (id, version, projection) => {
+      let versions = this.projections.get(id)
+      if (!versions) {
+        versions = new Map()
+        this.projections.set(id, versions)
+      }
+      if (!versions.has(version)) versions.set(version, projection)
+    },
+  }
 
   readonly lifecycle: ArtifactLifecycleRepository = {
     setWithdrawal: async (id, at) => {
@@ -203,13 +231,20 @@ export class InMemoryArtifactRepository implements ArtifactRepository {
     return items
   }
 
-  async appendVersion(version: Readonly<Version>): Promise<void> {
+  async appendVersion(version: Readonly<Version>, type?: ArtifactType): Promise<void> {
     const list = this.versions.get(version.artifactId) ?? []
     if (list.some((v) => v.version === version.version)) {
       throw new Error(`Artifact "${version.artifactId}" 已存在重复版本 v${version.version}`)
     }
     list.push(version)
     this.versions.set(version.artifactId, list)
+    if (type === 'artboard') {
+      await this.boardProjections.save(
+        version.artifactId,
+        version.version,
+        projectArtboard(version.source, version.version),
+      )
+    }
   }
 
   async getVersions(artifactId: PublicId): Promise<readonly Readonly<Version>[]> {
@@ -218,6 +253,15 @@ export class InMemoryArtifactRepository implements ArtifactRepository {
 
   async getVersion(artifactId: PublicId, version: number): Promise<Readonly<Version> | undefined> {
     return this.versions.get(artifactId)?.find((v) => v.version === version)
+  }
+
+  async getVersionSummaries(artifactId: PublicId, version?: number): Promise<VersionSummary[]> {
+    const list = this.versions.get(artifactId) ?? []
+    if (version === undefined) return list.map(({ source: _, ...summary }) => summary)
+    const found = list.find((candidate) => candidate.version === version)
+    if (!found) return []
+    const { source: _, ...summary } = found
+    return [summary]
   }
 }
 

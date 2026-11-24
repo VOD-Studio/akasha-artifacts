@@ -1,5 +1,6 @@
 import {
   type Artifact,
+  CANVAS_PREVIEW_MAX_EDGE,
   type CanvasLayer,
   DESIGN_LAYER_BLOCK_PREFIX,
   type ElementRect,
@@ -9,11 +10,11 @@ import {
   resolveArtboardTweaks,
   type SandboxToShellMessage,
   type StateStreamSnapshot,
-  type Version,
+  type VersionSummary,
 } from '@akasha/protocol'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from 'zustand'
-import type { CanvasBoard } from '@/entities/artifact'
+import type { CanvasBoard, LoadedCanvasBoard } from '@/entities/artifact'
 import { submitArtifactFeedback } from '@/entities/feedback'
 import { selectionForVersion, useSelectionStore } from '@/entities/selection'
 import { type SandboxErrorRecord, useWorkspaceStore } from '@/entities/workspace'
@@ -37,16 +38,18 @@ export interface FrameConnection {
   forwardState: (seq: number, ops: JsonPatchOp[]) => void
 }
 
+type CapturePreview = (signal: AbortSignal) => Promise<Blob>
+
 /** 试玩有自己的输入和导航，不能调用设计视图的选区、批注或直改操作。 */
 export type BoardFramePurpose =
-  | { type: 'overview'; interactive: boolean }
+  | { type: 'overview'; interactive: boolean; animate?: boolean }
   | { type: 'focus' }
   | { type: 'play'; onNavigate: (target: string) => void; onExit: () => void }
 
 interface ArtifactFrameProps {
   artifact: Artifact
-  version: Version
-  board: CanvasBoard
+  version: VersionSummary
+  board: LoadedCanvasBoard
   state: StateStreamSnapshot
   /** 当前版本的浏览会话，不向历史、导出或其他画板转发。 */
   tweakPreviews: BoardTweakPreviewStore
@@ -58,18 +61,28 @@ interface ArtifactFrameProps {
   purpose: BoardFramePurpose
   /** 只有设计视图登记；试玩不接收设计视图的指认或编辑指令。 */
   register?: (id: string, frame: FrameConnection | null) => void
+  /** 仅 scoped 总览上报首绘；参数处于默认值时才提供截图回调。 */
+  onReady?: (boardId: string, capture?: CapturePreview) => void
   onPlayable: (board: CanvasBoard, version: number, playable: boolean) => void
   watchLayers: boolean
   onLayers: (id: string, version: number, layers: CanvasLayer[], truncated: boolean) => void
-  onLayerPicked: (id: string) => void
   /** 仅把当前设计帧的命中回报交给工作区；请求标识由工作区核对。 */
-  onTextTarget: (
+  onElementTarget: (
     boardId: string,
-    message: Extract<SandboxToShellMessage, { type: 'inspect.text.target' }>,
+    message: Extract<SandboxToShellMessage, { type: 'inspect.target' }>,
   ) => void
   /** 直改模式下沙盒上报选中元素时调用。 */
   onVisualSelect: (message: Extract<SandboxToShellMessage, { type: 'visual.select' }>) => void
 }
+
+interface PendingPreview {
+  requestId: string
+  version: number
+  accept: (png: Blob) => void
+  reject: (reason: unknown) => void
+}
+
+const PREVIEW_CAPTURE_TIMEOUT = 10_000
 
 function belongsToBoard(element: ElementRef, id: string, scoped: boolean): boolean {
   return scoped ? element.boardId === id : element.boardId === undefined
@@ -115,11 +128,11 @@ export function ArtifactFrame({
   onFocusPin,
   purpose,
   register,
+  onReady,
   onPlayable,
   watchLayers,
   onLayers,
-  onLayerPicked,
-  onTextTarget,
+  onElementTarget,
   onVisualSelect,
 }: ArtifactFrameProps) {
   const artifactId = artifact.publicId
@@ -129,15 +142,26 @@ export function ArtifactFrame({
   const focused = purpose.type === 'focus'
   const isolated = focused || playback
   const interactive = playback || (purpose.type === 'overview' && purpose.interactive)
+  const overviewAnimation =
+    scoped && purpose.type === 'overview' ? purpose.animate !== false : undefined
+  const scopedOverview = overviewAnimation !== undefined
+  const purposeType = purpose.type
   const viewKey = frameViewKey(artifactId, id, scoped, focused)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const lastStateSeq = useRef(-1)
   const hadSelection = useRef(false)
+  const renderSequence = useRef(0)
+  const captureSequence = useRef(0)
+  const captureControl = useRef<{
+    cancel: (reason: string) => void
+    invalidate: (reason: string) => void
+  } | null>(null)
   const { nonce, host } = useMemo(() => {
-    // 画板改变作用域时必须重新握手，即使它恰好与默认画板同名。
+    // 画板作用域或查看方式改变时重新握手；总览内的动画开关不影响会话。
     void artifactId
     void id
     void scoped
+    void purposeType
     const nonce = createBridgeNonce()
     return {
       nonce,
@@ -147,7 +171,7 @@ export function ArtifactFrame({
         getIframeWindow: () => iframeRef.current?.contentWindow ?? null,
       }),
     }
-  }, [artifactId, id, scoped, sandboxOrigin])
+  }, [artifactId, id, scoped, sandboxOrigin, purposeType])
   const iframeSrc = useMemo(() => {
     const shellOrigin =
       typeof window !== 'undefined' && window.location.origin !== 'null'
@@ -157,9 +181,7 @@ export function ArtifactFrame({
   }, [sandboxOrigin, nonce])
 
   const [error, setError] = useState<SandboxErrorRecord | null>(null)
-  const [hovered, setHovered] = useState<ElementRef | null>(null)
   const [livePinRects, setLivePinRects] = useState<Record<string, ElementRect | null>>({})
-  const pickerActive = useSelectionStore((s) => s.pickerActive)
   const selection = useSelectionStore((s) => selectionForVersion(s, artifactId, versionNumber))
   const selected =
     !playback && selection && belongsToBoard(selection, id, scoped) ? selection : null
@@ -194,12 +216,15 @@ export function ArtifactFrame({
   )
   const applied = useRef<{
     render: typeof render
+    renderId: number | undefined
+    overviewAnimation: boolean | undefined
     tweakPreview: typeof tweakPreview
     pins: readonly Feedback[]
-    inspecting: boolean
     watchingLayers: boolean
   } | null>(null)
   const latest = useRef({
+    nonce,
+    render,
     state,
     versionNumber,
     versionPins,
@@ -207,14 +232,16 @@ export function ArtifactFrame({
     onVisualSelect,
     purpose,
     board,
+    onReady,
     tweakPreview,
     onPlayable,
     watchLayers,
     onLayers,
-    onLayerPicked,
-    onTextTarget,
+    onElementTarget,
   })
   latest.current = {
+    nonce,
+    render,
     state,
     versionNumber,
     versionPins,
@@ -222,18 +249,109 @@ export function ArtifactFrame({
     onVisualSelect,
     purpose,
     board,
+    onReady,
     tweakPreview,
     onPlayable,
     watchLayers,
     onLayers,
-    onLayerPicked,
-    onTextTarget,
+    onElementTarget,
   }
 
   useEffect(() => {
     applied.current = null
     lastStateSeq.current = -1
     const storage = createStorageRelay(artifactId, host)
+    let connected = true
+    let renderedId: number | undefined
+    let pending: PendingPreview | null = null
+    const cancelCapture = (reason: string) => {
+      if (!pending) return
+      if (connected) host.send({ type: 'capture.cancel', requestId: pending.requestId })
+      pending.reject(new Error(reason))
+    }
+    const invalidateCapture = (reason: string) => {
+      renderedId = undefined
+      cancelCapture(reason)
+    }
+    captureControl.current = { cancel: cancelCapture, invalidate: invalidateCapture }
+
+    const capturePreview = (renderId: number, signal: AbortSignal): Promise<Blob> => {
+      if (signal.aborted) return Promise.reject(signal.reason)
+      const current = applied.current
+      if (
+        !connected ||
+        latest.current.nonce !== nonce ||
+        !iframeRef.current?.contentWindow ||
+        renderedId !== renderId ||
+        current?.renderId !== renderedId ||
+        current.render !== latest.current.render
+      ) {
+        return Promise.reject(new Error('画板尚未完成渲染'))
+      }
+      if (current.tweakPreview !== undefined || latest.current.tweakPreview !== undefined) {
+        return Promise.reject(new Error('画板正在预览临时参数'))
+      }
+      if (pending) return Promise.reject(new Error('画板正在生成预览'))
+
+      const { width, height } = latest.current.board
+      const version = current.render.version
+      const scale = Math.min(1, CANVAS_PREVIEW_MAX_EDGE / Math.max(width, height))
+      const requestId = String(++captureSequence.current)
+      const { promise, resolve, reject } = Promise.withResolvers<Blob>()
+      let checking = false
+      const finish = () => {
+        if (pending !== request) return false
+        pending = null
+        window.clearTimeout(timeout)
+        signal.removeEventListener('abort', abort)
+        return true
+      }
+      const abort = () => {
+        if (checking) request.reject(signal.reason)
+        else host.send({ type: 'capture.cancel', requestId })
+      }
+      const request: PendingPreview = {
+        requestId,
+        version,
+        accept(png) {
+          if (checking) return
+          checking = true
+          void verifyPreviewPng(png, Math.round(width * scale), Math.round(height * scale)).then(
+            () => {
+              if (signal.aborted) {
+                request.reject(signal.reason)
+              } else if (
+                latest.current.nonce !== nonce ||
+                !iframeRef.current?.contentWindow ||
+                current.render !== latest.current.render ||
+                renderedId !== renderId ||
+                latest.current.tweakPreview !== undefined
+              ) {
+                request.reject(new Error('画板已重新渲染'))
+              } else if (finish()) {
+                resolve(png)
+              }
+            },
+            request.reject,
+          )
+        },
+        reject(reason) {
+          if (finish()) reject(reason)
+        },
+      }
+      pending = request
+      const timeout = window.setTimeout(() => {
+        host.send({ type: 'capture.cancel', requestId })
+        request.reject(new DOMException('生成画板预览超时', 'TimeoutError'))
+      }, PREVIEW_CAPTURE_TIMEOUT)
+      signal.addEventListener('abort', abort, { once: true })
+      try {
+        host.send({ type: 'capture.png', requestId, version, width, height, scale })
+      } catch (error) {
+        request.reject(error)
+      }
+      return promise
+    }
 
     const send: FrameConnection['send'] = (message) => {
       if (message.type === 'highlight' && message.element) {
@@ -246,6 +364,10 @@ export function ArtifactFrame({
         })
         return
       }
+      // 切开已保存画板与直改的乐观 DOM，旧捕获不能作为保存版本的缩略图。
+      if (scopedOverview && message.type === 'apply.preview') {
+        invalidateCapture('画板正在预览未保存的变更')
+      }
       host.send(message)
     }
     const off = host.onMessage((message) => {
@@ -253,7 +375,8 @@ export function ArtifactFrame({
       const selectionStore = useSelectionStore.getState()
       switch (message.type) {
         case 'ready':
-          // 握手前只保留最新覆写，不排队重放用户的每次输入。
+          invalidateCapture('画板沙盒已重新连接')
+          // Bridge 已按顺序发出 render；握手前只保留最后一次覆写。
           if (scoped && latest.current.tweakPreview) {
             host.send({
               type: 'board.tweaks.preview',
@@ -263,10 +386,22 @@ export function ArtifactFrame({
             })
           }
           break
+        case 'capture.png.result':
+        case 'capture.png.failure':
+          if (
+            pending &&
+            pending.requestId === message.requestId &&
+            pending.version === message.version
+          ) {
+            if (message.type === 'capture.png.result') pending.accept(message.png)
+            else pending.reject(new Error(message.message))
+          }
+          break
         case 'viewState.snapshot':
           if (!playback) useWorkspaceStore.getState().setPreservedView(viewKey, message.state)
           break
         case 'error':
+          invalidateCapture(message.message)
           setError({
             version: activeVersion,
             phase: message.phase,
@@ -277,6 +412,13 @@ export function ArtifactFrame({
           break
         case 'rendered': {
           if (message.version !== activeVersion) break
+          const current = applied.current
+          if (
+            message.renderId !== undefined &&
+            (current?.renderId !== message.renderId || current.render !== latest.current.render)
+          ) {
+            break
+          }
           setError(null)
           if (playback) break
           latest.current.onPlayable(latest.current.board, activeVersion, message.playable === true)
@@ -286,6 +428,17 @@ export function ArtifactFrame({
             send({ type: 'highlight', element: currentSelection, ...(layer ? { layer } : {}) })
           }
           trackPins(host, latest.current.versionPins)
+          if (scopedOverview && message.renderId !== undefined) {
+            const readyRenderId = message.renderId
+            const firstReady = renderedId !== readyRenderId
+            renderedId = readyRenderId
+            if (latest.current.tweakPreview === undefined && current?.tweakPreview === undefined) {
+              // 重置后给调度器新的回调，取消中的旧请求不会清掉新安排。
+              latest.current.onReady?.(id, (signal) => capturePreview(readyRenderId, signal))
+            } else if (firstReady) {
+              latest.current.onReady?.(id)
+            }
+          }
           break
         }
         case 'inspect.layers.snapshot':
@@ -293,68 +446,33 @@ export function ArtifactFrame({
             latest.current.onLayers(id, activeVersion, message.layers, message.truncated)
           }
           break
-        case 'inspect.text.target':
+        case 'inspect.target':
           if (!isolated && message.version === activeVersion) {
             const element = message.element
               ? bindSandboxReference(message.element, latest.current.board)
               : null
-            latest.current.onTextTarget(id, { ...message, element })
+            latest.current.onElementTarget(id, { ...message, element })
           }
-          break
-        case 'inspect.hover':
-          if (isolated || !latest.current.interactive || !selectionStore.pickerActive) break
-          setHovered(
-            message.element ? bindSandboxReference(message.element, latest.current.board) : null,
-          )
           break
         case 'inspect.select': {
           if (isolated) break
           if (message.version !== undefined && message.version !== activeVersion) break
           const element = bindSandboxReference(message.element, latest.current.board)
           if (!element) break
-          if (message.reason === 'sync') {
-            const currentSelection = selectionForVersion(selectionStore, artifactId, activeVersion)
-            const layer = selectionStore.layersByArtifact[artifactId]
-            if (!currentSelection || !belongsToBoard(currentSelection, id, scoped)) break
-            if (layer && (layer.id !== message.layerId || message.version !== activeVersion)) break
-            // 保留业务定位；运行节点重排后只跟踪同一个节点的新选择器。
-            selectionStore.setSelectedElement(
-              artifactId,
-              {
-                ...currentSelection,
-                ...(layer && message.layerSelector ? { selector: message.layerSelector } : {}),
-                rect: element.rect,
-              },
-              layer,
-            )
-          } else if (latest.current.interactive && selectionStore.pickerActive) {
-            const workspace = useWorkspaceStore.getState()
-            if (
-              workspace.inspectorTab === 'inspect' &&
-              message.layerId &&
-              message.layerSelector &&
-              message.version === activeVersion
-            ) {
-              selectionStore.setSelectedElement(
-                artifactId,
-                {
-                  selector: message.layerSelector,
-                  rect: element.rect,
-                  ...(element.blockId?.startsWith(DESIGN_LAYER_BLOCK_PREFIX)
-                    ? { blockId: element.blockId }
-                    : {}),
-                  ...(scoped ? { boardId: id } : {}),
-                  ...(message.layerBlockId ? { blockId: message.layerBlockId } : {}),
-                },
-                { id: message.layerId, version: activeVersion },
-              )
-              latest.current.onLayerPicked(id)
-            } else {
-              selectionStore.setSelectedElement(artifactId, element)
-              if (workspace.inspectorTab !== 'inspect') workspace.setInspectorTab('review')
-            }
-            selectionStore.setPickerActive(false)
-          }
+          const currentSelection = selectionForVersion(selectionStore, artifactId, activeVersion)
+          const layer = selectionStore.layersByArtifact[artifactId]
+          if (!currentSelection || !belongsToBoard(currentSelection, id, scoped)) break
+          if (layer && (layer.id !== message.layerId || message.version !== activeVersion)) break
+          // 重排后只跟踪同一个节点的新坐标，不改变批注归属。
+          selectionStore.setSelectedElement(
+            artifactId,
+            {
+              ...currentSelection,
+              ...(layer && message.layerSelector ? { selector: message.layerSelector } : {}),
+              rect: element.rect,
+            },
+            layer,
+          )
           break
         }
         case 'pins.rects':
@@ -426,18 +544,24 @@ export function ArtifactFrame({
       },
     })
     return () => {
+      connected = false
+      invalidateCapture('画板沙盒已断开')
+      captureControl.current = null
       register?.(id, null)
       storage.dispose()
       off()
       host.stop()
     }
-  }, [artifactId, id, scoped, isolated, playback, viewKey, host, register])
+  }, [artifactId, id, scoped, isolated, playback, viewKey, host, nonce, register, scopedOverview])
 
-  // 未 ready 的新 render 会替换队列；重新下发属于该帧的图钉和指认设定。
+  // 未 ready 的新 render 会替换队列；重新下发属于该帧的图层和图钉订阅。
   useEffect(() => {
     const previous = applied.current
     const needsRender = previous?.render !== render
+    let renderId = previous?.renderId
     if (needsRender) {
+      captureControl.current?.invalidate('画板已重新渲染')
+      renderId = overviewAnimation !== undefined ? ++renderSequence.current : undefined
       const currentState = latest.current.state
       const preservedState = playback
         ? undefined
@@ -446,12 +570,17 @@ export function ArtifactFrame({
         type: 'render',
         ...render,
         state: currentState.snapshot,
+        ...(overviewAnimation !== undefined ? { overviewAnimation, renderId } : {}),
         ...(preservedState ? { preservedState } : {}),
       })
       lastStateSeq.current = currentState.seq
       setError((current) => (current?.version === versionNumber ? current : null))
-      setHovered(null)
       setLivePinRects({})
+    } else if (
+      overviewAnimation !== undefined &&
+      overviewAnimation !== previous?.overviewAnimation
+    ) {
+      host.send({ type: 'animation.set', version: versionNumber, animate: overviewAnimation })
     }
     if (
       scoped &&
@@ -459,6 +588,9 @@ export function ArtifactFrame({
       host.isReady() &&
       ((needsRender && tweakPreview !== undefined) || previous?.tweakPreview !== tweakPreview)
     ) {
+      if (tweakPreview !== undefined) {
+        captureControl.current?.cancel('画板正在预览临时参数')
+      }
       host.send({
         type: 'board.tweaks.preview',
         boardId: id,
@@ -471,21 +603,20 @@ export function ArtifactFrame({
       host.send({ type: 'inspect.layers.watch', active: watchingLayers })
     }
     if (!playback && (needsRender || previous?.pins !== versionPins)) trackPins(host, versionPins)
-    const inspecting = !isolated && pickerActive && interactive
-    if (inspecting && (needsRender || !previous?.inspecting)) {
-      host.send({ type: 'inspect.start' })
-    } else if (!inspecting && previous?.inspecting) {
-      host.send({ type: 'inspect.stop' })
-      setHovered(null)
+    applied.current = {
+      render,
+      renderId,
+      overviewAnimation,
+      tweakPreview,
+      pins: versionPins,
+      watchingLayers,
     }
-    applied.current = { render, tweakPreview, pins: versionPins, inspecting, watchingLayers }
   }, [
     boardTweaks,
     host,
     id,
-    interactive,
     isolated,
-    pickerActive,
+    overviewAnimation,
     playback,
     render,
     scoped,
@@ -530,7 +661,6 @@ export function ArtifactFrame({
       />
       {!playback && (
         <ElementOverlay
-          hovered={pickerActive && interactive ? hovered : null}
           selected={selected}
           pins={versionPins}
           livePinRects={livePinRects}
@@ -550,7 +680,7 @@ export function ArtifactFrame({
               artifactId={scoped ? viewKey : artifactId}
               projectId={artifact.projectId}
               version={versionNumber}
-              source={scoped ? source : version.source}
+              source={source}
               error={error}
               onDismiss={() => setError(null)}
               onSubmitFeedback={
@@ -575,4 +705,18 @@ function trackPins(host: SandboxBridgeHost, pins: readonly Feedback[]): void {
     type: 'pins.track',
     pins: pins.flatMap((pin) => (pin.element ? [{ id: pin.id, element: pin.element }] : [])),
   })
+}
+
+async function verifyPreviewPng(png: Blob, width: number, height: number): Promise<void> {
+  const header = new DataView(await png.slice(0, 24).arrayBuffer())
+  if (
+    header.byteLength !== 24 ||
+    header.getUint32(0) !== 0x89504e47 ||
+    header.getUint32(4) !== 0x0d0a1a0a ||
+    header.getUint32(12) !== 0x49484452 ||
+    header.getUint32(16) !== width ||
+    header.getUint32(20) !== height
+  ) {
+    throw new Error('沙盒返回的预览 PNG 格式或尺寸不符')
+  }
 }

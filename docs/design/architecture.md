@@ -247,9 +247,9 @@ sequenceDiagram
     participant S as 服务端
     participant Sh as 外壳
     participant Sb as 沙盒
-    Sh->>Sb: Bridge inspect.start
-    Sb-->>Sh: inspect.select {blockId, loc, rect, selector}
-    Sh->>S: 保存选中态与草稿评论 (draft=true, 不唤醒)
+    Sh->>Sb: inspect.at {requestId, version, x, y, purpose}
+    Sb-->>Sh: inspect.target {requestId, version, element}
+    Sh->>S: 同步选区；显式保存批注草稿不唤醒 Agent
     Sh->>S: POST round/submit (锁定本轮)
     alt 支持异步 Monitor
         S-->>Hk: 事件通知 (round.submitted)
@@ -293,10 +293,10 @@ sequenceDiagram
 
 ### 5.3 Bridge（外壳 ↔ 沙盒）
 
-| 方向        | 消息                                                                                                                                                            |
-| :---------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 外壳 → 沙盒 | `render`（含 `preservedState`）、`state`、`inspect.start`、`inspect.stop`、`highlight`、`apply.preview`、`apply.rollback`、`visual.inspect`、`storage.response` |
-| 沙盒 → 外壳 | `ready`、`rendered`、`error`、`resize`、`viewState.snapshot`、`inspect.hover`、`inspect.select`、`visual.select`、`annotation.request`、`storage.request`       |
+| 方向        | 消息                                                                                                                                                                   |
+| :---------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 外壳 → 沙盒 | `render`（含 `preservedState`）、`state`、`inspect.at`、`highlight`、`apply.preview`、`apply.rollback`、`visual.inspect`、`storage.response`                           |
+| 沙盒 → 外壳 | `ready`、`rendered`、`error`、`resize`、`viewState.snapshot`、`inspect.target`、`inspect.select`（几何同步）、`visual.select`、`annotation.request`、`storage.request` |
 
 规则：每条消息都带 `v`（协议版本）和 `nonce`（会话标识）。接收方必须校验 `event.origin` 并用 zod 解析消息；校验失败的消息直接丢弃。
 
@@ -319,7 +319,31 @@ sequenceDiagram
 - **打开和浏览时**：工作区先取指定版本的索引，优先显示当前视口内的真实预览；没有缩略图就读取眼前画板的内容，不等整稿下载或所有缩略图生成。平移到新区域时优先加载新区域。可见画板可以循环播放轻量动画；只有用户选择「播放原型」才启动交互沙盒。
 - **回看历史时**：索引、画板内容和缩略图必须对应正在查看的版本，并沿用该制品的访问权限。允许缓存占用额外空间，换取打开画布时不必传输和解析屏外画板的正文。
 
-这是 [#105](https://github.com/VOD-Studio/akasha-artifacts/issues/105) 的实施决策；现有工作区仍在打开时解析整份设计稿。
+[#105](https://github.com/VOD-Studio/akasha-artifacts/issues/105) 实现了这些读路径。工作区读取 `?view=canvas`，菜单读取 `/versions?view=metadata`，画板正文走 `/boards?version=N&boardId=ID`，查询参数保留 `.`、`..` 等历史标识。只有编辑、比较、导出等主动操作在浏览器读取完整源码；旧批注的画板归属在服务端按反馈版本补齐，只解析确有未定位锚点的版本，歧义不猜。
+
+正文请求最多并行 4 项。检查器显式查看板源码与视口共用请求；移出视口、且检查器不再需要的未完成请求立即取消。近景最多挂载 24 个预览，最多 6 板的 CSS／Web Animations 和内联 SVG 时间轴保持活动。已看过的帧可留在附近缓冲区；鸟瞰不挂载多画板预览。GIF／APNG 不受这些时间轴控制，不计作已验证的静帧降级。
+
+缩略图只取已显示帧，不另开沙盒；重新移动时取消未完成的截图，沙盒在进入下一绘制阶段前检查请求是否取消。浏览器已进入的同步绘制不可中断。聚焦和试玩不显示总览缩略图，试玩单独占用唯一交互沙盒。退出版本或授权范围时撤销缩略图并清理正文缓存。
+
+#### 浏览器验收记录
+
+同一台 Mac14,2、Tern 0.9.32、1440 × 900、DPR 1、本地回环服务。常规稿为四张不同结账状态的 HTML 画板，约 1.1 KB 源码；重稿的首屏四张相同，另加 14 张约 110 KB 的内嵌 SVG 图片与 SMIL 画板，混有表单原型，整稿约 1.54 MB。冷开重新载入页面；热返回在同一版本内平移回来。以可见 iframe 报 `rendered` 后两帧作为首幅内容信号，不计轮廓。
+
+| 指标                             | 常规稿改造前 → 后 | 重稿改造前 → 后 |
+| -------------------------------- | ----------------: | --------------: |
+| 冷开至首张可见内容（ms）         |         660 → 595 |      1977 → 631 |
+| 冷开至第一次选择反馈（ms）       |         616 → 582 |      1036 → 611 |
+| 移入新区域至目标出现（ms）       |           42 → 42 |        39 → 262 |
+| 热返回至目标重新可见（ms）       |           40 → 38 |         38 → 38 |
+| 十秒平移／缩放，帧间隔 p95（ms） |           16 → 16 |         16 → 16 |
+| 大于 50 ms 的帧间隔数            |             1 → 1 |           3 → 3 |
+| 活动 iframe 峰值                 |             4 → 4 |          18 → 8 |
+
+重稿首开读模型和四张可见板共 3,873 字节（原详情与列表约 3.10 MB，不含独立评审等请求）。改造前新区域的画板已提前载入，改造后第一次移入要实际读取；热返回不用重读。Tern 的 `requestAnimationFrame` 中位间隔约 14 ms，未锁定 60 Hz；其 WebKit 未提供 `longtask`。独立 Chromium 同稿对照，工作台页冷开长任务常规 `1 → 2`（改造后 70、71 ms）、重稿 `0 → 0`，两组十秒操作期均未记录到工作台页长任务。
+
+真实 Chromium 验证了 24.6% 鸟瞰的零运行实例与四张真实 PNG 缩略、搜索跨区定位、键盘恢复选板，以及仅一张 `allow-scripts` 交互沙盒接收表单输入。发布 v2 后，固定 v1 仍显示原文，头版显示新正文。
+
+审查后在 1440 × 900 的 Chromium 里实测：首屏只请求四块可见板；对屏外 `board-5` 加 12 秒网络延迟，跳入后再跳到 `board-17`，网络日志记录取消 `board-5`，第 17 板正常首绘。普通双轴滚轮平移 `(53, 76)` CSS 像素，仍为 `100%`；加 Ctrl 后缩放至 `119.7%`。从已捕获缩略图的画板进入单板查看和试玩，无缩略图覆盖；可在唯一交互帧内真实输入。390 px 窗口的八项工具均可点击。
 
 ---
 

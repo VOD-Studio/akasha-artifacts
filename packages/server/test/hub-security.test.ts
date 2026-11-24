@@ -1,11 +1,12 @@
 import {
   ArtifactAwaitFeedbackOutputSchema,
   ArtifactSchema,
+  type ElementRef,
   FeedbackSchema,
   ReviewRoundSchema,
   VersionSchema,
 } from '@akasha/protocol'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { createHubContainer, type HubContainerOptions } from '../src/app/create-hub-container.js'
 import { createMemoryContainer } from '../src/app/create-memory-container.js'
@@ -594,6 +595,130 @@ describe('Cloud Hub 身份与制品权限', () => {
     advance(61)
     expect((await send(path, { headers: { cookie } })).status).toBe(404)
     expect((await send(url)).status).toBe(404)
+  })
+
+  it('独立画板读取不会扩大固定版分享的访问范围', async () => {
+    const { send, post, login, advance } = setup()
+    const owner = await login('alice')
+    const payload = {
+      slug: 'artboard/versioned',
+      title: '固定版画板',
+      type: 'artboard',
+    }
+    const publish = (html: string, baseVersion?: number) =>
+      post(
+        '/api/v1/artifacts',
+        {
+          ...payload,
+          baseVersion,
+          source: JSON.stringify({ boards: [{ id: 'checkout/v1', title: '结账', html }] }),
+        },
+        owner,
+      )
+    const { artifact } = publishedArtifact.parse(await (await publish('<h1>原版</h1>')).json())
+    const path = `/api/v1/artifacts/${artifact.publicId}`
+    const board = (version: number) => `${path}/boards?version=${version}&boardId=checkout%2Fv1`
+    const entry = { kind: 'play', version: 1, pageId: '', boardId: 'checkout/v1' }
+    const share = await post(`${path}/share`, { role: 'view', entry, ttlSeconds: 30 }, owner)
+    expect(share.status).toBe(201)
+    const { url } = z.object({ url: z.string() }).parse(await share.json())
+    const redemption = await send(url)
+    const headers = { cookie: redemption.headers.get('set-cookie')?.split(';')[0] ?? '' }
+    expect((await publish('<h1>新版</h1>', 1)).status).toBe(200)
+
+    expect((await send(board(1))).status).toBe(404)
+    expect((await send(board(2), { headers })).status).toBe(404)
+    expect((await send(`${path}/boards/checkout%2Fv1?version=1`, { headers })).status).toBe(404)
+    expect((await send(`${path}?view=canvas&version=2`, { headers })).status).toBe(404)
+    const detail = z
+      .object({
+        artifact: z.unknown(),
+        version: z.unknown(),
+        canvas: z.unknown(),
+      })
+      .parse(await (await send(`${path}?view=canvas`, { headers })).json())
+    expect(detail).toMatchObject({
+      artifact: { headVersion: 1 },
+      version: { version: 1 },
+      canvas: { boards: [{ id: 'checkout/v1' }] },
+    })
+    expect(detail.version).not.toHaveProperty('source')
+    const history = z
+      .object({ versions: z.array(z.unknown()) })
+      .parse(await (await send(`${path}/versions?view=metadata`, { headers })).json())
+    expect(history.versions).toEqual([expect.objectContaining({ version: 1 })])
+    const fixed = await send(board(1), { headers })
+    expect(await fixed.json()).toMatchObject({ version: 1, board: { html: '<h1>原版</h1>' } })
+    expect(fixed.headers.get('cache-control')).toBe('private, no-store')
+    advance(31)
+    expect((await send(board(1), { headers })).status).toBe(404)
+  })
+
+  it('固定版分享只为可见历史批注读取一次对应原稿', async () => {
+    const { repositories } = createMemoryContainer()
+    const { send, post, login } = setup(repositories)
+    const owner = await login('alice')
+    const payload = {
+      slug: 'artboard/annotation-scope',
+      type: 'artboard',
+      title: '历史批注分享',
+      source: JSON.stringify({
+        boards: [{ id: 'scope', title: '画板', html: '<h1 data-ak-block="heading">标题</h1>' }],
+      }),
+    }
+    const { artifact } = publishedArtifact.parse(
+      await (await post('/api/v1/artifacts', payload, owner)).json(),
+    )
+    const path = `/api/v1/artifacts/${artifact.publicId}`
+    const share = await post(
+      `${path}/share`,
+      { role: 'view', entry: { kind: 'version', version: 1 }, ttlSeconds: 30 },
+      owner,
+    )
+    expect(share.status).toBe(201)
+    const { url } = z.object({ url: z.string() }).parse(await share.json())
+    const redemption = await send(url)
+    const headers = { cookie: redemption.headers.get('set-cookie')?.split(';')[0] ?? '' }
+    expect((await post('/api/v1/artifacts', { ...payload, baseVersion: 1 }, owner)).status).toBe(
+      200,
+    )
+
+    const feedbackPath = `${path}/feedback`
+    const comment = async (version: number, element: ElementRef, audience = 'human') => {
+      const response = await post(
+        feedbackPath,
+        { version, kind: 'comment', audience, element, body: '批注' },
+        owner,
+      )
+      expect(response.status).toBe(201)
+    }
+    await comment(2, { blockId: 'heading' })
+    await comment(1, { blockId: 'agent-only' }, 'agent')
+    const scoped = { boardId: 'scope', selector: 'h1' }
+    await comment(1, scoped)
+    const sourceReads = vi.spyOn(repositories.artifacts, 'getVersion')
+    const review = async () => {
+      const response = await send(feedbackPath, { headers })
+      expect(response.status).toBe(200)
+      return z.object({ items: z.array(FeedbackSchema) }).parse(await response.json()).items
+    }
+    expect((await review()).map(({ element }) => element)).toEqual([scoped])
+    expect(sourceReads).not.toHaveBeenCalled()
+
+    await comment(1, { blockId: 'heading' })
+    await comment(1, { blockId: 'scope' })
+    sourceReads.mockClear()
+    const items = await review()
+    expect(items.map(({ version, element }) => [version, element])).toEqual(
+      expect.arrayContaining([
+        [1, scoped],
+        [1, { boardId: 'scope', blockId: 'heading' }],
+        [1, { boardId: 'scope', blockId: 'scope' }],
+      ]),
+    )
+    expect(items).toHaveLength(3)
+    expect(await review()).toEqual(items)
+    expect(sourceReads.mock.calls).toEqual([[artifact.publicId, 1]])
   })
 
   it('按签名角色和固定版本隔离分享读取、讨论、编辑和实时事件', async () => {

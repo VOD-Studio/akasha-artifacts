@@ -79,6 +79,9 @@ export const VersionSchema = z.object({
 })
 export type Version = z.infer<typeof VersionSchema>
 
+/** 版本历史与画布布局只传元数据；完整源码通过指定版本另取。 */
+export type VersionSummary = Omit<Version, 'source'>
+
 /**
  * RFC 6902 JSON Patch 的单条原子操作。
  *

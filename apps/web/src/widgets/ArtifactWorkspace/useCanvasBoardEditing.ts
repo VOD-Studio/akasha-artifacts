@@ -1,7 +1,17 @@
-import { type Artifact, stabilizeArtboardSource, type Version } from '@akasha/protocol'
+import {
+  type Artifact,
+  stabilizeArtboardSource,
+  type Version,
+  type VersionSummary,
+} from '@akasha/protocol'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
-import { type ArtifactDetailResponse, artifactKeys, publishHumanVersion } from '@/entities/artifact'
+import {
+  artifactKeys,
+  artifactSourceOptions,
+  hasVersionSource,
+  publishHumanVersion,
+} from '@/entities/artifact'
 import { notifyHumanVersionEdit } from '@/entities/feedback'
 import { ApiError } from '@/shared/api/error'
 import {
@@ -12,7 +22,7 @@ import {
 
 interface EditingInput {
   artifact: Artifact
-  version: Version
+  version: VersionSummary
   enabled: boolean
   notifyAgent?: boolean
   onVersionSaved?: (version: Version) => void
@@ -37,13 +47,14 @@ interface PendingEdit {
 
 /** 只有可写的头版本能开始新操作，失败的草稿须先由用户处理。 */
 export interface CanvasBoardEditing {
-  version: Version
+  version: VersionSummary
   draft: PendingEdit | null
   inputError: string
   available: boolean
-  change: (command: CanvasBoardEdit, base?: Version) => boolean
+  busy: boolean
+  change: (command: CanvasBoardEdit, base?: VersionSummary) => Promise<boolean>
   /** 提交由服务端按基准源码预览得到的完整版本，也加入同一撤销历史。 */
-  replaceSource: (source: string, base: Version) => boolean
+  replaceSource: (source: string, base: VersionSummary) => Promise<boolean>
   undo?: () => void
   redo?: () => void
   dismissDraft: () => void
@@ -65,9 +76,12 @@ export function useCanvasBoardEditing({
     timeline: Timeline
   } | null>(null)
   const [inputError, setInputError] = useState('')
+  const [reading, setReading] = useState(false)
+  const latest = useRef({ artifact, version, enabled })
+  latest.current = { artifact, version, enabled }
   const inFlight = useRef(false)
   const draft = pending?.artifactId === artifact.publicId ? pending : null
-  const available = enabled && !draft
+  const available = enabled && !draft && !reading
   // 不跨作者或页面编辑发布的新头版本重放旧快照。
   const timeline =
     history?.artifactId === artifact.publicId && history.version === version.version
@@ -75,16 +89,17 @@ export function useCanvasBoardEditing({
       : EMPTY_TIMELINE
 
   async function save(edit: PendingEdit) {
-    if (inFlight.current) return
-    if (
-      !enabled ||
-      version.version !== edit.base.version ||
-      artifact.headVersion !== edit.base.version
-    ) {
+    const live = latest.current
+    const sameBase =
+      live.enabled &&
+      live.artifact.publicId === edit.artifactId &&
+      live.version.version === edit.base.version &&
+      live.artifact.headVersion === edit.base.version
+    if (!sameBase) {
+      inFlight.current = false
       setPending({ ...edit, status: 'failed', error: '作品已更新，未覆盖新版本。' })
       return
     }
-    inFlight.current = true
     setPending({ ...edit, status: 'saving', error: undefined })
     try {
       const saved = await publishHumanVersion({
@@ -96,15 +111,12 @@ export function useCanvasBoardEditing({
         baseVersion: edit.base.version,
         source: edit.source,
       })
+      query.setQueryData(
+        artifactKeys.source(saved.artifact.publicId, saved.version.version),
+        saved.version,
+      )
       if (notifyAgent)
         await notifyHumanVersionEdit(artifact.projectId, saved.version, edit.base.source, 'canvas')
-      query.setQueryData<ArtifactDetailResponse>(
-        artifactKeys.detail(artifact.publicId),
-        (current) =>
-          !current || current.version.version >= saved.version.version
-            ? current
-            : { ...current, artifact: saved.artifact, version: saved.version },
-      )
       setHistory({
         artifactId: artifact.publicId,
         version: saved.version.version,
@@ -120,7 +132,7 @@ export function useCanvasBoardEditing({
         error: cause instanceof Error ? cause.message : '无法保存改动',
       })
       if (cause instanceof ApiError && cause.status === 409) {
-        void query.invalidateQueries({ queryKey: artifactKeys.detail(artifact.publicId) })
+        void query.invalidateQueries({ queryKey: artifactKeys.canvas(artifact.publicId) })
       }
     } finally {
       inFlight.current = false
@@ -131,29 +143,53 @@ export function useCanvasBoardEditing({
     if (!available) return
     const change = (forward ? timeline.future : timeline.past).at(-1)
     if (!change) return
-    void save({
-      artifactId: artifact.publicId,
-      base: version,
+    void prepare(version, (base) => ({
+      base,
       source: forward ? change.after : change.before,
       timeline: forward
         ? { past: [...timeline.past, change], future: timeline.future.slice(0, -1) }
         : { past: timeline.past.slice(0, -1), future: [...timeline.future, change] },
-      status: 'saving',
-    })
+    }))
   }
 
-  function stage(change: CanvasSourceChange, base: Version): boolean {
-    if (draft || inFlight.current) return false
-    if (change.after === base.source) return true
+  async function prepare(
+    base: VersionSummary,
+    transform: (full: Version) => Pick<PendingEdit, 'base' | 'source' | 'timeline'> | null,
+  ): Promise<boolean> {
+    if (!available || inFlight.current) return false
+    inFlight.current = true
     setInputError('')
-    void save({
-      artifactId: artifact.publicId,
-      base,
-      source: change.after,
-      timeline: { past: [...timeline.past.slice(1 - MAX_LOCAL_EDITS), change], future: [] },
-      status: 'saving',
+    let publishing = false
+    try {
+      const inline = hasVersionSource(base)
+      if (!inline) setReading(true)
+      const full = inline
+        ? base
+        : await query.fetchQuery(artifactSourceOptions(base.artifactId, base.version))
+      const change = transform(full)
+      if (!change) return true
+      publishing = true
+      void save({ ...change, artifactId: base.artifactId, status: 'saving' })
+      return true
+    } catch (cause) {
+      setInputError(cause instanceof Error ? cause.message : '无法应用改动')
+      return false
+    } finally {
+      setReading(false)
+      if (!publishing) inFlight.current = false
+    }
+  }
+
+  function stage(base: VersionSummary, edit: (full: Version) => CanvasSourceChange) {
+    return prepare(base, (full) => {
+      const change = edit(full)
+      if (change.after === full.source) return null
+      return {
+        base: full,
+        source: change.after,
+        timeline: { past: [...timeline.past.slice(1 - MAX_LOCAL_EDITS), change], future: [] },
+      }
     })
-    return true
   }
 
   return {
@@ -161,24 +197,20 @@ export function useCanvasBoardEditing({
     draft,
     inputError,
     available,
+    busy: reading || draft?.status === 'saving',
     undo: available && timeline.past.length ? () => replay(false) : undefined,
     redo: available && timeline.future.length ? () => replay(true) : undefined,
-    change(command: CanvasBoardEdit, base = version) {
-      if (draft || inFlight.current) return false
-      setInputError('')
-      try {
-        return stage(editCanvasBoards(base.source, base.version, command), base)
-      } catch (cause) {
-        setInputError(cause instanceof Error ? cause.message : '无法应用改动')
-        return false
-      }
+    change(command, base = version) {
+      return stage(base, (full) => editCanvasBoards(full.source, full.version, command))
     },
     replaceSource(source, base) {
-      const before =
-        artifact.type === 'artboard' && source !== base.source
-          ? stabilizeArtboardSource(base.source, base.version)
-          : base.source
-      return stage({ before, after: source }, base)
+      return stage(base, (full) => ({
+        before:
+          artifact.type === 'artboard' && source !== full.source
+            ? stabilizeArtboardSource(full.source, full.version)
+            : full.source,
+        after: source,
+      }))
     },
     dismissDraft() {
       if (inFlight.current) return

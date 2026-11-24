@@ -1,4 +1,4 @@
-import { type Artifact, resolveArtboardTweaks, type Version } from '@akasha/protocol'
+import { type Artifact, resolveArtboardTweaks, type VersionSummary } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Modal } from '@akasha/ui/dialog'
 import { Field, FieldSet } from '@akasha/ui/field'
@@ -6,33 +6,33 @@ import { Radio, RadioGroup } from '@akasha/ui/radio'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
 import { Download } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { type CanvasBoard, createCanvasDocument, fetchArtifactDetail } from '@/entities/artifact'
+import {
+  createCanvasDocument,
+  fetchArtifactDetail,
+  fetchArtifactWorkspace,
+  type LoadedCanvasBoard,
+  useArtifactSourceQuery,
+} from '@/entities/artifact'
 import { captureBoardPng } from '@/shared/bridge/capture-png'
 
 /** 打开面板时固定版本；不因 Agent 推进头版本而改变下载内容。 */
 export interface DesignExportTarget {
   artifact: Artifact
-  version: Version
+  version: VersionSummary
   /** 从画板就地入口打开时预选该画板；默认整份制品。 */
   boardId?: string
 }
 
 interface ExportDialogProps {
-  /** 传入已获准读取的快照，只用于显示标题和画板选项。 */
+  /** 打开对话框时选定的快照；选项按固定版本显示。 */
   target: DesignExportTarget
   /** 关闭时中止生成，绝不下载已完成一部分的文件。 */
   onClose: () => void
 }
 
-function boardsFor(type: Artifact['type'], version: Version) {
-  const boards = new Map<string, { board: CanvasBoard; label: string }>()
-  const document = createCanvasDocument(
-    type,
-    version.title,
-    version.source,
-    version.version,
-    undefined,
-  )
+function boardsFor(type: Artifact['type'], version: VersionSummary, source: string) {
+  const boards = new Map<string, { board: LoadedCanvasBoard; label: string }>()
+  const document = createCanvasDocument(type, version.title, source, version.version, undefined)
   for (const page of document.pages) {
     for (const board of page.boards) {
       // 共享画板只在首次出现处输出，不重复占用 PDF 页。
@@ -73,7 +73,7 @@ function captureError(cause: unknown) {
 }
 
 async function* renderPages(
-  boards: readonly CanvasBoard[],
+  boards: readonly LoadedCanvasBoard[],
   version: number,
   signal: AbortSignal,
   onProgress: (text: string) => void,
@@ -93,11 +93,43 @@ async function* renderPages(
 
 /** 同一个入口按指定画板或整份制品导出，始终先重新检查固定版本的访问权。 */
 export function ArtifactExportDialog({ target, onClose }: ExportDialogProps) {
-  const { artifact, version } = target
-  const initialBoards = useMemo(
-    () => boardsFor(artifact.type, version).boards,
-    [artifact.type, version],
+  const { version } = target
+  if ('source' in version && typeof version.source === 'string') {
+    return <ExportDialog target={target} onClose={onClose} source={version.source} />
+  }
+  return <QueriedExportDialog target={target} onClose={onClose} />
+}
+
+function QueriedExportDialog(props: ExportDialogProps) {
+  const { artifact, version } = props.target
+  const query = useArtifactSourceQuery(artifact.publicId, version.version)
+  const snapshot = query.data
+  const matches = snapshot?.artifactId === artifact.publicId && snapshot.version === version.version
+  const error = query.error?.message ?? (snapshot && !matches ? '未能读取指定版本' : undefined)
+  return (
+    <ExportDialog
+      {...props}
+      source={matches && !query.isError ? snapshot.source : undefined}
+      load={{ error, fetching: query.isFetching, retry: () => void query.refetch() }}
+    />
   )
+}
+
+function ExportDialog({
+  target,
+  onClose,
+  source,
+  load,
+}: ExportDialogProps & {
+  source?: string
+  load?: { error?: string; fetching: boolean; retry: () => void }
+}) {
+  const { artifact, version } = target
+  const preview = useMemo(
+    () => (source === undefined ? undefined : boardsFor(artifact.type, version, source)),
+    [artifact.type, version, source],
+  )
+  const initialBoards = preview?.boards
   const [boardId, setBoardId] = useState(target.boardId ?? '')
   const [format, setFormat] = useState<'png' | 'pdf' | 'html'>(target.boardId ? 'png' : 'pdf')
   const [error, setError] = useState('')
@@ -121,21 +153,27 @@ export function ArtifactExportDialog({ target, onClose }: ExportDialogProps) {
   }
 
   const download = async () => {
-    if (job.current) return
+    if (job.current || !preview) return
     const controller = new AbortController()
     const { signal } = controller
     job.current = controller
     setError('')
     setProgress('正在检查版本访问权限…')
     try {
-      const result = await fetchArtifactDetail(artifact.publicId, version.version, signal)
+      // 已加载的画布全文是不可变快照；确认时只需通过同一 ACL 重新读取布局权限。
+      const result = await (load
+        ? fetchArtifactWorkspace(artifact.publicId, version.version, signal)
+        : fetchArtifactDetail(artifact.publicId, version.version, signal))
       if (
         result.artifact.publicId !== artifact.publicId ||
         result.version.artifactId !== artifact.publicId ||
         result.version.version !== version.version
       )
         throw new Error('未能读取指定版本')
-      const { boards: available, flows } = boardsFor(result.artifact.type, result.version)
+      const { boards: available, flows } =
+        'source' in result.version && typeof result.version.source === 'string'
+          ? boardsFor(result.artifact.type, result.version, result.version.source)
+          : preview
       const selected = boardId ? available.get(boardId)?.board : undefined
       if (boardId && !selected) throw new Error('指定版本没有这张画板')
       const boards = selected ? [selected] : Array.from(available.values(), ({ board }) => board)
@@ -215,7 +253,7 @@ export function ArtifactExportDialog({ target, onClose }: ExportDialogProps) {
           <Button
             leftIcon={<Download size={16} />}
             loading={busy}
-            disabled={!initialBoards.size || (boardId !== '' && !initialBoards.has(boardId))}
+            disabled={!initialBoards?.size || (boardId !== '' && !initialBoards.has(boardId))}
             onClick={() => void download()}
           >
             导出
@@ -224,26 +262,28 @@ export function ArtifactExportDialog({ target, onClose }: ExportDialogProps) {
       }
     >
       <div className="space-y-4 text-sm">
-        <Field label="导出范围">
-          <Select
-            value={boardId ? `board:${boardId}` : 'design'}
-            disabled={busy || !initialBoards.size}
-            onValueChange={selectScope}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="design">整份作品（{initialBoards.size} 张）</SelectItem>
-              {[...initialBoards].map(([id, { label }]) => (
-                <SelectItem key={id} value={`board:${id}`}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        {initialBoards.size > 0 && (
+        {initialBoards && (
+          <Field label="导出范围">
+            <Select
+              value={boardId ? `board:${boardId}` : 'design'}
+              disabled={busy || !initialBoards.size}
+              onValueChange={selectScope}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="design">整份作品（{initialBoards.size} 张）</SelectItem>
+                {Array.from(initialBoards, ([id, { label }]) => (
+                  <SelectItem key={id} value={`board:${id}`}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        )}
+        {Boolean(initialBoards?.size) && (
           <FieldSet legend="格式">
             <RadioGroup
               orientation="horizontal"
@@ -257,7 +297,20 @@ export function ArtifactExportDialog({ target, onClose }: ExportDialogProps) {
             </RadioGroup>
           </FieldSet>
         )}
-        {initialBoards.size === 0 && <p className="text-ink-muted">当前版本没有可导出的画板。</p>}
+        {initialBoards?.size === 0 && <p className="text-ink-muted">当前版本没有可导出的画板。</p>}
+        {!preview && load?.error && (
+          <div role="alert" className="flex flex-wrap items-center gap-2">
+            <span className="text-error">无法读取导出版本：{load.error}</span>
+            <Button variant="ghost" size="sm" loading={load.fetching} onClick={load.retry}>
+              重试
+            </Button>
+          </div>
+        )}
+        {!preview && load && !load.error && (
+          <p role="status" className="text-ink-muted">
+            正在读取导出版本…
+          </p>
+        )}
         {format === 'html' && (
           <p className="text-ink-muted">
             {boardId

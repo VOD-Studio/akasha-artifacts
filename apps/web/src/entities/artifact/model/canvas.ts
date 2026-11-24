@@ -1,12 +1,12 @@
 import {
   ARTIFACT_DEFAULT_VIEWPORT,
   type ArtboardAppearance,
-  type ArtboardPage,
+  type ArtboardContent,
+  type ArtboardIndex,
   type ArtboardTweak,
   type ArtifactType,
-  canvasIds,
   type DesignLayer,
-  parseArtboard,
+  projectArtboard,
   STANDALONE_BOARD_ID,
 } from '@akasha/protocol'
 
@@ -25,7 +25,9 @@ export interface CanvasBoard {
   width: number
   /** 画板独立视口高度，单位为 CSS 像素。 */
   height: number
-  /** 未声明时使用白底与直角，只改变渲染外观。 */
+  /** 外壳轮廓的圆角，归一化到画板固有尺寸。 */
+  cornerRadius?: number
+  /** 随正文读取；未声明时使用白底与直角，不影响布局。 */
   appearance?: ArtboardAppearance
   /** 传给沙盒的渲染器类型；并排多画板的每块内容是 HTML。 */
   type: ArtifactType
@@ -33,25 +35,29 @@ export interface CanvasBoard {
   position?: { x: number; y: number }
   /** 同一页面内共用选择和位置变换。 */
   layoutGroup?: string
-  /** 持久化图层与作者写的 HTML 独立渲染。 */
+  /** 只有已读取的画板才带正文；未读取和空白画板不是同一状态。 */
+  source?: string
   designLayers?: DesignLayer[]
-  /** 固定版本声明的参数，不包含当前浏览会话的覆写。 */
-  tweaks?: ArtboardTweak[]
-  /** 交给沙盒渲染的单板源码，不是外层画布文档。 */
-  source: string
   /** 从说明合成的内容并非源码片段。 */
   generated?: true
   /** 是否有独立的画板作用域；独立制品的默认画板为 false。 */
   scoped: boolean
 }
 
+/** 可交给沙盒、导出和源码工具渲染的画板。 */
+export interface LoadedCanvasBoard extends CanvasBoard {
+  source: string
+  /** 固定版本声明的参数，不包含当前浏览会话的覆写。 */
+  tweaks?: ArtboardTweak[]
+}
+
 /** 负责显示一组画板的页面；总览和未分组页可以由模型生成。 */
-export interface CanvasPage {
+export interface CanvasPage<B extends CanvasBoard = CanvasBoard> {
   /** 稳定的页面定位；空串是合成页面，不是持久化 ID。 */
   id: string
   title: string
   /** 顺序用于总览和导出；可包含由多页共用的画板。 */
-  boards: readonly CanvasBoard[]
+  boards: readonly B[]
   /** 署名页面上的直属画板数；总览等虚拟页面不支持改名或删除。 */
   ownedBoardCount?: number
 }
@@ -63,8 +69,8 @@ export interface CanvasLocation {
 }
 
 /** 制品的画布文档：若干页面，每页若干画板。 */
-export interface CanvasDocument {
-  pages: readonly CanvasPage[]
+export interface CanvasDocument<B extends CanvasBoard = CanvasBoard> {
+  pages: readonly CanvasPage<B>[]
   columns: number
   /** 画板之间的流程连线，两端是画板 id。 */
   flows: readonly { from: string; to: string; label?: string }[]
@@ -79,6 +85,18 @@ function descriptionMarkup(description: string) {
   return `<p class="p-4 text-sm">${text}</p>`
 }
 
+/** 拼合一块已读取的画板；文字说明只作为纯文本显示。 */
+export function loadCanvasBoard(board: CanvasBoard, content: ArtboardContent): LoadedCanvasBoard {
+  return {
+    ...board,
+    source: content.html ?? descriptionMarkup(content.description ?? '空白画板'),
+    ...(content.html === undefined ? { generated: true } : {}),
+    designLayers: content.designLayers,
+    appearance: content.appearance,
+    tweaks: content.tweaks,
+  }
+}
+
 /**
  * 把制品源码转成画布文档。
  *
@@ -91,9 +109,9 @@ export function createCanvasDocument(
   source: string,
   version: number,
   props: unknown,
-): CanvasDocument {
-  const parsed = type === 'artboard' ? parseArtboard(source) : null
-  if (!parsed?.ok) {
+): CanvasDocument<LoadedCanvasBoard> {
+  const projection = type === 'artboard' ? projectArtboard(source, version) : null
+  if (!projection) {
     return {
       pages: [
         {
@@ -118,57 +136,66 @@ export function createCanvasDocument(
     }
   }
 
-  const data = parsed.data
-  const pageIds = canvasIds(data.pages, 'page', version)
-  const boardIds = canvasIds(data.boards, 'board', version)
-  const pageDefinitions = new Map<string, ArtboardPage>()
-  for (const page of data.pages) pageDefinitions.set(page.id, page)
-  const unplaced: CanvasBoard[] = []
-  const shared: CanvasBoard[] = []
-  const boardsByPage = new Map<string, CanvasBoard[]>()
-  const placed = new Set<string>()
+  const contents = new Map(projection.contents.map((content) => [content.id, content]))
+  return composeDocument(projection.index, props, (board) => {
+    const content = contents.get(board.id)
+    if (!content) throw new Error(`缺少画板 ${board.id} 的源稿`)
+    return loadCanvasBoard(board, content)
+  })
+}
+
+/** 根据索引生成页面与几何，不访问任何画板正文。 */
+export function createCanvasDocumentFromIndex(
+  canvas: ArtboardIndex,
+  props?: unknown,
+): CanvasDocument {
+  return composeDocument(canvas, props, (board) => board)
+}
+
+function composeDocument<B extends CanvasBoard>(
+  data: ArtboardIndex,
+  props: unknown,
+  materialize: (board: CanvasBoard) => B,
+): CanvasDocument<B> {
+  const unplaced: B[] = []
+  const shared: B[] = []
+  const boardsByPage = new Map<string, B[]>()
   for (const board of data.boards) {
-    if (placed.has(board.id)) continue
-    placed.add(board.id)
-    const id = boardIds.get(board.id) ?? board.id
-    const legacyBlockId = id !== board.id ? board.id : board.legacyId
-    const entry: CanvasBoard = {
-      id,
+    const entry = materialize({
+      id: board.id,
       title: board.title,
       subtitle: board.subtitle,
       recommended: board.recommended,
-      legacyBlockId,
+      legacyBlockId: board.legacyId,
       type: 'html',
-      source: board.html ?? descriptionMarkup(board.description ?? '空白画板'),
-      ...(board.html === undefined ? { generated: true } : {}),
       scoped: true,
       ...(board.viewport ?? ARTIFACT_DEFAULT_VIEWPORT),
-      appearance: board.appearance,
+      cornerRadius: board.cornerRadius,
       position: board.position,
       layoutGroup: board.layoutGroup,
-      designLayers: board.designLayers,
-      tweaks: board.tweaks,
-    }
-    if (!board.pageId) {
-      shared.push(entry)
-    } else if (pageDefinitions.has(board.pageId)) {
+    })
+    if (board.unplaced) {
+      unplaced.push(entry)
+    } else if (board.pageId) {
       const page = boardsByPage.get(board.pageId)
       if (page) page.push(entry)
       else boardsByPage.set(board.pageId, [entry])
     } else {
-      unplaced.push(entry)
+      shared.push(entry)
     }
   }
-  const pages: CanvasPage[] = []
+  const pages: CanvasPage<B>[] = []
   let showsSharedBoards = false
-  for (const { id, title, includeSharedBoards } of pageDefinitions.values()) {
+  for (const { id, title, includeSharedBoards } of new Map(
+    data.pages.map((page) => [page.id, page]),
+  ).values()) {
     const own = boardsByPage.get(id)
     const showShared = includeSharedBoards !== false
     showsSharedBoards ||= showShared
     const fallback = own ?? (showShared ? shared : [])
     const boards = showShared && own?.length && shared.length ? [...own, ...shared] : fallback
     pages.push({
-      id: pageIds.get(id) ?? id,
+      id,
       title,
       ownedBoardCount: own?.length ?? 0,
       boards,
@@ -191,11 +218,7 @@ export function createCanvasDocument(
       typeof overlay?.columns === 'number' && Number.isFinite(overlay.columns)
         ? Math.min(4, Math.max(1, Math.round(overlay.columns)))
         : data.columns,
-    flows: data.flows.map(({ from, to, label }) => ({
-      from: boardIds.get(from) ?? from,
-      to: boardIds.get(to) ?? to,
-      label,
-    })),
+    flows: data.flows,
     showFlows: Boolean(overlay?.showFlows ?? data.showFlows),
     handDrawnFlows: Boolean(overlay?.handDrawnFlows ?? data.handDrawnFlows),
   }

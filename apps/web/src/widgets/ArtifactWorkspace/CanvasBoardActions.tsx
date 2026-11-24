@@ -1,4 +1,4 @@
-import { ARTBOARD_GEOMETRY_LIMITS, type Version } from '@akasha/protocol'
+import { ARTBOARD_GEOMETRY_LIMITS, type VersionSummary } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@akasha/ui/popover'
 import { Download, Ellipsis, Focus, Play } from 'lucide-react'
@@ -64,9 +64,9 @@ export function CanvasBoardQuickActions({ title, onExpand, onPlay, onExport }: Q
 interface BoardActionsProps {
   board: CanvasBoard
   bounds: CanvasBounds
-  version: Version
+  version: VersionSummary
   disabled: boolean
-  onChange: (edit: CanvasBoardEdit, base: Version) => void
+  onChange: CanvasBoardEditing['change']
 }
 
 /** 坐标和尺寸可以用键盘修改；四个字段作为一项版本变更提交。 */
@@ -78,17 +78,18 @@ export function CanvasBoardActions({
   onChange,
 }: BoardActionsProps) {
   const [form, setForm] = useState<{
-    base: Version
+    base: VersionSummary
     initial: CanvasBounds
     bounds: CanvasBounds
     confirming: boolean
   } | null>(null)
   const { coordinate } = ARTBOARD_GEOMETRY_LIMITS
 
-  const apply = (edit: CanvasBoardEdit) => {
+  const apply = async (edit: CanvasBoardEdit) => {
     if (!form || disabled) return
-    onChange(edit, form.base)
-    setForm(null)
+    if (await onChange(edit, form.base)) {
+      setForm((current) => (current === form ? null : current))
+    }
   }
 
   return (
@@ -130,6 +131,7 @@ export function CanvasBoardActions({
               <Button
                 size="sm"
                 variant="destructive"
+                disabled={disabled}
                 onClick={() => apply({ kind: 'delete', ids: [board.id] })}
               >
                 删除

@@ -2,14 +2,15 @@ import {
   type CanvasLayer,
   type DesignLayer,
   readEditableArtboardSource,
-  type Version,
+  type VersionSummary,
 } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import type { CanvasBoard } from '@/entities/artifact'
 
 interface BoardInspectorSourceProps {
   board?: CanvasBoard
-  version: Version
+  version: VersionSummary
+  fullSource?: string
   designLayer?: DesignLayer
   runtimeLayer?: CanvasLayer
   /** 只读或非头版本不提供入口；总是打开整稿而非另一个编辑器。 */
@@ -20,23 +21,37 @@ interface BoardInspectorSourceProps {
 export function BoardInspectorSource({
   board,
   version,
+  fullSource,
   designLayer,
   runtimeLayer,
   onOpenEditor,
 }: BoardInspectorSourceProps) {
   const fromBoard = Boolean(board?.scoped && !board.generated)
-  const source = fromBoard && board ? board.source : version.source
+  const source = fromBoard ? board?.source : fullSource
   const scope = fromBoard ? '画板源码' : '整份作品快照'
-  const native = board && designLayer && sourceForDesignLayer(version, board.id, designLayer.id)
+  const authored =
+    board && designLayer && fullSource !== undefined
+      ? sourceForDesignLayer(fullSource, version.version, board.id, designLayer.id)
+      : undefined
+  const native = authored ?? (designLayer && JSON.stringify(designLayer, null, 2))
   const excerpt =
-    !native && !board?.generated && runtimeLayer ? locateSource(source, runtimeLayer) : null
+    !native && !board?.generated && runtimeLayer && source !== undefined
+      ? locateSource(source, runtimeLayer)
+      : null
   const fallback = runtimeLayer || designLayer ? `无法定位此图层的源码。以下为${scope}。` : scope
 
   return (
     <div className="flex flex-col gap-2">
-      {native && <SourceBlock label="唯一图层声明 · 画板源码" source={native} />}
+      {native && (
+        <SourceBlock
+          label={authored ? '唯一图层声明 · 画板源码' : `原生图层记录 · v${version.version}`}
+          source={native}
+        />
+      )}
       {excerpt && <SourceLines excerpt={excerpt} scope={scope} />}
-      {!native && !excerpt && <SourceBlock label={fallback} source={source} />}
+      {!native && !excerpt && source !== undefined && (
+        <SourceBlock label={fallback} source={source} />
+      )}
       {onOpenEditor && (
         <div>
           <Button size="sm" variant="outline" onClick={onOpenEditor}>
@@ -106,9 +121,9 @@ function SourceLines({ excerpt, scope }: { excerpt: SourceExcerpt; scope: string
   )
 }
 
-function sourceForDesignLayer(version: Version, boardId: string, layerId: string) {
+function sourceForDesignLayer(source: string, version: number, boardId: string, layerId: string) {
   try {
-    const { boards } = readEditableArtboardSource(version.source, version.version)
+    const { boards } = readEditableArtboardSource(source, version)
     const raw = boards.get(boardId)?.raw.designLayers
     if (!Array.isArray(raw)) return undefined
     // 原始声明可能含旧版或外部工具字段；不要用经过 schema 归一化的图层冒充原稿。

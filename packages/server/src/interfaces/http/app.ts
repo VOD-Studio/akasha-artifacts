@@ -554,8 +554,29 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
     if (versionParam && (!Number.isInteger(version) || (version ?? 0) < 1)) {
       throw new DomainError('BAD_REQUEST', 'version 参数必须为正整数')
     }
-    const data = await deps.service.getArtifact({ id, projectId, version })
-    return c.json(data)
+    const input = { id, projectId, version }
+    if (c.req.query('view') === 'canvas') {
+      return c.json(await deps.service.getWorkspace(input), 200, {
+        'Cache-Control': 'private, no-store',
+      })
+    }
+    return c.json(await deps.service.getArtifact(input))
+  })
+
+  app.get('/api/v1/artifacts/:id/boards', async (c) => {
+    const rawVersion = c.req.query('version')
+    const version = Number(rawVersion)
+    if (!rawVersion || !/^[1-9]\d*$/.test(rawVersion) || !Number.isSafeInteger(version)) {
+      throw new DomainError('BAD_REQUEST', '读取画板必须指定正整数版本号')
+    }
+    const boardId = c.req.query('boardId')
+    if (!boardId) throw new DomainError('BAD_REQUEST', '读取画板必须指定画板标识')
+    const artifact = await deps.service.resolveArtifact(c.req.param('id'), c.req.query('projectId'))
+    const board = await deps.service.workspace.getBoard(artifact, version, boardId)
+    if (!board) throw new DomainError('NOT_FOUND', '指定版本没有此画板')
+    return c.json({ artifactId: artifact.publicId, version, board }, 200, {
+      'Cache-Control': 'private, no-store',
+    })
   })
 
   app.get('/api/v1/withdrawn-artifacts', async (c) => {
@@ -670,7 +691,10 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
   app.get('/api/v1/artifacts/:id/versions', async (c) => {
     const id = c.req.param('id')
     const projectId = c.req.query('projectId')
-    const versions = await deps.service.getHistory(id, projectId)
+    const versions =
+      c.req.query('view') === 'metadata'
+        ? await deps.service.getHistorySummaries(id, projectId)
+        : await deps.service.getHistory(id, projectId)
     return c.json({ versions })
   })
 

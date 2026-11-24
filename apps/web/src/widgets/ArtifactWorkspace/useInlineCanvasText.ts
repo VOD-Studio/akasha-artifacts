@@ -4,7 +4,7 @@ import {
   type DesignLayer,
   type ElementRef,
   type SandboxToShellMessage,
-  type Version,
+  type VersionSummary,
 } from '@akasha/protocol'
 import { useCallback, useRef, useState } from 'react'
 import type { CanvasBoard } from '@/entities/artifact'
@@ -21,31 +21,32 @@ export interface CanvasTextTools {
   /** 命中点是画板像素，锚点是外壳屏幕坐标，二者不能混用。 */
   pick: (board: CanvasBoard, point: Point, anchor: Point) => void
   /** 放置新对象时保留指针按下时的源码版本。 */
-  place: (board: CanvasBoard, layer: DesignTextLayer, base: Version, anchor: Point) => void
+  place: (board: CanvasBoard, layer: DesignTextLayer, base: VersionSummary, anchor: Point) => void
   /** 检查器可从已选文字对象直接进入同一编辑器。 */
   edit: (board: CanvasBoard, layer: DesignTextLayer, anchor: Point) => void
 }
 
 /** 一个已定位的编辑或只读提示，保留打开时的版本和外壳定位。 */
 export type CanvasTextDraft = { anchor: Point } & (
-  | { kind: 'create' | 'native'; boardId: string; base: Version; layer: DesignTextLayer }
-  | { kind: 'source'; boardId?: string; base: Version; loc: string; text: string }
+  | { kind: 'create' | 'native'; boardId: string; base: VersionSummary; layer: DesignTextLayer }
+  | { kind: 'source'; boardId?: string; base: VersionSummary; loc: string; text: string }
   | { kind: 'readOnly'; element: ElementRef; message: string }
 )
 
-type TextTarget = Extract<SandboxToShellMessage, { type: 'inspect.text.target' }>
+type TextTarget = Extract<SandboxToShellMessage, { type: 'inspect.target' }>
 interface Request {
   id: string
   board: CanvasBoard
-  base: Version
+  base: VersionSummary
   anchor: Point
 }
 interface TextEditingInput {
   artifact: Artifact
-  version: Version
+  version: VersionSummary
   enabled: boolean
   activeBoardId?: string
   editing: CanvasBoardEditing
+  readBoard: (board: CanvasBoard) => CanvasBoard | undefined
   send: (boardId: string, message: ShellOutgoingPayload) => void
   annotate: (element: ElementRef) => void
 }
@@ -134,10 +135,13 @@ export function useInlineCanvasText(input: TextEditingInput) {
   const tools: CanvasTextTools = {
     pick(board, point, anchor) {
       if (draft || !input.enabled || !input.editing.available) return
+      const loaded = input.readBoard(board)
+      if (!loaded) return
       const id = crypto.randomUUID()
-      pending.current = { id, board, anchor, base: input.version }
+      pending.current = { id, board: loaded, anchor, base: input.version }
       input.send(board.id, {
-        type: 'inspect.text.at',
+        type: 'inspect.at',
+        purpose: 'text',
         requestId: id,
         version: input.version.version,
         x: point.x,
@@ -180,14 +184,14 @@ export function useInlineCanvasText(input: TextEditingInput) {
         const live = latest.current
         if (live.draft !== draft || !live.enabled || live.artifact.publicId !== base.artifactId)
           return
-        staged = live.editing.replaceSource(source, base)
+        staged = await live.editing.replaceSource(source, base)
       } else if (draft.kind === 'native') {
-        staged = input.editing.change(
+        staged = await input.editing.change(
           { kind: 'layerText', boardId: draft.boardId, layerId: draft.layer.id, text },
           base,
         )
       } else {
-        staged = input.editing.change(
+        staged = await input.editing.change(
           { kind: 'layerCreate', boardId: draft.boardId, layer: { ...draft.layer, text } },
           base,
         )
