@@ -280,6 +280,37 @@ describe('@akasha/protocol MCP, HTTP, Realtime, and Bridge', () => {
     ).toBe(false)
   })
 
+  it('保留总览控制、独立选区消息和单板参数预览', () => {
+    const envelope = { v: PROTOCOL_VERSION, nonce: 'board-frame' }
+    const messages = [
+      {
+        type: 'render',
+        artifactType: 'html',
+        boardId: 'payment',
+        overviewAnimation: false,
+        version: 2,
+        renderId: 1,
+        source: '<main>付款</main>',
+        boardAppearance: { background: '#f0f0f0', cornerRadius: 18 },
+        boardTweaks: { density: 'compact' },
+        state: {},
+      },
+      { type: 'animation.set', version: 2, animate: true },
+      {
+        type: 'board.tweaks.preview',
+        boardId: 'payment',
+        version: 2,
+        values: { density: 'roomy' },
+      },
+      { type: 'capture.cancel', requestId: 'capture-1' },
+      { type: 'inspect.at', purpose: 'select', requestId: 'select-1', version: 2, x: 8, y: 9 },
+    ]
+    for (const message of messages) {
+      const payload = { ...envelope, ...message }
+      expect(ShellToSandboxMessageSchema.parse(payload)).toEqual(payload)
+    }
+  })
+
   it('runs black-box HTTP contract test runner against a compliant mock fetch', async () => {
     const mockFetch: typeof fetch = async (input) => {
       const url = String(input)

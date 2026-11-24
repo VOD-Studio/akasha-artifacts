@@ -965,7 +965,14 @@ export function ArtifactCanvas({
                         />
                       ) : null}
                     </div>
-                    <div className="artifact-canvas-board-clip">
+                    <div
+                      className="artifact-canvas-board-clip"
+                      style={
+                        board.cornerRadius
+                          ? { borderRadius: board.cornerRadius * camera.scale }
+                          : undefined
+                      }
+                    >
                       <div
                         style={{
                           width: board.width,

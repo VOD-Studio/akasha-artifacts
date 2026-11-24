@@ -1,4 +1,9 @@
-import type { ArtifactType, DesignLayer } from '@akasha/protocol'
+import type {
+  ArtboardAppearance,
+  ArtboardTweakValues,
+  ArtifactType,
+  DesignLayer,
+} from '@akasha/protocol'
 import { tsxLanguage } from '@codemirror/lang-javascript'
 import { strToU8, zipSync } from 'fflate'
 import boot from './offline-boot.js?raw'
@@ -14,6 +19,8 @@ interface OfflineBoard {
   height: number
   source: string
   designLayers?: readonly DesignLayer[]
+  boardAppearance?: ArtboardAppearance
+  boardTweaks?: ArtboardTweakValues
 }
 
 interface OfflineDesign {

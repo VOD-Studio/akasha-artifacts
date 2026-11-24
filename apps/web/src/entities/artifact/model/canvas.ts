@@ -1,7 +1,9 @@
 import {
   ARTIFACT_DEFAULT_VIEWPORT,
+  type ArtboardAppearance,
   type ArtboardContent,
   type ArtboardIndex,
+  type ArtboardTweak,
   type ArtifactType,
   type DesignLayer,
   projectArtboard,
@@ -23,6 +25,10 @@ export interface CanvasBoard {
   width: number
   /** 画板独立视口高度，单位为 CSS 像素。 */
   height: number
+  /** 外壳轮廓的圆角，归一化到画板固有尺寸。 */
+  cornerRadius?: number
+  /** 随正文读取；未声明时使用白底与直角，不影响布局。 */
+  appearance?: ArtboardAppearance
   /** 传给沙盒的渲染器类型；并排多画板的每块内容是 HTML。 */
   type: ArtifactType
   /** 未声明时沿用旧制品的网格布局。 */
@@ -41,6 +47,8 @@ export interface CanvasBoard {
 /** 可交给沙盒、导出和源码工具渲染的画板。 */
 export interface LoadedCanvasBoard extends CanvasBoard {
   source: string
+  /** 固定版本声明的参数，不包含当前浏览会话的覆写。 */
+  tweaks?: ArtboardTweak[]
 }
 
 /** 负责显示一组画板的页面；总览和未分组页可以由模型生成。 */
@@ -84,6 +92,8 @@ export function loadCanvasBoard(board: CanvasBoard, content: ArtboardContent): L
     source: content.html ?? descriptionMarkup(content.description ?? '空白画板'),
     ...(content.html === undefined ? { generated: true } : {}),
     designLayers: content.designLayers,
+    appearance: content.appearance,
+    tweaks: content.tweaks,
   }
 }
 
@@ -160,6 +170,7 @@ function composeDocument<B extends CanvasBoard>(
       type: 'html',
       scoped: true,
       ...(board.viewport ?? ARTIFACT_DEFAULT_VIEWPORT),
+      cornerRadius: board.cornerRadius,
       position: board.position,
       layoutGroup: board.layoutGroup,
     })

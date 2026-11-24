@@ -8,12 +8,13 @@ import {
   parseVerify,
   resolveEffectiveProps,
 } from '@akasha/kit'
-import { parseArtboard } from '@akasha/protocol'
+import { parseArtboard, resolveArtboardTweaks } from '@akasha/protocol'
 import { gpen, styles } from '@violetjs/inkline'
 import { inkSvg } from '@violetjs/inkline/dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePersistentControl } from '../state/preserve'
 import { useArtifactState } from '../state/store'
+import { artboardStyle } from './artboard-style'
 import { DesignLayerScene } from './DesignLayerScene'
 import type { RendererProps } from './registry'
 import { sanitizeMarkup } from './sanitize'
@@ -445,28 +446,29 @@ export function ArtboardRenderer({ source, preserved, onRendered }: RendererProp
               ) : null}
             </div>
             <div className="flex-1 p-4">
-              {board.designLayers?.length ? (
-                <div
-                  className="relative overflow-hidden"
-                  style={{
+              <div
+                className="relative overflow-hidden"
+                style={{
+                  ...(board.designLayers?.length && {
                     height: board.viewport?.height ?? 800,
                     width: board.viewport?.width ?? 1280,
-                  }}
-                >
-                  {board.html ? (
-                    <SanitizedHtmlBox html={board.html} className="text-sm" />
-                  ) : (
-                    board.description
-                  )}
+                  }),
+                  ...artboardStyle(
+                    board.appearance,
+                    board.tweaks?.length ? resolveArtboardTweaks(board.tweaks) : undefined,
+                  ),
+                }}
+              >
+                {board.html && <SanitizedHtmlBox html={board.html} className="text-sm" />}
+                {!board.html && (
+                  <p className="text-xs leading-relaxed text-slate-600">
+                    {board.description ?? '空白画板'}
+                  </p>
+                )}
+                {!!board.designLayers?.length && (
                   <DesignLayerScene layers={board.designLayers} interactive={false} />
-                </div>
-              ) : board.html ? (
-                <SanitizedHtmlBox html={board.html} className="text-sm" />
-              ) : (
-                <p className="text-xs leading-relaxed text-slate-600">
-                  {board.description ?? '空白画板'}
-                </p>
-              )}
+                )}
+              </div>
             </div>
             {board.tags && board.tags.length > 0 ? (
               <div className="flex flex-wrap gap-1.5 border-t border-slate-100 px-3.5 py-2">

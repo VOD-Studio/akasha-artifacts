@@ -401,6 +401,8 @@ function stubResizeObserver() {
       disconnect() {}
     },
   )
+  // JSDOM 没有元素滚动方法；Tabs 用它保持新选中的标签可见。
+  HTMLElement.prototype.scrollIntoView ??= vi.fn()
 }
 
 it('从独立检查器选择其他页面的画板并查看固定版本的真实源码', () => {
@@ -437,8 +439,12 @@ it('从独立检查器选择其他页面的画板并查看固定版本的真实�
   const canvas = screen.getByRole('region', { name: '画布' })
   expect(within(canvas).getByTitle('画板内容：预约完成')).toBeTruthy()
   expect(within(inspector).getByText('1280 × 800')).toBeTruthy()
+  expect(within(inspector).getByText('#ffffff')).toBeTruthy()
+  expect(within(inspector).queryByRole('button', { name: '保存' })).toBeNull()
   fireEvent.keyDown(within(inspector).getByRole('tab', { name: '源码' }), { key: 'Enter' })
   expect(within(inspector).getByText(/"description":"已确认时段"/)).toBeTruthy()
+  expect(within(inspector).getByText('整份作品快照')).toBeTruthy()
+  expect(within(inspector).queryByRole('button', { name: '编辑整份源码' })).toBeNull()
   expect(within(inspector).getByText('历史版本 · 只读')).toBeTruthy()
 
   fireEvent.click(within(inspector).getByRole('button', { name: '关闭' }))
@@ -451,6 +457,28 @@ it('从独立检查器选择其他页面的画板并查看固定版本的真实�
   const otherVersion = screen.getByRole('region', { name: '画布' })
   expect(within(otherVersion).getByTitle('画板内容：宽屏首页')).toBeTruthy()
   expect(within(otherVersion).queryByTitle('画板内容：预约完成')).toBeNull()
+})
+
+it('仅查看的分享链接允许读画板源码，不暴露保存或整稿编辑入口', () => {
+  stubResizeObserver()
+  const request = vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({}))
+  showWorkspace({
+    ...detailFor(),
+    access: { role: 'view', expiresAt: '2026-11-25T09:00:00.000Z' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: '宽屏首页' }))
+  act(() => useWorkspaceStore.getState().setInspectorTab('inspect'))
+  const inspector = within(screen.getByRole('dialog', { name: '检查器' }))
+  expect(inspector.getByText('1440 × 900')).toBeTruthy()
+  expect(inspector.queryByRole('button', { name: '保存' })).toBeNull()
+  expect(inspector.queryByRole('tab', { name: '画板参数' })).toBeNull()
+  fireEvent.keyDown(inspector.getByRole('tab', { name: '源码' }), { key: 'Enter' })
+  expect(inspector.getByText('画板源码')).toBeTruthy()
+  expect(inspector.getByText('<h1>桌面预约</h1>')).toBeTruthy()
+  expect(inspector.queryByRole('button', { name: '编辑整份源码' })).toBeNull()
+  expect(
+    request.mock.calls.every(([, options]) => !options?.method || options.method === 'GET'),
+  ).toBe(true)
 })
 
 it('重复从检查器选择同一画板，会找回已被移出视口的选板', () => {

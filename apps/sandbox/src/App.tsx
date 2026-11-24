@@ -1,16 +1,19 @@
 import {
+  type ArtboardAppearance,
+  type ArtboardTweakValues,
   type ArtifactType,
   CANVAS_PREVIEW_MAX_EDGE,
   type DesignLayer,
   type PreservedViewState,
 } from '@akasha/protocol'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { SandboxBridgeClient } from './bridge/client'
 import { captureSandboxPng } from './capture-png'
 import { SandboxInspector } from './inspector/index'
 import { readCanvasLayers } from './inspector/layers'
 import { type OverviewMotion, pauseOverviewMotion } from './overview-motion'
 import { bindPrototype, hasPlayableControls } from './prototype'
+import { artboardStyle } from './renderers/artboard-style'
 import { registerBuiltinRenderers } from './renderers/builtins'
 import { DesignLayerScene } from './renderers/DesignLayerScene'
 import { getRenderer } from './renderers/registry'
@@ -38,6 +41,9 @@ export interface RenderPayload {
   renderId?: number
   source: string
   designLayers?: DesignLayer[]
+  /** 仅 `boardId` 所属的持久外观与参数，不包含临时覆写。 */
+  boardAppearance?: ArtboardAppearance
+  boardTweaks?: ArtboardTweakValues
   /** 允许由制品的控件发出原型导航请求。 */
   playback?: true
 }
@@ -66,6 +72,9 @@ export function SandboxApp({
   initialPreservedState,
 }: SandboxAppProps) {
   const [payload, setPayload] = useState<RenderPayload | null>(initialRender)
+  const [tweakPreview, setTweakPreview] = useState<{ values?: ArtboardTweakValues }>()
+  const requestedTweakPreview = useRef(false)
+  const paintedTweakPreview = useRef(false)
   const committedPayloadRef = useRef<RenderPayload | null>(initialRender)
   const renderedVisualVersionRef = useRef(0)
   const renderedOverviewRef = useRef<RenderPayload | null>(null)
@@ -141,14 +150,34 @@ export function SandboxApp({
             ? {
                 boardId: msg.boardId,
                 designLayers: msg.designLayers,
+                boardAppearance: msg.boardAppearance,
+                boardTweaks: msg.boardTweaks,
               }
             : {}),
           ...(msg.playback ? { playback: true } : {}),
         }
         committedPayloadRef.current = next
         setPayload(next)
+        requestedTweakPreview.current = false
+        setTweakPreview(undefined)
       } else if (msg.type === 'animation.set') {
         if (msg.version === overviewVersion) setOverviewAnimation(msg.animate)
+      } else if (msg.type === 'board.tweaks.preview') {
+        const committed = committedPayloadRef.current
+        if (
+          committed?.boardTweaks &&
+          committed.boardId === msg.boardId &&
+          committed.version === msg.version
+        ) {
+          const defaults = committed.boardTweaks
+          const entries = Object.entries(msg.values)
+          const isPreview =
+            entries.length !== Object.keys(defaults).length ||
+            entries.some(([key, value]) => defaults[key] !== value)
+          requestedTweakPreview.current = isPreview
+          if (isPreview) capture?.controller.abort()
+          setTweakPreview(isPreview ? { values: msg.values } : {})
+        }
       } else if (msg.type === 'capture.cancel') {
         if (capture && capture.requestId === msg.requestId) capture.controller.abort()
       } else if (msg.type === 'capture.png') {
@@ -160,6 +189,11 @@ export function SandboxApp({
         }
         if (!root || capture || version !== renderedVisualVersionRef.current) {
           if (requestId !== undefined) failure(capture ? '画板正在生成 PNG' : '画板尚未渲染')
+          return
+        }
+        // Bridge 消息可先于 React 提交到达；请求值和已经绘制的值都须是默认值。
+        if (requestedTweakPreview.current || paintedTweakPreview.current) {
+          failure('画板正在预览临时参数')
           return
         }
         if (
@@ -175,6 +209,7 @@ export function SandboxApp({
         capture = { requestId, controller }
         void captureSandboxPng(root, width, height, scale, controller.signal)
           .then((png) => {
+            controller.signal.throwIfAborted()
             if (png.size > 32 * 1024 * 1024) throw new Error('画板 PNG 超出传输上限')
             bridge.send({ type: 'capture.png.result', ...correlation, png })
           })
@@ -191,6 +226,7 @@ export function SandboxApp({
       } else if (msg.type === 'apply.preview') {
         const committed = committedPayloadRef.current
         if (committed?.version === msg.version) {
+          capture?.controller.abort()
           renderedOverviewRef.current = null
           setPayload({ ...committed, source: msg.source })
         }
@@ -400,6 +436,20 @@ export function SandboxApp({
     [bridge, payload],
   )
 
+  useLayoutEffect(() => {
+    paintedTweakPreview.current = tweakPreview?.values !== undefined
+    // 重置参数不重新挂载作者内容；默认样式提交后，重新允许总览安排截图。
+    if (
+      tweakPreview &&
+      !paintedTweakPreview.current &&
+      !requestedTweakPreview.current &&
+      renderedOverviewRef.current === payload &&
+      payload?.renderId !== undefined
+    ) {
+      handleRendered(payload.version)
+    }
+  }, [handleRendered, payload, tweakPreview])
+
   // 原生图层变动但 HTML 片段未变时，HTML 渲染器不会再次挂载或上报。
   useEffect(() => {
     const previous = renderedOverviewRef.current
@@ -421,6 +471,10 @@ export function SandboxApp({
     [payload],
   )
   const designLayers = payload?.designLayers?.length ? payload.designLayers : undefined
+  const style = useMemo(
+    () => artboardStyle(payload?.boardAppearance, tweakPreview?.values ?? payload?.boardTweaks),
+    [payload?.boardAppearance, payload?.boardTweaks, tweakPreview?.values],
+  )
 
   return (
     <ArtifactStateContext.Provider value={stateStore}>
@@ -428,6 +482,7 @@ export function SandboxApp({
         <div
           ref={rootRef}
           className={`min-h-screen bg-white text-slate-900${designLayers ? ' relative' : ''}`}
+          style={style}
         >
           {designLayers ? (
             <DesignLayerScene layers={designLayers} interactive={!payload?.playback} />

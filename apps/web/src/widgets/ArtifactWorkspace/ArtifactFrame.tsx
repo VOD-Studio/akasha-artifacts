@@ -7,11 +7,13 @@ import {
   type ElementRef,
   type Feedback,
   type JsonPatchOp,
+  resolveArtboardTweaks,
   type SandboxToShellMessage,
   type StateStreamSnapshot,
   type VersionSummary,
 } from '@akasha/protocol'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useStore } from 'zustand'
 import type { CanvasBoard, LoadedCanvasBoard } from '@/entities/artifact'
 import { submitArtifactFeedback } from '@/entities/feedback'
 import { selectionForVersion, useSelectionStore } from '@/entities/selection'
@@ -26,6 +28,7 @@ import {
 } from '@/shared/bridge/host'
 import { createStorageRelay } from '@/shared/bridge/storage-relay'
 import { ElementOverlay } from '@/shared/overlay/ElementOverlay'
+import type { BoardTweakPreviewStore } from './board-tweak-previews'
 
 /** 一块画板的沙盒向外壳提供的连接，登记到工作区后由工作区使用。 */
 export interface FrameConnection {
@@ -33,9 +36,9 @@ export interface FrameConnection {
   send: (message: ShellOutgoingPayload) => void
   /** 把状态补丁转发给该沙盒。 */
   forwardState: (seq: number, ops: JsonPatchOp[]) => void
-  /** 仅 scoped 总览支持；复用已完成渲染的当前沙盒。 */
-  capturePreview?: (signal: AbortSignal) => Promise<Blob>
 }
+
+type CapturePreview = (signal: AbortSignal) => Promise<Blob>
 
 /** 试玩有自己的输入和导航，不能调用设计视图的选区、批注或直改操作。 */
 export type BoardFramePurpose =
@@ -48,6 +51,9 @@ interface ArtifactFrameProps {
   version: VersionSummary
   board: LoadedCanvasBoard
   state: StateStreamSnapshot
+  /** 当前版本的浏览会话，不向历史、导出或其他画板转发。 */
+  tweakPreviews: BoardTweakPreviewStore
+  useTweakPreview: boolean
   sandboxOrigin: string
   pins: readonly Feedback[]
   /** 图钉只打开原线程，不覆盖正在撰写的选区。 */
@@ -55,8 +61,8 @@ interface ArtifactFrameProps {
   purpose: BoardFramePurpose
   /** 只有设计视图登记；试玩不接收设计视图的指认或编辑指令。 */
   register?: (id: string, frame: FrameConnection | null) => void
-  /** 当前 scoped 总览成功绘制后，通知工作区可以安排预览。 */
-  onReady?: (boardId: string) => void
+  /** 仅 scoped 总览上报首绘；参数处于默认值时才提供截图回调。 */
+  onReady?: (boardId: string, capture?: CapturePreview) => void
   onPlayable: (board: CanvasBoard, version: number, playable: boolean) => void
   watchLayers: boolean
   onLayers: (id: string, version: number, layers: CanvasLayer[], truncated: boolean) => void
@@ -115,6 +121,8 @@ export function ArtifactFrame({
   version,
   board,
   state,
+  tweakPreviews,
+  useTweakPreview,
   sandboxOrigin,
   pins,
   onFocusPin,
@@ -128,7 +136,7 @@ export function ArtifactFrame({
   onVisualSelect,
 }: ArtifactFrameProps) {
   const artifactId = artifact.publicId
-  const { id, scoped, source, type, designLayers } = board
+  const { id, scoped, source, type, designLayers, appearance, tweaks } = board
   const versionNumber = version.version
   const playback = purpose.type === 'play'
   const focused = purpose.type === 'focus'
@@ -144,7 +152,10 @@ export function ArtifactFrame({
   const hadSelection = useRef(false)
   const renderSequence = useRef(0)
   const captureSequence = useRef(0)
-  const resetCapture = useRef<((reason: string) => void) | null>(null)
+  const captureControl = useRef<{
+    cancel: (reason: string) => void
+    invalidate: (reason: string) => void
+  } | null>(null)
   const { nonce, host } = useMemo(() => {
     // 画板作用域或查看方式改变时重新握手；总览内的动画开关不影响会话。
     void artifactId
@@ -179,21 +190,35 @@ export function ArtifactFrame({
     () => pins.filter((pin) => pin.element && belongsToBoard(pin.element, id, scoped)),
     [pins, id, scoped],
   )
+  const overrides = useStore(tweakPreviews, (state) =>
+    useTweakPreview && tweaks?.length ? state.byBoard.get(id) : undefined,
+  )
+  const boardTweaks = useMemo(
+    () => (tweaks?.length ? resolveArtboardTweaks(tweaks) : undefined),
+    [tweaks],
+  )
+  const tweakPreview = useMemo(
+    () => (tweaks && overrides ? resolveArtboardTweaks(tweaks, overrides) : undefined),
+    [tweaks, overrides],
+  )
   const render = useMemo(
     () => ({
       artifactType: type,
       version: versionNumber,
       source,
       designLayers,
+      boardAppearance: appearance,
+      boardTweaks,
       boardId: scoped ? id : undefined,
       playback: playback ? (true as const) : undefined,
     }),
-    [type, source, versionNumber, scoped, id, playback, designLayers],
+    [type, source, versionNumber, scoped, id, playback, designLayers, appearance, boardTweaks],
   )
   const applied = useRef<{
     render: typeof render
     renderId: number | undefined
     overviewAnimation: boolean | undefined
+    tweakPreview: typeof tweakPreview
     pins: readonly Feedback[]
     watchingLayers: boolean
   } | null>(null)
@@ -208,6 +233,7 @@ export function ArtifactFrame({
     purpose,
     board,
     onReady,
+    tweakPreview,
     onPlayable,
     watchLayers,
     onLayers,
@@ -224,6 +250,7 @@ export function ArtifactFrame({
     purpose,
     board,
     onReady,
+    tweakPreview,
     onPlayable,
     watchLayers,
     onLayers,
@@ -237,26 +264,32 @@ export function ArtifactFrame({
     let connected = true
     let renderedId: number | undefined
     let pending: PendingPreview | null = null
-    const invalidateCapture = (reason: string) => {
-      renderedId = undefined
+    const cancelCapture = (reason: string) => {
       if (!pending) return
       if (connected) host.send({ type: 'capture.cancel', requestId: pending.requestId })
       pending.reject(new Error(reason))
     }
-    resetCapture.current = invalidateCapture
+    const invalidateCapture = (reason: string) => {
+      renderedId = undefined
+      cancelCapture(reason)
+    }
+    captureControl.current = { cancel: cancelCapture, invalidate: invalidateCapture }
 
-    const capturePreview = (signal: AbortSignal): Promise<Blob> => {
+    const capturePreview = (renderId: number, signal: AbortSignal): Promise<Blob> => {
       if (signal.aborted) return Promise.reject(signal.reason)
       const current = applied.current
       if (
         !connected ||
         latest.current.nonce !== nonce ||
         !iframeRef.current?.contentWindow ||
-        renderedId === undefined ||
+        renderedId !== renderId ||
         current?.renderId !== renderedId ||
         current.render !== latest.current.render
       ) {
         return Promise.reject(new Error('画板尚未完成渲染'))
+      }
+      if (current.tweakPreview !== undefined || latest.current.tweakPreview !== undefined) {
+        return Promise.reject(new Error('画板正在预览临时参数'))
       }
       if (pending) return Promise.reject(new Error('画板正在生成预览'))
 
@@ -285,10 +318,14 @@ export function ArtifactFrame({
           checking = true
           void verifyPreviewPng(png, Math.round(width * scale), Math.round(height * scale)).then(
             () => {
-              if (
+              if (signal.aborted) {
+                request.reject(signal.reason)
+              } else if (
                 latest.current.nonce !== nonce ||
                 !iframeRef.current?.contentWindow ||
-                current.render !== latest.current.render
+                current.render !== latest.current.render ||
+                renderedId !== renderId ||
+                latest.current.tweakPreview !== undefined
               ) {
                 request.reject(new Error('画板已重新渲染'))
               } else if (finish()) {
@@ -339,6 +376,15 @@ export function ArtifactFrame({
       switch (message.type) {
         case 'ready':
           invalidateCapture('画板沙盒已重新连接')
+          // Bridge 已按顺序发出 render；握手前只保留最后一次覆写。
+          if (scoped && latest.current.tweakPreview) {
+            host.send({
+              type: 'board.tweaks.preview',
+              boardId: id,
+              version: activeVersion,
+              values: latest.current.tweakPreview,
+            })
+          }
           break
         case 'capture.png.result':
         case 'capture.png.failure':
@@ -382,9 +428,16 @@ export function ArtifactFrame({
             send({ type: 'highlight', element: currentSelection, ...(layer ? { layer } : {}) })
           }
           trackPins(host, latest.current.versionPins)
-          if (scopedOverview && message.renderId !== undefined && message.renderId !== renderedId) {
-            renderedId = message.renderId
-            latest.current.onReady?.(id)
+          if (scopedOverview && message.renderId !== undefined) {
+            const readyRenderId = message.renderId
+            const firstReady = renderedId !== readyRenderId
+            renderedId = readyRenderId
+            if (latest.current.tweakPreview === undefined && current?.tweakPreview === undefined) {
+              // 重置后给调度器新的回调，取消中的旧请求不会清掉新安排。
+              latest.current.onReady?.(id, (signal) => capturePreview(readyRenderId, signal))
+            } else if (firstReady) {
+              latest.current.onReady?.(id)
+            }
           }
           break
         }
@@ -489,12 +542,11 @@ export function ArtifactFrame({
         lastStateSeq.current = seq
         host.send({ type: 'state', seq, ops })
       },
-      ...(scopedOverview ? { capturePreview } : {}),
     })
     return () => {
       connected = false
       invalidateCapture('画板沙盒已断开')
-      resetCapture.current = null
+      captureControl.current = null
       register?.(id, null)
       storage.dispose()
       off()
@@ -508,7 +560,7 @@ export function ArtifactFrame({
     const needsRender = previous?.render !== render
     let renderId = previous?.renderId
     if (needsRender) {
-      resetCapture.current?.('画板已重新渲染')
+      captureControl.current?.invalidate('画板已重新渲染')
       renderId = overviewAnimation !== undefined ? ++renderSequence.current : undefined
       const currentState = latest.current.state
       const preservedState = playback
@@ -530,6 +582,22 @@ export function ArtifactFrame({
     ) {
       host.send({ type: 'animation.set', version: versionNumber, animate: overviewAnimation })
     }
+    if (
+      scoped &&
+      boardTweaks &&
+      host.isReady() &&
+      ((needsRender && tweakPreview !== undefined) || previous?.tweakPreview !== tweakPreview)
+    ) {
+      if (tweakPreview !== undefined) {
+        captureControl.current?.cancel('画板正在预览临时参数')
+      }
+      host.send({
+        type: 'board.tweaks.preview',
+        boardId: id,
+        version: versionNumber,
+        values: tweakPreview ?? boardTweaks,
+      })
+    }
     const watchingLayers = !isolated && watchLayers
     if ((needsRender && watchingLayers) || watchingLayers !== (previous?.watchingLayers ?? false)) {
       host.send({ type: 'inspect.layers.watch', active: watchingLayers })
@@ -539,15 +607,20 @@ export function ArtifactFrame({
       render,
       renderId,
       overviewAnimation,
+      tweakPreview,
       pins: versionPins,
       watchingLayers,
     }
   }, [
+    boardTweaks,
     host,
+    id,
     isolated,
     overviewAnimation,
     playback,
     render,
+    scoped,
+    tweakPreview,
     versionNumber,
     versionPins,
     viewKey,

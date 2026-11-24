@@ -5,6 +5,7 @@ import mermaid from 'mermaid'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SandboxApp } from '../src/App'
 import { parseSandboxHash, SandboxBridgeClient } from '../src/bridge/client'
+import * as capturePng from '../src/capture-png'
 import { PreservedStateManager } from '../src/state/preserve'
 import { ArtifactStateStore } from '../src/state/store'
 
@@ -80,6 +81,52 @@ describe('apps/sandbox 运行时与安全边界', () => {
     dispatchFromHost({ v: PROTOCOL_VERSION, nonce, type: 'highlight', element: null })
     expect(received).toHaveLength(1)
     bridge.stop()
+  })
+
+  it('只更新相同版本、相同画板的参数，保留正在输入的原型控件', () => {
+    const { bridge, dispatchFromHost, nonce } = createMockBridgeHarness()
+    const { container } = render(
+      <SandboxApp
+        bridge={bridge}
+        stateStore={new ArtifactStateStore()}
+        preserved={new PreservedStateManager({ debounceMs: 0 })}
+      />,
+    )
+    const send = (message: object) =>
+      act(() => dispatchFromHost({ v: PROTOCOL_VERSION, nonce, ...message }))
+    const board = {
+      type: 'render',
+      artifactType: 'html',
+      boardId: 'x2',
+      source: '<label>姓名 <input></label>',
+      boardAppearance: { background: '#dddddd', cornerRadius: 18 },
+      state: {},
+    }
+    send({ ...board, version: 1, boardTweaks: { duration: 2, visible: true } })
+    const input = screen.getByRole<HTMLInputElement>('textbox', { name: '姓名' })
+    fireEvent.input(input, { target: { value: '未提交' } })
+    const root = container.firstElementChild as HTMLElement
+    const duration = () => root.style.getPropertyValue('--akasha-tweak-duration')
+    expect(duration()).toBe('2')
+    expect(root.style.borderRadius).toBe('18px')
+
+    const preview = {
+      type: 'board.tweaks.preview',
+      boardId: 'x2',
+      version: 1,
+      values: { duration: 4, visible: false },
+    }
+    send({ ...preview, boardId: 'x3' })
+    expect(duration()).toBe('2')
+    send(preview)
+    expect(duration()).toBe('4')
+    expect(root.style.getPropertyValue('--akasha-tweak-visible')).toBe('0')
+    expect(screen.getByRole<HTMLInputElement>('textbox', { name: '姓名' }).value).toBe('未提交')
+
+    send({ ...board, version: 2, boardTweaks: { duration: 7 } })
+    send(preview)
+    expect(duration()).toBe('7')
+    expect(root.style.getPropertyValue('--akasha-tweak-visible')).toBe('')
   })
 
   it('内置 html / markdown / svg / mermaid 四类渲染器可正确渲染并净化危险标签', async () => {
@@ -641,6 +688,96 @@ it('总览取消等待字体的截图时，不栅格化该请求的画板', asyn
     })
   })
   expect(posted.some(({ data }) => data.type === 'capture.png.result')).toBe(false)
+})
+
+it('总览只截取已保存的默认参数，重置后恢复截图且切版不串旧请求', async () => {
+  const { bridge, posted, dispatchFromHost, nonce } = createMockBridgeHarness()
+  const pending = Promise.withResolvers<Blob>()
+  const png = new Blob(['PNG'])
+  const captured: string[] = []
+  const rasterize = vi.spyOn(capturePng, 'captureSandboxPng').mockImplementation((root) => {
+    captured.push(root.style.getPropertyValue('--akasha-tweak-duration'))
+    return captured.length === 1 ? pending.promise : Promise.resolve(png)
+  })
+  const { container } = render(
+    <SandboxApp
+      bridge={bridge}
+      stateStore={new ArtifactStateStore()}
+      preserved={new PreservedStateManager()}
+    />,
+  )
+  const send = (message: object) => dispatchFromHost({ v: PROTOCOL_VERSION, nonce, ...message })
+  const board = {
+    type: 'render',
+    artifactType: 'html',
+    source: '<h1>默认参数截图</h1>',
+    state: {},
+    boardId: 'cover',
+    version: 1,
+    renderId: 1,
+    overviewAnimation: true,
+    boardTweaks: { duration: 2 },
+  }
+  const preview = {
+    type: 'board.tweaks.preview',
+    boardId: 'cover',
+    version: 1,
+    values: { duration: 5 },
+  }
+  const capture = (requestId: string, version = 1) =>
+    send({ type: 'capture.png', requestId, version, width: 320, height: 180, scale: 0.5 })
+  const response = (requestId: string) =>
+    posted.find(({ data }) => 'requestId' in data && data.requestId === requestId)?.data
+  const rendered = (renderId: number) =>
+    posted.filter(({ data }) => data.type === 'rendered' && data.renderId === renderId)
+  const root = container.firstElementChild as HTMLElement
+  const duration = () => root.style.getPropertyValue('--akasha-tweak-duration')
+
+  act(() => {
+    send(board)
+    send(preview)
+  })
+  expect(rendered(1)).toHaveLength(1)
+  expect(duration()).toBe('5')
+  act(() => capture('active'))
+  expect(response('active')).toMatchObject({ type: 'capture.png.failure' })
+
+  act(() => {
+    send({ ...preview, values: board.boardTweaks })
+    capture('before-reset')
+  })
+  expect(response('before-reset')).toMatchObject({ type: 'capture.png.failure' })
+  expect(rasterize).not.toHaveBeenCalled()
+  expect(rendered(1)).toHaveLength(2)
+  expect(duration()).toBe('2')
+
+  act(() => {
+    send(preview)
+    capture('before-preview')
+    send({ ...preview, values: board.boardTweaks })
+  })
+  expect(response('before-preview')).toMatchObject({ type: 'capture.png.failure' })
+  expect(rasterize).not.toHaveBeenCalled()
+
+  act(() => capture('old'))
+  const oldSignal = rasterize.mock.calls[0]?.[4]
+  expect(oldSignal?.aborted).toBe(false)
+  act(() => send(preview))
+  expect(oldSignal?.aborted).toBe(true)
+
+  act(() => {
+    send({ ...board, renderId: 2, version: 2, boardTweaks: { duration: 7 } })
+    send(preview)
+    pending.resolve(png)
+  })
+  await waitFor(() => expect(response('old')).toMatchObject({ type: 'capture.png.failure' }))
+  expect(rendered(2)).toHaveLength(1)
+  expect(duration()).toBe('7')
+  act(() => capture('current', 2))
+  await waitFor(() => {
+    expect(response('current')).toMatchObject({ type: 'capture.png.result', version: 2, png })
+  })
+  expect(captured).toEqual(['2', '7'])
 })
 
 it('原生图层和作者 HTML 独立渲染，同名标记不能接走原生图层的批注定位', async () => {

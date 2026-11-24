@@ -1,5 +1,7 @@
-import type { DesignLayer, VersionSummary } from '@akasha/protocol'
+import { DESIGN_LAYER_COLORS, type DesignLayer, type VersionSummary } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
+import { Field } from '@akasha/ui/field'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
 import { useState } from 'react'
 import { CanvasGeometryFields, sameGeometry } from './CanvasGeometryFields'
 import { ALIGNMENTS, alignItems } from './canvas-arrangement'
@@ -17,14 +19,41 @@ interface LayoutProps {
   editing: CanvasBoardEditing
 }
 
+export const DESIGN_LAYER_COLOR_LABELS = {
+  auto: '默认',
+  ink: '墨色',
+  blue: '蓝色',
+  rose: '玫红',
+  amber: '琥珀色',
+  mint: '薄荷绿',
+} satisfies Record<NonNullable<DesignLayer['color']> | 'auto', string>
+
+interface LayoutDraft {
+  base: VersionSummary
+  original: DesignLayer
+  geometry: CanvasBounds
+  color: DesignLayer['color']
+  selection: readonly DesignLayer[]
+}
+
 /** 仅编辑声明的布局图层；位置作用于选区，尺寸只调整当前图层。 */
 export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutProps) {
-  const [draft, setDraft] = useState<{
-    base: VersionSummary
-    original: DesignLayer
-    geometry: CanvasBounds
-    selection: readonly DesignLayer[]
-  } | null>(null)
+  const [draft, setDraft] = useState<LayoutDraft | null>(null)
+  const color = draft ? draft.color : layer.color
+  const changed =
+    draft && (!sameGeometry(draft.geometry, draft.original) || draft.color !== draft.original.color)
+  const update = (patch: Partial<Pick<LayoutDraft, 'geometry' | 'color'>>) => {
+    setDraft((previous) => ({
+      ...(previous ?? {
+        base: editing.version,
+        original: layer,
+        geometry: layer,
+        color: layer.color,
+        selection: selected,
+      }),
+      ...patch,
+    }))
+  }
   const canAlign = editing.available && selected.length > 1
   const group = selected[0]?.layoutGroup
   const canGroup = canAlign && (!group || selected.some((item) => item.layoutGroup !== group))
@@ -51,13 +80,21 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
           const dx = x - draft.original.x
           const dy = y - draft.original.y
           const changes = draft.selection.flatMap((item) => {
-            if (item.id === draft.original.id)
-              return [{ id: item.id, bounds: { x, y, width, height } }]
+            if (item.id === draft.original.id) {
+              return [
+                {
+                  id: item.id,
+                  bounds: { x, y, width, height },
+                  color: draft.color === draft.original.color ? undefined : (draft.color ?? null),
+                },
+              ]
+            }
             if (!dx && !dy) return []
             return [
               {
                 id: item.id,
                 bounds: { x: item.x + dx, y: item.y + dy, width: item.width, height: item.height },
+                color: undefined,
               },
             ]
           })
@@ -68,19 +105,30 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
       >
         <CanvasGeometryFields
           value={draft?.geometry ?? layer}
-          onChange={(geometry) =>
-            setDraft(
-              draft
-                ? { ...draft, geometry }
-                : { base: editing.version, original: layer, geometry, selection: selected },
-            )
-          }
+          onChange={(geometry) => update({ geometry })}
         />
-        <Button
-          size="sm"
-          type="submit"
-          disabled={!editing.available || !draft || sameGeometry(draft.geometry, draft.original)}
-        >
+        <Field label="颜色">
+          <Select
+            value={color ?? 'auto'}
+            disabled={!editing.available}
+            onValueChange={(value) =>
+              update({ color: DESIGN_LAYER_COLORS.find((item) => item === value) })
+            }
+          >
+            <SelectTrigger controlSize="sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto">{DESIGN_LAYER_COLOR_LABELS.auto}</SelectItem>
+              {DESIGN_LAYER_COLORS.map((item) => (
+                <SelectItem key={item} value={item}>
+                  {DESIGN_LAYER_COLOR_LABELS[item]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Button size="sm" type="submit" disabled={!editing.available || !changed}>
           应用
         </Button>
       </form>

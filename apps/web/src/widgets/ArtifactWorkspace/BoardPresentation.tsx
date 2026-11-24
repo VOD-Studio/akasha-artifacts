@@ -133,7 +133,11 @@ export function BoardPresentation({
         <div className="flex min-h-full min-w-max p-3">
           <div
             className="relative m-auto shrink-0 overflow-hidden bg-surface outline outline-border"
-            style={{ width: board.width * scale, height: board.height * scale }}
+            style={{
+              width: board.width * scale,
+              height: board.height * scale,
+              borderRadius: board.cornerRadius && board.cornerRadius * scale,
+            }}
           >
             <div
               className="absolute top-0 left-0 origin-top-left"
