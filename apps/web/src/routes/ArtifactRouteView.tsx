@@ -1,18 +1,20 @@
 import { type ArtifactHandoffReference, isAnnotationKind, type JsonPatchOp } from '@akasha/protocol'
 import { useLocation, useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { useArtifactDetailQuery, useArtifactVersionsQuery } from '../entities/artifact/queries'
+import {
+  type ArtifactDetailResponse,
+  useArtifactDetailQuery,
+  useArtifactVersionsQuery,
+} from '../entities/artifact'
 import { useDaemonStatusQuery } from '../entities/daemon/queries'
-import { readAnnotationDraft } from '../entities/feedback/annotation-draft'
-import { useArtifactFeedbackQuery } from '../entities/feedback/queries'
-import { useSelectionStore } from '../entities/selection/store'
+import { readAnnotationDraft, useArtifactFeedbackQuery } from '../entities/feedback'
+import { useSelectionStore } from '../entities/selection'
 import { useWorkspaceStore } from '../entities/workspace/store'
 import {
   AgentConversationPane,
   type ConversationTarget,
 } from '../features/agent-conversation/AgentConversationPane'
 import { useLiveSync } from '../features/live-sync/useLiveSync'
-import type { ArtifactDetailResponse } from '../shared/api/client'
 import { ApiError } from '../shared/api/error'
 import { useLocalArtifactRedirect } from '../shared/config/local-artifact'
 import { isCloudHub, resolveSandboxOrigin } from '../shared/config/runtime'

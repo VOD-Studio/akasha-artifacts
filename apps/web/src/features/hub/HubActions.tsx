@@ -1,7 +1,7 @@
 import { Button } from '@akasha/ui/button'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { clearAnnotationDrafts } from '../../entities/feedback/annotation-draft'
+import { clearAnnotationDrafts } from '../../entities/feedback'
 import { isCloudHub } from '../../shared/config/runtime'
 
 /** 供界面在服务端授权之外隐藏只对 Hub 成员有意义的入口。 */

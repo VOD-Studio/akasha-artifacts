@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import { useSelectionStore } from '../../entities/selection/store'
+import { useSelectionStore } from '../../entities/selection'
 import type { BoardFramePurpose } from './ArtifactFrame'
 import { BoardDrawingSurface, type DrawingTool } from './BoardDrawingSurface'
 import { BoardPresentation } from './BoardPresentation'

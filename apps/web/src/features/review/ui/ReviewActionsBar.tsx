@@ -3,10 +3,7 @@ import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
 import { Check, CheckCircle2, type LucideIcon, MinusCircle, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
-import {
-  useRecordDecisionMutation,
-  useSubmitFeedbackMutation,
-} from '../../entities/feedback/queries'
+import { useRecordDecisionMutation, useSubmitFeedbackMutation } from '../api/mutations'
 
 export interface ReviewActionsBarProps {
   artifactId: string

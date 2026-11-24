@@ -10,7 +10,7 @@ import { Slider } from '@akasha/ui/slider'
 import { RotateCcw, SlidersHorizontal } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { useArtifactSpecQuery, usePushArtifactStateMutation } from '../../entities/artifact/queries'
+import { useArtifactSpecQuery, usePushArtifactStateMutation } from '../../entities/artifact'
 import { applyJsonPatchClient } from '../../shared/lib/json-patch'
 
 export interface PropsPanelField {

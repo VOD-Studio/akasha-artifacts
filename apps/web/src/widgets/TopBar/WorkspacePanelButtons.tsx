@@ -1,6 +1,6 @@
 import { Button } from '@akasha/ui/button'
 import { MessageSquare, ScanLine } from 'lucide-react'
-import { useSelectionStore } from '../../entities/selection/store'
+import { useSelectionStore } from '../../entities/selection'
 import { useWorkspaceStore } from '../../entities/workspace/store'
 
 /** 检查器与批注共用一个面板状态，开关不改变画布布局。 */

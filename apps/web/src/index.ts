@@ -1,7 +1,7 @@
-export { useSelectionStore } from './entities/selection/store'
+export { useSelectionStore } from './entities/selection'
 export { useWorkspaceStore } from './entities/workspace/store'
 export { applyRealtimeEventToCache, useLiveSync } from './features/live-sync/useLiveSync'
-export { summarizeRoundProgress } from './features/review-rounds/round-utils'
+export { summarizeRoundProgress } from './features/review'
 export { createAppRouter } from './routes/router'
 export { AkashaWsClient } from './shared/api/ws'
 export {

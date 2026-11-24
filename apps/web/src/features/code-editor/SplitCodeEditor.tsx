@@ -12,8 +12,8 @@ import { basicSetup } from 'codemirror'
 import { Code2, RotateCcw, Save } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { useSaveHumanVersionMutation } from '../../entities/artifact/queries'
-import { fetchArtifactDetail, parseVersionConflictDetails } from '../../shared/api/client'
+import { fetchArtifactDetail, parseVersionConflictDetails } from '../../entities/artifact'
+import { useSaveHumanVersionMutation } from './api/save-human-version'
 import { ConflictResolutionBanner, type EditorConflictState } from './ConflictResolutionBanner'
 
 export interface SplitCodeEditorProps {

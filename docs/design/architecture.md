@@ -555,6 +555,7 @@ apps/web/src/
 ```
 
 - 依赖只能自上而下：`routes → widgets → features → entities → shared`。
+- HTTP 传输和协议错误在 `shared/api`；作品、反馈端点与各自的 Query 缓存归属对应实体。需要同时写入或刷新多个实体的操作，由评审、编辑等上层用例协调，实体间不互相导入查询。
 - 服务端数据由 TanStack Query 管理，WebSocket 事件直接写入查询缓存；编辑器的本地状态（工具模式、当前选中元素、草稿选择、撤销栈）由 Zustand 管理。
 - `entities/selection` 是指认、批注、Hook 注入和直改共同依赖的核心模型，不属于其中任何一个 feature。
 

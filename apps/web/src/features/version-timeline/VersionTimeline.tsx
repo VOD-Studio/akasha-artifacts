@@ -11,7 +11,7 @@ import {
 } from '@akasha/ui/dropdown-menu'
 import { ChevronDown, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
-import { useRevertArtifactMutation } from '../../entities/artifact/queries'
+import { useRevertArtifactMutation } from '../../entities/artifact'
 import { formatRelativeTime } from '../../shared/lib/format'
 
 export interface VersionTimelineProps {

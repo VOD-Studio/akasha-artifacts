@@ -11,10 +11,10 @@ import {
   type Version,
 } from '@akasha/protocol'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { selectionForVersion, useSelectionStore } from '../../entities/selection/store'
+import { submitArtifactFeedback } from '../../entities/feedback'
+import { selectionForVersion, useSelectionStore } from '../../entities/selection'
 import { type SandboxErrorRecord, useWorkspaceStore } from '../../entities/workspace/store'
 import { RuntimeErrorPanel } from '../../features/error-recovery/RuntimeErrorPanel'
-import { submitArtifactFeedback } from '../../shared/api/client'
 import {
   buildSandboxIframeUrl,
   createBridgeNonce,

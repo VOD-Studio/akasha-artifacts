@@ -7,10 +7,9 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@akasha/ui/sheet'
 import { useEffect, useRef, useState } from 'react'
-import { selectionForVersion, useSelectionStore } from '../../entities/selection/store'
+import { selectionForVersion, useSelectionStore } from '../../entities/selection'
 import { useWorkspaceStore } from '../../entities/workspace/store'
-import { AnnotationComposer } from '../../features/annotations/AnnotationComposer'
-import { ReviewActionsBar } from '../../features/review-actions/ReviewActionsBar'
+import { AnnotationComposer, ReviewActionsBar } from '../../features/review'
 import { RoundSubmitBar } from '../RoundSubmitBar/RoundSubmitBar'
 import { InspectorFeedbackCard } from './InspectorFeedbackCard'
 

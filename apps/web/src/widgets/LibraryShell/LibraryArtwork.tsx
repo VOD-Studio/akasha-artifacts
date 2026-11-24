@@ -4,7 +4,7 @@ import { Skeleton } from '@akasha/ui/skeleton'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileText } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { fetchArtifactDetail } from '../../shared/api/client'
+import { fetchArtifactDetail } from '../../entities/artifact'
 import { captureBoardPng } from '../../shared/bridge/capture-png'
 import { createCanvasDocument } from '../ArtifactWorkspace/canvas-model'
 

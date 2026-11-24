@@ -3,8 +3,8 @@ import { Button } from '@akasha/ui/button'
 import { AlertTriangle, Check, ChevronDown, ChevronRight, Wrench, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import { submitArtifactFeedback } from '../../entities/feedback'
 import { type SandboxErrorRecord, useWorkspaceStore } from '../../entities/workspace/store'
-import { submitArtifactFeedback } from '../../shared/api/client'
 
 /** 错误面板里展示的一行源码；`isTarget` 标出出错的那一行。 */
 export interface SourceSnippetLine {

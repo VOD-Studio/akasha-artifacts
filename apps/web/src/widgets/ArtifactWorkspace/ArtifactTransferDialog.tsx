@@ -12,9 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useId, useState } from 'react'
 import { toast } from 'sonner'
-import { artifactKeys } from '../../entities/artifact/queries'
+import { artifactKeys, transferArtifact } from '../../entities/artifact'
 import { useProjectsQuery } from '../../entities/project/queries'
-import { transferArtifact } from '../../shared/api/client'
 
 export interface ArtifactTransferTarget {
   artifact: Artifact

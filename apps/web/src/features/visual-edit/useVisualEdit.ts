@@ -2,13 +2,15 @@ import type { Artifact, EditOp, ElementRef, SandboxToShellMessage, Version } fro
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { artifactKeys } from '../../entities/artifact/queries'
-import { feedbackKeys } from '../../entities/feedback/queries'
 import {
   type ArtifactDetailResponse,
+  artifactKeys,
+  parseVersionConflictDetails,
+} from '../../entities/artifact'
+import { feedbackKeys } from '../../entities/feedback'
+import {
   fetchVisualEditTarget,
   fetchVisualUndo,
-  parseVersionConflictDetails,
   previewVisualEdit,
   saveVisualEdit,
   type VisualEditCommand,

@@ -1,4 +1,4 @@
-import type { Artifact, ArtifactType, JsonPatchOp, Version } from '@akasha/protocol'
+import type { ArtifactType, JsonPatchOp } from '@akasha/protocol'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   type ArtifactDetailResponse,
@@ -9,18 +9,15 @@ import {
   fetchArtifactStorageUsage,
   fetchArtifacts,
   fetchArtifactVersions,
-  publishHumanVersion,
   pushArtifactState,
   renameArtifact,
   revertArtifactVersion,
   setArtifactFavorite,
-  submitArtifactFeedback,
-} from '../../shared/api/client'
-import { computeLineDiff } from '../../shared/lib/diff'
-import { feedbackKeys } from '../feedback/queries'
+} from './client'
 
 const artifactListKey = ['artifacts', 'list'] as const
 
+/** `detailPrefix` 同时覆盖头版本与固定版本；更新单个快照用 `detail`。 */
 export const artifactKeys = {
   all: ['artifacts'] as const,
   lists: artifactListKey,
@@ -35,6 +32,7 @@ export const artifactKeys = {
   spec: (type: ArtifactType) => ['artifacts', 'spec', type] as const,
 }
 
+/** 未指定项目时读整个可见作品库；只有调用方指定间隔时才轮询。 */
 export function useArtifactsQuery(projectId?: string, refetchInterval?: number) {
   return useQuery({
     queryKey: artifactKeys.list(projectId),
@@ -47,6 +45,7 @@ export function useArtifactsQuery(projectId?: string, refetchInterval?: number) 
   })
 }
 
+/** 头版本与固定快照分开缓存；尚未解析出标识时不发请求。 */
 export function useArtifactDetailQuery(id: string, version?: number) {
   return useQuery({
     queryKey: artifactKeys.detail(id, version),
@@ -56,6 +55,7 @@ export function useArtifactDetailQuery(id: string, version?: number) {
   })
 }
 
+/** 版本历史按作品缓存，切换当前快照不会重新创建一份历史缓存。 */
 export function useArtifactVersionsQuery(id: string) {
   return useQuery({
     queryKey: artifactKeys.versions(id),
@@ -68,6 +68,7 @@ export function useArtifactVersionsQuery(id: string) {
   })
 }
 
+/** 管理权限独立于详情读取；失败时不在此 hook 重试。 */
 export function useArtifactManagementQuery(id: string) {
   return useQuery({
     queryKey: artifactKeys.management(id),
@@ -77,6 +78,7 @@ export function useArtifactManagementQuery(id: string) {
   })
 }
 
+/** 保存后更新已打开快照的展示名，并通知所有项目列表刷新。 */
 export function useRenameArtifactMutation(id: string) {
   const queryClient = useQueryClient()
   return useMutation({
@@ -91,6 +93,7 @@ export function useRenameArtifactMutation(id: string) {
   })
 }
 
+/** 收藏属于当前身份，读取失败不重试；无收藏必须由服务端返回空列表。 */
 export function useArtifactFavoritesQuery() {
   return useQuery({
     queryKey: artifactKeys.favorites,
@@ -99,6 +102,7 @@ export function useArtifactFavoritesQuery() {
   })
 }
 
+/** 写入目标收藏态，等收藏列表刷新后再结束保存状态。 */
 export function useSetArtifactFavoriteMutation(id: string) {
   const queryClient = useQueryClient()
   return useMutation({
@@ -107,6 +111,7 @@ export function useSetArtifactFavoriteMutation(id: string) {
   })
 }
 
+/** 只用于查看当前作品的运行存储，读取失败留给用量弹窗处理。 */
 export function useArtifactStorageUsageQuery(id: string) {
   return useQuery({
     queryKey: artifactKeys.storageUsage(id),
@@ -115,30 +120,7 @@ export function useArtifactStorageUsageQuery(id: string) {
   })
 }
 
-/** 重读当前制品的数据，不重载浏览器，不重置画布与输入。 */
-export function useReloadArtifactMutation(id: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries(
-          { queryKey: artifactKeys.detailPrefix(id) },
-          { throwOnError: true },
-        ),
-        queryClient.invalidateQueries(
-          { queryKey: artifactKeys.versions(id) },
-          { throwOnError: true },
-        ),
-        queryClient.invalidateQueries(
-          { queryKey: artifactKeys.management(id) },
-          { throwOnError: true },
-        ),
-        queryClient.invalidateQueries({ queryKey: feedbackKeys.list(id) }, { throwOnError: true }),
-      ])
-    },
-  })
-}
-
+/** 恢复历史快照为新版本；写入成功后让详情、列表与版本历史重新读取。 */
 export function useRevertArtifactMutation(id: string) {
   const queryClient = useQueryClient()
   return useMutation({
@@ -150,6 +132,7 @@ export function useRevertArtifactMutation(id: string) {
   })
 }
 
+/** 按作品类型共享规格缓存；没有运行参数入口的视图可以关闭请求。 */
 export function useArtifactSpecQuery(type: ArtifactType, enabled = true) {
   return useQuery({
     queryKey: artifactKeys.spec(type),
@@ -159,6 +142,7 @@ export function useArtifactSpecQuery(type: ArtifactType, enabled = true) {
   })
 }
 
+/** 写入运行状态后把服务端序号和快照同步到已缓存的详情，不更改源码版本。 */
 export function usePushArtifactStateMutation(id: string) {
   const queryClient = useQueryClient()
   return useMutation({
@@ -178,110 +162,6 @@ export function usePushArtifactStateMutation(id: string) {
           }
         },
       )
-    },
-  })
-}
-
-function summarizeHumanEdit(
-  previousSource: string,
-  nextSource: string,
-  nextVersion: number,
-  origin: 'code' | 'canvas',
-): string {
-  const diff = computeLineDiff(previousSource, nextSource)
-  const added = diff.filter((l) => l.kind === 'added').length
-  const removed = diff.filter((l) => l.kind === 'removed').length
-  const changedPreview = diff
-    .filter((l) => l.kind !== 'context')
-    .slice(0, 12)
-    .map((l) => `${l.kind === 'added' ? '+' : '-'}${l.text}`)
-    .join('\n')
-  const editor = origin === 'canvas' ? '在画布' : '在 L3 代码编辑器'
-  return `人类${editor}直接保存了 v${nextVersion}（+${added} / -${removed} 行）${
-    changedPreview ? `\n${changedPreview}` : ''
-  }`
-}
-
-/** 反馈指向确认落盘的版本；通知失败不把已经提交的版本标记为保存失败。 */
-export async function notifyHumanVersionEdit(
-  projectId: string,
-  version: Version,
-  previousSource: string,
-  origin: 'code' | 'canvas',
-) {
-  try {
-    await submitArtifactFeedback(version.artifactId, {
-      project: projectId,
-      version: version.version,
-      roundId: null,
-      kind: 'edit',
-      element: null,
-      body: summarizeHumanEdit(previousSource, version.source, version.version, origin),
-    })
-  } catch {
-    // 版本已经落盘，Agent 通知失败不回滚保存。
-  }
-}
-
-export interface SaveHumanVersionVariables {
-  artifact: Artifact
-  /** 保存前的源码，用来生成给 Agent 的改动摘要。 */
-  previousSource: string
-  source: string
-  /** 所基于的版本；落后于头版本时服务端返回 409。 */
-  baseVersion: number
-  title?: string
-}
-
-/**
- * 保存人类在 L3 代码编辑器里直接改动的新版本，作者记为 `human:web`。
- *
- * @remarks 保存成功后自动写入一条 `kind=edit` 的反馈，把改动摘要通知 Agent。
- */
-export function useSaveHumanVersionMutation(id: string, notifyAgent = true) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (
-      input: SaveHumanVersionVariables,
-    ): Promise<{
-      artifact: Artifact
-      version: Version
-    }> => {
-      const saved = await publishHumanVersion({
-        project: input.artifact.projectId,
-        slug: input.artifact.slug,
-        title: input.title ?? input.artifact.title,
-        type: input.artifact.type,
-        source: input.source,
-        baseVersion: input.baseVersion,
-        visibility: input.artifact.visibility,
-        author: 'human:web',
-      })
-      if (notifyAgent) {
-        await notifyHumanVersionEdit(
-          input.artifact.projectId,
-          saved.version,
-          input.previousSource,
-          'code',
-        )
-      }
-      return saved
-    },
-    onSuccess: (saved) => {
-      queryClient.setQueryData<ArtifactDetailResponse | undefined>(
-        artifactKeys.detail(id, undefined),
-        (prev) => {
-          if (!prev) return prev
-          return {
-            ...prev,
-            artifact: saved.artifact,
-            version: saved.version,
-          }
-        },
-      )
-      void queryClient.invalidateQueries({ queryKey: artifactKeys.versions(id) })
-      void queryClient.invalidateQueries({ queryKey: artifactKeys.all })
-      void queryClient.invalidateQueries({ queryKey: feedbackKeys.list(id) })
     },
   })
 }

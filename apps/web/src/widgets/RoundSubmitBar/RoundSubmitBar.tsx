@@ -3,9 +3,12 @@ import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
 import { CheckCheck, RotateCcw, Send } from 'lucide-react'
 import { toast } from 'sonner'
-import { useSubmitRoundMutation, useWithdrawRoundMutation } from '../../entities/feedback/queries'
 import { useWorkspaceStore } from '../../entities/workspace/store'
-import { summarizeRoundProgress } from '../../features/review-rounds/round-utils'
+import {
+  summarizeRoundProgress,
+  useSubmitRoundMutation,
+  useWithdrawRoundMutation,
+} from '../../features/review'
 
 export interface RoundSubmitBarProps {
   artifactId: string

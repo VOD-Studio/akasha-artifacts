@@ -4,8 +4,11 @@ import { Field } from '@akasha/ui/field'
 import { Input } from '@akasha/ui/input'
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { artifactKeys } from '../../entities/artifact/queries'
-import { type ArtifactDetailResponse, publishHumanVersion } from '../../shared/api/client'
+import {
+  type ArtifactDetailResponse,
+  artifactKeys,
+  publishHumanVersion,
+} from '../../entities/artifact'
 import type { CanvasPage } from './canvas-model'
 import { type CanvasPageEdit, editCanvasPages } from './canvas-page-source'
 

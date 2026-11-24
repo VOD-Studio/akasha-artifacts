@@ -9,9 +9,9 @@ import {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { useSelectionStore } from '../src/entities/selection/store'
+import type { ArtifactDetailResponse } from '../src/entities/artifact'
+import { useSelectionStore } from '../src/entities/selection'
 import { useWorkspaceStore } from '../src/entities/workspace/store'
-import type { ArtifactDetailResponse } from '../src/shared/api/client'
 import { SANDBOX_IFRAME_SANDBOX_ATTR } from '../src/shared/bridge/host'
 import { ArtifactWorkspace } from '../src/widgets/ArtifactWorkspace/ArtifactWorkspace'
 

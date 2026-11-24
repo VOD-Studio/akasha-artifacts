@@ -5,7 +5,7 @@ import {
   STANDALONE_BOARD_ID,
 } from '@akasha/protocol'
 import { useCallback, useState } from 'react'
-import { selectionForVersion, useSelectionStore } from '../../entities/selection/store'
+import { selectionForVersion, useSelectionStore } from '../../entities/selection'
 import { useWorkspaceStore } from '../../entities/workspace/store'
 import type { CanvasDocument, CanvasLocation } from './canvas-model'
 

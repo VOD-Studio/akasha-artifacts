@@ -3,7 +3,7 @@ import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
 import { Target } from 'lucide-react'
 import type { Ref } from 'react'
-import { AnnotationThreadActions } from '../../features/annotations/AnnotationThreadActions'
+import { AnnotationThreadActions } from '../../features/review'
 import { formatRelativeTime } from '../../shared/lib/format'
 
 interface InspectorFeedbackCardProps {

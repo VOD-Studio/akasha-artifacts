@@ -1,7 +1,7 @@
 import { Button } from '@akasha/ui/button'
 import { Crosshair } from 'lucide-react'
 import { useEffect } from 'react'
-import { useSelectionStore } from '../../entities/selection/store'
+import { useSelectionStore } from '../../entities/selection'
 
 export function ElementPickerButton({ onStart }: { onStart?: () => void } = {}) {
   const pickerActive = useSelectionStore((s) => s.pickerActive)

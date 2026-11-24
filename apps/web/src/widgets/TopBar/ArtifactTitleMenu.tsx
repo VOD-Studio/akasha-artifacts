@@ -26,15 +26,12 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import {
-  useArtifactFavoritesQuery,
-  useReloadArtifactMutation,
-  useSetArtifactFavoriteMutation,
-} from '../../entities/artifact/queries'
+import { useArtifactFavoritesQuery, useSetArtifactFavoriteMutation } from '../../entities/artifact'
 import type { WorkspaceViewMode } from '../../entities/workspace/store'
 import { ArtifactStorageUsageDialog } from './ArtifactStorageUsageDialog'
 import { ArtifactWithdrawalDialog } from './ArtifactWithdrawalDialog'
 import { RenameArtifactDialog } from './RenameArtifactDialog'
+import { useReloadArtifactMutation } from './use-reload-artifact'
 
 interface ArtifactTitleMenuProps {
   artifact: Artifact

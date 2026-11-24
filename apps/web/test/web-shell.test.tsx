@@ -25,16 +25,15 @@ beforeAll(() => {
   }
 })
 
-import { artifactKeys } from '../src/entities/artifact/queries'
+import { type ArtifactDetailResponse, artifactKeys } from '../src/entities/artifact'
 import { projectKeys } from '../src/entities/project/queries'
-import { useSelectionStore } from '../src/entities/selection/store'
+import { useSelectionStore } from '../src/entities/selection'
 import { useWorkspaceStore } from '../src/entities/workspace/store'
-import { AnnotationComposer } from '../src/features/annotations/AnnotationComposer'
 import { ElementPickerButton } from '../src/features/element-picker/ElementPickerButton'
 import { RuntimeErrorPanel } from '../src/features/error-recovery/RuntimeErrorPanel'
 import { applyRealtimeEventToCache } from '../src/features/live-sync/useLiveSync'
+import { AnnotationComposer } from '../src/features/review'
 import { VersionDiffView } from '../src/features/version-diff/VersionDiffView'
-import type { ArtifactDetailResponse } from '../src/shared/api/client'
 import { AkashaWsClient } from '../src/shared/api/ws'
 import { SANDBOX_IFRAME_SANDBOX_ATTR, SandboxBridgeHost } from '../src/shared/bridge/host'
 import { ArtifactWorkspace } from '../src/widgets/ArtifactWorkspace/ArtifactWorkspace'
@@ -667,7 +666,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
         }}
         onDismiss={() => {}}
         onSubmitFeedback={
-          mockSubmit as unknown as typeof import('../src/shared/api/client').submitArtifactFeedback
+          mockSubmit as unknown as typeof import('../src/entities/feedback').submitArtifactFeedback
         }
       />,
     )
@@ -705,7 +704,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
         }}
         onDismiss={() => {}}
         onSubmitFeedback={
-          mockSubmit as unknown as typeof import('../src/shared/api/client').submitArtifactFeedback
+          mockSubmit as unknown as typeof import('../src/entities/feedback').submitArtifactFeedback
         }
       />,
     )
@@ -728,7 +727,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
         }}
         onDismiss={() => {}}
         onSubmitFeedback={
-          mockSubmit as unknown as typeof import('../src/shared/api/client').submitArtifactFeedback
+          mockSubmit as unknown as typeof import('../src/entities/feedback').submitArtifactFeedback
         }
       />,
     )

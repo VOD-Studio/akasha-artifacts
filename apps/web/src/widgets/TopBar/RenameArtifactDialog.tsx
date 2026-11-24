@@ -4,7 +4,7 @@ import { Modal } from '@akasha/ui/dialog'
 import { Field } from '@akasha/ui/field'
 import { Input } from '@akasha/ui/input'
 import { type ChangeEventHandler, type FormEventHandler, useId, useState } from 'react'
-import { useRenameArtifactMutation } from '../../entities/artifact/queries'
+import { useRenameArtifactMutation } from '../../entities/artifact'
 
 interface RenameArtifactDialogProps {
   artifact: Artifact

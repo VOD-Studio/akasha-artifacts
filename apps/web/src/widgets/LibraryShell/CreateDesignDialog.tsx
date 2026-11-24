@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@akasha/ui/textarea'
 import { type UseQueryResult, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { type ChangeEventHandler, useId, useState } from 'react'
-import { artifactKeys } from '../../entities/artifact/queries'
+import { artifactKeys } from '../../entities/artifact'
 import { AgentTurnList } from '../../features/agent-conversation/AgentTurnList'
 import { useAgentDraft } from '../../features/agent-conversation/agent-draft'
 import {

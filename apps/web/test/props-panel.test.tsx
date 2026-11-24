@@ -3,10 +3,9 @@ import { type ArtifactSpecOutput, type JsonPatchOp, PROTOCOL_VERSION } from '@ak
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { artifactKeys } from '../src/entities/artifact/queries'
+import { type ArtifactDetailResponse, artifactKeys } from '../src/entities/artifact'
 import { applyRealtimeEventToCache } from '../src/features/live-sync/useLiveSync'
 import { buildPropPatch, PropsPanel } from '../src/features/props-panel/PropsPanel'
-import type { ArtifactDetailResponse } from '../src/shared/api/client'
 
 beforeEach(() => {
   vi.stubGlobal(
