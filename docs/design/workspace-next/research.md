@@ -20,6 +20,19 @@
 | **同一套非目标 UI 的真实调参流程**：[40.5 秒录屏](https://www.aiuxdesign.guide/images/guides/claude-design-learning-path/lesson-6/tweaks-add.mp4)，[作者说明](https://www.aiuxdesign.guide/guides/claude-design-learning-path/tweaks-explore-variations-without-chat)。 | 已从公开视频取帧：**00:01** Tweaks 显示作品尚无可调控件，并提供 `Describe a tweak…` 和 `Ideas`；**00:26** 画布上方出现 `headline / detail / badges`；**00:39** 成品标题已变，侧边列出三个参数各自控制什么。说明页另述改选项会原地刷新。 | 这是作品专属控件，不是所有作品固定三项。不能推出新版控制条在同一侧、点击后持久化方式相同，或预览参数默认进入导出包。 |
 | **官方设计师自己的工作样例**：[Nate Parrott 的原文与录屏入口](https://claude.com/resources/articles/how-the-product-designer-who-built-claude-design-uses-it-to-explore-ideas-before-building-them)。 | 本人描述用[地铁示例](https://www.youtube.com/watch?v=bR8FyicJynE)调动画物理效果，用[配色示例](https://www.youtube.com/watch?v=4_mkm1-4F6c)调滑块和预设；这是设计作品的具体能力，不只是营销词。 | 文章 7 月发布；这里据作者原文，不冒称对两个 YouTube 视频逐帧验证。其「重做编辑器」样例作者明确写了不会照稿上线，不能拿来作生产版截图。 |
 
+## 授权现行网页版走查：画布与操作栏
+
+以下由规划作者在 **2026-11-24 用户正在使用的 Chrome 标签页**实查。没有采用旧版截图推断这些结果。实际打开页面菜单、Play 菜单、导出、批注和会话；在该标签页的浏览器无障碍树中另读了两页的板头、当前面板和键盘提示。未改作品、未发送消息、未签发分享，也没把私有链接、截图或设计源码放进仓库。以下是该份作品的样本，不是所有模板的硬编码配置。
+
+| 操作范围 | 实机所见 | 不能混为一谈的行为 |
+| --- | --- | --- |
+| 页面及作品 | 页面选择器列出两页，分别 **19 和 8 张**；每行有页面操作，底部有 New page。作品查看页可进 Chat with Claude；到了对话里的工作区才看到 Pages、Play、Properties、Export 一组操作。 | 打开作品链接与带对话的编辑工作区是两个场景。页和板不是一一对应。 |
+| 画布工具栏 | `Canvas tools` 依次是 Select `V`、Hand `H`（也可按住空格）、Text `T`、Artboard `A`、Note `N`、Pencil `P`、Shapes `R`、Comment `⌥C`。`R` 切换上次使用的形状，批注按钮可带数量。 | Artboard 与 Shapes 是两个工具。`Zoom` 是独立工具栏：`⌘0` 或 `⇧1` 适合全图，`⇧2` 适合选区，`⌘+` / `⌘−` 分档缩放。这些是控件真实声明的快捷键，未声称逐一绘制和撤销。 |
+| 画板标题 | 19 板页：19 个全窗打开、19 个单板导出、6 个板级 Tweaks。8 板页：7 个全窗打开、1 个 `Play prototype`、8 个单板导出、1 个板级 Tweaks。板上 Return 进入，Tab 遍历层，Esc 回板头。 | 全窗看一板不是试玩。标题上出现哪些动作取决于板的能力，不应因作品中有个播放图标就给所有板加试玩。 |
+| 播放与动效 | 实际打开顶栏 Play，19 板页出现 `Static artboards` 分组，十九个目标均列出。另在没有启动单板试玩的三次总览快照中，一块动效板的同一内部节点横坐标从 580 到 160 再回到 580，大小不变。 | **静态板可以进全局 Play 选择器；有动效不等于已进试玩。** 这组样本不是帧率或音轨实测，不证明所有板自动播，也没有验证自动翻页。 |
+| 检查器 | 当前右栏 `Panel view` 确有三个同级标签：Properties、Code、Tweaks；Layers 列表和侧栏有各自的拖动分隔条。没选对象时显示 Nothing selected。切到另一页时，真实打开的 Tweaks 内是主题开关、颜色按钮和 `1x / 0.5x / 0.25x` 单选，而非固定宽高表单。 | 只能说这个选区有这组参数。Code 页签已实见；没有写入或保存源码，不能宣称它有整稿编辑能力。 |
+| 评审和交付 | `More comment options → Show all comments` 打开真实线程列表，有本页／全页、显示已解决、解决和线程菜单。导出弹层列 HTML、PDF、PNG；More formats 另列 ZIP。未获分享资格时，分享项禁用，导出仍可用且会说明原因。 | 评论、会话、分享、导出均不是检查器子标签；能看到导出项不等于实际导出了私有设计。 |
+
 ## 按行为区分证据
 
 | 问题 | 能确认 | 不能从中推出 |

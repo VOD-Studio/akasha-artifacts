@@ -727,6 +727,72 @@ function states() {
   }
   return s
 }
+// 校订图独立输出，不替换原有十四板或已经发布的画布。
+function canvasControls(showMenu) {
+  const tools = ['pointer', 'hand', 'text', 'artboard', 'note', 'pen', 'shapes', 'comment']
+  const extra = {
+    artboard: 'M7 2v20M17 2v20M2 7h20M2 17h20',
+    shapes: 'M3 4h12v12H3zM13 12a5 5 0 1 1-2 5',
+    download: 'M12 3v12m-5-5 5 5 5-5M4 19h16',
+  }
+  const icon = (name, x, y, size = 18, color = sub) =>
+    extra[name]
+      ? g(x, y, p(extra[name], 'none', color, 1.65), size / 24)
+      : ic(name, x, y, size, color)
+  const labels = ['M1 · 文章与迷你条', 'X2 · 封面与歌词', 'X3 · 歌词逐行', 'P1 · 队列试玩']
+  let s =
+    r(0, 0, W, H, ground) +
+    header() +
+    pill(22, 72, 155, '视觉设计稿', { icon: 'grid' }) +
+    pill(1067, 72, 110, '播放', { icon: 'play', fill: showMenu ? leaf : paper }) +
+    pill(1184, 72, 120, '检查器', { icon: 'panel' }) +
+    pill(1311, 72, 106, '导出') +
+    txt(62, 164, '潮间带', 31, ink, bold)
+  for (const [i, kind] of kinds.entries()) {
+    const x = 62 + i * 337,
+      y = 221,
+      w = 248,
+      h = (w * 844) / 390
+    s +=
+      txt(x, y - 15, labels[i], 14, sub) +
+      (i > 0 ? icon('tune', x + w - 66, y - 29, 16) : '') +
+      icon(i === 3 ? 'play' : 'expand', x + w - 43, y - 29, 16) +
+      icon('download', x + w - 20, y - 29, 16) +
+      r(x - 1, y - 1, w + 2, h + 2, line, 1) +
+      mount(x, y, w, h, 300, 650, phone(kind))
+  }
+  s +=
+    g(
+      538,
+      809,
+      r(0, 3, 364, 49, '#D5DAD3', 11) +
+        r(0, 0, 364, 49, paper, 11, line) +
+        tools
+          .map(
+            (n, i) =>
+              (i === 0 ? r(7, 6, 37, 36, leaf, 7) : '') +
+              icon(n, 16 + 43 * i, 14, 21, i === 0 ? teal : sub),
+          )
+          .join(''),
+    ) + pill(1298, 817, 112, '64%  ▾')
+  if (!showMenu) return s
+  return (
+    s +
+    r(1001, 119, 298, 283, '#D4D9D2', 11) +
+    r(1001, 115, 298, 283, paper, 11, line) +
+    txt(1020, 148, '静态画板', 13, sub) +
+    labels
+      .slice(0, 3)
+      .map(
+        (label, i) => icon('artboard', 1020, 170 + 41 * i, 16) + txt(1049, 188 + 41 * i, label, 16),
+      )
+      .join('') +
+    ln(1015, 294, 1285, 294) +
+    txt(1020, 325, '可交互原型', 13, sub) +
+    icon('play', 1020, 349, 16, teal) +
+    txt(1049, 367, labels[3], 16)
+  )
+}
 const groups = [
   [
     'studio',
@@ -794,3 +860,28 @@ await writeFile(
   }),
 )
 console.log(`${pages.length} 个页面，${boards.length} 张独立静态图板`)
+const extraBoards = []
+for (const [i, [id, title]] of [
+  ['controls', '画布操作栏与板头动作'],
+  ['play-menu', '全局播放菜单与单板试玩'],
+].entries()) {
+  const html = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" xml:lang="zh-CN" aria-labelledby="title"><title id="title">${esc(title)}</title>${canvasControls(i === 1)}</svg>`
+  await writeFile(join(out, id + '.svg'), html)
+  extraBoards.push({
+    id,
+    title,
+    pageId: 'controls',
+    position: { x: i * (W + 100), y: 0 },
+    viewport: { width: W, height: H },
+    html,
+  })
+}
+await writeFile(
+  join(out, 'controls.artboard.json'),
+  JSON.stringify({
+    title: 'Akasha · 画布操作栏校订稿',
+    columns: 2,
+    pages: [{ id: 'controls', title: '操作栏与播放', includeSharedBoards: false }],
+    boards: extraBoards,
+  }),
+)
