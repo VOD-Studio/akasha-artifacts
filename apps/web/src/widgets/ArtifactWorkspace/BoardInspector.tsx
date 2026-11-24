@@ -11,15 +11,12 @@ import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@akasha/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@akasha/ui/tabs'
-import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   type CanvasDocument,
   type CanvasLocation,
-  fetchArtifactBoard,
   hasVersionSource,
   type LoadedCanvasBoard,
-  loadCanvasBoard,
   useArtifactSourceQuery,
 } from '@/entities/artifact'
 import { useSelectionStore } from '@/entities/selection'
@@ -46,6 +43,9 @@ interface BoardInspectorProps {
   artifact: Artifact
   version: VersionSummary
   loadedBoard?: LoadedCanvasBoard
+  boardReadError?: string
+  onRequestBoard?: (id?: string) => void
+  onRetryBoard?: (id: string) => void
   stateSnapshot: Record<string, unknown>
   document: CanvasDocument
   location: CanvasLocation | null
@@ -71,6 +71,9 @@ const EMPTY_PROPS: Record<string, unknown> = {}
 export function BoardInspector({
   artifact,
   loadedBoard,
+  boardReadError,
+  onRequestBoard,
+  onRetryBoard,
   version,
   stateSnapshot,
   document,
@@ -92,31 +95,28 @@ export function BoardInspector({
   const page = document.pages.find((item) => item.id === location?.pageId)
   const layout = page?.boards.find((item) => item.id === location?.boardId)
   const [tab, setTab] = useState('properties')
-  const cached = loadedBoard && loadedBoard.id === layout?.id ? loadedBoard : layout
-  const boardRead = useQuery({
-    queryKey: ['inspector-board', artifact.publicId, version.version, layout?.id],
-    queryFn: ({ signal }) => {
-      if (!layout) throw new Error('未选择画板')
-      return fetchArtifactBoard(artifact.publicId, version.version, layout.id, signal)
-    },
-    enabled: open && tab === 'source' && Boolean(layout?.scoped) && cached?.source === undefined,
-    gcTime: 0,
-    retry: false,
-  })
+  const inspectorBoardId =
+    open && tab === 'source' && layout?.scoped && layout.source === undefined ? layout.id : undefined
+  useEffect(() => {
+    if (inspectorBoardId === undefined || !onRequestBoard) return
+    onRequestBoard(inspectorBoardId)
+    return () => onRequestBoard(undefined)
+  }, [inspectorBoardId, onRequestBoard])
   const board =
-    cached && boardRead.data && cached.source === undefined
-      ? loadCanvasBoard(cached, boardRead.data)
-      : cached
+    layout && layout.source === undefined && loadedBoard?.id === layout.id ? loadedBoard : layout
+  const usesBoardSource = board !== undefined && !board.generated
+  const retryBoardSource =
+    inspectorBoardId !== undefined && onRetryBoard ? () => onRetryBoard(inspectorBoardId) : undefined
   const inline = hasVersionSource(version) ? version.source : undefined
   const sourceRead = useArtifactSourceQuery(
     artifact.publicId,
     version.version,
     open &&
       inline === undefined &&
-      (tab === 'runtime' || (tab === 'source' && (!board || board.generated === true))),
+      (tab === 'runtime' || (tab === 'source' && !usesBoardSource)),
   )
   const full = inline ?? sourceRead.data?.source
-  const source = board && !board.generated ? board.source : full
+  const source = usesBoardSource ? board.source : full
   const layer = layers?.layers.find((entry) => entry.id === selectedLayerId)
   const excerpt =
     !board?.generated && layer && source !== undefined ? locateSource(source, layer) : null
@@ -379,15 +379,13 @@ export function BoardInspector({
                     excerpt={excerpt}
                     sourceLoc={layer?.sourceLoc}
                     source={source}
-                    scope={board && !board.generated ? '画板源码' : '作品源码'}
+                    scope={usesBoardSource ? '画板源码' : '作品源码'}
                     hasLayer={Boolean(layer)}
                   />
                 ) : (
                   <InspectorSourceStatus
-                    error={boardRead.error ?? sourceRead.error}
-                    retry={() =>
-                      void (board && !board.generated ? boardRead : sourceRead).refetch()
-                    }
+                    error={usesBoardSource ? boardReadError : sourceRead.error?.message}
+                    retry={usesBoardSource ? retryBoardSource : () => void sourceRead.refetch()}
                   />
                 )}
               </TabsContent>
@@ -407,7 +405,7 @@ export function BoardInspector({
                   />
                 ) : (
                   <InspectorSourceStatus
-                    error={sourceRead.error}
+                    error={sourceRead.error?.message}
                     retry={() => void sourceRead.refetch()}
                   />
                 )}
@@ -420,8 +418,13 @@ export function BoardInspector({
   )
 }
 
-function InspectorSourceStatus({ error, retry }: { error: Error | null; retry: () => void }) {
-  if (!error)
+interface InspectorSourceStatusProps {
+  error?: string
+  retry?: () => void
+}
+
+function InspectorSourceStatus({ error, retry }: InspectorSourceStatusProps) {
+  if (error === undefined)
     return (
       <p className="text-xs text-ink-muted" role="status">
         正在读取源码…
@@ -429,10 +432,12 @@ function InspectorSourceStatus({ error, retry }: { error: Error | null; retry: (
     )
   return (
     <div role="alert" className="space-y-2 text-xs">
-      <p>源码读取失败：{error.message}</p>
-      <Button size="sm" variant="outline" onClick={retry}>
-        重试
-      </Button>
+      <p>源码读取失败：{error}</p>
+      {retry && (
+        <Button size="sm" variant="outline" onClick={retry}>
+          重试
+        </Button>
+      )}
     </div>
   )
 }

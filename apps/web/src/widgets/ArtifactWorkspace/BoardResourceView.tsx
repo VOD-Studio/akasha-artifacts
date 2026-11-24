@@ -1,25 +1,37 @@
 import { Button } from '@akasha/ui/button'
-import { type ReactNode, useState, useSyncExternalStore } from 'react'
+import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { type CanvasBoard, type LoadedCanvasBoard, loadCanvasBoard } from '@/entities/artifact'
 import type { BoardResources } from './board-resources'
+
+interface BoardResourceViewProps {
+  board: CanvasBoard
+  resources: BoardResources
+  detailed: boolean
+  /** 聚焦和试玩不显示总览缓存，即使新帧还未渲染。 */
+  showThumbnail?: boolean
+  render: (board: LoadedCanvasBoard, ready: () => void) => ReactNode
+}
 
 /** 非活动画板只展示已从同一版画面提取的缩略图；未访问过的画板保持布局轮廓。 */
 export function BoardResourceView({
   board,
   resources,
   detailed,
+  showThumbnail = true,
   render,
-}: {
-  board: CanvasBoard
-  resources: BoardResources
-  detailed: boolean
-  render: (board: LoadedCanvasBoard, ready: () => void) => ReactNode
-}) {
-  return detailed ? (
-    <BoardDetail board={board} resources={resources} render={render} />
-  ) : (
-    <BoardThumbnail title={board.title} id={board.id} resources={resources} />
-  )
+}: BoardResourceViewProps) {
+  if (detailed) {
+    return (
+      <BoardDetail
+        board={board}
+        resources={resources}
+        showThumbnail={showThumbnail}
+        render={render}
+      />
+    )
+  }
+  if (!showThumbnail) return null
+  return <BoardThumbnail title={board.title} id={board.id} resources={resources} />
 }
 
 export function readLoadedBoard(
@@ -31,10 +43,13 @@ export function readLoadedBoard(
   return entry?.type === 'ready' ? loadCanvasBoard(board, entry.data) : undefined
 }
 
-export function useLoadedBoard(board: CanvasBoard | undefined, resources: BoardResources) {
+export function useBoardResource(board: CanvasBoard | undefined, resources: BoardResources) {
   const entry = useSyncExternalStore(resources.subscribe, () => board && resources.get(board.id))
-  if (board?.source !== undefined) return board as LoadedCanvasBoard
-  return board && entry?.type === 'ready' ? loadCanvasBoard(board, entry.data) : undefined
+  const loadedBoard = useMemo(() => {
+    if (board?.source !== undefined) return board as LoadedCanvasBoard
+    return board && entry?.type === 'ready' ? loadCanvasBoard(board, entry.data) : undefined
+  }, [board, entry])
+  return { loadedBoard, boardReadError: entry?.type === 'error' ? entry.message : undefined }
 }
 
 function BoardThumbnail({
@@ -56,32 +71,31 @@ function BoardThumbnail({
   ) : null
 }
 
-function BoardDetail({
-  board,
-  resources,
-  render,
-}: {
-  board: CanvasBoard
-  resources: BoardResources
-  render: (board: LoadedCanvasBoard, ready: () => void) => ReactNode
-}) {
-  const entry = useSyncExternalStore(resources.subscribe, () => resources.get(board.id))
+type BoardDetailProps = Required<Omit<BoardResourceViewProps, 'detailed'>>
+
+function BoardDetail({ board, resources, showThumbnail, render }: BoardDetailProps) {
+  const { loadedBoard, boardReadError } = useBoardResource(board, resources)
   const [rendered, setRendered] = useState(false)
-  if (entry?.type === 'ready') {
+  useEffect(() => {
+    if (showThumbnail) return () => resources.previewClosed(board.id)
+  }, [board.id, resources, showThumbnail])
+  if (loadedBoard) {
     return (
       <>
-        {render(loadCanvasBoard(board, entry.data), () => setRendered(true))}
-        {!rendered && <BoardThumbnail title={board.title} id={board.id} resources={resources} />}
+        {render(loadedBoard, () => setRendered(true))}
+        {showThumbnail && !rendered && (
+          <BoardThumbnail title={board.title} id={board.id} resources={resources} />
+        )}
       </>
     )
   }
-  if (entry?.type === 'error') {
+  if (boardReadError !== undefined) {
     return (
       <div
         role="alert"
         className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 text-sm text-ink"
       >
-        <p>画板读取失败：{entry.message}</p>
+        <p>画板读取失败：{boardReadError}</p>
         <Button
           size="sm"
           variant="outline"
@@ -98,7 +112,7 @@ function BoardDetail({
       aria-busy="true"
       className="absolute inset-0 grid place-items-center text-sm text-ink-muted"
     >
-      <BoardThumbnail title={board.title} id={board.id} resources={resources} />
+      {showThumbnail && <BoardThumbnail title={board.title} id={board.id} resources={resources} />}
       正在读取画板…
     </div>
   )

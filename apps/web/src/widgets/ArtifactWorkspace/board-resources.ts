@@ -33,9 +33,10 @@ function contentSize(content: ArtboardContent) {
   return bytes
 }
 
-/** 单一制品、版本与访问范围的请求队列。仅在当前视口内排队，任何结果都不能跨实例写入。 */
+/** 绑定单一制品、版本与访问范围；检查器与视口共用正文，只有视口安排截图。 */
 export class BoardResources {
   private wanted: readonly string[] = []
+  private inspectorBoard: string | undefined
   private readonly loading = new Map<string, AbortController>()
   private readonly entries = new Map<string, Entry>()
   private readonly observers = new Set<() => void>()
@@ -70,44 +71,91 @@ export class BoardResources {
     this.captureEnabled = captureEnabled
     if (change) {
       this.wanted = ordered
-      for (const [id, controller] of this.loading) {
-        if (ordered.includes(id)) continue
-        this.loading.delete(id)
-        controller.abort()
-      }
       for (const id of ordered) {
-        const entry = this.entries.get(id)
-        if (entry) {
-          this.entries.delete(id)
-          this.entries.set(id, entry)
-        }
+        this.touchEntry(id)
         const thumbnail = this.thumbnails.get(id)
         if (thumbnail) {
           this.thumbnails.delete(id)
           this.thumbnails.set(id, thumbnail)
         }
       }
-      this.pruneEntries()
+      this.reconcileReads()
     }
-    this.pump()
+    const capture = this.capture
+    if (capture && (!captureEnabled || !ordered.includes(capture.id))) {
+      capture.controller.abort()
+    }
     this.scheduleCapture()
   }
 
-  retry(id: string) {
-    if (this.entries.get(id)?.type !== 'error' || !this.wanted.includes(id)) return
+  /** 为源码检查暂留正文；不占用画布的运行时和截图名额。 */
+  setInspectorBoard(id: string | undefined) {
+    if (id === this.inspectorBoard) return
+    this.inspectorBoard = id
+    if (id !== undefined) this.touchEntry(id)
+    this.reconcileReads()
+  }
+
+  private wantsRead(id: string) {
+    return id === this.inspectorBoard || this.wanted.includes(id)
+  }
+
+  private touchEntry(id: string) {
+    const entry = this.entries.get(id)
+    if (!entry) return
     this.entries.delete(id)
-    this.publish()
+    this.entries.set(id, entry)
+  }
+
+  private reconcileReads() {
+    for (const id of this.loading.keys()) {
+      if (!this.wantsRead(id)) this.cancelRead(id)
+    }
+    this.pruneEntries()
     this.pump()
   }
 
+  private cancelRead(id: string) {
+    const controller = this.loading.get(id)
+    if (!controller) return false
+    this.loading.delete(id)
+    controller.abort()
+    return true
+  }
+
+  retry(id: string) {
+    if (this.entries.get(id)?.type !== 'error' || !this.wantsRead(id)) return
+    this.entries.delete(id)
+    this.publish()
+    this.pump()
+    if (this.wanted.includes(id)) this.scheduleCapture()
+  }
+
   private pump() {
+    const inspector = this.inspectorBoard
     for (const id of this.wanted) {
-      if (this.loading.size === REQUEST_LIMIT) break
       if (this.loading.has(id) || this.entries.has(id)) continue
-      const controller = new AbortController()
-      this.loading.set(id, controller)
-      void this.read(id, controller)
+      if (this.loading.size === REQUEST_LIMIT) {
+        // 只供检查器的请求不能挡住新进入视口的板。
+        if (inspector === undefined || this.wanted.includes(inspector) || !this.cancelRead(inspector))
+          return
+      }
+      this.startRead(id)
     }
+    if (
+      inspector !== undefined &&
+      this.loading.size < REQUEST_LIMIT &&
+      !this.loading.has(inspector) &&
+      !this.entries.has(inspector)
+    ) {
+      this.startRead(inspector)
+    }
+  }
+
+  private startRead(id: string) {
+    const controller = new AbortController()
+    this.loading.set(id, controller)
+    void this.read(id, controller)
   }
 
   private async read(id: string, controller: AbortController) {
@@ -129,21 +177,21 @@ export class BoardResources {
     this.entries.set(id, entry)
     this.publish()
     this.pump()
-    this.scheduleCapture()
+    if (this.wanted.includes(id)) this.scheduleCapture()
   }
 
   private pruneEntries() {
     let count = 0
     let bytes = 0
     for (const [id, entry] of this.entries) {
-      if (this.wanted.includes(id)) continue
+      if (this.wantsRead(id)) continue
       count++
       bytes += entry.bytes
     }
     let removed = false
     for (const [id, entry] of this.entries) {
       if (count <= SAVED_CONTENT_LIMIT && bytes <= SAVED_CONTENT_BYTES) break
-      if (this.wanted.includes(id)) continue
+      if (this.wantsRead(id)) continue
       this.entries.delete(id)
       count--
       bytes -= entry.bytes
@@ -167,13 +215,18 @@ export class BoardResources {
   private scheduleCapture() {
     clearTimeout(this.timer)
     this.timer = undefined
-    if (!this.captureEnabled || this.capture || this.loading.size || !this.eligible.size) return
+    if (
+      !this.captureEnabled ||
+      this.capture ||
+      !this.eligible.size ||
+      this.wanted.some((id) => this.loading.has(id))
+    )
+      return
     this.timer = setTimeout(() => {
       this.timer = undefined
       const id = this.wanted.find((id) => this.eligible.has(id))
-      if (!id) return
+      if (id === undefined) return
       const capture = this.eligible.get(id)
-      this.eligible.delete(id)
       if (capture) void this.saveThumbnail(id, capture)
     }, CAPTURE_IDLE_MS)
   }
@@ -185,6 +238,7 @@ export class BoardResources {
       const blob = await capture(controller.signal)
       if (controller.signal.aborted || blob.size === 0 || blob.size > THUMBNAIL_BYTES) return
       this.thumbnails.set(id, { url: URL.createObjectURL(blob), bytes: blob.size })
+      this.eligible.delete(id)
       let bytes = 0
       for (const thumbnail of this.thumbnails.values()) bytes += thumbnail.bytes
       for (const [key, thumbnail] of this.thumbnails) {
@@ -197,13 +251,18 @@ export class BoardResources {
     } catch {
       // 截图不可用时保留画板轮廓；不为同一可见帧反复请求栅格化。
     } finally {
-      if (this.capture?.controller === controller) this.capture = undefined
-      this.scheduleCapture()
+      // 交互中止后，仍显示的帧可以等下一次空闲；关闭的帧已从队列移除。
+      if (!controller.signal.aborted && this.eligible.get(id) === capture) this.eligible.delete(id)
+      if (this.capture?.controller === controller) {
+        this.capture = undefined
+        this.scheduleCapture()
+      }
     }
   }
 
   reset() {
     this.wanted = []
+    this.inspectorBoard = undefined
     this.captureEnabled = false
     for (const controller of this.loading.values()) controller.abort()
     this.loading.clear()

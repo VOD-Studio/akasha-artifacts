@@ -5,7 +5,7 @@ import {
   STANDALONE_BOARD_ID,
 } from '@akasha/protocol'
 import { useCallback, useRef, useState } from 'react'
-import type { CanvasDocument, CanvasLocation } from '@/entities/artifact'
+import type { CanvasBoard, CanvasLocation } from '@/entities/artifact'
 import { selectionForVersion, useSelectionStore } from '@/entities/selection'
 import { useWorkspaceStore } from '@/entities/workspace'
 import type { ShellOutgoingPayload } from '@/shared/bridge/host'
@@ -15,7 +15,7 @@ interface BoardInspectionInput {
   artifactId: string
   version: number
   followHead: boolean
-  document: CanvasDocument
+  board?: CanvasBoard
   current: CanvasLocation | null
   reveal: (target: CanvasLocation) => void
   send: (boardId: string, message: ShellOutgoingPayload) => void
@@ -32,7 +32,7 @@ export function useBoardInspection({
   artifactId,
   version,
   followHead,
-  document,
+  board,
   current,
   reveal,
   send,
@@ -164,10 +164,7 @@ export function useBoardInspection({
         useSelectionStore.getState().clearSelection(artifactId)
         return
       }
-      const board = document.pages
-        .find((page) => page.id === current?.pageId)
-        ?.boards.find((board) => board.id === current?.boardId)
-      if (!current || !board || !layers?.layers.includes(layer)) return
+      if (!current || board?.id !== current.boardId || !layers?.layers.includes(layer)) return
       const native =
         layer.designId && board.designLayers?.some((item) => item.id === layer.designId)
       const blockId = native ? `${DESIGN_LAYER_BLOCK_PREFIX}${layer.designId}` : layer.blockId

@@ -33,7 +33,7 @@ import { useVisualEdit, VisualEditPanel } from '@/features/visual-edit'
 import { ArtifactCanvas, type InspectorReveal } from './ArtifactCanvas'
 import { ArtifactFrame, type BoardFramePurpose, type FrameConnection } from './ArtifactFrame'
 import { BoardInspector, type BoardInspectorHandoff } from './BoardInspector'
-import { BoardResourceView, readLoadedBoard, useLoadedBoard } from './BoardResourceView'
+import { BoardResourceView, readLoadedBoard, useBoardResource } from './BoardResourceView'
 import { BoardResources } from './board-resources'
 import { InlineCanvasText } from './InlineCanvasText'
 import { useBoardInspection } from './useBoardInspection'
@@ -155,14 +155,9 @@ export function ArtifactWorkspace({
     [artifact.publicId, version.version, access?.role, access?.expiresAt],
   )
   useEffect(() => () => resources.reset(), [resources])
-  const activeResources = useRef(resources)
-  activeResources.current = resources
   const registerFrame = useCallback((id: string, frame: FrameConnection | null) => {
     if (frame) frames.current.set(id, frame)
-    else {
-      frames.current.delete(id)
-      activeResources.current.previewClosed(id)
-    }
+    else frames.current.delete(id)
   }, [])
   const registerFocusedFrame = useCallback((_id: string, frame: FrameConnection | null) => {
     focusedFrame.current = frame
@@ -268,7 +263,9 @@ export function ArtifactWorkspace({
   const inspectedBoardLayout = savedCanvas.pages
     .find((page) => page.id === canvasLocation?.pageId)
     ?.boards.find((board) => board.id === canvasLocation?.boardId)
-  const inspectedContent = useLoadedBoard(inspectedBoardLayout, resources)
+  const inspected = useBoardResource(inspectedBoardLayout, resources)
+  const onRequestBoard = useCallback((id?: string) => resources.setInspectorBoard(id), [resources])
+  const onRetryBoard = useCallback((id: string) => resources.retry(id), [resources])
   const canEditBoards =
     shareCanEdit &&
     artifact.type === 'artboard' &&
@@ -427,7 +424,7 @@ export function ArtifactWorkspace({
     artifactId: artifact.publicId,
     version: version.version,
     followHead: fixedVersion === undefined && !access,
-    document: savedCanvas,
+    board: inspected.loadedBoard ?? inspectedBoardLayout,
     current: canvasLocation,
     reveal: revealBoard,
     send: sendBoard,
@@ -494,6 +491,7 @@ export function ArtifactWorkspace({
           board={board}
           resources={resources}
           detailed={detailed}
+          showThumbnail={overview}
           render={frame}
         />
       )
@@ -622,7 +620,9 @@ export function ArtifactWorkspace({
       />
       <BoardInspector
         artifact={artifact}
-        loadedBoard={inspectedContent}
+        {...inspected}
+        onRequestBoard={onRequestBoard}
+        onRetryBoard={onRetryBoard}
         version={version}
         stateSnapshot={state.snapshot}
         document={savedCanvas}
