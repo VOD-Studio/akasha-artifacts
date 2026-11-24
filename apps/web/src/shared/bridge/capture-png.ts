@@ -1,4 +1,10 @@
-import type { ArtifactType, DesignLayer } from '@akasha/protocol'
+import {
+  type ArtboardAppearance,
+  type ArtboardTweak,
+  type ArtifactType,
+  type DesignLayer,
+  resolveArtboardTweaks,
+} from '@akasha/protocol'
 import { resolveSandboxOrigin } from '../config/runtime'
 import {
   buildSandboxIframeUrl,
@@ -14,6 +20,8 @@ interface PngBoard {
   source: string
   /** 原生绘制的数据属于同一版本，必须随作者源码一起栅格化。 */
   designLayers?: DesignLayer[]
+  appearance?: ArtboardAppearance
+  tweaks?: readonly ArtboardTweak[]
   width: number
   height: number
 }
@@ -84,6 +92,8 @@ async function renderPng(board: PngBoard, version: number, scale: number, signal
       artifactType: board.type,
       source: board.source,
       designLayers: board.designLayers,
+      boardAppearance: board.appearance,
+      boardTweaks: board.tweaks?.length ? resolveArtboardTweaks(board.tweaks) : undefined,
       ...(board.scoped ? { boardId: board.id } : {}),
       state: {},
     })

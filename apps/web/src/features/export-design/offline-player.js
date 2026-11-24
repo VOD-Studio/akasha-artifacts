@@ -14,6 +14,7 @@ function show(board) {
   frame.title = `画板内容：${board.title}`
   frame.width = board.width
   frame.height = board.height
+  frame.style.borderRadius = `${board.boardAppearance?.cornerRadius ?? 0}px`
   frame.srcdoc =
     bundle.frameStart + JSON.stringify(board).replaceAll('<', '\\u003c') + bundle.frameEnd
   routes.replaceChildren()
