@@ -100,7 +100,9 @@ it('交互恢复或画板移出时取消截图，检查器的只读需求不参�
 
     const pending = Promise.withResolvers<Blob>()
     const retried = Promise.withResolvers<Blob>()
-    const capture = vi.fn((_signal: AbortSignal) => retried.promise).mockReturnValueOnce(pending.promise)
+    const capture = vi
+      .fn((_signal: AbortSignal) => retried.promise)
+      .mockReturnValueOnce(pending.promise)
     const sourceCapture = vi.fn(() => Promise.resolve(new Blob()))
     resources.previewReady('visible', capture)
     resources.previewReady('source', sourceCapture)

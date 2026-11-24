@@ -96,7 +96,9 @@ export function BoardInspector({
   const layout = page?.boards.find((item) => item.id === location?.boardId)
   const [tab, setTab] = useState('properties')
   const inspectorBoardId =
-    open && tab === 'source' && layout?.scoped && layout.source === undefined ? layout.id : undefined
+    open && tab === 'source' && layout?.scoped && layout.source === undefined
+      ? layout.id
+      : undefined
   useEffect(() => {
     if (inspectorBoardId === undefined || !onRequestBoard) return
     onRequestBoard(inspectorBoardId)
@@ -106,14 +108,14 @@ export function BoardInspector({
     layout && layout.source === undefined && loadedBoard?.id === layout.id ? loadedBoard : layout
   const usesBoardSource = board !== undefined && !board.generated
   const retryBoardSource =
-    inspectorBoardId !== undefined && onRetryBoard ? () => onRetryBoard(inspectorBoardId) : undefined
+    inspectorBoardId !== undefined && onRetryBoard
+      ? () => onRetryBoard(inspectorBoardId)
+      : undefined
   const inline = hasVersionSource(version) ? version.source : undefined
   const sourceRead = useArtifactSourceQuery(
     artifact.publicId,
     version.version,
-    open &&
-      inline === undefined &&
-      (tab === 'runtime' || (tab === 'source' && !usesBoardSource)),
+    open && inline === undefined && (tab === 'runtime' || (tab === 'source' && !usesBoardSource)),
   )
   const full = inline ?? sourceRead.data?.source
   const source = usesBoardSource ? board.source : full

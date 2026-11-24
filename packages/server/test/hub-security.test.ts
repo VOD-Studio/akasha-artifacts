@@ -679,7 +679,9 @@ describe('Cloud Hub 身份与制品权限', () => {
     const { url } = z.object({ url: z.string() }).parse(await share.json())
     const redemption = await send(url)
     const headers = { cookie: redemption.headers.get('set-cookie')?.split(';')[0] ?? '' }
-    expect((await post('/api/v1/artifacts', { ...payload, baseVersion: 1 }, owner)).status).toBe(200)
+    expect((await post('/api/v1/artifacts', { ...payload, baseVersion: 1 }, owner)).status).toBe(
+      200,
+    )
 
     const feedbackPath = `${path}/feedback`
     const comment = async (version: number, element: ElementRef, audience = 'human') => {

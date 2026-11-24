@@ -164,7 +164,8 @@ export function useBoardInspection({
         useSelectionStore.getState().clearSelection(artifactId)
         return
       }
-      if (!current || board?.id !== current.boardId || !layers?.layers.includes(layer)) return
+      if (!current || !board || board.id !== current.boardId || !layers?.layers.includes(layer))
+        return
       const native =
         layer.designId && board.designLayers?.some((item) => item.id === layer.designId)
       const blockId = native ? `${DESIGN_LAYER_BLOCK_PREFIX}${layer.designId}` : layer.blockId

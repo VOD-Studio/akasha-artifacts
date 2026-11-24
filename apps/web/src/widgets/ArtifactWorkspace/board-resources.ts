@@ -137,7 +137,11 @@ export class BoardResources {
       if (this.loading.has(id) || this.entries.has(id)) continue
       if (this.loading.size === REQUEST_LIMIT) {
         // 只供检查器的请求不能挡住新进入视口的板。
-        if (inspector === undefined || this.wanted.includes(inspector) || !this.cancelRead(inspector))
+        if (
+          inspector === undefined ||
+          this.wanted.includes(inspector) ||
+          !this.cancelRead(inspector)
+        )
           return
       }
       this.startRead(id)
