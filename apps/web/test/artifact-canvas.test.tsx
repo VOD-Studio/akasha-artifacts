@@ -424,6 +424,42 @@ it('从播放菜单展开静态画板，返回后不替换原选区且还原触�
   expect(document.activeElement).toBe(trigger)
 })
 
+it('页面隐藏时暂停已运行画板，返回时不重建帧而恢复动画', () => {
+  const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+  const source = JSON.stringify({
+    boards: [
+      {
+        id: 'motion',
+        title: '动效封面',
+        presentation: { animation: true },
+        html: '<h1>动效</h1>',
+      },
+    ],
+  })
+  showWorkspace(detailFor(1, source))
+  const frame = screen.getByTitle<HTMLIFrameElement>('画板内容：动效封面')
+  const runtime = sandbox(frame)
+  runtime.receive({ type: 'ready' })
+  expect(runtime.post).toHaveBeenCalledWith(
+    expect.objectContaining({ type: 'render', overviewAnimation: true }),
+    '*',
+  )
+
+  hidden.mockReturnValue(true)
+  fireEvent(document, new Event('visibilitychange'))
+  expect(runtime.post).toHaveBeenLastCalledWith(
+    expect.objectContaining({ type: 'animation.set', animate: false }),
+    '*',
+  )
+  hidden.mockReturnValue(false)
+  fireEvent(document, new Event('visibilitychange'))
+  expect(runtime.post).toHaveBeenLastCalledWith(
+    expect.objectContaining({ type: 'animation.set', animate: true }),
+    '*',
+  )
+  expect(screen.getByTitle('画板内容：动效封面')).toBe(frame)
+})
+
 function stubResizeObserver() {
   vi.stubGlobal(
     'ResizeObserver',
