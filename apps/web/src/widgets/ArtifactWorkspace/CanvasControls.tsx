@@ -15,7 +15,7 @@ import {
   Redo2,
   Undo2,
 } from 'lucide-react'
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import type { CanvasPage } from '@/entities/artifact'
 import { DRAWING_TOOLS, type DrawingTool } from './BoardDrawingSurface'
 import { CanvasPageActions, type CanvasPageEditing } from './CanvasPageActions'
@@ -50,13 +50,16 @@ export function PageNavigator({
   pageEditing?: CanvasPageEditing
 }) {
   const [query, setQuery] = useState('')
-  const search = query.trim().toLocaleLowerCase()
-  const matches = (text: string) => text.toLocaleLowerCase().includes(search)
-  const results = pages.flatMap((entry) => {
-    const pageMatch = matches(entry.title)
-    const boards = pageMatch ? entry.boards : entry.boards.filter((board) => matches(board.title))
-    return pageMatch || boards.length ? [{ entry, boards }] : []
-  })
+  const results = useMemo(() => {
+    if (!open) return null
+    const search = query.trim().toLocaleLowerCase()
+    const matches = (text: string) => text.toLocaleLowerCase().includes(search)
+    return pages.flatMap((entry) => {
+      const pageMatch = matches(entry.title)
+      const boards = pageMatch ? entry.boards : entry.boards.filter((board) => matches(board.title))
+      return pageMatch || boards.length ? [{ entry, boards }] : []
+    })
+  }, [open, pages, query])
   const copyLink = async (id: string) => {
     try {
       await navigator.clipboard.writeText(pageLink(id))
@@ -96,10 +99,10 @@ export function PageNavigator({
           onValueChange={setQuery}
         />
         <div className="artifact-canvas-nav-results">
-          {results.length === 0 ? (
+          {results?.length === 0 ? (
             <p className="p-2 text-sm text-ink-muted">没有匹配的页面或画板</p>
           ) : null}
-          {results.map(({ entry, boards }) => (
+          {results?.map(({ entry, boards }) => (
             <div key={entry.id} className="mb-2">
               <Button
                 variant="ghost"

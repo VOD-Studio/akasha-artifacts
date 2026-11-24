@@ -129,9 +129,15 @@ function saveView(storageKey: string, view: CanvasView) {
   }
 }
 
-function selectedBoardFor(boards: readonly CanvasBoard[] | undefined, view: PageView) {
-  if (boards?.some((board) => board.id === view.selected)) return view.selected
-  return boards?.find((board) => view.selectedIds?.includes(board.id))?.id ?? null
+function selectedBoardFor(
+  boards: readonly CanvasBoard[] | undefined,
+  selected: string | null,
+  selectedIds: readonly string[] | undefined,
+) {
+  if (selected && boards?.some((board) => board.id === selected)) return selected
+  return selectedIds?.length
+    ? (boards?.find((board) => selectedIds.includes(board.id))?.id ?? null)
+    : null
 }
 
 function settledCamera(
@@ -208,7 +214,13 @@ export function ArtifactCanvas({
   const overview = document.pages.find((entry) => entry.id === '') ?? firstPage
   const storedPage = document.pages.find((entry) => entry.id === view.pageId)
   const addressedPage = document.pages.find((entry) => entry.id === requestedPage)
-  const addressedBoard = addressedPage?.boards.find((board) => board.id === requestedBoard)
+  const addressedBoard = useMemo(
+    () =>
+      requestedBoard === null
+        ? undefined
+        : addressedPage?.boards.find((board) => board.id === requestedBoard),
+    [addressedPage, requestedBoard],
+  )
   const focusedShareEntry = useRef('')
   const focusShareEntry = useEffectEvent((link: string, pageId: string, boardId: string) => {
     if (focusedShareEntry.current === link) return
@@ -227,7 +239,11 @@ export function ArtifactCanvas({
   const pageId = page?.id
   const pageView = page ? pageViewFor(view, page.id) : DEFAULT_PAGE
   const explicitSelection = invalidAddress ? undefined : pageView.selectedIds
-  const selected = invalidAddress ? null : selectedBoardFor(page?.boards, pageView)
+  const selected = useMemo(
+    () =>
+      invalidAddress ? null : selectedBoardFor(page?.boards, pageView.selected, explicitSelection),
+    [invalidAddress, page?.boards, pageView.selected, explicitSelection],
+  )
   const showBoards = !invalidAddress && page && page.boards.length > 0
   const firstBoard = page?.boards[0]
   const standalone = firstBoard && !firstBoard.scoped ? firstBoard : undefined
