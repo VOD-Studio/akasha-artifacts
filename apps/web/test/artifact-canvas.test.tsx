@@ -1144,6 +1144,7 @@ it('拖出矩形只预览，松开按画板固有坐标保存并可撤销重做'
   stubResizeObserver()
   vi.stubGlobal('PointerEvent', MouseEvent)
   const editor = showEditableWorkspace(detailFor())
+  fireEvent.click(screen.getByRole('button', { name: '形状' }))
   fireEvent.click(screen.getByRole('button', { name: '绘制矩形' }))
   const surface = screen.getByRole('button', { name: '在宽屏首页绘制矩形' })
   vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 50, 720, 450))

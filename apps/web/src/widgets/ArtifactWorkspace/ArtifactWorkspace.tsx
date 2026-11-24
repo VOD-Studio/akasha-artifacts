@@ -555,6 +555,13 @@ export function ArtifactWorkspace({
             onLocationChange={setCanvasLocation}
             onSelectPoint={canvas === savedCanvas ? inspection.pickPoint : undefined}
             onClearElement={inspection.clearPoint}
+            onComment={() => {
+              if (canComment && !selectedElement && inspectedBoardLayout?.scoped) {
+                const boardId = inspectedBoardLayout.id
+                handleHighlightElement({ boardId, blockId: boardId })
+              }
+              setInspectorTab('review')
+            }}
             boardEditing={canEditBoards ? boardEditing : undefined}
             historyEditing={canEditText ? boardEditing : undefined}
             textTools={canEditText ? inlineText.tools : undefined}

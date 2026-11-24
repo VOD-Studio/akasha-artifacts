@@ -76,6 +76,7 @@ interface ArtifactCanvasProps {
   onLocationChange: (location: CanvasLocation | null) => void
   onSelectPoint?: (boardId: string, point: Point) => void
   onClearElement: () => void
+  onComment: () => void
   /** 用该画板的稳定标识打开和制品共用的导出面板。 */
   onExportBoard?: (boardId: string) => void
   renderBoard: (board: CanvasBoard, purpose: BoardFramePurpose, detailed: boolean) => ReactNode
@@ -174,6 +175,7 @@ export function ArtifactCanvas({
   onLocationChange,
   onSelectPoint,
   onClearElement,
+  onComment,
   onExportBoard,
   renderBoard,
   onDemandChange,
@@ -762,6 +764,7 @@ export function ArtifactCanvas({
           />
           {historyEditing ? <CanvasBoardEditNotice editing={historyEditing} /> : null}
         </div>
+        {/* biome-ignore lint/a11y/useKeyWithClickEvents: 键盘用 Escape 清空同一选区；点击这里只处理空白。 */}
         <section
           ref={viewportRef}
           aria-label="画布"
@@ -1077,6 +1080,7 @@ export function ArtifactCanvas({
               : undefined
           }
           canAddBoard={boardEditing?.available}
+          onComment={onComment}
           history={historyEditing}
           arrangementMenu={
             boardEditing ? (

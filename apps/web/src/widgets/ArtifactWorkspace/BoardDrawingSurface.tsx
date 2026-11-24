@@ -4,17 +4,16 @@ import { type PointerEvent, useRef, useState } from 'react'
 import type { CanvasBoard } from '@/entities/artifact'
 import type { CanvasBounds, Point } from './canvas-camera'
 
-/** 原生图层工具按声明顺序出现在画布工具条。 */
-export const DRAWING_TOOLS = [
-  { kind: 'text', label: '添加文本', icon: Type },
-  { kind: 'note', label: '添加便签', icon: StickyNote },
-  { kind: 'rectangle', label: '绘制矩形', icon: Square },
-  { kind: 'ellipse', label: '绘制椭圆', icon: Circle },
-  { kind: 'stroke', label: '画笔', icon: PenLine },
-] as const
+/** 每种绘制工具决定预览形状与写入版本的原生图层类型。 */
+export const DRAWING_TOOLS = {
+  text: { kind: 'text', label: '添加文本', icon: Type },
+  note: { kind: 'note', label: '添加便签', icon: StickyNote },
+  rectangle: { kind: 'rectangle', label: '绘制矩形', icon: Square },
+  ellipse: { kind: 'ellipse', label: '绘制椭圆', icon: Circle },
+  stroke: { kind: 'stroke', label: '画笔', icon: PenLine },
+} as const
 
-/** 当前工具决定预览形状与写入版本的原生图层类型。 */
-export type DrawingTool = (typeof DRAWING_TOOLS)[number]
+export type DrawingTool = (typeof DRAWING_TOOLS)[keyof typeof DRAWING_TOOLS]
 
 interface Gesture {
   pointer: number
