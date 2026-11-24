@@ -16,7 +16,6 @@ import {
   type DaemonStatus,
   type EditOp,
   type ElementRef,
-  ErrorEnvelopeSchema,
   type Feedback,
   type FeedbackKind,
   type JsonPatchOp,
@@ -29,22 +28,8 @@ import {
   type Visibility,
   type WithdrawnArtifact,
 } from '@akasha/protocol'
-import { getApiBaseUrl } from '../config/runtime'
-
-/** 服务端的非 2xx 响应；`code` 是协议错误码，响应体不是错误信封时为 `HTTP_ERROR`。 */
-export class ApiError extends Error {
-  readonly status: number
-  readonly code: string
-  readonly details?: unknown
-
-  constructor(status: number, code: string, message: string, details?: unknown) {
-    super(message)
-    this.name = 'ApiError'
-    this.status = status
-    this.code = code
-    this.details = details
-  }
-}
+import { ApiError } from './error'
+import { requestJson } from './request'
 
 export interface DaemonLogEntry {
   timestamp: string
@@ -57,9 +42,11 @@ export interface DaemonLogEntry {
 /** `GET /api/v1/artifacts/:id` 的响应。 */
 export interface ArtifactDetailResponse {
   artifact: Artifact
+  /** 这里是实际返回的快照，不一定等于作品的头版本。 */
   version: Version
   state: StateStreamSnapshot
   rounds: ReviewRound[]
+  /** 签名分享授予的版本和权限；未设置时不是分享会话。 */
   access?: ArtifactSharedAccess
 }
 
@@ -74,6 +61,7 @@ export async function createArtifactShare(
   })
 }
 
+/** 读取当前会话的管理权限；能打开作品不代表能修改、撤下或分享。 */
 export async function fetchArtifactManagement(id: string): Promise<{ canManage: boolean }> {
   return requestJson(`/api/v1/artifacts/${encodeURIComponent(id)}/management`)
 }
@@ -89,6 +77,7 @@ export async function transferArtifact(
   })
 }
 
+/** 只更改展示名称，不产生新版本，也不改变已有定位链接。 */
 export async function renameArtifact(id: string, title: string): Promise<{ artifact: Artifact }> {
   return requestJson(`/api/v1/artifacts/${encodeURIComponent(id)}/metadata`, {
     method: 'PATCH',
@@ -105,6 +94,7 @@ export async function fetchWithdrawnArtifacts(): Promise<{ items: WithdrawnArtif
   return requestJson('/api/v1/withdrawn-artifacts')
 }
 
+/** 恢复原作品链接；撤下时失效的签名分享不会恢复。 */
 export async function restoreArtifact(id: string): Promise<{ artifact: Artifact }> {
   return requestJson(`/api/v1/artifacts/${encodeURIComponent(id)}/restore`, { method: 'POST' })
 }
@@ -130,40 +120,6 @@ export async function fetchArtifactStorageUsage(id: string): Promise<ArtifactSto
   return ArtifactStorageUsageSchema.parse(usage)
 }
 
-// 所有请求带上同源 cookie；有请求体且未指定 Content-Type 时按 JSON 发送
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const url = `${getApiBaseUrl()}${path}`
-  const headers = new Headers(init?.headers)
-  if (init?.body && !headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json')
-  }
-  const res = await fetch(url, {
-    credentials: 'include',
-    ...init,
-    headers,
-  })
-  const text = await res.text()
-  let parsed: unknown
-  try {
-    parsed = text ? JSON.parse(text) : undefined
-  } catch {
-    parsed = undefined
-  }
-  if (!res.ok) {
-    const errEnv = ErrorEnvelopeSchema.safeParse(parsed)
-    if (errEnv.success) {
-      throw new ApiError(
-        res.status,
-        errEnv.data.error.code,
-        errEnv.data.error.message,
-        errEnv.data.error.details,
-      )
-    }
-    throw new ApiError(res.status, 'HTTP_ERROR', `请求失败（HTTP ${res.status}）`)
-  }
-  return parsed as T
-}
-
 export async function fetchDaemonStatus(): Promise<DaemonStatus> {
   return requestJson<DaemonStatus>('/api/v1/daemon/status')
 }
@@ -177,6 +133,7 @@ export async function fetchDaemonLogs(
   return requestJson<{ entries: DaemonLogEntry[] }>(`/api/v1/daemon/logs?${params.toString()}`)
 }
 
+/** 返回表示 Daemon 已接受停机；不代表进程已退出。 */
 export async function stopDaemon(): Promise<{ ok: true; status: 'stopping' }> {
   return requestJson<{ ok: true; status: 'stopping' }>('/api/v1/daemon/shutdown', {
     method: 'POST',
@@ -207,6 +164,7 @@ export async function fetchArtifactConversation(id: string, signal?: AbortSignal
   )
 }
 
+/** 把消息交给该作品已绑定的本机 CLI 会话；回执不代表已回复或发布。 */
 export async function sendArtifactConversation(
   id: string,
   input: { message: string; target?: ArtifactHandoffReference },
@@ -224,6 +182,7 @@ export async function fetchAgentConnections(signal?: AbortSignal) {
   return requestJson<{ connections: AgentConnection[] }>('/api/v1/agent/connections', { signal })
 }
 
+/** 在选定的授权项目中受理首条设计消息；作品链接必须等会话发布记录。 */
 export async function startAgentDesign(projectId: string, message: string) {
   return requestJson<AgentConversation>('/api/v1/agent/design', {
     method: 'POST',
@@ -231,12 +190,14 @@ export async function startAgentDesign(projectId: string, message: string) {
   })
 }
 
+/** 跟踪同一个受理会话的进度和发布记录，不会重新发送设计消息。 */
 export async function fetchAgentDesignSession(id: string, signal?: AbortSignal) {
   return requestJson<AgentConversation>(`/api/v1/agent/sessions/${encodeURIComponent(id)}`, {
     signal,
   })
 }
 
+/** 不传 `version` 时请求头版本；传入时读取固定快照，不回退到头版本。 */
 export async function fetchArtifactDetail(
   id: string,
   version?: number,
@@ -257,6 +218,7 @@ export async function fetchArtifactVersions(id: string): Promise<{ versions: Ver
   )
 }
 
+/** 以历史快照创建新的头版本，不覆盖旧版本；`baseVersion` 防止覆盖并发提交。 */
 export async function revertArtifactVersion(
   id: string,
   input: { targetVersion: number; baseVersion: number },
@@ -276,11 +238,13 @@ export interface SubmitFeedbackInput {
   roundId?: string | null
   groupId?: string | null
   kind: FeedbackKind
+  /** `agent` 表示面向 Agent；有轮次的草稿在提交本轮后才可被消费。 */
   audience?: Feedback['audience']
   element?: ElementRef | null
   body: string
 }
 
+/** 给指定版本写批注、修改记录或运行错误；返回反馈记录，不表示 Agent 已消费。 */
 export async function submitArtifactFeedback(
   id: string,
   input: SubmitFeedbackInput,
@@ -294,6 +258,7 @@ export async function submitArtifactFeedback(
   )
 }
 
+/** 读取服务端授权的反馈和讨论线程；请求包含当前调用者可读取的草稿。 */
 export async function fetchArtifactFeedback(
   id: string,
 ): Promise<{ items: Feedback[]; threads: Record<string, AnnotationThread> }> {
@@ -333,6 +298,7 @@ export async function openReviewRound(
   })
 }
 
+/** 提交本轮，使面向 Agent 的轮次反馈可被消费。不等待 Agent 回复。 */
 export async function submitReviewRound(
   id: string,
   roundId: string,
@@ -348,6 +314,7 @@ export async function submitReviewRound(
   )
 }
 
+/** 将轮次退回草拟状态；已经提交的反馈不会被删除。 */
 export async function withdrawReviewRound(
   id: string,
   roundId: string,
@@ -373,6 +340,7 @@ export interface RecordHumanDecisionInput {
   submitRound?: boolean
 }
 
+/** 记录人的选择或验收结论；只有显式设定 `submitRound` 才同时提交轮次。 */
 export async function recordHumanDecision(
   id: string,
   input: RecordHumanDecisionInput,
@@ -405,10 +373,12 @@ export async function syncProjectSelection(
   }
 }
 
+/** 读取作品类型公开的检查与参数规格，与某个版本的运行数据无关。 */
 export async function fetchArtifactSpec(type: ArtifactType): Promise<ArtifactSpecOutput> {
   return requestJson<ArtifactSpecOutput>(`/api/v1/specs/${encodeURIComponent(type)}`)
 }
 
+/** 更新独立于源码版本的运行状态；返回已应用补丁后的序号与快照。 */
 export async function pushArtifactState(
   id: string,
   input: { project?: string; patch: JsonPatchOp[] },
@@ -435,7 +405,7 @@ export interface PublishHumanVersionInput {
 }
 
 /**
- * L3 代码编辑器保存人类直接改动的版本。
+ * 保存代码编辑或画布操作产生的新版本，不改写原快照。
  *
  * @remarks `baseVersion` 落后于头版本时服务端返回 409，`ApiError.details` 里带冲突详情。
  */
@@ -460,6 +430,7 @@ export interface VisualEditTarget {
 
 export type VisualEditCommand = { op: EditOp; boardId?: string } | { undoVersion: number }
 
+/** 定位可修改的源码元素；`target: null` 表示该基准版本没有可编辑目标。 */
 export async function fetchVisualEditTarget(
   id: string,
   input: { project: string; baseVersion: number; loc: string; boardId?: string },
@@ -473,6 +444,7 @@ export async function fetchVisualEditTarget(
   return requestJson(`/api/v1/artifacts/${encodeURIComponent(id)}/visual-edit?${query}`)
 }
 
+/** 查找当前基准上的可撤销直改版本；为空则不提供撤销。 */
 export async function fetchVisualUndo(
   id: string,
   input: { project: string; baseVersion: number },
@@ -484,6 +456,7 @@ export async function fetchVisualUndo(
   return requestJson(`/api/v1/artifacts/${encodeURIComponent(id)}/visual-edit?${query}`)
 }
 
+/** 计算应用编辑后的源码，不发布版本、也不通知 Agent。 */
 export async function previewVisualEdit(
   id: string,
   input: { project: string; baseVersion: number } & VisualEditCommand,
@@ -494,6 +467,7 @@ export async function previewVisualEdit(
   })
 }
 
+/** 提交元素编辑或撤销，返回服务端已写入的版本；版本冲突由调用方处理。 */
 export async function saveVisualEdit(
   id: string,
   input: { project: string; baseVersion: number } & VisualEditCommand,
@@ -512,6 +486,7 @@ export interface VersionConflictDetails {
   authors: string[]
 }
 
+/** 只提取服务端的版本冲突详情，其他错误仍由调用方按原样处理。 */
 export function parseVersionConflictDetails(err: unknown): VersionConflictDetails | null {
   if (!(err instanceof ApiError)) return null
   if (err.status !== 409 || err.code !== 'VERSION_CONFLICT') return null

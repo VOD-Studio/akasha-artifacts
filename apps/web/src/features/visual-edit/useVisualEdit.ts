@@ -5,7 +5,6 @@ import { toast } from 'sonner'
 import { artifactKeys } from '../../entities/artifact/queries'
 import { feedbackKeys } from '../../entities/feedback/queries'
 import {
-  ApiError,
   type ArtifactDetailResponse,
   fetchVisualEditTarget,
   fetchVisualUndo,
@@ -15,6 +14,7 @@ import {
   type VisualEditCommand,
   type VisualEditTarget,
 } from '../../shared/api/client'
+import { ApiError } from '../../shared/api/error'
 import type { ShellOutgoingPayload } from '../../shared/bridge/host'
 
 interface Options {

@@ -12,7 +12,8 @@ import {
   type ConversationTarget,
 } from '../features/agent-conversation/AgentConversationPane'
 import { useLiveSync } from '../features/live-sync/useLiveSync'
-import { ApiError, type ArtifactDetailResponse } from '../shared/api/client'
+import type { ArtifactDetailResponse } from '../shared/api/client'
+import { ApiError } from '../shared/api/error'
 import { useLocalArtifactRedirect } from '../shared/config/local-artifact'
 import { isCloudHub, resolveSandboxOrigin } from '../shared/config/runtime'
 import {

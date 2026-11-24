@@ -10,11 +10,11 @@ import { artifactKeys } from '../../entities/artifact/queries'
 import { AgentTurnList } from '../../features/agent-conversation/AgentTurnList'
 import { useAgentDraft } from '../../features/agent-conversation/agent-draft'
 import {
-  ApiError,
   fetchAgentConnections,
   fetchAgentDesignSession,
   startAgentDesign,
 } from '../../shared/api/client'
+import { ApiError } from '../../shared/api/error'
 
 interface DesignAttempt {
   /** 实际受理之后才有的本机会话。 */

@@ -5,7 +5,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { useWorkspaceStore } from '../src/entities/workspace/store'
 import { SplitCodeEditor } from '../src/features/code-editor/SplitCodeEditor'
-import { ApiError } from '../src/shared/api/client'
+import { ApiError } from '../src/shared/api/error'
 import { ArtifactWorkspace } from '../src/widgets/ArtifactWorkspace/ArtifactWorkspace'
 
 beforeAll(() => {

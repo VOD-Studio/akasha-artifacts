@@ -4,11 +4,8 @@ import { Textarea } from '@akasha/ui/textarea'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Send, X } from 'lucide-react'
 import { type ChangeEventHandler, type FormEventHandler, useLayoutEffect, useRef } from 'react'
-import {
-  ApiError,
-  fetchArtifactConversation,
-  sendArtifactConversation,
-} from '../../shared/api/client'
+import { fetchArtifactConversation, sendArtifactConversation } from '../../shared/api/client'
+import { ApiError } from '../../shared/api/error'
 import { AgentTurnList, describeAgentTarget } from './AgentTurnList'
 import { useAgentDraft } from './agent-draft'
 
