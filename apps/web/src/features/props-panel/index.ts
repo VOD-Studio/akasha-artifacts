@@ -1,1 +1,1 @@
-export { PropsPanel } from './PropsPanel'
+export { extractPropFieldsFromSpec, PropsPanel } from './PropsPanel'
