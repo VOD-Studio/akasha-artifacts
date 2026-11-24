@@ -38,6 +38,16 @@
   },
   "overrides": [
     {
+      "includes": ["apps/web/src/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNestedTernary": "error"
+          }
+        }
+      }
+    },
+    {
       "includes": ["packages/ui/src/**"],
       "linter": {
         "rules": {
