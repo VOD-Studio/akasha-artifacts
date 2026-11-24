@@ -1,12 +1,17 @@
 import type { ArtifactSpecOutput, ArtifactType, JsonPatchOp } from '@akasha/protocol'
-import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
+import { Checkbox } from '@akasha/ui/checkbox'
 import { Empty } from '@akasha/ui/empty'
+import { Field } from '@akasha/ui/field'
+import { Input } from '@akasha/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
+import { Skeleton } from '@akasha/ui/skeleton'
+import { Slider } from '@akasha/ui/slider'
 import { RotateCcw, SlidersHorizontal } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { useArtifactSpecQuery, usePushArtifactStateMutation } from '../../entities/artifact/queries'
-import { applyJsonPatchClient } from '../../shared/lib/json-patch'
+import { useArtifactSpecQuery, usePushArtifactStateMutation } from '@/entities/artifact'
+import { applyJsonPatchClient } from '@/shared/lib/json-patch'
 
 export interface PropsPanelField {
   key: string
@@ -102,6 +107,90 @@ export function buildPropPatch(
   return [{ op: 'add', path: `/props/${escapeJsonPointer(key)}`, value }]
 }
 
+function PropertyField({
+  field,
+  rawValue,
+  readOnly,
+  onChange,
+}: {
+  field: PropsPanelField
+  rawValue: unknown
+  readOnly: boolean
+  onChange: (value: string | boolean | number) => void
+}) {
+  const id = `ak-prop-${field.key}`
+
+  if (field.type === 'boolean') {
+    return (
+      <Field label={field.label} orientation="horizontal" controlSize="sm">
+        <Checkbox
+          id={id}
+          checked={Boolean(rawValue)}
+          disabled={readOnly}
+          onCheckedChange={(checked) => onChange(checked === true)}
+        />
+      </Field>
+    )
+  }
+
+  if (field.type === 'select' && field.options) {
+    const rawSelection = String(rawValue ?? field.options[0]?.value ?? '')
+    const selection =
+      field.options.find((option) => option.value === rawSelection) ?? field.options[0]
+    // Select 保留空串表示未选择，Schema 的选项值则可能是空串。
+    return (
+      <Field label={field.label}>
+        <Select
+          id={id}
+          disabled={readOnly}
+          value={selection ? `option:${selection.value}` : ''}
+          onValueChange={(value) => onChange(value.slice('option:'.length))}
+        >
+          <SelectTrigger controlSize="sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {field.options.map((option) => (
+              <SelectItem key={option.value} value={`option:${option.value}`}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+    )
+  }
+
+  if (field.type === 'number') {
+    const value = typeof rawValue === 'number' ? rawValue : Number(rawValue ?? field.min ?? 1)
+    return (
+      <Field label={field.label} labelEnd={<span className="font-mono">{value}</span>}>
+        <Slider
+          id={id}
+          min={field.min ?? 1}
+          max={field.max ?? 10}
+          step={field.step ?? 1}
+          value={[value]}
+          disabled={readOnly}
+          onValueChange={([next]) => onChange(next)}
+        />
+      </Field>
+    )
+  }
+
+  return (
+    <Field label={field.label}>
+      <Input
+        id={id}
+        controlSize="sm"
+        value={String(rawValue ?? '')}
+        disabled={readOnly}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </Field>
+  )
+}
+
 /**
  * L2 结构化属性面板：按 Kit 模板的 schema 自动生成表单，改动以补丁推送到状态流。
  *
@@ -185,11 +274,19 @@ export function PropsPanel({
               return next
             })
           }
-          toast.error(err instanceof Error ? err.message : '推送属性补丁失败')
+          toast.error(err instanceof Error ? err.message : '无法更新运行参数')
         } finally {
           inFlightCountRef.current = Math.max(0, inFlightCountRef.current - 1)
         }
       })
+  }
+
+  if (specOverride === undefined && specQuery.isPending) {
+    return (
+      <section aria-label="运行参数" aria-busy="true">
+        <Skeleton className="h-24 w-full" />
+      </section>
+    )
   }
 
   if (fields.length === 0) {
@@ -200,13 +297,12 @@ export function PropsPanel({
       >
         <Empty
           variant="compact"
-          title="已自动降级为 L1 评审"
-          description={`类型「${artifactType}」不含结构化属性 Schema，请使用元素指认与批注表达修改意图。`}
+          title={specQuery.isError ? '无法加载运行参数' : '没有可调整的参数'}
         />
         {onFallbackToL1 ? (
           <div className="flex justify-center">
             <Button variant="outline" size="sm" onClick={onFallbackToL1}>
-              返回 L1 批注
+              打开批注
             </Button>
           </div>
         ) : null}
@@ -225,15 +321,15 @@ export function PropsPanel({
       <legend className="sr-only">运行参数</legend>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 text-xs font-semibold text-ink">
-          <SlidersHorizontal size={13} />
-          <span>模板属性（L2）</span>
-          <Badge tone="accent">{fields.length}</Badge>
+          <SlidersHorizontal size={13} aria-hidden />
+          <span aria-hidden>运行参数</span>
         </div>
         {hasOverrides ? (
           <Button
             variant="ghost"
             size="sm"
             leftIcon={<RotateCcw size={11} />}
+            disabled={readOnly}
             loading={pushMutation.isPending}
             onClick={() => {
               setOptimisticValues({})
@@ -247,120 +343,26 @@ export function PropsPanel({
 
       <div className="space-y-3">
         {fields.map((field) => {
-          const rawVal =
+          const rawValue =
             optimisticValues[field.key] ??
             currentPropsOverlay[field.key] ??
             parsedSource?.[field.key] ??
             field.defaultValue
-          const inputId = `ak-prop-${field.key}`
-
-          if (field.type === 'boolean') {
-            const checked = Boolean(rawVal)
-            return (
-              <label
-                key={field.key}
-                htmlFor={inputId}
-                className="flex cursor-pointer items-center justify-between gap-2 rounded-lg border border-border px-2.5 py-2 text-xs"
-              >
-                <span className="font-medium text-ink">{field.label}</span>
-                <input
-                  id={inputId}
-                  type="checkbox"
-                  checked={checked}
-                  onChange={(e) => {
-                    const nextChecked = e.target.checked
-                    enqueuePropUpdate(
-                      (snap) => buildPropPatch(snap, field.key, nextChecked),
-                      field.key,
-                      nextChecked,
-                    )
-                  }}
-                  className="h-4 w-4 accent-violet-600"
-                />
-              </label>
+          const updateValue = (value: string | boolean | number) => {
+            enqueuePropUpdate(
+              (snapshot) => buildPropPatch(snapshot, field.key, value),
+              field.key,
+              value,
             )
           }
-
-          if (field.type === 'select' && field.options) {
-            return (
-              <div key={field.key} className="space-y-1">
-                <label htmlFor={inputId} className="block text-[11px] font-medium text-ink-muted">
-                  {field.label}
-                </label>
-                <select
-                  id={inputId}
-                  value={String(rawVal ?? field.options[0]?.value ?? '')}
-                  onChange={(e) => {
-                    const nextValue = e.target.value
-                    enqueuePropUpdate(
-                      (snap) => buildPropPatch(snap, field.key, nextValue),
-                      field.key,
-                      nextValue,
-                    )
-                  }}
-                  className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-ink focus:border-accent focus:outline-none"
-                >
-                  {field.options.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )
-          }
-
-          if (field.type === 'number') {
-            const numVal = typeof rawVal === 'number' ? rawVal : Number(rawVal ?? field.min ?? 1)
-            return (
-              <div key={field.key} className="space-y-1">
-                <div className="flex items-center justify-between text-[11px]">
-                  <label htmlFor={inputId} className="font-medium text-ink-muted">
-                    {field.label}
-                  </label>
-                  <span className="font-mono text-ink">{numVal}</span>
-                </div>
-                <input
-                  id={inputId}
-                  type="range"
-                  min={field.min ?? 1}
-                  max={field.max ?? 10}
-                  step={field.step ?? 1}
-                  value={numVal}
-                  onChange={(e) => {
-                    const nextNum = Number(e.target.value)
-                    enqueuePropUpdate(
-                      (snap) => buildPropPatch(snap, field.key, nextNum),
-                      field.key,
-                      nextNum,
-                    )
-                  }}
-                  className="w-full accent-violet-600"
-                />
-              </div>
-            )
-          }
-
           return (
-            <div key={field.key} className="space-y-1">
-              <label htmlFor={inputId} className="block text-[11px] font-medium text-ink-muted">
-                {field.label}
-              </label>
-              <input
-                id={inputId}
-                type="text"
-                value={String(rawVal ?? '')}
-                onChange={(e) => {
-                  const nextText = e.target.value
-                  enqueuePropUpdate(
-                    (snap) => buildPropPatch(snap, field.key, nextText),
-                    field.key,
-                    nextText,
-                  )
-                }}
-                className="w-full rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-ink focus:border-accent focus:outline-none"
-              />
-            </div>
+            <PropertyField
+              key={field.key}
+              field={field}
+              rawValue={rawValue}
+              readOnly={readOnly}
+              onChange={updateValue}
+            />
           )
         })}
       </div>

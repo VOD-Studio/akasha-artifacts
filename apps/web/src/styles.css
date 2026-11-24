@@ -10,6 +10,28 @@
   --color-accent: var(--primary);
 }
 
+/* 放在根节点，让挂到 body 的菜单和对话框与工作区共用配色。 */
+:root {
+  --neutral-11: light-dark(#5f5f5f, #b8b8b8);
+  --neutral-12: light-dark(#202020, #ededed);
+  --material-page: light-dark(#f7f7f7, #171717);
+  --material-sheet: light-dark(#fff, #222);
+  --material-sunk: light-dark(#ededed, #303030);
+  --material-rule: light-dark(#dedede, #3d3d3d);
+  --material-rule2: light-dark(#b5b5b5, #626262);
+  --material-accent: light-dark(#434343, #d0d0d0);
+  --material-deco: var(--material-accent);
+  --decoration-foreground: var(--background);
+  --scrollbar-thumb: light-dark(#999, #777);
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --material-rule: var(--neutral-11);
+    --material-rule2: var(--neutral-12);
+  }
+}
+
 html,
 body,
 #root {

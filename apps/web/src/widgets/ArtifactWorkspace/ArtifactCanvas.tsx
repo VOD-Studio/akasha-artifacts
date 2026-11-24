@@ -1,5 +1,4 @@
 import { Button } from '@akasha/ui/button'
-import { Download, Focus, Play } from 'lucide-react'
 import {
   type PointerEvent,
   type ReactNode,
@@ -10,12 +9,17 @@ import {
   useRef,
   useState,
 } from 'react'
-import { useSelectionStore } from '../../entities/selection/store'
+import type { CanvasBoard, CanvasDocument, CanvasLocation, CanvasPage } from '@/entities/artifact'
+import { useSelectionStore } from '@/entities/selection'
 import type { BoardFramePurpose } from './ArtifactFrame'
 import { BoardDrawingSurface, type DrawingTool } from './BoardDrawingSurface'
 import { BoardPresentation } from './BoardPresentation'
 import { CanvasArrangeMenu } from './CanvasArrangeMenu'
-import { CanvasBoardActions, CanvasBoardEditNotice } from './CanvasBoardActions'
+import {
+  CanvasBoardActions,
+  CanvasBoardEditNotice,
+  CanvasBoardQuickActions,
+} from './CanvasBoardActions'
 import { CanvasToolbar, PageNavigator } from './CanvasControls'
 import type { CanvasPageEditing } from './CanvasPageActions'
 import {
@@ -27,13 +31,13 @@ import {
 } from './canvas-arrangement'
 import {
   type Camera,
+  type CanvasBounds,
   DEFAULT_CAMERA,
   fitCamera,
   layoutBoards,
   type Point,
   zoomCamera,
 } from './canvas-camera'
-import type { CanvasBoard, CanvasDocument, CanvasLocation, CanvasPage } from './canvas-model'
 import { useBoardGesture } from './useBoardGesture'
 import { useBoardPresentation } from './useBoardPresentation'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
@@ -115,6 +119,23 @@ function saveView(storageKey: string, view: CanvasView) {
   }
 }
 
+function selectedBoardFor(boards: readonly CanvasBoard[] | undefined, view: PageView) {
+  if (boards?.some((board) => board.id === view.selected)) return view.selected
+  return boards?.find((board) => view.selectedIds?.includes(board.id))?.id ?? null
+}
+
+function settledCamera(
+  current: Camera | null,
+  board: CanvasBounds | undefined,
+  page: CanvasBounds,
+  viewport: { width: number; height: number },
+  measurable: boolean,
+) {
+  if (!measurable) return current
+  if (board) return fitCamera(board, viewport, 'board')
+  return current ?? fitCamera(page, viewport, 'page')
+}
+
 const isPrototype = (board: CanvasBoard) => board.type === 'html' || board.type === 'react'
 
 export function ArtifactCanvas({
@@ -187,11 +208,8 @@ export function ArtifactCanvas({
   const pageId = page?.id
   const pageView = page ? pageViewFor(view, page.id) : DEFAULT_PAGE
   const explicitSelection = invalidAddress ? undefined : pageView.selectedIds
-  const selected = invalidAddress
-    ? null
-    : page?.boards.some((board) => board.id === pageView.selected)
-      ? pageView.selected
-      : (page?.boards.find((board) => explicitSelection?.includes(board.id))?.id ?? null)
+  const selected = invalidAddress ? null : selectedBoardFor(page?.boards, pageView)
+  const showBoards = !invalidAddress && page && page.boards.length > 0
   const activeSelection = useMemo(
     () => layoutSelectionIds(page?.boards ?? [], { selected, selectedIds: explicitSelection }),
     [page, selected, explicitSelection],
@@ -273,11 +291,7 @@ export function ArtifactCanvas({
       const current = pageViewFor(prev, pageId)
       const next = {
         selected: pendingAddress ? (addressedBoardId ?? current.selected) : current.selected,
-        camera: measurable
-          ? boardBounds
-            ? fitCamera(boardBounds, size, 'board')
-            : (current.camera ?? fitCamera(layout.page, size, 'page'))
-          : current.camera,
+        camera: settledCamera(current.camera, boardBounds, layout.page, size, measurable),
       }
       if (
         prev.pageId === pageId &&
@@ -482,8 +496,8 @@ export function ArtifactCanvas({
     if (drawingTool || boardGesture.preview?.phase === 'dragging') return
     const rect = viewport.getBoundingClientRect()
     const anchor = { x: event.clientX - rect.left, y: event.clientY - rect.top }
-    const delta =
-      event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? size.height : 1)
+    const unit = event.deltaMode === 2 ? size.height : 1
+    const delta = event.deltaY * (event.deltaMode === 1 ? 16 : unit)
     updateCamera((current) => zoomCamera(current, Math.exp(-delta * 0.002), anchor))
   })
 
@@ -606,7 +620,7 @@ export function ArtifactCanvas({
         </div>
         <section
           ref={viewportRef}
-          aria-label="制品画布"
+          aria-label="画布"
           tabIndex={-1}
           className="artifact-canvas"
           data-hand={handActive}
@@ -617,11 +631,9 @@ export function ArtifactCanvas({
           onPointerCancel={endPointer}
           onLostPointerCapture={endPointer}
         >
-          {invalidAddress ? (
+          {invalidAddress && (
             <div className="artifact-canvas-message">
-              <p role="alert">
-                {addressedPage ? '链接指定的画板不存在或已移除' : '链接指定的页面不存在或已移除'}
-              </p>
+              <p role="alert">{addressedPage ? '链接中的画板不存在' : '链接中的页面不存在'}</p>
               <Button
                 size="sm"
                 variant="secondary"
@@ -634,7 +646,8 @@ export function ArtifactCanvas({
                 {addressedPage ? '返回页面' : '返回总览'}
               </Button>
             </div>
-          ) : page?.boards.length ? (
+          )}
+          {showBoards && (
             <>
               {flows.length ? (
                 <svg
@@ -683,6 +696,11 @@ export function ArtifactCanvas({
                     pickerActive ||
                     (!board.scoped && Boolean(visualEdit?.isPicking)))
                 const target = { pageId: page.id, boardId: board.id }
+                const captureGesture = handActive || modifier
+                const drawing =
+                  !captureGesture && showOverview && board.scoped && boardEditing?.available
+                    ? drawingTool
+                    : null
                 return (
                   <div
                     key={board.id}
@@ -696,6 +714,7 @@ export function ArtifactCanvas({
                     }}
                   >
                     <div className="artifact-canvas-board-header">
+                      {/* 标题、命中区与尺寸柄的指针边界由画布布局决定。 */}
                       <button
                         type="button"
                         className="artifact-canvas-board-title"
@@ -746,49 +765,22 @@ export function ArtifactCanvas({
                           <span className="ml-2 text-[10px] opacity-75">推荐</span>
                         ) : null}
                       </button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        iconOnly
-                        className="artifact-canvas-board-action"
-                        aria-label={`聚焦画板：${board.title}`}
-                        title="聚焦画板"
-                        onClick={(event) => {
+                      <CanvasBoardQuickActions
+                        title={board.title}
+                        onExpand={(event) => {
                           pauseCanvasTools()
                           presentation.openFocus(target, event.currentTarget)
                         }}
-                      >
-                        <Focus size={15} />
-                      </Button>
-                      {isPrototype(board) && canPlay(board) ? (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          iconOnly
-                          className="artifact-canvas-board-action"
-                          aria-label={`播放画板：${board.title}`}
-                          title="播放原型"
-                          onClick={(event) => {
-                            pauseCanvasTools()
-                            presentation.openPlay(target, event.currentTarget)
-                          }}
-                        >
-                          <Play size={15} />
-                        </Button>
-                      ) : null}
-                      {onExportBoard ? (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          iconOnly
-                          className="artifact-canvas-board-action"
-                          aria-label={`导出画板：${board.title}`}
-                          title="导出画板"
-                          onClick={() => onExportBoard(board.id)}
-                        >
-                          <Download size={15} />
-                        </Button>
-                      ) : null}
+                        onPlay={
+                          isPrototype(board) && canPlay(board)
+                            ? (event) => {
+                                pauseCanvasTools()
+                                presentation.openPlay(target, event.currentTarget)
+                              }
+                            : undefined
+                        }
+                        onExport={onExportBoard ? () => onExportBoard(board.id) : undefined}
+                      />
                       {boardEditing ? (
                         <CanvasBoardActions
                           board={board}
@@ -811,17 +803,18 @@ export function ArtifactCanvas({
                         {renderBoard(board, { type: 'overview', interactive })}
                       </div>
                       {/* 抓手与组合键缩放由外层捕获，不依赖跨域 iframe 冒泡。 */}
-                      {handActive || modifier ? (
+                      {captureGesture && (
                         <div
                           aria-hidden="true"
                           data-gesture
                           className="artifact-canvas-board-hit"
                         />
-                      ) : showOverview && drawingTool && board.scoped && boardEditing?.available ? (
+                      )}
+                      {drawing && boardEditing && (
                         <BoardDrawingSurface
-                          key={drawingTool.kind}
+                          key={drawing.kind}
                           board={board}
-                          tool={drawingTool}
+                          tool={drawing}
                           version={boardEditing.version}
                           onCreate={(layer, base, anchor) => {
                             selectBoard(board.id)
@@ -836,7 +829,8 @@ export function ArtifactCanvas({
                             }
                           }}
                         />
-                      ) : !interactive ? (
+                      )}
+                      {!captureGesture && !drawing && !interactive && (
                         <button
                           type="button"
                           tabIndex={-1}
@@ -866,7 +860,7 @@ export function ArtifactCanvas({
                             )
                           }}
                         />
-                      ) : null}
+                      )}
                     </div>
                     {selected === board.id && canDragBoards ? (
                       <button
@@ -891,7 +885,8 @@ export function ArtifactCanvas({
                 )
               })}
             </>
-          ) : (
+          )}
+          {!invalidAddress && !showBoards && (
             <p className="artifact-canvas-message text-sm text-ink-muted">此页面没有画板</p>
           )}
         </section>

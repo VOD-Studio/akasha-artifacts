@@ -11,8 +11,8 @@ import {
 } from '@akasha/ui/dropdown-menu'
 import { ChevronDown, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
-import { useRevertArtifactMutation } from '../../entities/artifact/queries'
-import { formatRelativeTime } from '../../shared/lib/format'
+import { useRevertArtifactMutation } from '@/entities/artifact'
+import { formatRelativeTime } from '@/shared/lib/format'
 
 export interface VersionTimelineProps {
   publicId: string
@@ -39,6 +39,8 @@ export function VersionTimeline({
   const revertMutation = useRevertArtifactMutation(publicId)
   const isHistorical = activeVersion < headVersion
   const ordered = [...versions].sort((a, b) => b.version - a.version)
+  const showLatestLink = isHistorical && !ordered.some((v) => v.version === headVersion)
+  const showRevert = isHistorical && canRevert
 
   const handleRevert = async () => {
     try {
@@ -46,10 +48,10 @@ export function VersionTimeline({
         targetVersion: activeVersion,
         baseVersion: headVersion,
       })
-      toast.success(`已基于 v${activeVersion} 生成新版本 v${res.version.version}`)
+      toast.success(`已将 v${activeVersion} 恢复为 v${res.version.version}`)
       onSelectVersion(undefined)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '回退版本失败')
+      toast.error(err instanceof Error ? err.message : '恢复版本失败')
     }
   }
 
@@ -67,7 +69,7 @@ export function VersionTimeline({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-72">
-        <DropdownMenuLabel>版本历史（共 {headVersion} 版）</DropdownMenuLabel>
+        <DropdownMenuLabel>版本历史</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {ordered.map((v) => {
           const isHead = v.version === headVersion
@@ -91,25 +93,20 @@ export function VersionTimeline({
             </DropdownMenuItem>
           )
         })}
-        {isHistorical ? (
-          <>
-            <DropdownMenuSeparator />
-            {!ordered.some((v) => v.version === headVersion) ? (
-              <DropdownMenuItem onSelect={() => onSelectVersion(undefined)}>
-                回到最新
-              </DropdownMenuItem>
-            ) : null}
-            {canRevert ? (
-              <DropdownMenuItem
-                disabled={revertMutation.isPending}
-                onSelect={() => void handleRevert()}
-              >
-                <RotateCcw size={14} />
-                回退到 v{activeVersion}
-              </DropdownMenuItem>
-            ) : null}
-          </>
-        ) : null}
+        {isHistorical && <DropdownMenuSeparator />}
+        {showLatestLink && (
+          <DropdownMenuItem onSelect={() => onSelectVersion(undefined)}>
+            查看最新版本
+          </DropdownMenuItem>
+        )}
+        {showRevert && (
+          <DropdownMenuItem
+            disabled={revertMutation.isPending}
+            onSelect={() => void handleRevert()}
+          >
+            <RotateCcw size={14} />将 v{activeVersion} 恢复为新版本
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )

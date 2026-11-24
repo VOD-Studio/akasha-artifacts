@@ -9,26 +9,23 @@ import {
   STANDALONE_BOARD_ID,
 } from '@akasha/protocol'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { selectionForVersion, useSelectionStore } from '../../entities/selection/store'
-import { useWorkspaceStore } from '../../entities/workspace/store'
-import { SplitCodeEditor } from '../../features/code-editor/SplitCodeEditor'
-import { selectActiveRound } from '../../features/review-rounds/round-utils'
-import { VersionDiffView } from '../../features/version-diff/VersionDiffView'
-import { useVisualEdit } from '../../features/visual-edit/useVisualEdit'
-import { VisualEditPanel } from '../../features/visual-edit/VisualEditPanel'
-import type { ArtifactDetailResponse } from '../../shared/api/client'
-import { syncProjectSelection } from '../../shared/api/client'
-import { InspectorPanel } from '../InspectorPanel/InspectorPanel'
-import { ArtifactCanvas, type InspectorReveal } from './ArtifactCanvas'
-import { ArtifactFrame, type BoardFramePurpose, type FrameConnection } from './ArtifactFrame'
-import { BoardInspector, type BoardInspectorHandoff } from './BoardInspector'
 import {
+  type ArtifactDetailResponse,
   type CanvasBoard,
   type CanvasLocation,
   type CanvasPage,
   createCanvasDocument,
-  createCanvasElementResolver,
-} from './canvas-model'
+} from '@/entities/artifact'
+import { selectionForVersion, syncProjectSelection, useSelectionStore } from '@/entities/selection'
+import { useWorkspaceStore } from '@/entities/workspace'
+import { SplitCodeEditor } from '@/features/code-editor'
+import { ArtifactReviewPanel, selectActiveRound } from '@/features/review'
+import { VersionDiffView } from '@/features/version-diff'
+import { useVisualEdit, VisualEditPanel } from '@/features/visual-edit'
+import { ArtifactCanvas, type InspectorReveal } from './ArtifactCanvas'
+import { ArtifactFrame, type BoardFramePurpose, type FrameConnection } from './ArtifactFrame'
+import { BoardInspector, type BoardInspectorHandoff } from './BoardInspector'
+import { createCanvasElementResolver } from './feedback-location'
 import { InlineCanvasText } from './InlineCanvasText'
 import { useBoardInspection } from './useBoardInspection'
 import { useCanvasBoardEditing } from './useCanvasBoardEditing'
@@ -403,38 +400,32 @@ export function ArtifactWorkspace({
     },
   })
   const onTextTarget = inlineText.onTextTarget
-  const watchBoard =
-    canvas === savedCanvas
-      ? inspection.open
-        ? canvasLocation?.boardId
-        : inspection.pendingBoardId
-      : undefined
+  const inspectedBoard = inspection.open ? canvasLocation?.boardId : inspection.pendingBoardId
+  const watchBoard = canvas === savedCanvas ? inspectedBoard : undefined
   const renderBoard = useCallback(
-    (board: CanvasBoard, purpose: BoardFramePurpose) => (
-      <ArtifactFrame
-        artifact={artifact}
-        board={board}
-        version={version}
-        state={state}
-        sandboxOrigin={sandboxOrigin}
-        pins={purpose.type === 'overview' ? versionPins : EMPTY_FEEDBACKS}
-        onFocusPin={(feedback) => focusAndRemember(feedback, false)}
-        purpose={purpose}
-        register={
-          purpose.type === 'overview'
-            ? registerFrame
-            : purpose.type === 'focus'
-              ? registerFocusedFrame
-              : undefined
-        }
-        onPlayable={onPlayable}
-        watchLayers={purpose.type === 'overview' && watchBoard === board.id}
-        onLayers={inspection.onLayers}
-        onLayerPicked={inspection.onLayerPicked}
-        onTextTarget={onTextTarget}
-        onVisualSelect={onVisualSelect}
-      />
-    ),
+    (board: CanvasBoard, purpose: BoardFramePurpose) => {
+      const overview = purpose.type === 'overview'
+      const register = purpose.type === 'focus' ? registerFocusedFrame : undefined
+      return (
+        <ArtifactFrame
+          artifact={artifact}
+          board={board}
+          version={version}
+          state={state}
+          sandboxOrigin={sandboxOrigin}
+          pins={overview ? versionPins : EMPTY_FEEDBACKS}
+          onFocusPin={(feedback) => focusAndRemember(feedback, false)}
+          purpose={purpose}
+          register={overview ? registerFrame : register}
+          onPlayable={onPlayable}
+          watchLayers={overview && watchBoard === board.id}
+          onLayers={inspection.onLayers}
+          onLayerPicked={inspection.onLayerPicked}
+          onTextTarget={onTextTarget}
+          onVisualSelect={onVisualSelect}
+        />
+      )
+    },
     [
       artifact,
       version,
@@ -530,7 +521,7 @@ export function ArtifactWorkspace({
         </div>
       </main>
 
-      <InspectorPanel
+      <ArtifactReviewPanel
         artifactId={artifact.publicId}
         projectId={artifact.projectId}
         activeVersion={version.version}

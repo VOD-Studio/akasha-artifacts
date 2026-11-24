@@ -1,6 +1,7 @@
 import { Button } from '@akasha/ui/button'
 import { Modal } from '@akasha/ui/dialog'
-import { useArtifactStorageUsageQuery } from '../../entities/artifact/queries'
+import { Skeleton } from '@akasha/ui/skeleton'
+import { useArtifactStorageUsageQuery } from '@/entities/artifact'
 
 interface ArtifactStorageUsageDialogProps {
   artifactId: string
@@ -18,39 +19,39 @@ export function ArtifactStorageUsageDialog({
   onClose,
 }: ArtifactStorageUsageDialogProps) {
   const usage = useArtifactStorageUsageQuery(artifactId)
-  const limit = usage.data ? asBytes(usage.data.limitPerScopeBytes) : ''
+  const { data, error, isPending } = usage
+  const limit = data && asBytes(data.limitPerScopeBytes)
+  const changeOpen = (open: boolean) => {
+    if (!open) onClose()
+  }
   return (
     <Modal
       open
-      onOpenChange={(open) => {
-        if (!open) onClose()
-      }}
-      title="制品存储用量"
-      description="统计运行存储，不包括源码、版本历史或其他用户的数据。"
+      onOpenChange={changeOpen}
+      title="存储用量"
+      description="仅统计运行数据，不含源码与版本。"
       footer={<Button onClick={onClose}>关闭</Button>}
     >
-      {usage.isPending ? (
-        <p role="status" className="text-sm text-ink-muted">
-          正在读取用量…
-        </p>
-      ) : usage.isError ? (
+      {isPending && <Skeleton className="h-10 w-full" aria-label="正在加载用量" />}
+      {error && (
         <p role="alert" className="text-sm text-error">
-          {usage.error.message}
+          {error.message}
         </p>
-      ) : (
+      )}
+      {data && (
         <dl className="grid grid-cols-[1fr_auto] gap-2 text-sm tabular-nums">
-          <dt>共享运行存储</dt>
+          <dt>共享</dt>
           <dd>
-            {asBytes(usage.data.sharedBytes)} / {limit}
+            {asBytes(data.sharedBytes)} / {limit}
           </dd>
-          {usage.data.privateBytes !== null ? (
+          {data.privateBytes !== null && (
             <>
-              <dt>个人运行存储</dt>
+              <dt>个人</dt>
               <dd>
-                {asBytes(usage.data.privateBytes)} / {limit}
+                {asBytes(data.privateBytes)} / {limit}
               </dd>
             </>
-          ) : null}
+          )}
         </dl>
       )}
     </Modal>

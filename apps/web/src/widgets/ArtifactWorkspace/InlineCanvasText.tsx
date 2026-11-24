@@ -1,5 +1,7 @@
 import type { ElementRef } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
+import { Field } from '@akasha/ui/field'
+import { Textarea } from '@akasha/ui/textarea'
 import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { CanvasTextDraft } from './useInlineCanvasText'
@@ -15,10 +17,20 @@ interface InlineTextProps {
   onAnnotate: (element: ElementRef) => void
 }
 
+function draftText(draft: CanvasTextDraft) {
+  if (draft.kind === 'readOnly') return ''
+  return draft.kind === 'source' ? draft.text : draft.layer.text
+}
+
+function draftTitle(draft: CanvasTextDraft) {
+  if (draft.kind === 'readOnly') return '此处只读'
+  if (draft.kind !== 'create') return '编辑文字'
+  return draft.layer.kind === 'note' ? '添加便签' : '添加文本'
+}
+
 /** 就地输入不启动试玩；焦点在输入框内时由浏览器处理文本快捷键。 */
 export function InlineCanvasText({ draft, onSave, onClose, onAnnotate }: InlineTextProps) {
-  const initial =
-    draft.kind === 'source' ? draft.text : draft.kind === 'readOnly' ? '' : draft.layer.text
+  const initial = draftText(draft)
   const [text, setText] = useState(initial)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -42,7 +54,7 @@ export function InlineCanvasText({ draft, onSave, onClose, onAnnotate }: InlineT
     }
   }, [])
 
-  async function submit() {
+  const submit = async () => {
     if (!canSave) return
     setError('')
     setBusy(true)
@@ -55,14 +67,8 @@ export function InlineCanvasText({ draft, onSave, onClose, onAnnotate }: InlineT
     }
   }
 
-  const title =
-    draft.kind === 'readOnly'
-      ? '此处只读'
-      : isNew
-        ? draft.layer.kind === 'note'
-          ? '添加便签'
-          : '添加文本'
-        : '编辑文字'
+  const title = draftTitle(draft)
+  // 非模态对话框贴在命中点上，打开和关闭均不改变画布布局。
   return createPortal(
     <dialog
       open
@@ -92,7 +98,7 @@ export function InlineCanvasText({ draft, onSave, onClose, onAnnotate }: InlineT
               关闭
             </Button>
             <Button size="sm" onClick={() => onAnnotate(draft.element)}>
-              批注此处
+              批注
             </Button>
           </div>
         </>
@@ -104,39 +110,33 @@ export function InlineCanvasText({ draft, onSave, onClose, onAnnotate }: InlineT
           }}
           className="space-y-2"
         >
-          <label htmlFor={`${id}-text`} className="sr-only">
-            文字
-          </label>
-          <textarea
-            id={`${id}-text`}
-            ref={target}
-            rows={3}
-            className="w-full resize-y rounded-md border border-border bg-surface p-2 text-sm focus-visible:outline-2 focus-visible:outline-ring"
-            maxLength={draft.kind === 'source' ? undefined : 8000}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            onKeyDown={(event) => {
-              if (
-                event.key !== 'Enter' ||
-                (!event.metaKey && !event.ctrlKey) ||
-                event.nativeEvent.isComposing
-              )
-                return
-              event.preventDefault()
-              void submit()
-            }}
-          />
-          {error ? (
-            <p role="alert" className="text-xs text-ink-muted">
-              {error}
-            </p>
-          ) : null}
+          <Field label={<span className="sr-only">文字</span>} error={error}>
+            <Textarea
+              ref={target}
+              rows={3}
+              variant="outline"
+              className="resize-y"
+              maxLength={draft.kind === 'source' ? undefined : 8000}
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              onKeyDown={(event) => {
+                if (
+                  event.key !== 'Enter' ||
+                  (!event.metaKey && !event.ctrlKey) ||
+                  event.nativeEvent.isComposing
+                )
+                  return
+                event.preventDefault()
+                void submit()
+              }}
+            />
+          </Field>
           <div className="flex justify-end gap-1">
             <Button size="sm" variant="ghost" disabled={busy} onClick={onClose}>
               取消
             </Button>
-            <Button type="submit" size="sm" disabled={!canSave}>
-              保存文字
+            <Button type="submit" size="sm" disabled={!canSave} loading={busy}>
+              保存
             </Button>
           </div>
         </form>

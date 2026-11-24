@@ -5,9 +5,9 @@ import {
   STANDALONE_BOARD_ID,
 } from '@akasha/protocol'
 import { useCallback, useState } from 'react'
-import { selectionForVersion, useSelectionStore } from '../../entities/selection/store'
-import { useWorkspaceStore } from '../../entities/workspace/store'
-import type { CanvasDocument, CanvasLocation } from './canvas-model'
+import type { CanvasDocument, CanvasLocation } from '@/entities/artifact'
+import { selectionForVersion, useSelectionStore } from '@/entities/selection'
+import { useWorkspaceStore } from '@/entities/workspace'
 
 interface BoardInspectionInput {
   artifactId: string
@@ -136,14 +136,11 @@ export function useBoardInspection({
       if (!current || !board || !layers?.layers.includes(layer)) return
       const native =
         layer.designId && board.designLayers?.some((item) => item.id === layer.designId)
+      const blockId = native ? `${DESIGN_LAYER_BLOCK_PREFIX}${layer.designId}` : layer.blockId
       const element = {
         selector: layer.selector,
         ...(board.scoped ? { boardId: board.id } : {}),
-        ...(native
-          ? { blockId: `${DESIGN_LAYER_BLOCK_PREFIX}${layer.designId}` }
-          : layer.blockId
-            ? { blockId: layer.blockId }
-            : {}),
+        ...(blockId ? { blockId } : {}),
       }
       const target = { id: layer.id, version }
       useSelectionStore.getState().setSelectedElement(artifactId, element, target)

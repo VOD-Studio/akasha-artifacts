@@ -1,7 +1,7 @@
 import { Button } from '@akasha/ui/button'
 import { ArrowLeft, Minus, Play, Plus } from 'lucide-react'
 import { type MouseEventHandler, type ReactNode, useLayoutEffect, useRef, useState } from 'react'
-import type { CanvasBoard } from './canvas-model'
+import type { CanvasBoard } from '@/entities/artifact'
 import { useViewportSize } from './useViewportSize'
 
 interface BoardPresentationProps {
@@ -16,6 +16,17 @@ interface BoardPresentationProps {
 const SCALE_STEP = 1.25
 const VIEWPORT_PADDING = 24
 const clampScale = (value: number) => Math.min(4, Math.max(0.001, value))
+
+function presentationScale(
+  zoom: 'fit' | 'fill' | number,
+  measured: boolean,
+  widthScale: number,
+  fitScale: number,
+) {
+  if (typeof zoom === 'number') return zoom
+  if (!measured) return 1
+  return clampScale(zoom === 'fill' ? widthScale : fitScale)
+}
 
 /** 聚焦和试玩共享固定画板视口；聚焦与总览的倍率互相独立。 */
 export function BoardPresentation({
@@ -33,12 +44,7 @@ export function BoardPresentation({
   const widthScale = Math.max(1, size.width - VIEWPORT_PADDING) / board.width
   const heightScale = Math.max(1, size.height - VIEWPORT_PADDING) / board.height
   const fitScale = playback ? Math.min(1, widthScale) : Math.min(1, widthScale, heightScale)
-  const scale =
-    typeof zoom === 'number'
-      ? zoom
-      : size.width && size.height
-        ? clampScale(zoom === 'fill' ? widthScale : fitScale)
-        : 1
+  const scale = presentationScale(zoom, Boolean(size.width && size.height), widthScale, fitScale)
 
   useLayoutEffect(() => {
     backRef.current?.focus({ preventScroll: true })
@@ -47,7 +53,7 @@ export function BoardPresentation({
   return (
     <section
       hidden={!visible}
-      aria-label={playback ? '原型试玩' : '画板聚焦'}
+      aria-label={playback ? '交互预览' : '画板查看'}
       className={visible ? 'flex min-h-0 min-w-0 flex-1 flex-col bg-muted' : 'hidden'}
     >
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-surface p-2">
@@ -59,20 +65,20 @@ export function BoardPresentation({
             leftIcon={<ArrowLeft size={15} />}
             onClick={onClose}
           >
-            {playback ? '退出试玩' : '返回总览'}
+            {playback ? '退出预览' : '返回总览'}
           </Button>
           <h2 className="min-w-0 break-words text-sm font-medium">{board.title}</h2>
         </div>
-        {!playback ? (
+        {!playback && (
           <fieldset className="flex min-w-0 flex-wrap items-center gap-1">
-            <legend className="sr-only">聚焦显示方式</legend>
+            <legend className="sr-only">画板缩放</legend>
             <Button
               variant="ghost"
               size="sm"
               aria-pressed={zoom === 'fit'}
               onClick={() => setZoom('fit')}
             >
-              完整适应
+              适应窗口
             </Button>
             <Button
               variant="ghost"
@@ -86,7 +92,7 @@ export function BoardPresentation({
               variant="ghost"
               size="sm"
               iconOnly
-              aria-label="缩小聚焦画板"
+              aria-label="缩小"
               disabled={scale <= 0.001}
               onClick={() => setZoom(clampScale(scale / SCALE_STEP))}
             >
@@ -99,25 +105,25 @@ export function BoardPresentation({
               variant="ghost"
               size="sm"
               iconOnly
-              aria-label="放大聚焦画板"
+              aria-label="放大"
               disabled={scale >= 4}
               onClick={() => setZoom(clampScale(scale * SCALE_STEP))}
             >
               <Plus size={15} />
             </Button>
-            {onPlay ? (
+            {onPlay && (
               <Button
                 variant="primary"
                 size="sm"
                 leftIcon={<Play size={15} />}
-                aria-label={`播放画板：${board.title}`}
+                aria-label={`播放原型：${board.title}`}
                 onClick={onPlay}
               >
-                播放
+                播放原型
               </Button>
-            ) : null}
+            )}
           </fieldset>
-        ) : null}
+        )}
       </header>
       <section
         ref={scrollRef}

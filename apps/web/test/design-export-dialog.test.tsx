@@ -2,7 +2,7 @@
 import type { Artifact, Version } from '@akasha/protocol'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
-import { ArtifactExportDialog } from '../src/widgets/ArtifactWorkspace/ArtifactExportDialog'
+import { ArtifactExportDialog } from '../src/widgets/ArtifactWorkspace'
 
 const now = '2026-11-22T10:00:00.000Z'
 const artifact: Artifact = {
@@ -43,8 +43,9 @@ it('确认下载时必须重新读取面板中的固定版本，权限失效不�
   render(
     <ArtifactExportDialog target={{ artifact, version, boardId: 'main' }} onClose={() => {}} />,
   )
-  expect(screen.getByRole('combobox', { name: '导出范围' })).toHaveProperty('value', 'main')
-  fireEvent.click(screen.getByRole('button', { name: '下载 PNG' }))
+  expect(screen.getByRole('combobox', { name: '导出范围' }).textContent).toBe(version.title)
+  expect(screen.getByRole('radio', { name: 'PNG' })).toHaveProperty('checked', true)
+  fireEvent.click(screen.getByRole('button', { name: '导出' }))
   expect((await screen.findByRole('alert')).textContent).toContain('该快照不再允许读取')
   expect(request).toHaveBeenCalledWith(
     `/api/v1/artifacts/${artifact.publicId}?version=2`,

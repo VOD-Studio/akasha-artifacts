@@ -544,17 +544,16 @@ packages/server/src/
 
 ```
 apps/web/src/
-├── routes/      # 文件路由：/（多项目库）、/a/$publicId、/a/$publicId/v/$version
-├── widgets/     # 页面级组合：LibraryShell（项目库、运维与 ⌘K）、ArtifactWorkspace（交互画布）、TopBar、
-│                #   InspectorPanel（批注、属性与轮次提交）
-├── features/    # 用户能力切片：live-sync、daemon-control、command-palette、version-timeline、version-diff、
-│                #   element-picker、annotations、review-rounds、review-actions、props-panel、code-editor、
-│                #   visual-edit、export-design
-├── entities/    # 业务实体：project、artifact、version、round、feedback、selection
+├── routes/      # 路由注册与页面装配：作品库、作品工作区、固定版本
+├── widgets/     # 页面区块：LibraryShell、ArtifactWorkspace、TopBar
+├── features/    # 交互与用例：review、agent-conversation、code-editor、visual-edit、export-design 等
+├── entities/    # 项目、作品、反馈、选区、工作台状态与本地服务
 └── shared/      # api、bridge（宿主端+保态恢复）、overlay、lib、config
 ```
 
-- 依赖只能自上而下：`routes → widgets → features → entities → shared`。
+- 依赖由 `routes → widgets → features → entities → shared` 向下。`widgets`、`features`、`entities` 的同层切片互不依赖。
+- 从切片外只通过 `@/entities/artifact` 等根 `index.ts` 导入，入口显式列出对外接口。切片内走相对路径，不回引自己的入口。`routes`、`shared` 不设业务切片；`shared` 保留细粒度基础模块。`scripts/check-deps.mjs` 检查相对路径与 TypeScript 别名。
+- `shared/api` 只放 HTTP 传输、协议错误和连接基础设施。业务端点和 Query 归各自切片的 `api/`；跨实体的写入或刷新由评审、编辑等上层用例协调。
 - 服务端数据由 TanStack Query 管理，WebSocket 事件直接写入查询缓存；编辑器的本地状态（工具模式、当前选中元素、草稿选择、撤销栈）由 Zustand 管理。
 - `entities/selection` 是指认、批注、Hook 注入和直改共同依赖的核心模型，不属于其中任何一个 feature。
 

@@ -4,12 +4,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
-import { useSelectionStore } from '../src/entities/selection/store'
-import { useWorkspaceStore } from '../src/entities/workspace/store'
+import type { ArtifactDetailResponse } from '../src/entities/artifact'
+import { useSelectionStore } from '../src/entities/selection'
+import { useWorkspaceStore } from '../src/entities/workspace'
 import { createAppRouter } from '../src/routes/router'
-import type { ArtifactDetailResponse } from '../src/shared/api/client'
-import { ArtifactWorkspace } from '../src/widgets/ArtifactWorkspace/ArtifactWorkspace'
-import { TopBar } from '../src/widgets/TopBar/TopBar'
+import { ArtifactWorkspace } from '../src/widgets/ArtifactWorkspace'
+import { TopBar } from '../src/widgets/TopBar'
 
 const artifact: Artifact = {
   publicId: 'CanvasExamplePublicId1',
@@ -119,13 +119,13 @@ afterEach(() => {
   sessionStorage.clear()
 })
 
-it('聚焦报错仍用普通制品的原始链接向 Agent 投递', async () => {
+it('展开的画板报错时，仍用作品原始链接向 Agent 投递', async () => {
   const request = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json({}))
   const base = detailFor(1, '<h1>预约首页</h1>')
   showWorkspace({ ...base, artifact: { ...base.artifact, type: 'html' } })
-  fireEvent.click(screen.getByRole('button', { name: '聚焦画板：茶席预约' }))
-  const focus = screen.getByRole('region', { name: '画板聚焦' })
-  const frame = within(focus).getByTitle<HTMLIFrameElement>('茶席预约 隔离沙盒')
+  fireEvent.click(screen.getByRole('button', { name: '展开画板：茶席预约' }))
+  const focus = screen.getByRole('region', { name: '画板查看' })
+  const frame = within(focus).getByTitle<HTMLIFrameElement>('画板内容：茶席预约')
   const sandboxFrame = sandbox(frame)
   sandboxFrame.receive({ type: 'ready' })
   sandboxFrame.receive({ type: 'error', phase: 'runtime', message: '焦点画板报错' })
@@ -155,12 +155,12 @@ it('在同一画布页面比较独立视口的宽屏和手机画板', () => {
     updatedAt: artifact.updatedAt,
   }
   showWorkspace(detailFor(), [legacyPin])
-  const desktop = screen.getByTitle<HTMLIFrameElement>('宽屏首页 隔离沙盒')
-  const mobile = screen.getByTitle<HTMLIFrameElement>('手机首页 隔离沙盒')
+  const desktop = screen.getByTitle<HTMLIFrameElement>('画板内容：宽屏首页')
+  const mobile = screen.getByTitle<HTMLIFrameElement>('画板内容：手机首页')
   expect([desktop.width, desktop.height]).toEqual(['1440', '900'])
   expect([mobile.width, mobile.height]).toEqual(['390', '844'])
   expect(desktop.contentWindow).not.toBe(mobile.contentWindow)
-  expect(screen.queryByTitle('预约完成 隔离沙盒')).toBeNull()
+  expect(screen.queryByTitle('画板内容：预约完成')).toBeNull()
 
   const desktopSandbox = sandbox(desktop)
   const mobileSandbox = sandbox(mobile)
@@ -192,8 +192,8 @@ it('在同一画布页面比较独立视口的宽屏和手机画板', () => {
   expect(mobile.parentElement?.contains(screen.getByText('手机画板渲染失败'))).toBe(true)
   expect(desktop.parentElement?.querySelector('[role="alert"]')).toBeNull()
 
-  fireEvent.click(screen.getByRole('button', { name: '聚焦画板：手机首页' }))
-  const focus = screen.getByRole('region', { name: '画板聚焦' })
+  fireEvent.click(screen.getByRole('button', { name: '展开画板：手机首页' }))
+  const focus = screen.getByRole('region', { name: '画板查看' })
   expect(within(focus).queryByTitle('确认手机字号')).toBeNull()
   fireEvent.click(within(focus).getByRole('button', { name: '返回总览' }))
   expect(screen.getByTitle('确认手机字号')).toBeTruthy()
@@ -203,7 +203,7 @@ it('跨页查找、热更新和刷新都保留仍在的选板与倍率', () => {
   const opened = showWorkspace()
   const title = screen.getByRole('button', { name: '手机首页' })
   fireEvent.click(title)
-  expect(screen.getByTitle('手机首页 隔离沙盒').hasAttribute('inert')).toBe(true)
+  expect(screen.getByTitle('画板内容：手机首页').hasAttribute('inert')).toBe(true)
   fireEvent.keyDown(title, { key: 'Escape' })
   expect(title.getAttribute('aria-pressed')).toBe('false')
   fireEvent.click(screen.getByRole('button', { name: '手机首页' }))
@@ -213,8 +213,8 @@ it('跨页查找、热更新和刷新都保留仍在的选板与倍率', () => {
   fireEvent.click(screen.getByRole('button', { name: '页面与画板' }))
   fireEvent.change(screen.getByLabelText('搜索页面或画板'), { target: { value: '预约完成' } })
   fireEvent.click(screen.getByRole('button', { name: '预约完成' }))
-  expect(screen.getByTitle('预约完成 隔离沙盒')).toBeTruthy()
-  expect(screen.queryByTitle('宽屏首页 隔离沙盒')).toBeNull()
+  expect(screen.getByTitle('画板内容：预约完成')).toBeTruthy()
+  expect(screen.queryByTitle('画板内容：宽屏首页')).toBeNull()
 
   fireEvent.click(screen.getByRole('button', { name: '页面与画板' }))
   fireEvent.click(screen.getByRole('button', { name: '预约流程' }))
@@ -230,9 +230,9 @@ it('跨页查找、热更新和刷新都保留仍在的选板与倍率', () => {
       ),
     }),
   )
-  const originalFrame = screen.getByTitle('手机首页 隔离沙盒')
+  const originalFrame = screen.getByTitle('画板内容：手机首页')
   opened.update(workspace(next))
-  expect(screen.getByTitle('手机首页新版 隔离沙盒')).toBe(originalFrame)
+  expect(screen.getByTitle('画板内容：手机首页新版')).toBe(originalFrame)
   expect(screen.getByRole('button', { name: '手机首页新版' }).getAttribute('aria-pressed')).toBe(
     'true',
   )
@@ -246,19 +246,19 @@ it('跨页查找、热更新和刷新都保留仍在的选板与倍率', () => {
   expect(screen.getByLabelText('画布缩放比例').textContent).toBe(zoomed)
 })
 
-it('聚焦按画板固有视口渲染，退出恢复总览的倍率、选板和键盘焦点', () => {
+it('展开画板按固有视口渲染，退出恢复总览的倍率、选板和键盘焦点', () => {
   showWorkspace()
-  const canvas = screen.getByRole('region', { name: '制品画布' })
+  const canvas = screen.getByRole('region', { name: '画布' })
   const title = within(canvas).getByRole('button', { name: '手机首页' })
   fireEvent.click(title)
   fireEvent.click(screen.getByRole('button', { name: '放大' }))
   const overviewZoom = screen.getByLabelText('画布缩放比例').textContent
-  const launch = within(canvas).getByRole('button', { name: '聚焦画板：手机首页' })
+  const launch = within(canvas).getByRole('button', { name: '展开画板：手机首页' })
   fireEvent.click(launch)
 
-  const focus = screen.getByRole('region', { name: '画板聚焦' })
-  expect(screen.queryByRole('region', { name: '制品画布' })).toBeNull()
-  const frame = within(focus).getByTitle<HTMLIFrameElement>('手机首页 隔离沙盒')
+  const focus = screen.getByRole('region', { name: '画板查看' })
+  expect(screen.queryByRole('region', { name: '画布' })).toBeNull()
+  const frame = within(focus).getByTitle<HTMLIFrameElement>('画板内容：手机首页')
   expect([frame.width, frame.height, frame.getAttribute('sandbox')]).toEqual([
     '390',
     '844',
@@ -273,13 +273,13 @@ it('聚焦按画板固有视口渲染，退出恢复总览的倍率、选板和�
   expect(within(focus).getByLabelText('画板缩放比例').textContent).toBe('100%')
 
   fireEvent.keyDown(within(focus).getByRole('button', { name: '返回总览' }), { key: 'Escape' })
-  expect(screen.queryByRole('region', { name: '画板聚焦' })).toBeNull()
+  expect(screen.queryByRole('region', { name: '画板查看' })).toBeNull()
   expect(title.getAttribute('aria-pressed')).toBe('true')
   expect(screen.getByLabelText('画布缩放比例').textContent).toBe(overviewZoom)
   expect(document.activeElement).toBe(launch)
 })
 
-it('必须显式播放，按声明的边跨页导航，再返回未改动的聚焦视图', () => {
+it('显式播放原型才能交互和跨页，退出后返回原来的画板查看状态', () => {
   const source = JSON.stringify({
     ...design,
     showFlows: false,
@@ -291,25 +291,25 @@ it('必须显式播放，按声明的边跨页导航，再返回未改动的聚�
     ),
   })
   showWorkspace(detailFor(1, source))
-  const overview = screen.getByRole('region', { name: '制品画布' })
-  const mobile = within(overview).getByTitle<HTMLIFrameElement>('手机首页 隔离沙盒')
+  const overview = screen.getByRole('region', { name: '画布' })
+  const mobile = within(overview).getByTitle<HTMLIFrameElement>('画板内容：手机首页')
   const mobileSandbox = sandbox(mobile)
   mobileSandbox.receive({ type: 'ready' })
   mobileSandbox.receive({ type: 'rendered', version: 1, playable: false })
-  expect(within(overview).queryByRole('button', { name: '播放画板：手机首页' })).toBeNull()
+  expect(within(overview).queryByRole('button', { name: '播放原型：手机首页' })).toBeNull()
   mobileSandbox.receive({ type: 'prototype.availability', version: 2, playable: true })
-  expect(within(overview).queryByRole('button', { name: '播放画板：手机首页' })).toBeNull()
+  expect(within(overview).queryByRole('button', { name: '播放原型：手机首页' })).toBeNull()
   mobileSandbox.receive({ type: 'prototype.availability', version: 1, playable: true })
   expect(mobile.hasAttribute('inert')).toBe(true)
-  expect(within(overview).queryByRole('button', { name: '播放画板：宽屏首页' })).toBeNull()
+  expect(within(overview).queryByRole('button', { name: '播放原型：宽屏首页' })).toBeNull()
 
-  fireEvent.click(within(overview).getByRole('button', { name: '聚焦画板：手机首页' }))
-  const focus = screen.getByRole('region', { name: '画板聚焦' })
+  fireEvent.click(within(overview).getByRole('button', { name: '展开画板：手机首页' }))
+  const focus = screen.getByRole('region', { name: '画板查看' })
   fireEvent.click(within(focus).getByRole('button', { name: '实际大小' }))
-  const play = within(focus).getByRole('button', { name: '播放画板：手机首页' })
+  const play = within(focus).getByRole('button', { name: '播放原型：手机首页' })
   fireEvent.click(play)
-  const playback = screen.getByRole('region', { name: '原型试玩' })
-  const running = within(playback).getByTitle<HTMLIFrameElement>('手机首页 隔离沙盒')
+  const playback = screen.getByRole('region', { name: '交互预览' })
+  const running = within(playback).getByTitle<HTMLIFrameElement>('画板内容：手机首页')
   expect(running.hasAttribute('inert')).toBe(false)
   expect(running.getAttribute('sandbox')).toBe('allow-scripts')
   expect(running.contentWindow).not.toBe(mobile.contentWindow)
@@ -322,16 +322,16 @@ it('必须显式播放，按声明的边跨页导航，再返回未改动的聚�
   )
   player.receive({ type: 'prototype.navigate', version: 1, target: 'desktop' })
   player.receive({ type: 'prototype.navigate', version: 2, target: 'success' })
-  expect(within(playback).queryByTitle('预约完成 隔离沙盒')).toBeNull()
+  expect(within(playback).queryByTitle('画板内容：预约完成')).toBeNull()
   player.receive({ type: 'prototype.navigate', version: 1, target: 'success' })
-  const nextPlayback = screen.getByRole('region', { name: '原型试玩' })
-  const complete = within(nextPlayback).getByTitle<HTMLIFrameElement>('预约完成 隔离沙盒')
+  const nextPlayback = screen.getByRole('region', { name: '交互预览' })
+  const complete = within(nextPlayback).getByTitle<HTMLIFrameElement>('画板内容：预约完成')
   expect(complete.contentWindow).not.toBe(running.contentWindow)
   const completeSandbox = sandbox(complete)
   completeSandbox.receive({ type: 'ready' })
   completeSandbox.receive({ type: 'prototype.exit', version: 1 })
-  expect(screen.queryByRole('region', { name: '原型试玩' })).toBeNull()
-  expect(screen.getByRole('region', { name: '画板聚焦' })).toBe(focus)
+  expect(screen.queryByRole('region', { name: '交互预览' })).toBeNull()
+  expect(screen.getByRole('region', { name: '画板查看' })).toBe(focus)
   expect(within(focus).getByLabelText('画板缩放比例').textContent).toBe('100%')
   expect(document.activeElement).toBe(play)
 })
@@ -374,12 +374,12 @@ it('从独立检查器选择其他页面的画板并查看固定版本的真实�
   const view = render(tree(1))
   fireEvent.click(screen.getByRole('button', { name: '检查器' }))
   const inspector = screen.getByRole('dialog', { name: '检查器' })
-  expect(within(inspector).getByText('从树中选择画板以查看属性')).toBeTruthy()
+  expect(within(inspector).getByText('选择画板以查看属性')).toBeTruthy()
   fireEvent.click(within(inspector).getByText('状态'))
   fireEvent.click(within(inspector).getByRole('button', { name: '预约完成' }))
 
-  const canvas = screen.getByRole('region', { name: '制品画布' })
-  expect(within(canvas).getByTitle('预约完成 隔离沙盒')).toBeTruthy()
+  const canvas = screen.getByRole('region', { name: '画布' })
+  expect(within(canvas).getByTitle('画板内容：预约完成')).toBeTruthy()
   expect(within(inspector).getByText('1280 × 800')).toBeTruthy()
   fireEvent.keyDown(within(inspector).getByRole('tab', { name: '源码' }), { key: 'Enter' })
   expect(within(inspector).getByText(/"description":"已确认时段"/)).toBeTruthy()
@@ -392,9 +392,9 @@ it('从独立检查器选择其他页面的画板并查看固定版本的真实�
   ).toBe('true')
 
   view.rerender(tree(2))
-  const otherVersion = screen.getByRole('region', { name: '制品画布' })
-  expect(within(otherVersion).getByTitle('宽屏首页 隔离沙盒')).toBeTruthy()
-  expect(within(otherVersion).queryByTitle('预约完成 隔离沙盒')).toBeNull()
+  const otherVersion = screen.getByRole('region', { name: '画布' })
+  expect(within(otherVersion).getByTitle('画板内容：宽屏首页')).toBeTruthy()
+  expect(within(otherVersion).queryByTitle('画板内容：预约完成')).toBeNull()
 })
 
 it('重复从检查器选择同一画板，会找回已被移出视口的选板', () => {
@@ -412,7 +412,7 @@ it('重复从检查器选择同一画板，会找回已被移出视口的选板'
   )
   showWorkspace()
   const board = screen
-    .getByTitle('宽屏首页 隔离沙盒')
+    .getByTitle('画板内容：宽屏首页')
     .closest<HTMLElement>('.artifact-canvas-board')
   if (!board) throw new Error('宽屏画板夹具不可用')
   expect(Number.parseFloat(board.style.left)).toBeGreaterThan(1000)
@@ -431,8 +431,8 @@ it('图层双向定位只在该画板与版本生效，悬停和旧坐标不改�
   stubResizeObserver()
   const detail = detailFor()
   const view = showWorkspace(detail)
-  const desktop = sandbox(screen.getByTitle<HTMLIFrameElement>('宽屏首页 隔离沙盒'))
-  const mobile = sandbox(screen.getByTitle<HTMLIFrameElement>('手机首页 隔离沙盒'))
+  const desktop = sandbox(screen.getByTitle<HTMLIFrameElement>('画板内容：宽屏首页'))
+  const mobile = sandbox(screen.getByTitle<HTMLIFrameElement>('画板内容：手机首页'))
   desktop.receive({ type: 'ready' })
   mobile.receive({ type: 'ready' })
 
@@ -513,9 +513,7 @@ it('图层双向定位只在该画板与版本生效，悬停和旧坐标不改�
     element: { selector, rect: { x: 50, y: 60, width: 20, height: 12 } },
   })
   expect(selectedBox.getAttribute('style')).toBe(originalRect)
-  expect(
-    within(inspector).getByText('此图层没有可唯一定位的源码，以下是该快照的源码。'),
-  ).toBeTruthy()
+  expect(within(inspector).getByText('无法定位此图层的源码。以下为画板源码。')).toBeTruthy()
 
   const displaced = ':scope > div:nth-of-type(2) > h1:nth-of-type(1)'
   mobile.receive(report([{ ...mobileLayer, selector: displaced }]))
@@ -525,20 +523,20 @@ it('图层双向定位只在该画板与版本生效，悬停和旧坐标不改�
 
   fireEvent.keyDown(within(inspector).getByRole('tab', { name: '属性' }), { key: 'Enter' })
   expect(within(inspector).getByText('140 × 25 px')).toBeTruthy()
-  fireEvent.click(within(inspector).getByRole('button', { name: '批注该图层' }))
+  fireEvent.click(within(inspector).getByRole('button', { name: '批注' }))
   const review = screen.getByRole('dialog', { name: '批注与评审' })
-  expect(within(review).getByText('针对选中元素批注')).toBeTruthy()
+  expect(within(review).getByText('元素批注')).toBeTruthy()
   expect(within(review).getByText(displaced.slice(0, 36))).toBeTruthy()
 
   view.update(workspace(detailFor(2)))
-  expect(within(review).getByText('全局批注')).toBeTruthy()
+  expect(within(review).getByText('版本批注')).toBeTruthy()
   expect(screen.queryByTestId('overlay-select-box')).toBeNull()
 })
 
 it('新版到达时将同板稳定块重绑到新节点，不捡起占用旧选择器的新对象', () => {
   stubResizeObserver()
   const view = showWorkspace()
-  const mobile = sandbox(screen.getByTitle('手机首页 隔离沙盒'))
+  const mobile = sandbox(screen.getByTitle('画板内容：手机首页'))
   mobile.receive({ type: 'ready' })
   fireEvent.click(screen.getByRole('button', { name: '手机首页' }))
   act(() => useWorkspaceStore.getState().setInspectorTab('inspect'))
@@ -650,9 +648,9 @@ it('固定版本定位到指定页面，复制的定位链接不携带分享授�
         <RouterProvider router={router} />
       </QueryClientProvider>,
     )
-    expect(await screen.findByTitle('预约完成 隔离沙盒')).toBeTruthy()
-    expect(screen.queryByTitle('新版确认页 隔离沙盒')).toBeNull()
-    expect(screen.queryByTitle('宽屏首页 隔离沙盒')).toBeNull()
+    expect(await screen.findByTitle('画板内容：预约完成')).toBeTruthy()
+    expect(screen.queryByTitle('画板内容：新版确认页')).toBeNull()
+    expect(screen.queryByTitle('画板内容：宽屏首页')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: '页面与画板' }))
     expect(screen.queryByRole('button', { name: '新建页面' })).toBeNull()
@@ -670,10 +668,10 @@ it('固定版本定位到指定页面，复制的定位链接不携带分享授�
       resetScroll: false,
       hash: 'page=status&board=missing',
     })
-    expect((await screen.findByRole('alert')).textContent).toContain('链接指定的画板不存在或已移除')
-    expect(screen.queryByTitle('预约完成 隔离沙盒')).toBeNull()
+    expect((await screen.findByRole('alert')).textContent).toContain('链接中的画板不存在')
+    expect(screen.queryByTitle('画板内容：预约完成')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '返回页面' }))
-    expect(await screen.findByTitle('预约完成 隔离沙盒')).toBeTruthy()
+    expect(await screen.findByTitle('画板内容：预约完成')).toBeTruthy()
     expect(router.state.location.search).toMatchObject({ share: 'test-token' })
   } finally {
     Reflect.deleteProperty(navigator, 'clipboard')
@@ -711,19 +709,19 @@ it('手动重读遇到暂时故障仍保留画布，失去读取权限时撤下�
       <RouterProvider router={router} />
     </QueryClientProvider>,
   )
-  const frame = await screen.findByTitle('宽屏首页 隔离沙盒')
+  const frame = await screen.findByTitle('画板内容：宽屏首页')
   const reload = () => {
-    fireEvent.keyDown(screen.getByRole('button', { name: '制品菜单' }), { key: 'Enter' })
+    fireEvent.keyDown(screen.getByRole('button', { name: '作品菜单' }), { key: 'Enter' })
     fireEvent.click(screen.getByRole('menuitem', { name: '重新加载' }))
   }
   status = 503
   reload()
   await screen.findAllByText('请求失败（HTTP 503）')
-  expect(screen.getByTitle('宽屏首页 隔离沙盒')).toBe(frame)
+  expect(screen.getByTitle('画板内容：宽屏首页')).toBe(frame)
   status = 403
   reload()
-  await screen.findAllByText('请求失败（HTTP 403）')
-  expect(screen.queryByTitle('宽屏首页 隔离沙盒')).toBeNull()
+  await screen.findByText('没有查看权限')
+  expect(screen.queryByTitle('画板内容：宽屏首页')).toBeNull()
 })
 
 function showEditableWorkspace(initial: ArtifactDetailResponse, address?: string) {
@@ -765,7 +763,7 @@ function showEditableWorkspace(initial: ArtifactDetailResponse, address?: string
   }
 }
 
-it('新建页面保存为头版本，空页不继承旧制品的未分组画板', async () => {
+it('新建页面保存为头版本，空页不继承未分组画板', async () => {
   const editor = showEditableWorkspace(
     detailFor(
       1,
@@ -775,14 +773,14 @@ it('新建页面保存为头版本，空页不继承旧制品的未分组画板'
   fireEvent.click(screen.getByRole('button', { name: '页面与画板' }))
   fireEvent.click(screen.getByRole('button', { name: '新建页面' }))
   fireEvent.change(screen.getByRole('textbox', { name: '页面名称' }), { target: { value: '备忘' } })
-  fireEvent.click(screen.getByRole('button', { name: '保存页面' }))
+  fireEvent.click(screen.getByRole('button', { name: '保存' }))
 
   expect(await screen.findByText('此页面没有画板')).toBeTruthy()
   expect(editor.submittedVersion).toBe(1)
-  expect(screen.queryByTitle('旧画板 隔离沙盒')).toBeNull()
+  expect(screen.queryByTitle('画板内容：旧画板')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: '页面与画板' }))
   fireEvent.click(screen.getByRole('button', { name: '旧画板' }))
-  expect(screen.getByTitle('旧画板 隔离沙盒')).toBeTruthy()
+  expect(screen.getByTitle('画板内容：旧画板')).toBeTruthy()
 })
 
 it('画板保存后提交对应版本的 Agent 编辑反馈，通知失败不回滚', async () => {
@@ -802,7 +800,7 @@ it('画板保存后提交对应版本的 Agent 编辑反馈，通知失败不回
     return previous(path, init)
   })
   fireEvent.click(screen.getByRole('button', { name: '添加画板' }))
-  expect(await screen.findByTitle('画板 3 隔离沙盒')).toBeTruthy()
+  expect(await screen.findByTitle('画板内容：画板 3')).toBeTruthy()
   expect(editor.current.version.version).toBe(2)
   expect(notifications).toEqual([
     expect.objectContaining({ kind: 'edit', version: 2, roundId: null }),
@@ -836,26 +834,26 @@ it('沿用旧页定位链接完成重命名，确认删除时只移除该页直�
   )
   const address = new URLSearchParams({ page: 'legacy-page:旧预约' }).toString()
   const editor = showEditableWorkspace(initial, address)
-  expect(screen.getByTitle('要移除的画板 隔离沙盒')).toBeTruthy()
+  expect(screen.getByTitle('画板内容：要移除的画板')).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: '页面与画板' }))
   fireEvent.click(screen.getByRole('button', { name: '重命名页面' }))
   fireEvent.change(screen.getByRole('textbox', { name: '页面名称' }), {
     target: { value: '新预约' },
   })
-  fireEvent.click(screen.getByRole('button', { name: '保存页面' }))
+  fireEvent.click(screen.getByRole('button', { name: '保存' }))
   await waitFor(() =>
     expect(screen.getByRole('button', { name: '页面与画板' }).textContent).toBe('新预约'),
   )
-  expect(screen.getByTitle('要移除的画板 隔离沙盒')).toBeTruthy()
+  expect(screen.getByTitle('画板内容：要移除的画板')).toBeTruthy()
   expect(screen.queryByRole('alert')).toBeNull()
 
   fireEvent.click(screen.getByRole('button', { name: '删除页面' }))
   expect(screen.getByText(/1 张直属画板/)).toBeTruthy()
-  expect(screen.getByTitle('要移除的画板 隔离沙盒')).toBeTruthy()
-  fireEvent.click(screen.getByRole('button', { name: '确认删除页面' }))
-  expect(await screen.findByTitle('要保留的画板 隔离沙盒')).toBeTruthy()
-  expect(screen.getByTitle('共享画板 隔离沙盒')).toBeTruthy()
-  expect(screen.queryByTitle('要移除的画板 隔离沙盒')).toBeNull()
+  expect(screen.getByTitle('画板内容：要移除的画板')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: '删除' }))
+  expect(await screen.findByTitle('画板内容：要保留的画板')).toBeTruthy()
+  expect(screen.getByTitle('画板内容：共享画板')).toBeTruthy()
+  expect(screen.queryByTitle('画板内容：要移除的画板')).toBeNull()
   expect(JSON.parse(editor.current.version.source)).toMatchObject({ flows: [] })
 })
 
@@ -879,12 +877,12 @@ it('画板表单打开后收到新版本时，保留未保存布局而不提交�
     ),
   )
   expect((screen.getByRole('spinbutton', { name: '宽度' }) as HTMLInputElement).value).toBe('880')
-  fireEvent.click(screen.getByRole('button', { name: '应用布局' }))
+  fireEvent.click(screen.getByRole('button', { name: '应用' }))
 
   const alert = screen.getByRole('alert')
-  expect(within(alert).getByText('已保留基于 v1 的未保存操作。')).toBeTruthy()
-  expect(within(alert).getByRole('button', { name: '下载未保存源码' })).toBeTruthy()
-  expect(screen.getByTitle<HTMLIFrameElement>('宽屏首页 隔离沙盒').width).toBe('1000')
+  expect(within(alert).getByText('未保存的改动已保留（基于 v1）。')).toBeTruthy()
+  expect(within(alert).getByRole('button', { name: '下载草稿' })).toBeTruthy()
+  expect(screen.getByTitle<HTMLIFrameElement>('画板内容：宽屏首页').width).toBe('1000')
   expect(
     request.mock.calls.some(
       ([path, init]) => path === '/api/v1/artifacts' && init?.method === 'POST',
@@ -894,10 +892,10 @@ it('画板表单打开后收到新版本时，保留未保存布局而不提交�
 
 it('撤销和重做只重放本会话操作，其他作者推进头版本后停止', async () => {
   const editor = showEditableWorkspace(detailFor())
-  const board = () => screen.getByTitle<HTMLIFrameElement>('宽屏首页 隔离沙盒')
+  const board = () => screen.getByTitle<HTMLIFrameElement>('画板内容：宽屏首页')
   fireEvent.click(screen.getByRole('button', { name: '设置画板：宽屏首页' }))
   fireEvent.change(screen.getByRole('spinbutton', { name: '宽度' }), { target: { value: '900' } })
-  fireEvent.click(screen.getByRole('button', { name: '应用布局' }))
+  fireEvent.click(screen.getByRole('button', { name: '应用' }))
   await waitFor(() => expect(board().width).toBe('900'))
   expect(editor.submittedVersion).toBe(1)
 
@@ -927,7 +925,7 @@ it('拖动只预览，取消不发布，移动或调整大小完成时各发布�
   vi.stubGlobal('PointerEvent', MouseEvent)
   const editor = showEditableWorkspace(detailFor())
   const title = screen.getByRole('button', { name: '宽屏首页' })
-  const frame = () => screen.getByTitle<HTMLIFrameElement>('宽屏首页 隔离沙盒')
+  const frame = () => screen.getByTitle<HTMLIFrameElement>('画板内容：宽屏首页')
   const outer = title.closest<HTMLElement>('.artifact-canvas-board')
   if (!outer) throw new Error('桌面画板夹具不可用')
   const initialLeft = Number.parseFloat(outer.style.left)
@@ -1027,7 +1025,7 @@ it('Shift 多选可一次对齐并分组，重选组成员时联动选择', asyn
   )
 
   fireEvent.click(screen.getByRole('button', { name: '排列画板' }))
-  fireEvent.click(screen.getByRole('button', { name: '取消画板分组' }))
+  fireEvent.click(screen.getByRole('button', { name: '取消分组' }))
   await waitFor(() => expect(editor.current.version.version).toBe(5))
   expect(doc().boards[0].layoutGroup).toBeUndefined()
   expect(doc().boards[1].layoutGroup).toBeUndefined()
@@ -1055,7 +1053,7 @@ it('检查器只编排原生图层，同画板选区在发布后重绑，旧基�
   fireEvent.click(screen.getByRole('button', { name: '宽屏首页' }))
   act(() => useWorkspaceStore.getState().setInspectorTab('inspect'))
   const inspector = screen.getByRole('dialog', { name: '检查器' })
-  const frame = sandbox(screen.getByTitle('宽屏首页 隔离沙盒'))
+  const frame = sandbox(screen.getByTitle('画板内容：宽屏首页'))
   frame.receive({ type: 'ready' })
   const snapshot = (version: number) => {
     frame.receive({
@@ -1114,8 +1112,8 @@ it('检查器只编排原生图层，同画板选区在发布后重绑，旧基�
   editor.receiveAgentSource(JSON.stringify(afterAlign))
   snapshot(3)
   expect(width().value).toBe('82')
-  fireEvent.click(layer('应用图层布局'))
-  expect(await screen.findByText(/未保存的操作没有覆盖新版本/)).toBeTruthy()
+  fireEvent.click(layer('应用'))
+  expect(await screen.findByText('作品已更新，未覆盖新版本。')).toBeTruthy()
   expect(JSON.parse(editor.current.version.source).boards[0].designLayers[1].width).toBe(92)
 })
 
@@ -1128,7 +1126,7 @@ it('拖出矩形只预览，松开按画板固有坐标保存并可撤销重做'
   vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 50, 720, 450))
   fireEvent.pointerDown(surface, { button: 0, pointerId: 1, clientX: 120, clientY: 80 })
   const scale = screen.getByLabelText('画布缩放比例').textContent
-  fireEvent.wheel(screen.getByRole('region', { name: '制品画布' }), { deltaY: -300 })
+  fireEvent.wheel(screen.getByRole('region', { name: '画布' }), { deltaY: -300 })
   expect(screen.getByLabelText('画布缩放比例').textContent).toBe(scale)
   fireEvent.pointerMove(surface, { pointerId: 1, clientX: 190, clientY: 140 })
   expect(editor.current.version.version).toBe(1)
@@ -1162,7 +1160,7 @@ it('长笔迹达到采样上限后仍保存新转折', async () => {
   vi.stubGlobal('PointerEvent', MouseEvent)
   const editor = showEditableWorkspace(detailFor())
   fireEvent.click(screen.getByRole('button', { name: '画笔' }))
-  const surface = screen.getByRole('button', { name: '在宽屏首页画笔标记' })
+  const surface = screen.getByRole('button', { name: '在宽屏首页绘制笔迹' })
   vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 1440, 900))
   fireEvent.pointerDown(surface, { clientX: 10, clientY: 10 })
   act(() => {
@@ -1203,7 +1201,7 @@ it('双击已有便签只修改同画板原生对象的文本并保留版本基�
     ),
   })
   const editor = showEditableWorkspace(detailFor(1, source))
-  const frame = sandbox(screen.getByTitle('宽屏首页 隔离沙盒'))
+  const frame = sandbox(screen.getByTitle('画板内容：宽屏首页'))
   frame.receive({ type: 'ready' })
   const hit = screen.getByRole('button', { name: '选择画板：宽屏首页' })
   vi.spyOn(hit, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 50, 720, 450))
@@ -1220,7 +1218,8 @@ it('双击已有便签只修改同画板原生对象的文本并保留版本基�
   expect(text.value).toBe('原文')
   fireEvent.change(text, { target: { value: '版本化便签' } })
   expect(editor.current.version.version).toBe(1)
-  fireEvent.click(screen.getByRole('button', { name: '保存文字' }))
+  const editorDialog = screen.getByRole('dialog', { name: '编辑文字' })
+  fireEvent.click(within(editorDialog).getByRole('button', { name: '保存' }))
   await waitFor(() => expect(editor.current.version.version).toBe(2))
   expect(JSON.parse(editor.current.version.source).boards[0].designLayers).toEqual([
     { id: 'note', kind: 'note', text: '版本化便签', x: 10, y: 30, width: 200, height: 90 },

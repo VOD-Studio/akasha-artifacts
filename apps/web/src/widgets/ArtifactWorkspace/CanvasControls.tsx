@@ -16,11 +16,11 @@ import {
   Undo2,
 } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
-import { ElementPickerButton } from '../../features/element-picker/ElementPickerButton'
+import type { CanvasPage } from '@/entities/artifact'
+import { ElementPickerButton } from '@/features/element-picker'
 import { DRAWING_TOOLS, type DrawingTool } from './BoardDrawingSurface'
 import { CanvasPageActions, type CanvasPageEditing } from './CanvasPageActions'
 import type { Camera } from './canvas-camera'
-import type { CanvasPage } from './canvas-model'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
 
 const ZOOM_STEP = 1.25
@@ -63,7 +63,7 @@ export function PageNavigator({
       await navigator.clipboard.writeText(pageLink(id))
       onStatus('已复制页面链接')
     } catch {
-      onStatus('无法复制页面链接，请检查浏览器的剪贴板权限')
+      onStatus('无法复制页面链接，请检查剪贴板权限')
     }
   }
 
@@ -98,7 +98,7 @@ export function PageNavigator({
         />
         <div className="artifact-canvas-nav-results">
           {results.length === 0 ? (
-            <p className="p-2 text-sm text-ink-muted">找不到匹配的页面或画板</p>
+            <p className="p-2 text-sm text-ink-muted">没有匹配的页面或画板</p>
           ) : null}
           {results.map(({ entry, boards }) => (
             <div key={entry.id} className="mb-2">
@@ -340,7 +340,7 @@ export function CanvasToolbar({
             aria-pressed={visualEditActive}
             onClick={onToggleVisualEdit}
           >
-            可视化直改
+            编辑元素
           </Button>
         ) : null}
       </section>

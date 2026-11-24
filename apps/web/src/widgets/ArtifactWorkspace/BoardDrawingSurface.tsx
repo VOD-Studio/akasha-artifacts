@@ -1,8 +1,8 @@
 import type { DesignLayer, Version } from '@akasha/protocol'
 import { Circle, PenLine, Square, StickyNote, Type } from 'lucide-react'
 import { type PointerEvent, useRef, useState } from 'react'
+import type { CanvasBoard } from '@/entities/artifact'
 import type { CanvasBounds, Point } from './canvas-camera'
-import type { CanvasBoard } from './canvas-model'
 
 /** 原生图层工具按声明顺序出现在画布工具条。 */
 export const DRAWING_TOOLS = [
@@ -25,6 +25,13 @@ interface Gesture {
 }
 
 const INK_LIMIT = 2048
+const PRESET_SIZE = {
+  text: [220, 56],
+  note: [220, 112],
+  rectangle: [120, 80],
+  ellipse: [120, 80],
+} as const
+
 function boundsOf(start: Point, end: Point): CanvasBounds {
   const x = Math.floor(Math.min(start.x, end.x))
   const y = Math.floor(Math.min(start.y, end.y))
@@ -34,6 +41,19 @@ function boundsOf(start: Point, end: Point): CanvasBounds {
     width: Math.max(1, Math.ceil(Math.max(start.x, end.x)) - x),
     height: Math.max(1, Math.ceil(Math.max(start.y, end.y)) - y),
   }
+}
+
+function sample(points: Point[], point: Point, final = false) {
+  const last = points[points.length - 1]
+  if (Math.hypot(last.x - point.x, last.y - point.y) < (final ? Number.EPSILON : 0.75)) return
+  if (points.length === INK_LIMIT) {
+    // 压缩已经走过的路径，保留两端，给后续转折留出采样空间。
+    let write = 1
+    for (let read = 2; read < points.length - 1; read += 2) points[write++] = points[read]
+    points[write++] = last
+    points.length = write
+  }
+  points.push(point)
 }
 
 interface SurfaceProps {
@@ -53,18 +73,9 @@ export function BoardDrawingSurface({ board, tool, version, onCreate }: SurfaceP
   const [preview, setPreview] = useState<CanvasBounds | string | null>(null)
   const { width, height } = board
 
-  function boardCoordinates(rect: DOMRect) {
-    return ({ clientX, clientY }: Pick<PointerEvent, 'clientX' | 'clientY'>): Point => ({
-      x: Math.min(width, Math.max(0, ((clientX - rect.left) * width) / rect.width)),
-      y: Math.min(height, Math.max(0, ((clientY - rect.top) * height) / rect.height)),
-    })
-  }
-
-  function commitShape(start: Point, end: Point, base: Version, anchor: Point) {
+  const commitShape = (start: Point, end: Point, base: Version, anchor: Point) => {
     if (tool.kind === 'stroke') return
-    const text = tool.kind === 'text' || tool.kind === 'note'
-    const presetWidth = text ? 220 : 120
-    const presetHeight = tool.kind === 'text' ? 56 : tool.kind === 'note' ? 112 : 80
+    const [presetWidth, presetHeight] = PRESET_SIZE[tool.kind]
     const moved = Math.hypot(end.x - start.x, end.y - start.y) >= 3
     const bounds = moved
       ? boundsOf(start, end)
@@ -82,34 +93,31 @@ export function BoardDrawingSurface({ board, tool, version, onCreate }: SurfaceP
     }
   }
 
-  function sample(points: Point[], point: Point, final = false) {
-    const last = points[points.length - 1]
-    if (Math.hypot(last.x - point.x, last.y - point.y) < (final ? Number.EPSILON : 0.75)) return
-    if (points.length === INK_LIMIT) {
-      // 压缩已经走过的路径，保留两端，给后续转折留出采样空间。
-      let write = 1
-      for (let read = 2; read < points.length - 1; read += 2) points[write++] = points[read]
-      points[write++] = last
-      points.length = write
-    }
-    points.push(point)
-  }
-
-  function cancel() {
+  const cancel = () => {
     gesture.current = null
     setPreview(null)
   }
 
+  const strokePreview = typeof preview === 'string' ? preview : null
+  const shapePreview = typeof preview === 'string' ? null : preview
+
+  // 命中区与画板同尺寸，保留原生按钮的键盘点击，不套用通用按钮的尺寸。
   return (
     <button
       type="button"
-      aria-label={`在${board.title}${tool.kind === 'stroke' ? '画笔标记' : tool.label}`}
+      aria-label={`在${board.title}${tool.kind === 'stroke' ? '绘制笔迹' : tool.label}`}
       className="artifact-canvas-board-hit z-2 cursor-crosshair touch-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
       onPointerDown={(event) => {
         if (event.button !== 0 || gesture.current) return
         const frame = event.currentTarget.getBoundingClientRect()
         if (!frame.width || !frame.height) return
-        const toBoardPoint = boardCoordinates(frame)
+        const toBoardPoint = ({
+          clientX,
+          clientY,
+        }: Pick<PointerEvent, 'clientX' | 'clientY'>): Point => ({
+          x: Math.min(width, Math.max(0, ((clientX - frame.left) * width) / frame.width)),
+          y: Math.min(height, Math.max(0, ((clientY - frame.top) * height) / frame.height)),
+        })
         const start = toBoardPoint(event)
         event.stopPropagation()
         event.currentTarget.setPointerCapture?.(event.pointerId)
@@ -190,29 +198,31 @@ export function BoardDrawingSurface({ board, tool, version, onCreate }: SurfaceP
           preserveAspectRatio="none"
           className="pointer-events-none block size-full text-primary"
         >
-          {typeof preview === 'string' ? (
+          {strokePreview && (
             <polyline
-              points={preview}
+              points={strokePreview}
               fill="none"
               stroke="currentColor"
               strokeWidth={3}
               strokeLinecap="round"
               strokeLinejoin="round"
             />
-          ) : tool.kind === 'ellipse' ? (
+          )}
+          {shapePreview && tool.kind === 'ellipse' && (
             <ellipse
-              cx={preview.x + preview.width / 2}
-              cy={preview.y + preview.height / 2}
-              rx={preview.width / 2}
-              ry={preview.height / 2}
+              cx={shapePreview.x + shapePreview.width / 2}
+              cy={shapePreview.y + shapePreview.height / 2}
+              rx={shapePreview.width / 2}
+              ry={shapePreview.height / 2}
               fill="currentColor"
               fillOpacity={0.15}
               stroke="currentColor"
               vectorEffect="non-scaling-stroke"
             />
-          ) : (
+          )}
+          {shapePreview && tool.kind !== 'ellipse' && (
             <rect
-              {...preview}
+              {...shapePreview}
               fill="currentColor"
               fillOpacity={0.15}
               stroke="currentColor"

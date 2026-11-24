@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
@@ -5,6 +6,7 @@ export default defineConfig({
     jsx: 'automatic',
   },
   resolve: {
+    alias: { '@': fileURLToPath(new URL('./apps/web/src', import.meta.url)) },
     conditions: ['@akasha/source', 'import', 'module', 'default'],
   },
   ssr: {

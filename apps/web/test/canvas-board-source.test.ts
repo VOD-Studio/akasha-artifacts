@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
+import { createCanvasDocument } from '../src/entities/artifact'
 import { editCanvasBoards } from '../src/widgets/ArtifactWorkspace/canvas-board-source'
 import { layoutBoards } from '../src/widgets/ArtifactWorkspace/canvas-camera'
-import { createCanvasDocument } from '../src/widgets/ArtifactWorkspace/canvas-model'
 
 const source = JSON.stringify({
   pages: [{ title: '预约' }],

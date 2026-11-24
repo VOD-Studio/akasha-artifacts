@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { CanvasDocument } from './canvas-model'
+import type { CanvasDocument } from '@/entities/artifact'
 
 interface Target {
   pageId: string
@@ -25,11 +25,8 @@ export function useBoardPresentation(document: CanvasDocument, visible: boolean)
 
   useLayoutEffect(() => {
     if (!visible || playing) return
-    const target = playTrigger.current?.isConnected
-      ? playTrigger.current
-      : focused
-        ? null
-        : focusTrigger.current
+    const fallback = focused ? null : focusTrigger.current
+    const target = playTrigger.current?.isConnected ? playTrigger.current : fallback
     playTrigger.current = null
     if (!focused) focusTrigger.current = null
     if (target?.isConnected) target.focus({ preventScroll: true })

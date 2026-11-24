@@ -3,6 +3,7 @@ import {
   type ArtifactHandoffReference,
   type CanvasLayer,
   DESIGN_LAYER_BLOCK_PREFIX,
+  type DesignLayer,
   STANDALONE_BOARD_ID,
   type Version,
 } from '@akasha/protocol'
@@ -10,18 +11,18 @@ import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@akasha/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@akasha/ui/tabs'
-import { useMemo, useState } from 'react'
-import { useSelectionStore } from '../../entities/selection/store'
-import { useWorkspaceStore } from '../../entities/workspace/store'
-import { ElementPickerButton } from '../../features/element-picker/ElementPickerButton'
-import { PropsPanel } from '../../features/props-panel/PropsPanel'
-import { ARTIFACT_TYPE_LABELS } from '../../shared/lib/format'
+import { useState } from 'react'
+import type { CanvasDocument, CanvasLocation } from '@/entities/artifact'
+import { useSelectionStore } from '@/entities/selection'
+import { useWorkspaceStore } from '@/entities/workspace'
+import { ElementPickerButton } from '@/features/element-picker'
+import { PropsPanel } from '@/features/props-panel'
+import { ARTIFACT_TYPE_LABELS } from '@/shared/lib/format'
 import {
   changeLayoutSelection,
   type LayoutSelection,
   layoutSelectionIds,
 } from './canvas-arrangement'
-import type { CanvasDocument, CanvasLocation } from './canvas-model'
 import { DesignLayerLayout } from './DesignLayerLayout'
 import { LayerTree } from './LayerTree'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
@@ -104,10 +105,12 @@ export function BoardInspector({
   const designLayer = board?.designLayers?.find(
     (item) => `${DESIGN_LAYER_BLOCK_PREFIX}${item.id}` === selectedBlock,
   )
-  const designSource = useMemo(
-    () => (designLayer ? JSON.stringify(designLayer, null, 2) : ''),
-    [designLayer],
-  )
+  const runtimeLocation =
+    excerpt && layer ? `源码 ${layer.sourceLoc} · 布局只读` : '运行图层 · 布局只读'
+  const designLocation = editing ? '原生图层 · 可编辑布局' : '原生图层 · 只读'
+  const noLayers = layers ? '此画板没有可检查的图层' : '正在加载图层…'
+  const layerStatus = layersAvailable ? noLayers : '未保存的预览无法查看图层。'
+  const readOnlyLabel = version.version === artifact.headVersion ? '只读' : '历史版本 · 只读'
   const [extraLayers, setExtraLayers] = useState<(LayoutSelection & { scope: string }) | null>(null)
   const scope = JSON.stringify([artifact.publicId, board?.id])
   const activeDesignSelection: LayoutSelection = {
@@ -130,7 +133,7 @@ export function BoardInspector({
         .map((entry) => entry.id),
     )
 
-  function selectLayer(target: CanvasLayer, additive: boolean) {
+  const selectLayer = (target: CanvasLayer, additive: boolean) => {
     const items = board?.designLayers
     if (!target.designId || !items?.some((item) => item.id === target.designId)) {
       setExtraLayers(null)
@@ -160,7 +163,7 @@ export function BoardInspector({
         </SheetHeader>
         <SheetBody>
           <div className="space-y-4">
-            <section aria-label="页面、画板与图层树" className="border-b border-border pb-3">
+            <section aria-label="页面、画板与图层" className="border-b border-border pb-3">
               <div className="mb-2 flex items-center justify-between gap-2 text-sm font-medium">
                 <h2>页面、画板与图层</h2>
                 <div className="flex items-center gap-1.5">
@@ -181,7 +184,7 @@ export function BoardInspector({
                     <summary className="cursor-pointer rounded px-2 py-1 text-sm text-ink">
                       {entry.title}
                     </summary>
-                    {entry.boards.length ? (
+                    {entry.boards.length > 0 && (
                       <ul className="ml-3 border-l border-border pl-2">
                         {entry.boards.map((item) => {
                           const current = entry.id === page?.id && item.id === board?.id
@@ -196,7 +199,7 @@ export function BoardInspector({
                               >
                                 <span className="truncate">{item.title}</span>
                               </Button>
-                              {current ? (
+                              {current && (
                                 <div className="ml-2 border-l border-border pl-2">
                                   {layers?.layers.length ? (
                                     <LayerTree
@@ -207,40 +210,37 @@ export function BoardInspector({
                                     />
                                   ) : (
                                     <p className="px-2 py-1 text-xs text-ink-muted">
-                                      {!layersAvailable
-                                        ? '未保存的预览不能定位到此版本的源码。'
-                                        : layers
-                                          ? '此画板没有可检查的图层'
-                                          : '等候画板的图层…'}
+                                      {layerStatus}
                                     </p>
                                   )}
                                   {layers?.truncated ? (
                                     <p className="px-2 py-1 text-xs text-ink-muted">
-                                      仅显示前 240 个图层和可用层级
+                                      仅显示前 240 个图层
                                     </p>
                                   ) : null}
                                 </div>
-                              ) : null}
+                              )}
                             </li>
                           )
                         })}
                       </ul>
-                    ) : (
+                    )}
+                    {entry.boards.length === 0 && (
                       <p className="px-4 py-1 text-xs text-ink-muted">此页面没有画板</p>
                     )}
                   </details>
                 ))}
               </div>
             </section>
-            {readOnly ? <p className="text-xs text-ink-muted">历史版本 · 只读</p> : null}
+            {readOnly && <p className="text-xs text-ink-muted">{readOnlyLabel}</p>}
             <Tabs defaultValue="properties">
-              <TabsList aria-label="检查对象信息">
+              <TabsList aria-label="检查器选项">
                 <TabsTrigger value="properties">属性</TabsTrigger>
                 <TabsTrigger value="source">源码</TabsTrigger>
-                <TabsTrigger value="runtime">调参</TabsTrigger>
+                <TabsTrigger value="runtime">运行参数</TabsTrigger>
               </TabsList>
               <TabsContent value="properties" className="pt-3">
-                {board ? (
+                {board && (
                   <>
                     <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-2 text-sm">
                       <dt className="text-ink-muted">页面</dt>
@@ -265,15 +265,7 @@ export function BoardInspector({
                             px
                           </dd>
                           <dt className="text-ink-muted">定位</dt>
-                          <dd>
-                            {designLayer
-                              ? editing
-                                ? '原生图层 · 可编辑布局'
-                                : '原生图层 · 只读'
-                              : excerpt && layer
-                                ? `源码 ${layer.sourceLoc} · 布局只读`
-                                : '运行节点 · 只读，可批注'}
-                          </dd>
+                          <dd>{designLayer ? designLocation : runtimeLocation}</dd>
                         </>
                       ) : null}
                     </dl>
@@ -307,7 +299,7 @@ export function BoardInspector({
                         size="sm"
                         onClick={() => setDrawer('review')}
                       >
-                        批注该图层
+                        批注
                       </Button>
                     ) : null}
                     {onHandoff && page ? (
@@ -328,7 +320,7 @@ export function BoardInspector({
                           })
                         }
                       >
-                        {handoffElement ? '移交所选对象' : '移交当前画板'}
+                        {handoffElement ? '移交对象' : '移交画板'}
                       </Button>
                     ) : null}
                     {onAskAgent && page && handoffElement ? (
@@ -353,68 +345,23 @@ export function BoardInspector({
                       </Button>
                     ) : null}
                   </>
-                ) : (
-                  <p className="py-2 text-sm text-ink-muted">从树中选择画板以查看属性</p>
                 )}
+                {!board && <p className="py-2 text-sm text-ink-muted">选择画板以查看属性</p>}
               </TabsContent>
               <TabsContent value="source" className="space-y-2 pt-3">
-                {designLayer ? (
-                  <>
-                    <p className="text-xs text-ink-muted">当前版本的原生图层 · {designLayer.id}</p>
-                    <pre className="max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs leading-5">
-                      <code>{designSource}</code>
-                    </pre>
-                  </>
-                ) : excerpt ? (
-                  <>
-                    <p className="text-xs text-ink-muted">源码位置 {layer?.sourceLoc}</p>
-                    <pre className="max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs leading-5">
-                      {excerpt.lines.map((text, index) => {
-                        const line = excerpt.firstLine + index
-                        return (
-                          <code
-                            className={`block ${line === excerpt.line ? 'bg-accent/10' : ''}`}
-                            key={line}
-                          >
-                            <span
-                              aria-hidden="true"
-                              className="mr-3 inline-block min-w-6 text-right text-ink-muted"
-                            >
-                              {line}
-                            </span>
-                            {line === excerpt.line ? (
-                              <>
-                                {excerpt.before}
-                                <mark className="rounded bg-accent/20 text-inherit">
-                                  {excerpt.tag}
-                                </mark>
-                                {excerpt.after}
-                              </>
-                            ) : (
-                              text || ' '
-                            )}
-                          </code>
-                        )
-                      })}
-                    </pre>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-xs text-ink-muted">
-                      {layer
-                        ? '此图层没有可唯一定位的源码，以下是该快照的源码。'
-                        : board && !board.generated
-                          ? '当前画板的源码'
-                          : '当前版本的制品源码'}
-                    </p>
-                    <pre className="max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs leading-5">
-                      <code>{source}</code>
-                    </pre>
-                  </>
-                )}
+                <BoardInspectorSource
+                  designLayer={designLayer}
+                  excerpt={excerpt}
+                  sourceLoc={layer?.sourceLoc}
+                  source={source}
+                  scope={board && !board.generated ? '画板源码' : '作品源码'}
+                  hasLayer={Boolean(layer)}
+                />
               </TabsContent>
               <TabsContent value="runtime" className="space-y-2 pt-3">
-                <p className="text-xs text-ink-muted">运行参数只更新状态流，不写入设计版本。</p>
+                {!readOnly && (
+                  <p className="text-xs text-ink-muted">调整仅影响运行状态，不会生成新版本。</p>
+                )}
                 <PropsPanel
                   artifactId={artifact.publicId}
                   projectId={artifact.projectId}
@@ -433,7 +380,85 @@ export function BoardInspector({
   )
 }
 
-function locateSource(source: string, layer: CanvasLayer) {
+interface SourceExcerpt {
+  line: number
+  firstLine: number
+  lines: string[]
+  before: string
+  tag: string
+  after: string
+}
+
+function BoardInspectorSource({
+  designLayer,
+  excerpt,
+  sourceLoc,
+  source,
+  scope,
+  hasLayer,
+}: {
+  designLayer?: DesignLayer
+  excerpt: SourceExcerpt | null
+  sourceLoc?: string
+  source: string
+  scope: '画板源码' | '作品源码'
+  hasLayer: boolean
+}) {
+  if (designLayer) {
+    return (
+      <>
+        <p className="text-xs text-ink-muted">原生图层 · {designLayer.id}</p>
+        <pre className="max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs leading-5">
+          <code>{JSON.stringify(designLayer, null, 2)}</code>
+        </pre>
+      </>
+    )
+  }
+  if (excerpt) {
+    return (
+      <>
+        <p className="text-xs text-ink-muted">源码位置 {sourceLoc}</p>
+        <pre className="max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs leading-5">
+          {excerpt.lines.map((text, index) => {
+            const line = excerpt.firstLine + index
+            const marked = line === excerpt.line
+            return (
+              <code className={`block ${marked ? 'bg-accent/10' : ''}`} key={line}>
+                <span
+                  aria-hidden="true"
+                  className="mr-3 inline-block min-w-6 text-right text-ink-muted"
+                >
+                  {line}
+                </span>
+                {marked ? (
+                  <>
+                    {excerpt.before}
+                    <mark className="rounded bg-accent/20 text-inherit">{excerpt.tag}</mark>
+                    {excerpt.after}
+                  </>
+                ) : (
+                  text || ' '
+                )}
+              </code>
+            )
+          })}
+        </pre>
+      </>
+    )
+  }
+  return (
+    <>
+      <p className="text-xs text-ink-muted">
+        {hasLayer ? `无法定位此图层的源码。以下为${scope}。` : scope}
+      </p>
+      <pre className="max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs leading-5">
+        <code>{source}</code>
+      </pre>
+    </>
+  )
+}
+
+function locateSource(source: string, layer: CanvasLayer): SourceExcerpt | null {
   if (!layer.sourceLoc) return null
   const [rawLine, rawColumn] = layer.sourceLoc.split(':')
   const line = Number(rawLine)

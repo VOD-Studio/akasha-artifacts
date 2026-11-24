@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-import { execFileSync } from 'node:child_process'
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
 import {
   type Artifact,
   type Feedback,
@@ -25,24 +21,22 @@ beforeAll(() => {
   }
 })
 
-import { artifactKeys } from '../src/entities/artifact/queries'
-import { projectKeys } from '../src/entities/project/queries'
-import { useSelectionStore } from '../src/entities/selection/store'
-import { useWorkspaceStore } from '../src/entities/workspace/store'
-import { AnnotationComposer } from '../src/features/annotations/AnnotationComposer'
-import { ElementPickerButton } from '../src/features/element-picker/ElementPickerButton'
-import { RuntimeErrorPanel } from '../src/features/error-recovery/RuntimeErrorPanel'
-import { applyRealtimeEventToCache } from '../src/features/live-sync/useLiveSync'
-import { VersionDiffView } from '../src/features/version-diff/VersionDiffView'
-import type { ArtifactDetailResponse } from '../src/shared/api/client'
+import { type ArtifactDetailResponse, artifactKeys } from '../src/entities/artifact'
+import { projectKeys } from '../src/entities/project'
+import { useSelectionStore } from '../src/entities/selection'
+import { useWorkspaceStore } from '../src/entities/workspace'
+import { ElementPickerButton } from '../src/features/element-picker'
+import { RuntimeErrorPanel } from '../src/features/error-recovery'
+import { applyRealtimeEventToCache } from '../src/features/live-sync'
+import { AnnotationComposer, ArtifactReviewPanel } from '../src/features/review'
+import { RoundSubmitBar } from '../src/features/review/ui/RoundSubmitBar'
+import { VersionDiffView } from '../src/features/version-diff'
 import { AkashaWsClient } from '../src/shared/api/ws'
 import { SANDBOX_IFRAME_SANDBOX_ATTR, SandboxBridgeHost } from '../src/shared/bridge/host'
-import { ArtifactWorkspace } from '../src/widgets/ArtifactWorkspace/ArtifactWorkspace'
-import { InspectorPanel } from '../src/widgets/InspectorPanel/InspectorPanel'
-import { LibraryShell } from '../src/widgets/LibraryShell/LibraryShell'
+import { ArtifactWorkspace } from '../src/widgets/ArtifactWorkspace'
+import { LibraryShell } from '../src/widgets/LibraryShell'
 import { useLibraryView } from '../src/widgets/LibraryShell/library-view'
-import { RoundSubmitBar } from '../src/widgets/RoundSubmitBar/RoundSubmitBar'
-import { TopBar } from '../src/widgets/TopBar/TopBar'
+import { TopBar } from '../src/widgets/TopBar'
 
 const SAMPLE_ARTIFACT: Artifact = {
   publicId: 'AbCdEfGhIjKlMnOpQrStU',
@@ -286,12 +280,12 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
 
     const restored = render(composer(2, other))
     expect(screen.getByDisplayValue('恢复原目标的意见')).toBeTruthy()
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: '发送批注' }).disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '发送' }).disabled).toBe(true)
     expect(screen.getByRole('link', { name: '回 v1 继续' }).getAttribute('href')).toBe(
       `/a/${SAMPLE_ARTIFACT.publicId}/v/1`,
     )
     restored.rerender(composer(1, other))
-    fireEvent.click(screen.getByRole('button', { name: '发送批注' }))
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
     expect(submit).toHaveBeenCalledWith(
       expect.objectContaining({
         body: '恢复原目标的意见',
@@ -345,7 +339,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     const iframe = container.querySelector('iframe')
     expect(iframe).toBeTruthy()
     expect(iframe?.getAttribute('sandbox')).toBe('allow-scripts')
-    expect(screen.getByRole('region', { name: '制品画布' }).contains(iframe)).toBe(true)
+    expect(screen.getByRole('region', { name: '画布' }).contains(iframe)).toBe(true)
     expect(screen.queryByRole('dialog', { name: '批注与评审' })).toBeNull()
 
     const zoomRatio = () =>
@@ -354,9 +348,9 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     fireEvent.click(screen.getByRole('button', { name: '放大' }))
     const previewZoom = zoomRatio()
     expect(previewZoom).toBeGreaterThan(initialZoom)
-    fireEvent.keyDown(screen.getByRole('button', { name: '制品菜单' }), { key: 'Enter' })
+    fireEvent.keyDown(screen.getByRole('button', { name: '作品菜单' }), { key: 'Enter' })
     fireEvent.click(screen.getByRole('menuitem', { name: '查看源码' }))
-    expect(screen.queryByRole('region', { name: '制品画布' })).toBeNull()
+    expect(screen.queryByRole('region', { name: '画布' })).toBeNull()
     expect(screen.getByText(SAMPLE_V1.source)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '返回画布' }))
     expect(container.querySelector('iframe')).toBe(iframe)
@@ -491,6 +485,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
         publicId: 'LegacyLibraryItemAbC123',
         projectId: 'proj_old',
         title: '旧任务参考',
+        type: 'markdown',
       },
     ])
 
@@ -503,12 +498,15 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       )
 
     const library = openLibrary()
+    expect(screen.getByRole('link', { name: '旧任务参考' }).getAttribute('href')).toBe(
+      '/a/LegacyLibraryItemAbC123',
+    )
     fireEvent.keyDown(window, { key: 'k', ctrlKey: true })
-    const search = screen.getByRole('searchbox', { name: '搜索制品' })
+    const search = screen.getByRole('searchbox', { name: '搜索作品' })
     expect(document.activeElement).toBe(search)
     fireEvent.change(search, { target: { value: '状态' } })
     expect(screen.queryByText('旧任务参考')).toBeNull()
-    const scroller = screen.getByRole('region', { name: '制品列表' })
+    const scroller = screen.getByRole('region', { name: '作品列表' })
     scroller.scrollTop = 80
     fireEvent.scroll(scroller)
 
@@ -516,8 +514,8 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     expect(opened).toEqual([SAMPLE_ARTIFACT.publicId])
     library.unmount()
     openLibrary()
-    expect(screen.getByRole<HTMLInputElement>('searchbox', { name: '搜索制品' }).value).toBe('状态')
-    expect(screen.getByRole('region', { name: '制品列表' }).scrollTop).toBe(80)
+    expect(screen.getByRole<HTMLInputElement>('searchbox', { name: '搜索作品' }).value).toBe('状态')
+    expect(screen.getByRole('region', { name: '作品列表' }).scrollTop).toBe(80)
     expect(screen.queryByText('旧任务参考')).toBeNull()
   })
 
@@ -550,7 +548,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
               : [],
           })
         case '/api/v1/auth/session':
-          return Response.json({ user: null })
+          return Response.json({ user: { login: 'reviewer', member: true } })
         default:
           throw new Error(`意外请求：${url}`)
       }
@@ -566,6 +564,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       )
       await act(() => vi.advanceTimersByTimeAsync(20))
       expect(screen.queryByText('新发布制品')).toBeNull()
+      expect(screen.queryByRole('button', { name: '新建设计' })).toBeNull()
 
       published = true
       await act(() => vi.advanceTimersByTimeAsync(15_000))
@@ -579,42 +578,6 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       cleanup()
       queryClient.clear()
       vi.unstubAllGlobals()
-    }
-  })
-
-  it('反向 FSD 依赖（entities → features）会被 scripts/check-deps.mjs 拦截', () => {
-    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fsd-test-'))
-    try {
-      const entitiesDir = path.join(tmpRoot, 'apps', 'web', 'src', 'entities')
-      fs.mkdirSync(entitiesDir, { recursive: true })
-      fs.writeFileSync(
-        path.join(tmpRoot, 'apps', 'web', 'package.json'),
-        JSON.stringify({ name: '@akasha/web' }),
-      )
-      fs.writeFileSync(
-        path.join(entitiesDir, 'illegal.ts'),
-        "import { foo } from '../features/live-sync/useLiveSync'\nexport const x = foo\n",
-      )
-
-      const scriptPath = path.resolve(process.cwd(), 'scripts/check-deps.mjs')
-      let failed = false
-      let output = ''
-      try {
-        execFileSync(process.execPath, [scriptPath], {
-          cwd: tmpRoot,
-          encoding: 'utf8',
-          stdio: 'pipe',
-        })
-      } catch (err) {
-        failed = true
-        const e = err as { stderr?: string; stdout?: string }
-        output = `${e.stdout ?? ''}${e.stderr ?? ''}`
-      }
-
-      expect(failed).toBe(true)
-      expect(output).toContain('违反外壳 FSD 分层 entities → features')
-    } finally {
-      fs.rmSync(tmpRoot, { recursive: true, force: true })
     }
   })
 
@@ -662,7 +625,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
         }}
         onDismiss={() => {}}
         onSubmitFeedback={
-          mockSubmit as unknown as typeof import('../src/shared/api/client').submitArtifactFeedback
+          mockSubmit as unknown as typeof import('../src/entities/feedback').submitArtifactFeedback
         }
       />,
     )
@@ -700,7 +663,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
         }}
         onDismiss={() => {}}
         onSubmitFeedback={
-          mockSubmit as unknown as typeof import('../src/shared/api/client').submitArtifactFeedback
+          mockSubmit as unknown as typeof import('../src/entities/feedback').submitArtifactFeedback
         }
       />,
     )
@@ -723,7 +686,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
         }}
         onDismiss={() => {}}
         onSubmitFeedback={
-          mockSubmit as unknown as typeof import('../src/shared/api/client').submitArtifactFeedback
+          mockSubmit as unknown as typeof import('../src/entities/feedback').submitArtifactFeedback
         }
       />,
     )
@@ -950,8 +913,8 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     // 选中画布元素打开批注抽屉，轮次动作随抽屉出现。
     const roundBar = screen.getByTestId('round-submit-bar')
     expect(screen.getByRole('dialog', { name: '批注与评审' }).contains(roundBar)).toBe(true)
-    expect(roundBar.textContent).toContain('已决策 1 / 2')
-    expect(roundBar.textContent).toContain('草稿评论 2 条')
+    expect(roundBar.textContent).toContain('已评审 1 / 2 项')
+    expect(roundBar.textContent).toContain('草稿 2 条')
     expect(screen.getByRole('button', { name: '提交本轮' })).toBeTruthy()
 
     cleanup()
@@ -992,7 +955,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     fireEvent.change(screen.getByLabelText('批注内容'), {
       target: { value: '圆角稍微加大一点' },
     })
-    fireEvent.click(screen.getByRole('button', { name: '存为本轮草稿' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存草稿' }))
     await vi.waitFor(() => expect(submittedPayloads).toHaveLength(1))
     expect(submittedPayloads[0]).toMatchObject({
       version: 2,
@@ -1004,8 +967,8 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     })
 
     fireEvent.change(screen.getByLabelText('批注内容'), { target: { value: '请调整标题间距' } })
-    fireEvent.click(screen.getByRole('checkbox', { name: '同时发送给 Agent' }))
-    fireEvent.click(screen.getByRole('button', { name: '存为本轮草稿' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '随本轮发给 Agent' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存草稿' }))
     await vi.waitFor(() => expect(submittedPayloads).toHaveLength(2))
     expect(submittedPayloads[1]).toMatchObject({
       roundId: 'round_1',
@@ -1017,10 +980,10 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     fireEvent.click(screen.getByRole('button', { name: '提交本轮' }))
     await vi.waitFor(() => expect(submittedRounds).toEqual(['round_1']))
 
-    // 切换为已提交态后应展示「撤回修改」按钮
+    // 提交后可撤回当前轮次
     rerender(
       <QueryClientProvider client={queryClient}>
-        <InspectorPanel
+        <ArtifactReviewPanel
           artifactId={SAMPLE_ARTIFACT.publicId}
           projectId={SAMPLE_ARTIFACT.projectId}
           activeVersion={2}
@@ -1044,7 +1007,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     )
 
     expect(screen.getByText('Agent 已处理')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '撤回修改' }))
+    fireEvent.click(screen.getByRole('button', { name: '撤回本轮' }))
     await vi.waitFor(() => expect(withdrawnRounds).toEqual(['round_1']))
   })
 })

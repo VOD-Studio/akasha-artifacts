@@ -10,8 +10,8 @@ import {
 import { SearchInput } from '@akasha/ui/input'
 import { ChevronDown, LayoutGrid, List, Star } from 'lucide-react'
 import { type ReactNode, useEffect, useRef } from 'react'
-import { useWorkspaceStore } from '../../entities/workspace/store'
-import { ARTIFACT_TYPE_LABELS } from '../../shared/lib/format'
+import { useWorkspaceStore } from '@/entities/workspace'
+import { ARTIFACT_TYPE_LABELS } from '@/shared/lib/format'
 import { useLibraryView } from './library-view'
 
 interface FilterMenuProps {
@@ -62,7 +62,7 @@ export function LibraryToolbar({ projects, types, favoritesAvailable }: LibraryT
   const currentProject = projects.find((item) => item.id === currentProjectId)
 
   useEffect(() => {
-    function focusSearch(event: KeyboardEvent) {
+    const focusSearch = (event: KeyboardEvent) => {
       if (
         event.defaultPrevented ||
         !(event.ctrlKey || event.metaKey) ||
@@ -77,12 +77,12 @@ export function LibraryToolbar({ projects, types, favoritesAvailable }: LibraryT
   }, [])
 
   return (
-    <section aria-label="搜索和筛选制品" className="flex flex-wrap items-center gap-2">
+    <section aria-label="搜索与筛选" className="flex flex-wrap items-center gap-2">
       <div className="min-w-0 flex-1 basis-52">
         <SearchInput
           ref={searchRef}
-          aria-label="搜索制品"
-          placeholder="按标题、项目或关键词搜索"
+          aria-label="搜索作品"
+          placeholder="搜索作品"
           controlSize="sm"
           shortcut={['mod', 'K']}
           value={search}
@@ -153,8 +153,8 @@ export function LibraryToolbar({ projects, types, favoritesAvailable }: LibraryT
           仅收藏
         </Button>
       ) : null}
-      <fieldset className="ml-auto flex items-center gap-1">
-        <legend className="sr-only">制品显示方式</legend>
+      <fieldset className="ms-auto flex items-center gap-1">
+        <legend className="sr-only">显示方式</legend>
         <Button
           size="sm"
           variant={layout === 'cards' ? 'secondary' : 'ghost'}

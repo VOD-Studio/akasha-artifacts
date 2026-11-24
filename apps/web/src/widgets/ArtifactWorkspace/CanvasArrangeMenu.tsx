@@ -2,9 +2,9 @@ import { Button } from '@akasha/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@akasha/ui/popover'
 import { Group } from 'lucide-react'
 import { useState } from 'react'
+import type { CanvasBoard } from '@/entities/artifact'
 import { ALIGNMENTS, alignItems } from './canvas-arrangement'
 import type { CanvasBounds } from './canvas-camera'
-import type { CanvasBoard } from './canvas-model'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
 
 interface ArrangeMenuProps {
@@ -21,7 +21,7 @@ export function CanvasArrangeMenu({ selected, bounds, editing }: ArrangeMenuProp
   const canGroup = canAlign && (!group || selected.some((board) => board.layoutGroup !== group))
   const canUngroup = editing.available && selected.some((board) => board.layoutGroup)
 
-  function arrange(id: (typeof ALIGNMENTS)[number]['id']) {
+  const arrange = (id: (typeof ALIGNMENTS)[number]['id']) => {
     if (!canAlign) return
     const selection = new Map<string, CanvasBounds>()
     for (const board of selected) {
@@ -33,7 +33,7 @@ export function CanvasArrangeMenu({ selected, bounds, editing }: ArrangeMenuProp
     setOpen(false)
   }
 
-  function groupBoards(layoutGroup: string | null) {
+  const groupBoards = (layoutGroup: string | null) => {
     const ids = selected
       .filter((board) => layoutGroup || board.layoutGroup)
       .map((board) => board.id)
@@ -56,7 +56,7 @@ export function CanvasArrangeMenu({ selected, bounds, editing }: ArrangeMenuProp
       </PopoverTrigger>
       <PopoverContent className="w-60 space-y-2" aria-label="排列画板">
         <p className="text-xs text-ink-muted">
-          {selected.length > 1 ? `已选 ${selected.length} 张画板` : '按住 Shift 选择多个画板标题。'}
+          {selected.length > 1 ? `已选 ${selected.length} 张画板` : '按住 Shift 多选画板标题。'}
         </p>
         <div className="grid grid-cols-2 gap-1">
           {ALIGNMENTS.map(({ id, label }) => (
@@ -86,7 +86,7 @@ export function CanvasArrangeMenu({ selected, bounds, editing }: ArrangeMenuProp
             disabled={!canUngroup}
             onClick={() => groupBoards(null)}
           >
-            取消画板分组
+            取消分组
           </Button>
         </div>
       </PopoverContent>

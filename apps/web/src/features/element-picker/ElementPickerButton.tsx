@@ -1,7 +1,7 @@
 import { Button } from '@akasha/ui/button'
 import { Crosshair } from 'lucide-react'
 import { useEffect } from 'react'
-import { useSelectionStore } from '../../entities/selection/store'
+import { useSelectionStore } from '@/entities/selection'
 
 export function ElementPickerButton({ onStart }: { onStart?: () => void } = {}) {
   const pickerActive = useSelectionStore((s) => s.pickerActive)
@@ -30,7 +30,7 @@ export function ElementPickerButton({ onStart }: { onStart?: () => void } = {}) 
         togglePicker()
       }}
     >
-      {pickerActive ? '指认中 · Esc 退出' : '指认元素'}
+      {pickerActive ? '取消指认（Esc）' : '指认元素'}
     </Button>
   )
 }

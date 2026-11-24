@@ -1,13 +1,65 @@
 import { ARTBOARD_GEOMETRY_LIMITS, type Version } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@akasha/ui/popover'
-import { Ellipsis } from 'lucide-react'
-import { useState } from 'react'
+import { Download, Ellipsis, Focus, Play } from 'lucide-react'
+import { type MouseEventHandler, useState } from 'react'
+import type { CanvasBoard } from '@/entities/artifact'
 import { CanvasGeometryFields, sameGeometry } from './CanvasGeometryFields'
 import type { CanvasBoardEdit } from './canvas-board-source'
 import type { CanvasBounds } from './canvas-camera'
-import type { CanvasBoard } from './canvas-model'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
+
+interface QuickActionsProps {
+  title: string
+  onExpand: MouseEventHandler<HTMLButtonElement>
+  onPlay?: MouseEventHandler<HTMLButtonElement>
+  onExport?: () => void
+}
+
+/** 同一画板的查看、交互预览和导出入口；布局编辑仍由设置菜单处理。 */
+export function CanvasBoardQuickActions({ title, onExpand, onPlay, onExport }: QuickActionsProps) {
+  return (
+    <>
+      <Button
+        size="sm"
+        variant="secondary"
+        iconOnly
+        className="artifact-canvas-board-action"
+        aria-label={`展开画板：${title}`}
+        title="展开画板"
+        onClick={onExpand}
+      >
+        <Focus size={15} />
+      </Button>
+      {onPlay && (
+        <Button
+          size="sm"
+          variant="secondary"
+          iconOnly
+          className="artifact-canvas-board-action"
+          aria-label={`播放原型：${title}`}
+          title="播放原型"
+          onClick={onPlay}
+        >
+          <Play size={15} />
+        </Button>
+      )}
+      {onExport && (
+        <Button
+          size="sm"
+          variant="secondary"
+          iconOnly
+          className="artifact-canvas-board-action"
+          aria-label={`导出画板：${title}`}
+          title="导出画板"
+          onClick={onExport}
+        >
+          <Download size={15} />
+        </Button>
+      )}
+    </>
+  )
+}
 
 interface BoardActionsProps {
   board: CanvasBoard
@@ -33,7 +85,7 @@ export function CanvasBoardActions({
   } | null>(null)
   const { coordinate } = ARTBOARD_GEOMETRY_LIMITS
 
-  function apply(edit: CanvasBoardEdit) {
+  const apply = (edit: CanvasBoardEdit) => {
     if (!form || disabled) return
     onChange(edit, form.base)
     setForm(null)
@@ -59,8 +111,12 @@ export function CanvasBoardActions({
           <Ellipsis size={15} />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-64 space-y-3" aria-label={`设置${board.title}`}>
-        {form?.confirming ? (
+      <PopoverContent
+        align="start"
+        className="w-64 space-y-3"
+        aria-label={`设置画板：${board.title}`}
+      >
+        {form?.confirming && (
           <div className="space-y-3">
             <p className="text-sm text-ink">删除「{board.title}」及其流程连线？旧版本仍可查看。</p>
             <div className="flex justify-end gap-2">
@@ -76,11 +132,12 @@ export function CanvasBoardActions({
                 variant="destructive"
                 onClick={() => apply({ kind: 'delete', ids: [board.id] })}
               >
-                删除画板
+                删除
               </Button>
             </div>
           </div>
-        ) : form ? (
+        )}
+        {form && !form.confirming && (
           <>
             <form
               className="space-y-3"
@@ -98,7 +155,7 @@ export function CanvasBoardActions({
                 type="submit"
                 disabled={disabled || sameGeometry(form.bounds, form.initial)}
               >
-                应用布局
+                应用
               </Button>
             </form>
             <div className="flex gap-1 border-t border-border pt-2">
@@ -121,7 +178,7 @@ export function CanvasBoardActions({
                   })
                 }}
               >
-                复制画板
+                复制
               </Button>
               <Button
                 size="sm"
@@ -133,7 +190,7 @@ export function CanvasBoardActions({
               </Button>
             </div>
           </>
-        ) : null}
+        )}
       </PopoverContent>
     </Popover>
   )
@@ -146,7 +203,7 @@ export function CanvasBoardEditNotice({ editing }: { editing: CanvasBoardEditing
   if (draft?.status === 'saving') {
     return (
       <p role="status" className="rounded-md bg-surface px-3 py-2 text-xs text-ink-muted">
-        正在保存画板…
+        正在保存…
       </p>
     )
   }
@@ -158,7 +215,9 @@ export function CanvasBoardEditNotice({ editing }: { editing: CanvasBoardEditing
       <p>{draft?.error ?? inputError}</p>
       {draft ? (
         <>
-          <p className="text-xs text-ink-muted">已保留基于 v{draft.base.version} 的未保存操作。</p>
+          <p className="text-xs text-ink-muted">
+            未保存的改动已保留（基于 v{draft.base.version}）。
+          </p>
           <Button
             size="sm"
             variant="secondary"
@@ -173,12 +232,12 @@ export function CanvasBoardEditNotice({ editing }: { editing: CanvasBoardEditing
               window.setTimeout(() => URL.revokeObjectURL(url), 1000)
             }}
           >
-            下载未保存源码
+            下载草稿
           </Button>
         </>
       ) : null}
       <Button size="sm" variant="ghost" onClick={editing.dismissDraft}>
-        {draft ? '放弃这次操作' : '关闭提示'}
+        {draft ? '放弃改动' : '关闭'}
       </Button>
     </div>
   )

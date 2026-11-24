@@ -1,19 +1,19 @@
 import { type CommandGroup, type CommandItem, CommandList } from '@akasha/ui/command'
 import { FileCode2, FolderGit2, Home } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { useArtifactsQuery } from '../../entities/artifact/queries'
-import { useProjectsQuery } from '../../entities/project/queries'
-import { useWorkspaceStore } from '../../entities/workspace/store'
-import { ARTIFACT_TYPE_LABELS } from '../../shared/lib/format'
+import { useArtifactsQuery } from '@/entities/artifact'
+import { useProjectsQuery } from '@/entities/project'
+import { useWorkspaceStore } from '@/entities/workspace'
+import { ARTIFACT_TYPE_LABELS } from '@/shared/lib/format'
 
 export interface ArtifactCommandPaletteProps {
   onNavigate: (to: string) => void
 }
 
 const GROUPS: CommandGroup[] = [
-  { id: 'artifacts', label: 'Artifact 页面' },
-  { id: 'projects', label: '已登记项目' },
-  { id: 'actions', label: '导航与快捷操作' },
+  { id: 'artifacts', label: '作品' },
+  { id: 'projects', label: '项目' },
+  { id: 'actions', label: '操作' },
 ]
 
 /**
@@ -55,7 +55,7 @@ export function ArtifactCommandPalette({ onNavigate }: ArtifactCommandPalettePro
         id: `artifact:${art.publicId}`,
         group: 'artifacts',
         label: art.title,
-        description: `${project?.name ?? art.projectId} · ${art.slug} · v${art.headVersion}`,
+        description: project?.name,
         hint: ARTIFACT_TYPE_LABELS[art.type] ?? art.type,
         icon: <FileCode2 size={15} />,
         keywords: [art.slug, art.publicId, art.type, project?.name ?? '', art.projectId],
@@ -74,7 +74,7 @@ export function ArtifactCommandPalette({ onNavigate }: ArtifactCommandPalettePro
       group: 'projects',
       label: proj.name,
       description: proj.rootPath,
-      hint: proj.dormant ? '休眠' : '活跃',
+      hint: proj.dormant ? '休眠' : undefined,
       icon: <FolderGit2 size={15} />,
       keywords: [proj.id, proj.rootPath],
       onSelect: ({ newTab }) => {
@@ -91,7 +91,7 @@ export function ArtifactCommandPalette({ onNavigate }: ArtifactCommandPalettePro
       {
         id: 'action:home',
         group: 'actions',
-        label: '回到多项目库（最近 · 所有项目）',
+        label: '打开作品库',
         icon: <Home size={15} />,
         keywords: ['home', 'library', 'all', 'projects'],
         onSelect: ({ newTab }) => {
@@ -117,7 +117,7 @@ export function ArtifactCommandPalette({ onNavigate }: ArtifactCommandPalettePro
       query={query}
       onQueryChange={setQuery}
       limit={8}
-      placeholder="跨项目检索 Artifact、项目或操作…"
+      placeholder="搜索作品、项目或操作…"
     />
   )
 }

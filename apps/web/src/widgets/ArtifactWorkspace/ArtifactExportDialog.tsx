@@ -1,12 +1,13 @@
 import type { Artifact, Version } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Modal } from '@akasha/ui/dialog'
+import { Field, FieldSet } from '@akasha/ui/field'
+import { Radio, RadioGroup } from '@akasha/ui/radio'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
 import { Download } from 'lucide-react'
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import { composeDesignPdf } from '../../features/export-design/design-pdf'
-import { fetchArtifactDetail } from '../../shared/api/client'
-import { captureBoardPng } from '../../shared/bridge/capture-png'
-import { type CanvasBoard, createCanvasDocument } from './canvas-model'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { type CanvasBoard, createCanvasDocument, fetchArtifactDetail } from '@/entities/artifact'
+import { captureBoardPng } from '@/shared/bridge/capture-png'
 
 /** 打开面板时固定版本；不因 Agent 推进头版本而改变下载内容。 */
 export interface DesignExportTarget {
@@ -65,6 +66,31 @@ function downloadFile(file: Blob, name: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
+function captureError(cause: unknown) {
+  if (cause instanceof DOMException && cause.name === 'TimeoutError') return '画板渲染超时'
+  if (cause instanceof Error) return cause.message
+  return '无法生成画面'
+}
+
+async function* renderPages(
+  boards: readonly CanvasBoard[],
+  version: number,
+  signal: AbortSignal,
+  onProgress: (text: string) => void,
+) {
+  for (const [index, board] of boards.entries()) {
+    signal.throwIfAborted()
+    onProgress(`正在渲染 ${index + 1}/${boards.length}：${board.title}`)
+    try {
+      const png = await captureBoardPng(board, version, 1, signal)
+      yield { png, width: board.width, height: board.height }
+    } catch (cause) {
+      if (signal.aborted) throw signal.reason
+      throw new Error(`「${board.title}」：${captureError(cause)}`)
+    }
+  }
+}
+
 /** 同一个入口按指定画板或整份制品导出，始终先重新检查固定版本的访问权。 */
 export function ArtifactExportDialog({ target, onClose }: ExportDialogProps) {
   const { artifact, version } = target
@@ -77,11 +103,24 @@ export function ArtifactExportDialog({ target, onClose }: ExportDialogProps) {
   const [error, setError] = useState('')
   const [progress, setProgress] = useState('')
   const job = useRef<AbortController | null>(null)
-  const id = useId()
+  const busy = Boolean(progress)
   const extension = format === 'html' && boardId ? 'zip' : format
   useEffect(() => () => job.current?.abort(), [])
 
-  async function download() {
+  const selectScope = (value: string) => {
+    const next = value === 'design' ? '' : value.slice('board:'.length)
+    setBoardId(next)
+    setFormat(next ? 'png' : 'pdf')
+    setError('')
+  }
+
+  const selectFormat = (value: string) => {
+    if (value !== 'png' && value !== 'pdf' && value !== 'html') return
+    setFormat(value)
+    setError('')
+  }
+
+  const download = async () => {
     if (job.current) return
     const controller = new AbortController()
     const { signal } = controller
@@ -95,14 +134,14 @@ export function ArtifactExportDialog({ target, onClose }: ExportDialogProps) {
         result.version.artifactId !== artifact.publicId ||
         result.version.version !== version.version
       )
-        throw new Error('服务端未返回指定的制品版本')
+        throw new Error('未能读取指定版本')
       const { boards: available, flows } = boardsFor(result.artifact.type, result.version)
       const selected = boardId ? available.get(boardId)?.board : undefined
       if (boardId && !selected) throw new Error('指定版本没有这张画板')
       const boards = selected ? [selected] : Array.from(available.values(), ({ board }) => board)
       if (!boards.length) throw new Error('指定版本没有可导出的画板')
       if (format === 'html') {
-        const { composeOfflineDesign } = await import('../../features/export-design/offline-design')
+        const { composeOfflineDesign } = await import('@/features/export-design')
         const output = await composeOfflineDesign(
           {
             title: result.version.title,
@@ -134,30 +173,14 @@ export function ArtifactExportDialog({ target, onClose }: ExportDialogProps) {
         return
       }
 
-      async function* renderPages() {
-        for (const [index, board] of boards.entries()) {
-          signal.throwIfAborted()
-          setProgress(`正在渲染 ${index + 1}/${boards.length}：${board.title}`)
-          try {
-            const png = await captureBoardPng(board, version.version, 1, signal)
-            yield { png, width: board.width, height: board.height }
-          } catch (cause) {
-            if (signal.aborted) throw signal.reason
-            const message =
-              cause instanceof DOMException && cause.name === 'TimeoutError'
-                ? '画板未能在规定时间内完成渲染'
-                : cause instanceof Error
-                  ? cause.message
-                  : '无法生成画面'
-            throw new Error(`「${board.title}」：${message}`)
-          }
-        }
+      const pages = renderPages(boards, version.version, signal, setProgress)
+      let output: Blob | undefined
+      if (format === 'png' && selected) {
+        output = (await pages.next()).value?.png
+      } else {
+        const { composeDesignPdf } = await import('@/features/export-design')
+        output = await composeDesignPdf(`${result.version.title} · v${version.version}`, pages)
       }
-      const pages = renderPages()
-      const output =
-        format === 'png' && selected
-          ? (await pages.next()).value?.png
-          : await composeDesignPdf(`${result.version.title} · v${version.version}`, pages)
       signal.throwIfAborted()
       if (!output) throw new Error('没有成功渲染的画面')
       const suffix = selected ? `-${filePart(selected.title)}` : ''
@@ -167,8 +190,7 @@ export function ArtifactExportDialog({ target, onClose }: ExportDialogProps) {
       )
       onClose()
     } catch (cause) {
-      if (!signal.aborted)
-        setError(cause instanceof Error ? cause.message : '导出失败，没有下载文件')
+      if (!signal.aborted) setError(cause instanceof Error ? cause.message : '导出失败')
     } finally {
       job.current = null
       if (!signal.aborted) setProgress('')
@@ -181,8 +203,8 @@ export function ArtifactExportDialog({ target, onClose }: ExportDialogProps) {
       onOpenChange={(open) => {
         if (!open) onClose()
       }}
-      title="导出设计"
-      description={`${version.title} · v${version.version}。只包含已保存的画板，不包含批注或工作区工具。`}
+      title={target.boardId ? '导出画板' : '导出作品'}
+      description={`${version.title} · v${version.version}。仅导出已保存的画板，不含批注和工作区工具。`}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
@@ -190,98 +212,66 @@ export function ArtifactExportDialog({ target, onClose }: ExportDialogProps) {
           </Button>
           <Button
             leftIcon={<Download size={16} />}
-            disabled={
-              Boolean(progress) ||
-              !initialBoards.size ||
-              (boardId !== '' && !initialBoards.has(boardId))
-            }
+            loading={busy}
+            disabled={!initialBoards.size || (boardId !== '' && !initialBoards.has(boardId))}
             onClick={() => void download()}
           >
-            下载 {extension.toUpperCase()}
+            导出
           </Button>
         </>
       }
     >
       <div className="space-y-4 text-sm">
-        <div className="space-y-1">
-          <label htmlFor={`${id}-scope`} className="font-medium">
-            导出范围
-          </label>
-          <select
-            id={`${id}-scope`}
-            value={boardId}
-            disabled={Boolean(progress) || !initialBoards.size}
-            className="w-full rounded-md border border-border bg-surface px-2 py-1.5"
-            onChange={(event) => {
-              const next = event.target.value
-              setBoardId(next)
-              setFormat(next ? 'png' : 'pdf')
-              setError('')
-            }}
+        <Field label="导出范围">
+          <Select
+            value={boardId ? `board:${boardId}` : 'design'}
+            disabled={busy || !initialBoards.size}
+            onValueChange={selectScope}
           >
-            <option value="">整份设计（{initialBoards.size} 张）</option>
-            {[...initialBoards].map(([id, { label }]) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </div>
-        {initialBoards.size ? (
-          <fieldset className="flex flex-wrap gap-3" disabled={Boolean(progress)}>
-            <legend className="mb-1 font-medium">格式</legend>
-            {boardId ? (
-              <label className="flex items-center gap-1.5">
-                <input
-                  type="radio"
-                  name={`${id}-format`}
-                  checked={format === 'png'}
-                  onChange={() => setFormat('png')}
-                />{' '}
-                PNG
-              </label>
-            ) : null}
-            <label className="flex items-center gap-1.5">
-              <input
-                type="radio"
-                name={`${id}-format`}
-                checked={format === 'pdf'}
-                onChange={() => setFormat('pdf')}
-              />{' '}
-              PDF
-            </label>
-            <label className="flex items-center gap-1.5">
-              <input
-                type="radio"
-                name={`${id}-format`}
-                checked={format === 'html'}
-                onChange={() => {
-                  setFormat('html')
-                  setError('')
-                }}
-              />{' '}
-              {boardId ? '可试玩 HTML ZIP' : '离线试玩 HTML'}
-            </label>
-          </fieldset>
-        ) : (
-          <p className="text-ink-muted">当前版本没有可导出的画板。</p>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="design">整份作品（{initialBoards.size} 张）</SelectItem>
+              {[...initialBoards].map(([id, { label }]) => (
+                <SelectItem key={id} value={`board:${id}`}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        {initialBoards.size > 0 && (
+          <FieldSet legend="格式">
+            <RadioGroup
+              orientation="horizontal"
+              value={format}
+              disabled={busy}
+              onValueChange={selectFormat}
+            >
+              {boardId && <Radio value="png" label="PNG" />}
+              <Radio value="pdf" label="PDF" />
+              <Radio value="html" label={boardId ? 'HTML ZIP' : '离线 HTML'} />
+            </RadioGroup>
+          </FieldSet>
         )}
-        {format === 'html' ? (
+        {initialBoards.size === 0 && <p className="text-ink-muted">当前版本没有可导出的画板。</p>}
+        {format === 'html' && (
           <p className="text-ink-muted">
             {boardId
-              ? '解压后打开 index.html；不包含其他画板。'
-              : '直接打开 HTML；保留声明的跨画板路径。'}
+              ? '解压后打开 index.html，离线预览所选画板。'
+              : '打开 HTML 即可离线预览，支持已定义的跨画板跳转。'}
             不包含运行存储；依赖外部资源的画板无法离线打包。
           </p>
-        ) : null}
+        )}
         {progress ? (
           <p role="status" className="text-ink-muted">
             {progress}
           </p>
         ) : null}
         {error ? (
-          <p role="alert" className="text-ink">
-            无法导出：{error}。没有下载文件。
+          <p role="alert" className="text-error">
+            {error}。未下载文件。
           </p>
         ) : null}
       </div>

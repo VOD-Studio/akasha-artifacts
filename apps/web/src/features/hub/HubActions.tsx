@@ -1,8 +1,9 @@
 import { Button } from '@akasha/ui/button'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { clearAnnotationDrafts } from '../../entities/feedback/annotation-draft'
-import { isCloudHub } from '../../shared/config/runtime'
+import { clearAnnotationDrafts } from '@/entities/feedback'
+import { isCloudHub } from '@/shared/config/runtime'
+import { endHubSession, fetchHubSession } from './api/session'
 
 /** 供界面在服务端授权之外隐藏只对 Hub 成员有意义的入口。 */
 export function useHubSession() {
@@ -10,29 +11,20 @@ export function useHubSession() {
     queryKey: ['hub-session'],
     enabled: isCloudHub(),
     staleTime: 60_000,
-    async queryFn() {
-      const response = await fetch('/api/v1/auth/session', { credentials: 'same-origin' })
-      if (!response.ok) throw new Error('读取 Hub 登录状态失败')
-      return (await response.json()) as { user: { login: string; member: boolean } | null }
-    },
+    queryFn: fetchHubSession,
   }).data?.user
 }
 
+/** Hub 独占的账户入口；退出成功后清除上一个身份在本标签页的草稿。 */
 export function HubAccountButton() {
   const user = useHubSession()
   const logout = useMutation({
-    async mutationFn() {
-      const response = await fetch('/api/v1/auth/logout', {
-        method: 'POST',
-        credentials: 'same-origin',
-      })
-      if (!response.ok) throw new Error('退出 Hub 失败')
-    },
-    onSuccess() {
+    mutationFn: endHubSession,
+    onSuccess: () => {
       clearAnnotationDrafts()
       window.location.reload()
     },
-    onError(error) {
+    onError: (error) => {
       toast.error(error.message)
     },
   })
@@ -45,12 +37,13 @@ export function HubAccountButton() {
     )
   }
   return (
-    <a
-      href={`/auth/login?next=${encodeURIComponent(window.location.pathname)}`}
-      onClick={clearAnnotationDrafts}
-      className="rounded px-2.5 py-1.5 text-sm font-medium text-ink hover:bg-muted"
-    >
-      GitHub 登录
-    </a>
+    <Button asChild variant="ghost" size="sm">
+      <a
+        href={`/auth/login?next=${encodeURIComponent(window.location.pathname)}`}
+        onClick={clearAnnotationDrafts}
+      >
+        使用 GitHub 登录
+      </a>
+    </Button>
   )
 }
