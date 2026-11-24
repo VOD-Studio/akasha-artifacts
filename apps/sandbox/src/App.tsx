@@ -105,7 +105,7 @@ export function SandboxApp({
       () => renderedVisualVersionRef.current,
     )
 
-    let capturing = false
+    let capture: { requestId?: string; controller: AbortController } | null = null
     let overviewVersion: number | undefined
     const setOverviewAnimation = (animate: boolean) => {
       if (animate) {
@@ -117,6 +117,7 @@ export function SandboxApp({
     }
     const off = bridge.onMessage((msg) => {
       if (msg.type === 'render') {
+        capture?.controller.abort()
         renderedVisualVersionRef.current = 0
         lastPlayable.current = undefined
         overviewVersion =
@@ -148,6 +149,8 @@ export function SandboxApp({
         setPayload(next)
       } else if (msg.type === 'animation.set') {
         if (msg.version === overviewVersion) setOverviewAnimation(msg.animate)
+      } else if (msg.type === 'capture.cancel') {
+        if (capture && capture.requestId === msg.requestId) capture.controller.abort()
       } else if (msg.type === 'capture.png') {
         const { requestId, version, width, height, scale } = msg
         const root = rootRef.current
@@ -155,8 +158,8 @@ export function SandboxApp({
         const failure = (message: string) => {
           bridge.send({ type: 'capture.png.failure', ...correlation, message })
         }
-        if (!root || capturing || version !== renderedVisualVersionRef.current) {
-          if (requestId !== undefined) failure(capturing ? '画板正在生成 PNG' : '画板尚未渲染')
+        if (!root || capture || version !== renderedVisualVersionRef.current) {
+          if (requestId !== undefined) failure(capture ? '画板正在生成 PNG' : '画板尚未渲染')
           return
         }
         if (
@@ -168,17 +171,22 @@ export function SandboxApp({
           failure('画板无法生成当前版本的预览')
           return
         }
-        capturing = true
-        void captureSandboxPng(root, width, height, scale)
+        const controller = new AbortController()
+        capture = { requestId, controller }
+        void captureSandboxPng(root, width, height, scale, controller.signal)
           .then((png) => {
             if (png.size > 32 * 1024 * 1024) throw new Error('画板 PNG 超出传输上限')
             bridge.send({ type: 'capture.png.result', ...correlation, png })
           })
-          .catch((error: unknown) =>
-            failure(error instanceof Error && error.message ? error.message : '画板不能生成 PNG'),
-          )
+          .catch((error: unknown) => {
+            if (controller.signal.aborted) {
+              failure('已取消预览')
+              return
+            }
+            failure(error instanceof Error && error.message ? error.message : '画板不能生成 PNG')
+          })
           .finally(() => {
-            capturing = false
+            capture = null
           })
       } else if (msg.type === 'apply.preview') {
         const committed = committedPayloadRef.current
@@ -239,6 +247,7 @@ export function SandboxApp({
     window.addEventListener('unhandledrejection', handleRejection)
 
     return () => {
+      capture?.controller.abort()
       setOverviewAnimation(true)
       inspector.dispose()
       visualInspector.dispose()

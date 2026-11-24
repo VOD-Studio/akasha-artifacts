@@ -151,6 +151,11 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     ...BridgeEnvelopeBase,
+    type: z.literal('capture.cancel'),
+    requestId: z.string().min(1).max(64),
+  }),
+  z.object({
+    ...BridgeEnvelopeBase,
     type: z.literal('inspect.layers.watch'),
     // 关闭检查器或换板即停止；只订阅本帧
     active: z.boolean(),

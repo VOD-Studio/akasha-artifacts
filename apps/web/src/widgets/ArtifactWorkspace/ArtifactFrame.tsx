@@ -239,7 +239,9 @@ export function ArtifactFrame({
     let pending: PendingPreview | null = null
     const invalidateCapture = (reason: string) => {
       renderedId = undefined
-      if (pending) pending.reject(new Error(reason))
+      if (!pending) return
+      if (connected) host.send({ type: 'capture.cancel', requestId: pending.requestId })
+      pending.reject(new Error(reason))
     }
     resetCapture.current = invalidateCapture
 
@@ -271,7 +273,10 @@ export function ArtifactFrame({
         signal.removeEventListener('abort', abort)
         return true
       }
-      const abort = () => request.reject(signal.reason)
+      const abort = () => {
+        if (checking) request.reject(signal.reason)
+        else host.send({ type: 'capture.cancel', requestId })
+      }
       const request: PendingPreview = {
         requestId,
         version,
@@ -299,6 +304,7 @@ export function ArtifactFrame({
       }
       pending = request
       const timeout = window.setTimeout(() => {
+        host.send({ type: 'capture.cancel', requestId })
         request.reject(new DOMException('生成画板预览超时', 'TimeoutError'))
       }, PREVIEW_CAPTURE_TIMEOUT)
       signal.addEventListener('abort', abort, { once: true })

@@ -588,6 +588,61 @@ describe('apps/sandbox 运行时与安全边界', () => {
   })
 })
 
+it('总览取消等待字体的截图时，不栅格化该请求的画板', async ({ onTestFinished }) => {
+  const { bridge, posted, dispatchFromHost, nonce } = createMockBridgeHarness()
+  const fonts = Promise.withResolvers<void>()
+  const original = Object.getOwnPropertyDescriptor(document, 'fonts')
+  Object.defineProperty(document, 'fonts', { value: { ready: fonts.promise }, configurable: true })
+  onTestFinished(() => {
+    if (original) Object.defineProperty(document, 'fonts', original)
+    else Reflect.deleteProperty(document, 'fonts')
+  })
+  render(
+    <SandboxApp
+      bridge={bridge}
+      stateStore={new ArtifactStateStore()}
+      preserved={new PreservedStateManager()}
+    />,
+  )
+  const envelope = { v: PROTOCOL_VERSION, nonce }
+  act(() =>
+    dispatchFromHost({
+      ...envelope,
+      type: 'render',
+      artifactType: 'html',
+      source: '<h1>截图取消</h1>',
+      state: {},
+      boardId: 'cover',
+      version: 1,
+      renderId: 1,
+      overviewAnimation: true,
+    }),
+  )
+  await waitFor(() => {
+    expect(posted.some(({ data }) => data.type === 'rendered' && data.renderId === 1)).toBe(true)
+  })
+  act(() => {
+    dispatchFromHost({
+      ...envelope,
+      type: 'capture.png',
+      requestId: 'preview',
+      version: 1,
+      width: 320,
+      height: 180,
+      scale: 0.5,
+    })
+    dispatchFromHost({ ...envelope, type: 'capture.cancel', requestId: 'preview' })
+    fonts.resolve()
+  })
+  await waitFor(() => {
+    expect(posted.find(({ data }) => data.type === 'capture.png.failure')?.data).toMatchObject({
+      requestId: 'preview',
+      message: '已取消预览',
+    })
+  })
+  expect(posted.some(({ data }) => data.type === 'capture.png.result')).toBe(false)
+})
+
 it('原生图层和作者 HTML 独立渲染，同名标记不能接走原生图层的批注定位', async () => {
   const { bridge, posted, dispatchFromHost, nonce } = createMockBridgeHarness()
   const { container } = render(
