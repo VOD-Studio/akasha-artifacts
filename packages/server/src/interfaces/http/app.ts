@@ -563,14 +563,16 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
     return c.json(await deps.service.getArtifact(input))
   })
 
-  app.get('/api/v1/artifacts/:id/boards/:boardId', async (c) => {
+  app.get('/api/v1/artifacts/:id/boards', async (c) => {
     const rawVersion = c.req.query('version')
     const version = Number(rawVersion)
     if (!rawVersion || !/^[1-9]\d*$/.test(rawVersion) || !Number.isSafeInteger(version)) {
       throw new DomainError('BAD_REQUEST', '读取画板必须指定正整数版本号')
     }
+    const boardId = c.req.query('boardId')
+    if (!boardId) throw new DomainError('BAD_REQUEST', '读取画板必须指定画板标识')
     const artifact = await deps.service.resolveArtifact(c.req.param('id'), c.req.query('projectId'))
-    const board = await deps.service.workspace.getBoard(artifact, version, c.req.param('boardId'))
+    const board = await deps.service.workspace.getBoard(artifact, version, boardId)
     if (!board) throw new DomainError('NOT_FOUND', '指定版本没有此画板')
     return c.json({ artifactId: artifact.publicId, version, board }, 200, {
       'Cache-Control': 'private, no-store',

@@ -4,6 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import {
   ArtifactPullFeedbackOutputSchema,
+  type ElementRef,
   FeedbackSchema,
   PROTOCOL_VERSION,
   type RealtimeServerEvent,
@@ -182,6 +183,8 @@ describe('Hono HTTP server & @akasha/protocol contract tests', () => {
               boards: [
                 { id: 'checkout', title: '结账', html },
                 { id: 'away', title: '屏外板', html: `屏外大图${'x'.repeat(80_000)}` },
+                { id: '.', title: '旧标识', html: '<p>单点</p>' },
+                { id: '..', title: '旧标识二', html: '<p>双点</p>' },
               ],
             }),
           }),
@@ -204,23 +207,129 @@ describe('Hono HTTP server & @akasha/protocol contract tests', () => {
     expect(JSON.parse(index)).toMatchObject({
       version: { version: 1 },
       artifact: { headVersion: 2 },
-      canvas: { boards: [{ id: 'checkout' }, { id: 'away' }] },
+      canvas: { boards: [{ id: 'checkout' }, { id: 'away' }, { id: '.' }, { id: '..' }] },
     })
-    expect(await (await get('/boards/checkout?version=1')).json()).toMatchObject({
+    expect(await (await get('/boards?version=1&boardId=checkout')).json()).toMatchObject({
       version: 1,
       board: { id: 'checkout', html: '<h1>原结账页</h1>' },
     })
-    expect(await (await get('/boards/checkout?version=2')).json()).toMatchObject({
+    expect(await (await get('/boards?version=2&boardId=checkout')).json()).toMatchObject({
       version: 2,
       board: { html: '<h1>新结账页</h1>' },
     })
-    expect((await get('/boards/checkout')).status).toBe(400)
-    expect((await get('/boards/checkout?version=3')).status).toBe(404)
+    for (const [id, html] of [
+      ['.', '<p>单点</p>'],
+      ['..', '<p>双点</p>'],
+    ]) {
+      const query = new URLSearchParams({ version: '1', boardId: id })
+      expect(await (await get(`/boards?${query}`)).json()).toMatchObject({
+        version: 1,
+        board: { id, html },
+      })
+    }
+    expect((await get('/boards?boardId=checkout')).status).toBe(400)
+    expect((await get('/boards?version=1')).status).toBe(400)
+    expect((await get('/boards?version=3&boardId=checkout')).status).toBe(404)
+    expect((await get('/boards/checkout?version=1')).status).toBe(404)
     const history = await (await get('/versions?view=metadata')).text()
     expect(history).not.toContain('source')
     expect(JSON.parse(history).versions.map(({ version }: { version: number }) => version)).toEqual(
       [1, 2],
     )
+  })
+
+  it('在评审列表按批注原版补足唯一画板归属，不改写 Agent 队列的锚点', async () => {
+    const srv = await startNodeServer({ dbPath: ':memory:', port: 0 })
+    closers.push(srv.close)
+    const draft = {
+      slug: 'artboard/legacy-annotations',
+      title: '历史批注',
+      type: 'artboard',
+      author: 'agent:review',
+    } as const
+    const { artifact } = await srv.service.publish({
+      ...draft,
+      source: JSON.stringify({
+        boards: [
+          {
+            id: 'left',
+            title: '左板',
+            legacyId: 'old-left',
+            html:
+              '<h1 data-ak-block="  fixed&#45;block  ">旧版</h1>' +
+              '<p data-ak-block="duplicate">同名</p><p id="dom-id">普通标识</p>' +
+              '<template data-ak-block="template-root"><p data-ak-block="inert">惰性内容</p></template>',
+          },
+          { id: 'right', title: '右板', html: '<p data-ak-block="duplicate">同名</p>' },
+          { title: '旧版无标识画板' },
+        ],
+      }),
+    })
+    await srv.service.publish({
+      ...draft,
+      baseVersion: 1,
+      source: JSON.stringify({
+        boards: [{ id: 'right', title: '右板', html: '<p data-ak-block="fixed-block">新版</p>' }],
+      }),
+    })
+
+    const examples: {
+      version: number
+      blockId: string
+      boardId?: string
+      expectedBoardId?: string
+      expectedBlockId?: string
+      audience?: 'human' | 'agent'
+    }[] = [
+      { version: 1, blockId: 'fixed-block', expectedBoardId: 'left', audience: 'agent' },
+      { version: 2, blockId: 'fixed-block', expectedBoardId: 'right' },
+      { version: 1, blockId: 'old-left', expectedBoardId: 'left', expectedBlockId: 'left' },
+      {
+        version: 1,
+        blockId: 'board-3',
+        expectedBoardId: 'legacy-board:旧版无标识画板',
+        expectedBlockId: 'legacy-board:旧版无标识画板',
+      },
+      { version: 1, blockId: 'right', expectedBoardId: 'right' },
+      { version: 1, blockId: 'duplicate' },
+      { version: 1, blockId: 'dom-id' },
+      { version: 1, blockId: 'inert' },
+      { version: 1, blockId: 'template-root', expectedBoardId: 'left' },
+      { version: 1, blockId: 'fixed-block', boardId: 'right', expectedBoardId: 'right' },
+    ]
+    const id = artifact.publicId
+    const expected = new Map<string, ElementRef>()
+    for (const {
+      version,
+      blockId,
+      boardId,
+      expectedBoardId,
+      expectedBlockId,
+      audience = 'human',
+    } of examples) {
+      const { id: feedbackId } = await srv.service.submitFeedback({
+        id,
+        version,
+        element: { blockId, boardId },
+        kind: 'comment',
+        audience,
+        body: '固定版本',
+        author: 'human:review',
+      })
+      expected.set(feedbackId, {
+        blockId: expectedBlockId ?? blockId,
+        ...(expectedBoardId ? { boardId: expectedBoardId } : {}),
+      })
+    }
+
+    const review = await fetch(`${srv.baseUrl}/api/v1/artifacts/${id}/feedback`)
+    expect(review.status).toBe(200)
+    const { items } = z.object({ items: z.array(FeedbackSchema) }).parse(await review.json())
+    expect(new Map(items.map((item) => [item.id, item.element]))).toEqual(expected)
+    const queue = await fetch(`${srv.baseUrl}/api/v1/feedback?id=${id}`)
+    expect(queue.status).toBe(200)
+    const pulled = ArtifactPullFeedbackOutputSchema.parse(await queue.json())
+    expect(pulled.items.map((item) => item.element)).toEqual([{ blockId: 'fixed-block' }])
   })
 
   it('persists data across SQLite restarts and sends resync to reconnecting clients', async () => {

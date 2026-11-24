@@ -35,7 +35,6 @@ import { ArtifactFrame, type BoardFramePurpose, type FrameConnection } from './A
 import { BoardInspector, type BoardInspectorHandoff } from './BoardInspector'
 import { BoardResourceView, readLoadedBoard, useLoadedBoard } from './BoardResourceView'
 import { BoardResources } from './board-resources'
-import { createCanvasElementResolver } from './feedback-location'
 import { InlineCanvasText } from './InlineCanvasText'
 import { useBoardInspection } from './useBoardInspection'
 import { useCanvasBoardEditing } from './useCanvasBoardEditing'
@@ -114,15 +113,11 @@ export function ArtifactWorkspace({
   const showCanvas = viewMode === 'preview' || viewMode === 'edit'
   // 首次进入编辑态后保持编辑器挂载（切换回预览/Diff/源码时仅隐藏），防止丢失未保存草稿与撤销栈
   const [editorMounted, setEditorMounted] = useState(viewMode === 'edit')
-  const [legacyThread, setLegacyThread] = useState<Feedback | null>(null)
   const inline = detail.canvas === undefined ? detail.version : undefined
   const sourceRead = useArtifactSourceQuery(
     artifact.publicId,
     version.version,
-    !inline &&
-      ((editorMounted && shareCanEdit) ||
-        viewMode === 'source' ||
-        legacyThread?.version === version.version),
+    !inline && ((editorMounted && shareCanEdit) || viewMode === 'source'),
   )
   const fullVersion = inline ?? sourceRead.data
   const headSource = useArtifactSourceQuery(
@@ -294,28 +289,6 @@ export function ArtifactWorkspace({
     notifyAgent: !access,
     onVersionSaved,
   })
-  const resolveElement = useMemo(() => {
-    if (artifact.type !== 'artboard') return null
-    const anchorCanvas =
-      savedIndex && fullVersion
-        ? createCanvasDocument(
-            artifact.type,
-            version.title,
-            fullVersion.source,
-            version.version,
-            canvasProps,
-          )
-        : savedCanvas
-    return createCanvasElementResolver(anchorCanvas)
-  }, [
-    artifact.type,
-    savedCanvas,
-    savedIndex,
-    fullVersion,
-    version.title,
-    version.version,
-    canvasProps,
-  ])
   const versionPins = useMemo(() => {
     if (canvas !== savedCanvas) return EMPTY_FEEDBACKS
     const pins: Feedback[] = []
@@ -323,14 +296,14 @@ export function ArtifactWorkspace({
       if (
         feedback.version !== version.version ||
         !feedback.element ||
+        (savedIndex && !feedback.element.boardId) ||
         !isAnnotationKind(feedback.kind)
       )
         continue
-      const element = resolveElement?.(feedback.element) ?? feedback.element
-      pins.push(element === feedback.element ? feedback : { ...feedback, element })
+      pins.push(feedback)
     }
     return pins
-  }, [canvas, savedCanvas, feedbacks, resolveElement, version.version])
+  }, [canvas, savedCanvas, feedbacks, savedIndex, version.version])
   const pageFeedbackIds = useMemo(() => {
     const page = savedCanvas.pages.find((entry) => entry.id === canvasLocation?.pageId)
     const ids = new Set<string>()
@@ -391,12 +364,8 @@ export function ArtifactWorkspace({
       useSelectionStore.getState().setFocusedFeedbackId(feedback.id)
       setInspectorTab('review')
       if (!reveal || !feedback.element || feedback.version !== version.version) return
-      const target = resolveElement?.(feedback.element) ?? feedback.element
-      if (savedIndex && !fullVersion && target.blockId && !target.boardId) {
-        setLegacyThread(feedback)
-        return
-      }
-      const boardId = target.boardId ?? STANDALONE_BOARD_ID
+      if (savedIndex && !feedback.element.boardId) return
+      const boardId = feedback.element.boardId ?? STANDALONE_BOARD_ID
       const active = savedCanvas.pages.find((page) => page.id === canvasLocation?.pageId)
       const includesBoard = (page: CanvasPage) => page.boards.some((board) => board.id === boardId)
       const page = active && includesBoard(active) ? active : savedCanvas.pages.find(includesBoard)
@@ -405,20 +374,13 @@ export function ArtifactWorkspace({
     [
       artifact.publicId,
       canvasLocation?.pageId,
-      resolveElement,
       revealBoard,
       savedCanvas.pages,
       setInspectorTab,
       savedIndex,
-      fullVersion,
       version.version,
     ],
   )
-  useEffect(() => {
-    if (!legacyThread || !fullVersion) return
-    focusThread(legacyThread, true)
-    setLegacyThread(null)
-  }, [focusThread, fullVersion, legacyThread])
 
   const focusAndRemember = useCallback(
     (feedback: Feedback, reveal: boolean) => {
@@ -450,12 +412,11 @@ export function ArtifactWorkspace({
   }, [feedbacks, focusThread, linkedThread, version.version])
   const handleHighlightElement = useCallback(
     (element: ElementRef) => {
-      const resolved = resolveElement?.(element) ?? element
-      setSelectedElement(artifact.publicId, resolved)
-      const frameId = resolved.boardId ?? STANDALONE_BOARD_ID
-      frames.current.get(frameId)?.send({ type: 'highlight', element: resolved })
+      setSelectedElement(artifact.publicId, element)
+      const frameId = element.boardId ?? STANDALONE_BOARD_ID
+      frames.current.get(frameId)?.send({ type: 'highlight', element })
     },
-    [artifact.publicId, resolveElement, setSelectedElement],
+    [artifact.publicId, setSelectedElement],
   )
   const sendBoard = useCallback(
     (boardId: string, message: Parameters<FrameConnection['send']>[0]) =>

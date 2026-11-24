@@ -56,7 +56,7 @@ function openWorkspace(hub = false, canManage = true, detailFailure?: number) {
   const responses = new Map<string, unknown>([
     [endpoint, { ...detail, version: summary, canvas: projection.index }],
     [
-      `${endpoint}/boards/form`,
+      `${endpoint}/boards?version=1&boardId=form`,
       { artifactId: publicId, version: 1, board: projection.contents[0] },
     ],
     [`${endpoint}/versions`, { versions: [summary] }],
@@ -71,11 +71,15 @@ function openWorkspace(hub = false, canManage = true, detailFailure?: number) {
   ])
   let failDetailWith = detailFailure
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-    const { pathname } = new URL(String(input), window.location.origin)
+    const { pathname, search } = new URL(String(input), window.location.origin)
     if (pathname === endpoint && failDetailWith) {
       const status = failDetailWith
       failDetailWith = undefined
       return new Response(null, { status })
+    }
+    if (pathname === `${endpoint}/boards`) {
+      const board = responses.get(`${pathname}${search}`)
+      return board ? Response.json(board) : new Response(null, { status: 404 })
     }
     if (responses.has(pathname)) return Response.json(responses.get(pathname))
     return new Response(null, { status: 404 })

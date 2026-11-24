@@ -1,5 +1,5 @@
 export { validateBlockIds } from './block-id.js'
-export { injectHtmlLocations } from './html-loc.js'
+export { injectHtmlLocations, visitHtmlBlockIds } from './html-loc.js'
 export { injectJsxLocations } from './jsx-loc.js'
 export type {
   BlockEntry,

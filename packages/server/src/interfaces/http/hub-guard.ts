@@ -66,6 +66,7 @@ const registerProjectInput = z.object({
 const readSuffixes: Readonly<Record<string, true>> = {
   '': true,
   '/versions': true,
+  '/boards': true,
   '/state': true,
   '/visual-edit': true,
   '/edits': true,
@@ -87,7 +88,6 @@ const writeSuffixes: Readonly<Record<string, 'write' | 'authored'>> = {
 }
 const roundAction = /^\/rounds\/[^/]+\/(?:submit|withdraw)$/
 const discussionAction = /^\/feedback\/([^/]+)\/(?:replies|resolve)$/
-const boardRead = /^\/boards\/[^/]+$/
 const artifactPath = /^\/api\/v1\/artifacts\/([^/]+)(.*)$/
 
 // 无权访问与不存在统一返回 404，不泄露制品是否存在
@@ -414,7 +414,7 @@ export function mountHubGuard(
     const discussion = discussionAction.exec(suffix)
     if (
       read
-        ? !Object.hasOwn(readSuffixes, suffix) && !boardRead.test(suffix)
+        ? !Object.hasOwn(readSuffixes, suffix)
         : !(method === 'PATCH' && (suffix === '' || suffix === '/metadata')) &&
           !(method === 'DELETE' && suffix === '') &&
           !(method === 'PUT' && suffix === '/favorite') &&
@@ -484,7 +484,7 @@ export function mountHubGuard(
           const version = await repositories.artifacts.getVersion(artifact.publicId, number)
           return version ? c.json(sharedArtifactDetail(artifact, version, grant)) : hidden(c)
         }
-        if (boardRead.test(suffix)) return core.fetch(rewrite(request, url))
+        if (suffix === '/boards') return core.fetch(rewrite(request, url))
         if (suffix !== '/feedback') return hidden(c)
         const feedbacks = repositories.feedbacks
         const items = (await feedbacks.listForReview(artifact.publicId, false)).filter((item) =>
@@ -492,7 +492,7 @@ export function mountHubGuard(
         )
         const threads = await feedbacks.annotations.list(artifact.publicId, false)
         return c.json({
-          items,
+          items: await workspace.resolveLegacyFeedback(artifact, items),
           threads: Object.fromEntries(
             items.flatMap(({ id }) => (threads[id] ? [[id, threads[id]]] : [])),
           ),

@@ -144,14 +144,18 @@ it('展开的画板报错时，仍用作品原始链接向 Agent 投递', async 
 })
 
 it('在同一画布页面比较独立视口的宽屏和手机画板', () => {
-  const legacyPin: Feedback = {
+  const pin: Feedback = {
     id: 'mobile-pin',
     artifactId: artifact.publicId,
     version: 1,
     roundId: null,
     groupId: null,
     kind: 'comment',
-    element: { blockId: 'mobile-details', rect: { x: 10, y: 12, width: 90, height: 30 } },
+    element: {
+      boardId: 'mobile',
+      blockId: 'mobile-details',
+      rect: { x: 10, y: 12, width: 90, height: 30 },
+    },
     body: '确认手机字号',
     author: 'human:local',
     draft: false,
@@ -159,7 +163,7 @@ it('在同一画布页面比较独立视口的宽屏和手机画板', () => {
     createdAt: artifact.createdAt,
     updatedAt: artifact.updatedAt,
   }
-  showWorkspace(detailFor(), [legacyPin])
+  showWorkspace(detailFor(), [pin])
   const desktop = screen.getByTitle<HTMLIFrameElement>('画板内容：宽屏首页')
   const mobile = screen.getByTitle<HTMLIFrameElement>('画板内容：手机首页')
   expect([desktop.width, desktop.height]).toEqual(['1440', '900'])
@@ -188,7 +192,7 @@ it('在同一画布页面比较独立视口的宽屏和手机画板', () => {
   expect(desktopSandbox.post).not.toHaveBeenCalledWith(
     expect.objectContaining({
       type: 'pins.track',
-      pins: expect.arrayContaining([expect.objectContaining({ id: legacyPin.id })]),
+      pins: expect.arrayContaining([expect.objectContaining({ id: pin.id })]),
     }),
     '*',
   )

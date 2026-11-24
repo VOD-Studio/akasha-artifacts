@@ -151,7 +151,8 @@ export async function fetchArtifactBoard(
   boardId: string,
   signal: AbortSignal,
 ): Promise<ArtboardContent> {
-  const path = `/api/v1/artifacts/${encodeURIComponent(artifactId)}/boards/${encodeURIComponent(boardId)}?version=${version}`
+  const params = new URLSearchParams({ version: String(version), boardId })
+  const path = `/api/v1/artifacts/${encodeURIComponent(artifactId)}/boards?${params}`
   const response = await requestJson<{
     artifactId: string
     version: number

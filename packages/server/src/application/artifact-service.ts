@@ -990,7 +990,7 @@ export class ArtifactService {
       feedbacks.listForReview(artifact.publicId, input.includeDrafts),
       feedbacks.annotations.list(artifact.publicId, input.includeDrafts),
     ])
-    return { items, threads }
+    return { items: await this.workspace.resolveLegacyFeedback(artifact, items), threads }
   }
 
   private async resolveDiscussionArtifact(input: DiscussionActionInput): Promise<Artifact> {
