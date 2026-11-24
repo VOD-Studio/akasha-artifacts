@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { projectArtboard } from '@akasha/protocol'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
@@ -46,10 +47,19 @@ function openWorkspace(hub = false, canManage = true, detailFailure?: number) {
     removeEventListener() {},
   }))
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1440)
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(900)
   const endpoint = `/api/v1/artifacts/${publicId}`
+  const projection = projectArtboard(detail.version.source, 1)
+  if (!projection) throw new Error('结账稿缺少画板投影')
+  const { source: _source, ...summary } = detail.version
   const responses = new Map<string, unknown>([
-    [endpoint, detail],
-    [`${endpoint}/versions`, { versions: [detail.version] }],
+    [endpoint, { ...detail, version: summary, canvas: projection.index }],
+    [
+      `${endpoint}/boards/form`,
+      { artifactId: publicId, version: 1, board: projection.contents[0] },
+    ],
+    [`${endpoint}/versions`, { versions: [summary] }],
     [`${endpoint}/management`, { canManage }],
     [`${endpoint}/agent-session`, { availability: 'unbound' }],
     [`${endpoint}/feedback`, { items: [] }],

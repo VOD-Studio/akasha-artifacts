@@ -38,6 +38,12 @@ import {
   type Point,
   zoomCamera,
 } from './canvas-camera'
+import {
+  DETAIL_SCALE,
+  indexViewportBoards,
+  MAX_ANIMATED_BOARDS,
+  planViewport,
+} from './canvas-viewport'
 import { useBoardGesture } from './useBoardGesture'
 import { useBoardPresentation } from './useBoardPresentation'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
@@ -70,7 +76,9 @@ interface ArtifactCanvasProps {
   onLocationChange: (location: CanvasLocation | null) => void
   /** 用该画板的稳定标识打开和制品共用的导出面板。 */
   onExportBoard?: (boardId: string) => void
-  renderBoard: (board: CanvasBoard, purpose: BoardFramePurpose) => ReactNode
+  renderBoard: (board: CanvasBoard, purpose: BoardFramePurpose, detailed: boolean) => ReactNode
+  /** 从最新的可见范围提交优先队列，不把占位板或遗留选区当成加载需求。 */
+  onDemandChange: (ids: readonly string[], idle: boolean) => void
   canPlay: (board: CanvasBoard) => boolean
   /** 可视化直改的开关；省略时画布不提供直改入口。 */
   visualEdit?: { isPicking: boolean; toggle: () => void; cancel: () => void }
@@ -128,12 +136,16 @@ function settledCamera(
   current: Camera | null,
   board: CanvasBounds | undefined,
   page: CanvasBounds,
+  first: CanvasBounds | undefined,
   viewport: { width: number; height: number },
   measurable: boolean,
 ) {
   if (!measurable) return current
+  // 新打开的重稿从第一块实稿起步；工具栏仍可一键退至整页鸟瞰。
   if (board) return fitCamera(board, viewport, 'board')
-  return current ?? fitCamera(page, viewport, 'page')
+  if (current) return current
+  const overview = fitCamera(page, viewport, 'page')
+  return first && overview.scale < DETAIL_SCALE ? fitCamera(first, viewport, 'board') : overview
 }
 
 const isPrototype = (board: CanvasBoard) => board.type === 'html' || board.type === 'react'
@@ -154,11 +166,16 @@ export function ArtifactCanvas({
   onLocationChange,
   onExportBoard,
   renderBoard,
+  onDemandChange,
   canPlay,
   visualEdit,
 }: ArtifactCanvasProps) {
   const viewportRef = useRef<HTMLElement>(null)
   const pendingFocus = useRef<{ pageId: string; boardId: string } | null>(null)
+  const pendingKeyboardFocus = useRef<string | null>(null)
+  const [keyboardBoard, setKeyboardBoard] = useState<string | null>(null)
+  const wheelIdle = useRef<number | undefined>(undefined)
+  const [zooming, setZooming] = useState(false)
   const pointers = useRef(new Map<number, Point>())
   const wasPinching = useRef(false)
   const [view, setView] = useState(() => readView(storageKey))
@@ -210,6 +227,8 @@ export function ArtifactCanvas({
   const explicitSelection = invalidAddress ? undefined : pageView.selectedIds
   const selected = invalidAddress ? null : selectedBoardFor(page?.boards, pageView)
   const showBoards = !invalidAddress && page && page.boards.length > 0
+  const firstBoard = page?.boards[0]
+  const standalone = firstBoard && !firstBoard.scoped ? firstBoard : undefined
   const activeSelection = useMemo(
     () => layoutSelectionIds(page?.boards ?? [], { selected, selectedIds: explicitSelection }),
     [page, selected, explicitSelection],
@@ -222,6 +241,11 @@ export function ArtifactCanvas({
   const layout = useMemo(
     () => layoutBoards(page?.boards ?? [], document.columns),
     [page?.boards, document.columns],
+  )
+  const firstBounds = firstBoard && layout.bounds.get(firstBoard.id)
+  const viewportIndex = useMemo(
+    () => indexViewportBoards(page?.boards ?? [], layout.bounds),
+    [page?.boards, layout.bounds],
   )
   const flows = useMemo(() => {
     if (!document.showFlows) return []
@@ -291,7 +315,14 @@ export function ArtifactCanvas({
       const current = pageViewFor(prev, pageId)
       const next = {
         selected: pendingAddress ? (addressedBoardId ?? current.selected) : current.selected,
-        camera: settledCamera(current.camera, boardBounds, layout.page, size, measurable),
+        camera: settledCamera(
+          current.camera,
+          boardBounds,
+          layout.page,
+          firstBounds,
+          size,
+          measurable,
+        ),
       }
       if (
         prev.pageId === pageId &&
@@ -307,6 +338,7 @@ export function ArtifactCanvas({
     activeAddress,
     addressedBoardId,
     invalidAddress,
+    firstBounds,
     layout,
     measurable,
     pageId,
@@ -415,9 +447,55 @@ export function ArtifactCanvas({
     if (!activeSelection.has(boardId)) selectBoard(boardId)
     updateCamera((current) => (current.fit ? { ...current, fit: null } : current))
   })
-  const boundsFor = (id: string) =>
-    (boardGesture.preview?.pageId === pageId ? boardGesture.preview?.bounds.get(id) : undefined) ??
-    layout.bounds.get(id)
+  const moved = boardGesture.preview?.pageId === pageId ? boardGesture.preview?.bounds : undefined
+  const recent = useRef<{ index: typeof viewportIndex; ids: ReadonlySet<string> } | null>(null)
+  const plan = useMemo(
+    () =>
+      planViewport(
+        viewportIndex,
+        camera,
+        size,
+        selected ?? firstBoard?.id ?? null,
+        keyboardBoard,
+        moved,
+        showOverview && recent.current?.index === viewportIndex ? recent.current.ids : undefined,
+      ),
+    [viewportIndex, camera, size, selected, firstBoard?.id, keyboardBoard, moved, showOverview],
+  )
+  useLayoutEffect(() => {
+    recent.current = showOverview ? { index: viewportIndex, ids: plan.runtime } : null
+  }, [showOverview, viewportIndex, plan.runtime])
+  const detailIds = useMemo(() => new Set(plan.detail), [plan.detail])
+  const animatedIds = useMemo(
+    () => new Set(plan.detail.slice(0, MAX_ANIMATED_BOARDS)),
+    [plan.detail],
+  )
+  const pinnedInteraction = selected && detailIds.has(selected) ? selected : plan.detail[0]
+  const activePresentation = presentation.playing ?? presentation.focused
+  const demand = useMemo(() => {
+    if (!visible || invalidAddress) return []
+    if (activePresentation)
+      return activePresentation.source === undefined ? [activePresentation.id] : []
+    return plan.detail
+  }, [visible, invalidAddress, activePresentation, plan.detail])
+  const idle = showOverview && !dragging && !zooming && !moved
+  useLayoutEffect(() => {
+    onDemandChange(demand, idle)
+  }, [demand, idle, onDemandChange])
+  useLayoutEffect(() => {
+    const next = pendingKeyboardFocus.current
+    if (!next || !showOverview || !plan.boards.some((board) => board.id === next)) return
+    for (const title of viewportRef.current?.querySelectorAll<HTMLButtonElement>(
+      '.artifact-canvas-board-title',
+    ) ?? []) {
+      if (title.dataset.boardId !== next) continue
+      pendingKeyboardFocus.current = null
+      title.focus({ preventScroll: true })
+      break
+    }
+  }, [plan.boards, showOverview])
+  useEffect(() => () => window.clearTimeout(wheelIdle.current), [])
+  const boundsFor = (id: string) => moved?.get(id) ?? layout.bounds.get(id)
   const canDragBoards =
     boardEditing?.available && !handActive && !pickerActive && !modifier && !drawingTool
 
@@ -494,6 +572,9 @@ export function ArtifactCanvas({
     event.preventDefault()
     // 绘制工具用按下时的坐标映射；退出该工具前不让滚轮改变相机。
     if (drawingTool || boardGesture.preview?.phase === 'dragging') return
+    setZooming(true)
+    window.clearTimeout(wheelIdle.current)
+    wheelIdle.current = window.setTimeout(() => setZooming(false), 180)
     const rect = viewport.getBoundingClientRect()
     const anchor = { x: event.clientX - rect.left, y: event.clientY - rect.top }
     const unit = event.deltaMode === 2 ? size.height : 1
@@ -686,12 +767,17 @@ export function ArtifactCanvas({
                   })}
                 </svg>
               ) : null}
-              {page.boards.map((board) => {
+              {(standalone ? [standalone] : plan.boards).map((board) => {
                 const bounds = boundsFor(board.id)
                 if (!bounds) return null
                 const isSelected = activeSelection.has(board.id)
+                const detailed =
+                  (showOverview && plan.runtime.has(board.id)) ||
+                  (board === standalone && !activePresentation)
                 const interactive =
                   !handActive &&
+                  detailed &&
+                  (board === standalone || board.id === pinnedInteraction) &&
                   (!isPrototype(board) ||
                     pickerActive ||
                     (!board.scoped && Boolean(visualEdit?.isPicking)))
@@ -719,6 +805,7 @@ export function ArtifactCanvas({
                         type="button"
                         className="artifact-canvas-board-title"
                         aria-pressed={isSelected}
+                        data-board-id={board.id}
                         title={board.subtitle ?? board.title}
                         data-movable={canDragBoards ? true : undefined}
                         {...boardGesture.events}
@@ -741,6 +828,7 @@ export function ArtifactCanvas({
                           })
                         }}
                         onFocus={(event) => {
+                          setKeyboardBoard(board.id)
                           if (!measurable || !event.currentTarget.matches(':focus-visible')) return
                           const viewport = viewportRef.current?.getBoundingClientRect()
                           const title = event.currentTarget.getBoundingClientRect()
@@ -752,6 +840,30 @@ export function ArtifactCanvas({
                               title.top > viewport.bottom)
                           ) {
                             updateCamera(() => fitCamera(bounds, size, null))
+                          }
+                        }}
+                        onKeyDown={(event) => {
+                          const { key } = event
+                          if (
+                            ![
+                              'ArrowLeft',
+                              'ArrowRight',
+                              'ArrowUp',
+                              'ArrowDown',
+                              'Home',
+                              'End',
+                            ].includes(key)
+                          )
+                            return
+                          event.preventDefault()
+                          const index = page.boards.indexOf(board)
+                          const offset = key === 'ArrowLeft' || key === 'ArrowUp' ? -1 : 1
+                          let next: CanvasBoard | undefined = page.boards[index + offset]
+                          if (key === 'Home') next = page.boards[0]
+                          if (key === 'End') next = page.boards.at(-1)
+                          if (next && next.id !== board.id) {
+                            pendingKeyboardFocus.current = next.id
+                            navigate(page, next.id)
                           }
                         }}
                         onClick={(event) => {
@@ -800,7 +912,15 @@ export function ArtifactCanvas({
                         }}
                         className="artifact-canvas-board-frame"
                       >
-                        {renderBoard(board, { type: 'overview', interactive })}
+                        {renderBoard(
+                          board,
+                          {
+                            type: 'overview',
+                            interactive,
+                            animate: !board.scoped || animatedIds.has(board.id),
+                          },
+                          detailed,
+                        )}
                       </div>
                       {/* 抓手与组合键缩放由外层捕获，不依赖跨域 iframe 冒泡。 */}
                       {captureGesture && (
@@ -970,7 +1090,9 @@ export function ArtifactCanvas({
               : undefined
           }
         >
-          {renderBoard(presentation.focused, { type: 'focus' })}
+          {visible && !presentation.playing
+            ? renderBoard(presentation.focused, { type: 'focus' }, true)
+            : null}
         </BoardPresentation>
       ) : null}
       {visible && presentation.play && presentation.playing ? (
@@ -980,11 +1102,15 @@ export function ArtifactCanvas({
           playback
           onClose={presentation.closePlay}
         >
-          {renderBoard(presentation.playing, {
-            type: 'play',
-            onNavigate: presentation.navigate,
-            onExit: presentation.closePlay,
-          })}
+          {renderBoard(
+            presentation.playing,
+            {
+              type: 'play',
+              onNavigate: presentation.navigate,
+              onExit: presentation.closePlay,
+            },
+            true,
+          )}
         </BoardPresentation>
       ) : null}
     </>

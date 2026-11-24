@@ -1,4 +1,4 @@
-import type { Artifact, Version } from '@akasha/protocol'
+import type { Artifact, Version, VersionSummary } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Field } from '@akasha/ui/field'
 import { Input } from '@akasha/ui/input'
@@ -7,7 +7,9 @@ import { useState } from 'react'
 import {
   type ArtifactDetailResponse,
   artifactKeys,
+  artifactSourceOptions,
   type CanvasPage,
+  hasVersionSource,
   publishHumanVersion,
 } from '@/entities/artifact'
 import { type CanvasPageEdit, editCanvasPages } from './canvas-page-source'
@@ -15,7 +17,7 @@ import { type CanvasPageEdit, editCanvasPages } from './canvas-page-source'
 /** 可保存页面的头版本快照。 */
 export interface CanvasPageEditing {
   artifact: Artifact
-  version: Version
+  version: VersionSummary
   onVersionSaved?: (version: Version) => void
 }
 
@@ -63,7 +65,10 @@ export function CanvasPageActions({ editing, page, pages, onNavigate }: CanvasPa
         throw new Error('作品已更新，请重新操作')
       }
       const edit = toPageEdit(draft, title)
-      const source = editCanvasPages(version.source, draft.baseVersion, edit)
+      const base = hasVersionSource(version)
+        ? version
+        : await queryClient.fetchQuery(artifactSourceOptions(artifact.publicId, draft.baseVersion))
+      const source = editCanvasPages(base.source, draft.baseVersion, edit)
       const saved = await publishHumanVersion({
         project: artifact.projectId,
         slug: artifact.slug,
@@ -72,6 +77,10 @@ export function CanvasPageActions({ editing, page, pages, onNavigate }: CanvasPa
         baseVersion: draft.baseVersion,
         source,
       })
+      queryClient.setQueryData(
+        artifactKeys.source(artifact.publicId, saved.version.version),
+        saved.version,
+      )
       queryClient.setQueryData<ArtifactDetailResponse>(
         artifactKeys.detail(artifact.publicId),
         (previous) => {

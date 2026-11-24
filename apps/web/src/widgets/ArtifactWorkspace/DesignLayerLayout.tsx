@@ -1,4 +1,4 @@
-import type { DesignLayer, Version } from '@akasha/protocol'
+import type { DesignLayer, VersionSummary } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { useState } from 'react'
 import { CanvasGeometryFields, sameGeometry } from './CanvasGeometryFields'
@@ -20,7 +20,7 @@ interface LayoutProps {
 /** 仅编辑声明的布局图层；位置作用于选区，尺寸只调整当前图层。 */
 export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutProps) {
   const [draft, setDraft] = useState<{
-    base: Version
+    base: VersionSummary
     original: DesignLayer
     geometry: CanvasBounds
     selection: readonly DesignLayer[]

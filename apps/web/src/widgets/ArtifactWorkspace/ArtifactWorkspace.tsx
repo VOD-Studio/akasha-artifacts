@@ -1,5 +1,6 @@
 import {
   type AnnotationThread,
+  type ArtifactWorkspaceDetail,
   type ElementRef,
   type Feedback,
   isAnnotationKind,
@@ -7,14 +8,21 @@ import {
   type ReviewRound,
   type SandboxToShellMessage,
   STANDALONE_BOARD_ID,
+  type Version,
+  type VersionSummary,
 } from '@akasha/protocol'
+import { Button } from '@akasha/ui/button'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  type ArtifactDetailResponse,
   type CanvasBoard,
   type CanvasLocation,
   type CanvasPage,
   createCanvasDocument,
+  createCanvasDocumentFromIndex,
+  fetchArtifactBoard,
+  hasVersionSource,
+  type LoadedCanvasBoard,
+  useArtifactSourceQuery,
 } from '@/entities/artifact'
 import { selectionForVersion, syncProjectSelection, useSelectionStore } from '@/entities/selection'
 import { useWorkspaceStore } from '@/entities/workspace'
@@ -25,6 +33,8 @@ import { useVisualEdit, VisualEditPanel } from '@/features/visual-edit'
 import { ArtifactCanvas, type InspectorReveal } from './ArtifactCanvas'
 import { ArtifactFrame, type BoardFramePurpose, type FrameConnection } from './ArtifactFrame'
 import { BoardInspector, type BoardInspectorHandoff } from './BoardInspector'
+import { BoardResourceView, readLoadedBoard, useLoadedBoard } from './BoardResourceView'
+import { BoardResources } from './board-resources'
 import { createCanvasElementResolver } from './feedback-location'
 import { InlineCanvasText } from './InlineCanvasText'
 import { useBoardInspection } from './useBoardInspection'
@@ -35,8 +45,8 @@ const EMPTY_FEEDBACKS: readonly Feedback[] = []
 
 /** 画布工作区的输入。 */
 export interface ArtifactWorkspaceProps {
-  detail: ArtifactDetailResponse
-  versions: readonly ArtifactDetailResponse['version'][]
+  detail: ArtifactWorkspaceDetail
+  versions: readonly VersionSummary[]
   feedbacks?: readonly Feedback[]
   threads?: Readonly<Record<string, AnnotationThread>>
   rounds?: readonly ReviewRound[]
@@ -56,8 +66,8 @@ export interface ArtifactWorkspaceProps {
   onAskAgent?: BoardInspectorHandoff
   /** 登记把状态补丁转发给各画板沙盒的函数；传 `null` 表示注销。 */
   onRegisterStateForwarder?: (forwarder: ((seq: number, ops: JsonPatchOp[]) => void) | null) => void
-  onVersionSaved?: (version: ArtifactDetailResponse['version']) => void
-  onVersionAdopted?: (version: ArtifactDetailResponse['version']) => void
+  onVersionSaved?: (version: Version) => void
+  onVersionAdopted?: (version: Version) => void
 }
 
 /**
@@ -104,6 +114,27 @@ export function ArtifactWorkspace({
   const showCanvas = viewMode === 'preview' || viewMode === 'edit'
   // 首次进入编辑态后保持编辑器挂载（切换回预览/Diff/源码时仅隐藏），防止丢失未保存草稿与撤销栈
   const [editorMounted, setEditorMounted] = useState(viewMode === 'edit')
+  const [legacyThread, setLegacyThread] = useState<Feedback | null>(null)
+  const inline = detail.canvas === undefined ? detail.version : undefined
+  const sourceRead = useArtifactSourceQuery(
+    artifact.publicId,
+    version.version,
+    !inline &&
+      ((editorMounted && shareCanEdit) ||
+        viewMode === 'source' ||
+        legacyThread?.version === version.version),
+  )
+  const fullVersion = inline ?? sourceRead.data
+  const headSource = useArtifactSourceQuery(
+    artifact.publicId,
+    latestVersion.version,
+    editorMounted &&
+      shareCanEdit &&
+      latestVersion.version > version.version &&
+      !hasVersionSource(latestVersion),
+  )
+  const editorVersion = useRef<Version | undefined>(undefined)
+  if (fullVersion) editorVersion.current = fullVersion
   useEffect(() => {
     if (viewMode === 'edit') {
       setEditorMounted(true)
@@ -120,9 +151,23 @@ export function ArtifactWorkspace({
   const activeRound = useMemo(() => selectActiveRound(rounds), [rounds])
   const frames = useRef(new Map<string, FrameConnection>())
   const focusedFrame = useRef<FrameConnection | null>(null)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 同版本的分享授权变更必须清空该范围的缓存。
+  const resources = useMemo(
+    () =>
+      new BoardResources((id, signal) =>
+        fetchArtifactBoard(artifact.publicId, version.version, id, signal),
+      ),
+    [artifact.publicId, version.version, access?.role, access?.expiresAt],
+  )
+  useEffect(() => () => resources.reset(), [resources])
+  const activeResources = useRef(resources)
+  activeResources.current = resources
   const registerFrame = useCallback((id: string, frame: FrameConnection | null) => {
     if (frame) frames.current.set(id, frame)
-    else frames.current.delete(id)
+    else {
+      frames.current.delete(id)
+      activeResources.current.previewClosed(id)
+    }
   }, [])
   const registerFocusedFrame = useCallback((_id: string, frame: FrameConnection | null) => {
     focusedFrame.current = frame
@@ -188,41 +233,55 @@ export function ArtifactWorkspace({
     return () => clearTimeout(timer)
   }, [access, artifact.projectId, artifact.publicId, selectedElement])
 
-  const effectivePreviewSource =
-    viewMode === 'edit' && liveEditSource !== null ? liveEditSource : version.source
+  const savedIndex = detail.canvas
+  const definition = detail.canvas === undefined ? detail.version.source : detail.canvas
+  const editedSource = viewMode === 'edit' ? liveEditSource : null
   const canvasProps = fixedVersion === undefined ? state.snapshot.props : undefined
   const savedCanvas = useMemo(
     () =>
-      createCanvasDocument(
-        artifact.type,
-        version.title,
-        version.source,
-        version.version,
-        canvasProps,
-      ),
-    [artifact.type, version.title, version.source, version.version, canvasProps],
+      typeof definition === 'string'
+        ? createCanvasDocument(
+            artifact.type,
+            version.title,
+            definition,
+            version.version,
+            canvasProps,
+          )
+        : createCanvasDocumentFromIndex(definition, canvasProps),
+    [artifact.type, version.title, version.version, canvasProps, definition],
   )
   const canvas = useMemo(
     () =>
-      effectivePreviewSource === version.source
+      editedSource === null || editedSource === fullVersion?.source
         ? savedCanvas
         : createCanvasDocument(
             artifact.type,
             version.title,
-            effectivePreviewSource,
+            editedSource,
             version.version,
             canvasProps,
           ),
     [
       artifact.type,
       version.title,
-      effectivePreviewSource,
-      version.source,
+      editedSource,
+      fullVersion?.source,
       version.version,
       canvasProps,
       savedCanvas,
     ],
   )
+  const readBoards = Boolean(savedIndex) && canvas === savedCanvas
+  const onDemandChange = useCallback(
+    (ids: readonly string[], idle: boolean) => {
+      resources.setDemand(readBoards ? ids : [], idle && readBoards)
+    },
+    [readBoards, resources],
+  )
+  const inspectedBoardLayout = savedCanvas.pages
+    .find((page) => page.id === canvasLocation?.pageId)
+    ?.boards.find((board) => board.id === canvasLocation?.boardId)
+  const inspectedContent = useLoadedBoard(inspectedBoardLayout, resources)
   const canEditBoards =
     shareCanEdit &&
     artifact.type === 'artboard' &&
@@ -243,10 +302,28 @@ export function ArtifactWorkspace({
     notifyAgent: !access,
     onVersionSaved,
   })
-  const resolveElement = useMemo(
-    () => (artifact.type === 'artboard' ? createCanvasElementResolver(savedCanvas) : null),
-    [artifact.type, savedCanvas],
-  )
+  const resolveElement = useMemo(() => {
+    if (artifact.type !== 'artboard') return null
+    const anchorCanvas =
+      savedIndex && fullVersion
+        ? createCanvasDocument(
+            artifact.type,
+            version.title,
+            fullVersion.source,
+            version.version,
+            canvasProps,
+          )
+        : savedCanvas
+    return createCanvasElementResolver(anchorCanvas)
+  }, [
+    artifact.type,
+    savedCanvas,
+    savedIndex,
+    fullVersion,
+    version.title,
+    version.version,
+    canvasProps,
+  ])
   const versionPins = useMemo(() => {
     if (canvas !== savedCanvas) return EMPTY_FEEDBACKS
     const pins: Feedback[] = []
@@ -285,25 +362,31 @@ export function ArtifactWorkspace({
   const [playable, setPlayable] = useState<{
     artifactId: string
     version: number
-    sources: ReadonlyMap<string, string>
+    previewSource: string | null
+    ids: ReadonlySet<string>
   } | null>(null)
   const onPlayable = useCallback(
     (board: CanvasBoard, activeVersion: number, available: boolean) => {
       setPlayable((previous) => {
-        const sources =
-          previous?.artifactId === artifact.publicId && previous.version === activeVersion
-            ? previous.sources
+        const ids =
+          previous?.artifactId === artifact.publicId &&
+          previous.version === activeVersion &&
+          previous.previewSource === editedSource
+            ? previous.ids
             : undefined
-        if (available ? sources?.get(board.id) === board.source : !sources?.has(board.id)) {
-          return previous
-        }
-        const next = new Map(sources)
-        if (available) next.set(board.id, board.source)
+        if (available === Boolean(ids?.has(board.id))) return previous
+        const next = new Set(ids)
+        if (available) next.add(board.id)
         else next.delete(board.id)
-        return { artifactId: artifact.publicId, version: activeVersion, sources: next }
+        return {
+          artifactId: artifact.publicId,
+          version: activeVersion,
+          previewSource: editedSource,
+          ids: next,
+        }
       })
     },
-    [artifact.publicId],
+    [artifact.publicId, editedSource],
   )
   const revealBoard = useCallback((location: InspectorReveal) => {
     useWorkspaceStore.getState().setViewMode('preview')
@@ -317,6 +400,10 @@ export function ArtifactWorkspace({
       setInspectorTab('review')
       if (!reveal || !feedback.element || feedback.version !== version.version) return
       const target = resolveElement?.(feedback.element) ?? feedback.element
+      if (savedIndex && !fullVersion && target.blockId && !target.boardId) {
+        setLegacyThread(feedback)
+        return
+      }
       const boardId = target.boardId ?? STANDALONE_BOARD_ID
       const active = savedCanvas.pages.find((page) => page.id === canvasLocation?.pageId)
       const includesBoard = (page: CanvasPage) => page.boards.some((board) => board.id === boardId)
@@ -330,9 +417,16 @@ export function ArtifactWorkspace({
       revealBoard,
       savedCanvas.pages,
       setInspectorTab,
+      savedIndex,
+      fullVersion,
       version.version,
     ],
   )
+  useEffect(() => {
+    if (!legacyThread || !fullVersion) return
+    focusThread(legacyThread, true)
+    setLegacyThread(null)
+  }, [focusThread, fullVersion, legacyThread])
 
   const focusAndRemember = useCallback(
     (feedback: Feedback, reveal: boolean) => {
@@ -393,6 +487,7 @@ export function ArtifactWorkspace({
     enabled: canEditText,
     activeBoardId: canvasLocation?.boardId,
     editing: boardEditing,
+    readBoard: (board) => readLoadedBoard(board, resources),
     send: (boardId, message) => frames.current.get(boardId)?.send(message),
     annotate: (element) => {
       handleHighlightElement(element)
@@ -403,10 +498,10 @@ export function ArtifactWorkspace({
   const inspectedBoard = inspection.open ? canvasLocation?.boardId : inspection.pendingBoardId
   const watchBoard = canvas === savedCanvas ? inspectedBoard : undefined
   const renderBoard = useCallback(
-    (board: CanvasBoard, purpose: BoardFramePurpose) => {
+    (board: CanvasBoard, purpose: BoardFramePurpose, detailed: boolean) => {
       const overview = purpose.type === 'overview'
       const register = purpose.type === 'focus' ? registerFocusedFrame : undefined
-      return (
+      const frame = (board: LoadedCanvasBoard, ready?: () => void) => (
         <ArtifactFrame
           artifact={artifact}
           board={board}
@@ -417,12 +512,31 @@ export function ArtifactWorkspace({
           onFocusPin={(feedback) => focusAndRemember(feedback, false)}
           purpose={purpose}
           register={overview ? registerFrame : register}
+          onReady={
+            overview && readBoards
+              ? (id) => {
+                  ready?.()
+                  const capture = frames.current.get(id)?.capturePreview
+                  if (capture) resources.previewReady(id, capture)
+                }
+              : undefined
+          }
           onPlayable={onPlayable}
           watchLayers={overview && watchBoard === board.id}
           onLayers={inspection.onLayers}
           onLayerPicked={inspection.onLayerPicked}
           onTextTarget={onTextTarget}
           onVisualSelect={onVisualSelect}
+        />
+      )
+      if (board.source !== undefined) return detailed ? frame(board as LoadedCanvasBoard) : null
+      return (
+        <BoardResourceView
+          key={`${version.version}:${board.id}`}
+          board={board}
+          resources={resources}
+          detailed={detailed}
+          render={frame}
         />
       )
     },
@@ -441,6 +555,8 @@ export function ArtifactWorkspace({
       inspection.onLayerPicked,
       onTextTarget,
       onVisualSelect,
+      readBoards,
+      resources,
     ],
   )
 
@@ -451,20 +567,26 @@ export function ArtifactWorkspace({
           <div
             className={viewMode === 'edit' ? 'h-1/2 min-h-0 shrink-0 md:h-auto md:w-1/2' : 'hidden'}
           >
-            <SplitCodeEditor
-              artifact={artifact}
-              version={version}
-              latestVersion={latestVersion}
-              notifyAgent={!access}
-              onLivePreviewChange={setLiveEditSource}
-              onVersionSaved={onVersionSaved}
-              onVersionAdopted={onVersionAdopted}
-            />
+            {editorVersion.current ? (
+              <SplitCodeEditor
+                artifact={artifact}
+                version={editorVersion.current}
+                latestVersion={
+                  hasVersionSource(latestVersion) ? latestVersion : (headSource.data ?? fullVersion)
+                }
+                notifyAgent={!access}
+                onLivePreviewChange={setLiveEditSource}
+                onVersionSaved={onVersionSaved}
+                onVersionAdopted={onVersionAdopted}
+              />
+            ) : (
+              <SourceStatus error={sourceRead.error} retry={() => void sourceRead.refetch()} />
+            )}
           </div>
         ) : null}
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {/* 工具视图只隐藏画布；切回时保留同一沙盒与用户视角。 */}
+          {/* 隐藏工具不重置相机；多板预览只在当前可见或被打开时运行。 */}
           <ArtifactCanvas
             key={canvasSessionKey}
             document={canvas}
@@ -480,15 +602,17 @@ export function ArtifactWorkspace({
             historyEditing={canEditText ? boardEditing : undefined}
             textTools={canEditText ? inlineText.tools : undefined}
             pageEditing={
-              canEditBoards && !boardEditing.draft
+              canEditBoards && !boardEditing.draft && !boardEditing.busy
                 ? { artifact, version, onVersionSaved }
                 : undefined
             }
             renderBoard={renderBoard}
+            onDemandChange={onDemandChange}
             canPlay={(board) =>
               playable?.artifactId === artifact.publicId &&
               playable.version === version.version &&
-              playable.sources.get(board.id) === board.source
+              playable.previewSource === editedSource &&
+              playable.ids.has(board.id)
             }
             visible={showCanvas}
             visualEdit={
@@ -513,9 +637,13 @@ export function ArtifactWorkspace({
 
           {viewMode === 'source' ? (
             <div className="h-full w-full overflow-auto bg-surface p-4">
-              <pre className="rounded-xl border border-border bg-surface-subtle p-4 font-mono text-xs leading-6 text-ink">
-                <code>{version.source}</code>
-              </pre>
+              {fullVersion ? (
+                <pre className="rounded-xl border border-border bg-surface-subtle p-4 font-mono text-xs leading-6 text-ink">
+                  <code>{fullVersion.source}</code>
+                </pre>
+              ) : (
+                <SourceStatus error={sourceRead.error} retry={() => void sourceRead.refetch()} />
+              )}
             </div>
           ) : null}
         </div>
@@ -535,6 +663,7 @@ export function ArtifactWorkspace({
       />
       <BoardInspector
         artifact={artifact}
+        loadedBoard={inspectedContent}
         version={version}
         stateSnapshot={state.snapshot}
         document={savedCanvas}
@@ -570,6 +699,23 @@ export function ArtifactWorkspace({
           onAnnotate={inlineText.annotate}
         />
       ) : null}
+    </div>
+  )
+}
+
+function SourceStatus({ error, retry }: { error: Error | null; retry: () => void }) {
+  if (!error)
+    return (
+      <p className="p-3 text-sm text-ink-muted" role="status">
+        正在读取源码…
+      </p>
+    )
+  return (
+    <div className="space-y-2 p-3 text-sm" role="alert">
+      <p>源码读取失败：{error.message}</p>
+      <Button onClick={retry} size="sm" variant="outline">
+        重试
+      </Button>
     </div>
   )
 }

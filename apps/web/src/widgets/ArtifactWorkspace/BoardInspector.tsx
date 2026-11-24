@@ -5,14 +5,23 @@ import {
   DESIGN_LAYER_BLOCK_PREFIX,
   type DesignLayer,
   STANDALONE_BOARD_ID,
-  type Version,
+  type VersionSummary,
 } from '@akasha/protocol'
 import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@akasha/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@akasha/ui/tabs'
+import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import type { CanvasDocument, CanvasLocation } from '@/entities/artifact'
+import {
+  type CanvasDocument,
+  type CanvasLocation,
+  fetchArtifactBoard,
+  hasVersionSource,
+  type LoadedCanvasBoard,
+  loadCanvasBoard,
+  useArtifactSourceQuery,
+} from '@/entities/artifact'
 import { useSelectionStore } from '@/entities/selection'
 import { useWorkspaceStore } from '@/entities/workspace'
 import { ElementPickerButton } from '@/features/element-picker'
@@ -36,7 +45,8 @@ export type BoardInspectorHandoff = (
 
 interface BoardInspectorProps {
   artifact: Artifact
-  version: Version
+  version: VersionSummary
+  loadedBoard?: LoadedCanvasBoard
   stateSnapshot: Record<string, unknown>
   document: CanvasDocument
   location: CanvasLocation | null
@@ -62,6 +72,7 @@ const EMPTY_PROPS: Record<string, unknown> = {}
 /** 运行属性、版本源码与可持久化的原生图层布局分开处理。 */
 export function BoardInspector({
   artifact,
+  loadedBoard,
   version,
   stateSnapshot,
   document,
@@ -82,10 +93,36 @@ export function BoardInspector({
   const open = useWorkspaceStore((state) => state.inspectorTab === 'inspect')
   const setDrawer = useWorkspaceStore((state) => state.setInspectorTab)
   const page = document.pages.find((item) => item.id === location?.pageId)
-  const board = page?.boards.find((item) => item.id === location?.boardId)
-  const source = board && !board.generated ? board.source : version.source
+  const layout = page?.boards.find((item) => item.id === location?.boardId)
+  const [tab, setTab] = useState('properties')
+  const cached = loadedBoard && loadedBoard.id === layout?.id ? loadedBoard : layout
+  const boardRead = useQuery({
+    queryKey: ['inspector-board', artifact.publicId, version.version, layout?.id],
+    queryFn: ({ signal }) => {
+      if (!layout) throw new Error('未选择画板')
+      return fetchArtifactBoard(artifact.publicId, version.version, layout.id, signal)
+    },
+    enabled: open && tab === 'source' && Boolean(layout?.scoped) && cached?.source === undefined,
+    gcTime: 0,
+    retry: false,
+  })
+  const board =
+    cached && boardRead.data && cached.source === undefined
+      ? loadCanvasBoard(cached, boardRead.data)
+      : cached
+  const inline = hasVersionSource(version) ? version.source : undefined
+  const sourceRead = useArtifactSourceQuery(
+    artifact.publicId,
+    version.version,
+    open &&
+      inline === undefined &&
+      (tab === 'runtime' || (tab === 'source' && (!board || board.generated === true))),
+  )
+  const full = inline ?? sourceRead.data?.source
+  const source = board && !board.generated ? board.source : full
   const layer = layers?.layers.find((entry) => entry.id === selectedLayerId)
-  const excerpt = !board?.generated && layer ? locateSource(source, layer) : null
+  const excerpt =
+    !board?.generated && layer && source !== undefined ? locateSource(source, layer) : null
   const handoffElement = useSelectionStore((state) => {
     const scoped = state.layersByArtifact[artifact.publicId]
     const target = state.selectedByArtifact[artifact.publicId]
@@ -233,7 +270,7 @@ export function BoardInspector({
               </div>
             </section>
             {readOnly && <p className="text-xs text-ink-muted">{readOnlyLabel}</p>}
-            <Tabs defaultValue="properties">
+            <Tabs value={tab} onValueChange={setTab}>
               <TabsList aria-label="检查器选项">
                 <TabsTrigger value="properties">属性</TabsTrigger>
                 <TabsTrigger value="source">源码</TabsTrigger>
@@ -349,34 +386,67 @@ export function BoardInspector({
                 {!board && <p className="py-2 text-sm text-ink-muted">选择画板以查看属性</p>}
               </TabsContent>
               <TabsContent value="source" className="space-y-2 pt-3">
-                <BoardInspectorSource
-                  designLayer={designLayer}
-                  excerpt={excerpt}
-                  sourceLoc={layer?.sourceLoc}
-                  source={source}
-                  scope={board && !board.generated ? '画板源码' : '作品源码'}
-                  hasLayer={Boolean(layer)}
-                />
+                {source !== undefined || designLayer ? (
+                  <BoardInspectorSource
+                    designLayer={designLayer}
+                    excerpt={excerpt}
+                    sourceLoc={layer?.sourceLoc}
+                    source={source}
+                    scope={board && !board.generated ? '画板源码' : '作品源码'}
+                    hasLayer={Boolean(layer)}
+                  />
+                ) : (
+                  <InspectorSourceStatus
+                    error={boardRead.error ?? sourceRead.error}
+                    retry={() =>
+                      void (board && !board.generated ? boardRead : sourceRead).refetch()
+                    }
+                  />
+                )}
               </TabsContent>
               <TabsContent value="runtime" className="space-y-2 pt-3">
                 {!readOnly && (
                   <p className="text-xs text-ink-muted">调整仅影响运行状态，不会生成新版本。</p>
                 )}
-                <PropsPanel
-                  artifactId={artifact.publicId}
-                  projectId={artifact.projectId}
-                  artifactType={artifact.type}
-                  source={version.source}
-                  stateSnapshot={readOnly ? EMPTY_PROPS : stateSnapshot}
-                  readOnly={readOnly}
-                  onFallbackToL1={() => setDrawer('review')}
-                />
+                {full !== undefined ? (
+                  <PropsPanel
+                    artifactId={artifact.publicId}
+                    projectId={artifact.projectId}
+                    artifactType={artifact.type}
+                    source={full}
+                    stateSnapshot={readOnly ? EMPTY_PROPS : stateSnapshot}
+                    readOnly={readOnly}
+                    onFallbackToL1={() => setDrawer('review')}
+                  />
+                ) : (
+                  <InspectorSourceStatus
+                    error={sourceRead.error}
+                    retry={() => void sourceRead.refetch()}
+                  />
+                )}
               </TabsContent>
             </Tabs>
           </div>
         </SheetBody>
       </SheetContent>
     </Sheet>
+  )
+}
+
+function InspectorSourceStatus({ error, retry }: { error: Error | null; retry: () => void }) {
+  if (!error)
+    return (
+      <p className="text-xs text-ink-muted" role="status">
+        正在读取源码…
+      </p>
+    )
+  return (
+    <div role="alert" className="space-y-2 text-xs">
+      <p>源码读取失败：{error.message}</p>
+      <Button size="sm" variant="outline" onClick={retry}>
+        重试
+      </Button>
+    </div>
   )
 }
 
@@ -400,7 +470,7 @@ function BoardInspectorSource({
   designLayer?: DesignLayer
   excerpt: SourceExcerpt | null
   sourceLoc?: string
-  source: string
+  source?: string
   scope: '画板源码' | '作品源码'
   hasLayer: boolean
 }) {

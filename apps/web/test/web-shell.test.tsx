@@ -407,7 +407,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     expect(screen.queryByRole('dialog', { name: '批注与评审' })).toBeNull()
 
     // 模拟 WS 推送 version.created 写入 Query 缓存并触发工作区重绘 v2
-    queryClient.setQueryData(artifactKeys.detail(SAMPLE_ARTIFACT.publicId, undefined), detailV1)
+    queryClient.setQueryData(artifactKeys.canvas(SAMPLE_ARTIFACT.publicId), detailV1)
     applyRealtimeEventToCache(queryClient, {
       v: PROTOCOL_VERSION,
       seq: 10,
@@ -417,7 +417,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       version: SAMPLE_V2,
     })
     const updatedDetail = queryClient.getQueryData<ArtifactDetailResponse>(
-      artifactKeys.detail(SAMPLE_ARTIFACT.publicId, undefined),
+      artifactKeys.canvas(SAMPLE_ARTIFACT.publicId),
     )
     expect(updatedDetail?.version.version).toBe(2)
 
@@ -891,7 +891,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     expect(posted.some((m) => m.type === 'highlight' && m.element === null)).toBe(true)
 
     // round.updated 事件须同时刷新历史版本详情缓存（例如 /a/$id/v/1）
-    const versionDetailKey = artifactKeys.detail(SAMPLE_ARTIFACT.publicId, 1)
+    const versionDetailKey = artifactKeys.canvas(SAMPLE_ARTIFACT.publicId, 1)
     queryClient.setQueryData(versionDetailKey, { ...detailV2, rounds: [draftingRound] })
     const submittedRound: ReviewRound = {
       ...draftingRound,

@@ -2,7 +2,7 @@ import type {
   Artifact,
   ArtifactSharedAccess,
   ArtifactTransferInput,
-  Version,
+  VersionSummary,
 } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { ArrowLeft, PanelLeft, Share2 } from 'lucide-react'
@@ -17,8 +17,8 @@ import { WorkspacePanelButtons } from './WorkspacePanelButtons'
 
 export interface TopBarProps {
   artifact: Artifact
-  version: Version
-  versions: readonly Version[]
+  version: VersionSummary
+  versions: readonly VersionSummary[]
   /** 有值时普通制品链接固定到正在查看的历史版本。 */
   fixedVersion?: number
   feedbackCount?: number

@@ -39,3 +39,27 @@ it('平移和拖拽按新的包围盒安排正文，屏外的键盘焦点保留�
   expect(plan.boards).toEqual([boards[0], boards[1]])
   expect(plan.detail).toEqual(['first'])
 })
+
+it('从近邻复用已经进入过视口的帧，但不把近邻正文加入请求队列', () => {
+  const boards = ['past', 'now', 'unvisited'].map(board)
+  const index = indexViewportBoards(
+    boards,
+    new Map(boards.map((item, order) => [item.id, { ...item, x: order * 900, y: 40 }])),
+  )
+  const zoomed = { ...DEFAULT_CAMERA, x: -500 }
+  const viewport = { width: 800, height: 400 }
+  const previous = new Set(['past'])
+  const plan = planViewport(index, zoomed, viewport, 'now', null, undefined, previous)
+  expect(plan.detail).toEqual(['now'])
+  expect([...plan.runtime]).toEqual(['now', 'past'])
+  const birdseye = planViewport(
+    index,
+    { ...zoomed, scale: 0.2 },
+    viewport,
+    'now',
+    null,
+    undefined,
+    plan.runtime,
+  )
+  expect([...birdseye.runtime]).toEqual([])
+})

@@ -3,7 +3,7 @@ import { type Artifact, type Feedback, PROTOCOL_VERSION, type Version } from '@a
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { ArtifactDetailResponse } from '../src/entities/artifact'
 import { useSelectionStore } from '../src/entities/selection'
 import { useWorkspaceStore } from '../src/entities/workspace'
@@ -109,6 +109,11 @@ function sandbox(frame: HTMLIFrameElement) {
     },
   }
 }
+
+beforeEach(() => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(2400)
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(2100)
+})
 
 afterEach(() => {
   cleanup()
@@ -412,16 +417,18 @@ it('重复从检查器选择同一画板，会找回已被移出视口的选板'
   )
   showWorkspace()
   const board = screen
-    .getByTitle('画板内容：宽屏首页')
+    .getByRole('button', { name: '宽屏首页', pressed: true })
     .closest<HTMLElement>('.artifact-canvas-board')
   if (!board) throw new Error('宽屏画板夹具不可用')
   expect(Number.parseFloat(board.style.left)).toBeGreaterThan(1000)
+  expect(screen.queryByTitle('画板内容：宽屏首页')).toBeNull()
 
   act(() => useWorkspaceStore.getState().setInspectorTab('inspect'))
   const inspector = screen.getByRole('dialog', { name: '检查器' })
   expect(Number.parseFloat(board.style.left)).toBeGreaterThan(1000)
   fireEvent.click(within(inspector).getByRole('button', { name: '宽屏首页', pressed: true }))
   expect(Number.parseFloat(board.style.left)).toBeGreaterThanOrEqual(0)
+  expect(screen.getByTitle('画板内容：宽屏首页')).toBeTruthy()
   expect(
     Number.parseFloat(board.style.left) + Number.parseFloat(board.style.width),
   ).toBeLessThanOrEqual(1000)
@@ -491,6 +498,8 @@ it('图层双向定位只在该画板与版本生效，悬停和旧坐标不改�
   const element = { selector, rect: { x: 14, y: 7, width: 140, height: 25 } }
   mobile.receive({ type: 'inspect.hover', element })
   expect(desktopChoice.getAttribute('aria-pressed')).toBe('true')
+  // 只允许活动画板接收沙盒输入；跨板指认先选中另一块画板。
+  fireEvent.click(screen.getByRole('button', { name: '选择画板：手机首页' }))
   mobile.receive({
     type: 'inspect.select',
     reason: 'click',

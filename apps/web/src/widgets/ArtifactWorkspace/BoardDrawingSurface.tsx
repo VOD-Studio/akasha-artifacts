@@ -1,4 +1,4 @@
-import type { DesignLayer, Version } from '@akasha/protocol'
+import type { DesignLayer, VersionSummary } from '@akasha/protocol'
 import { Circle, PenLine, Square, StickyNote, Type } from 'lucide-react'
 import { type PointerEvent, useRef, useState } from 'react'
 import type { CanvasBoard } from '@/entities/artifact'
@@ -18,7 +18,7 @@ export type DrawingTool = (typeof DRAWING_TOOLS)[number]
 
 interface Gesture {
   pointer: number
-  base: Version
+  base: VersionSummary
   start: Point
   toBoardPoint: (event: Pick<PointerEvent, 'clientX' | 'clientY'>) => Point
   points: Point[]
@@ -62,9 +62,9 @@ interface SurfaceProps {
   /** 切换工具时调用方重建命中层，取消未完成的手势。 */
   tool: DrawingTool
   /** 画笔或拖拽只以按下时的版本为基准。 */
-  version: Version
+  version: VersionSummary
   /** 每个完成的几何只回报一次；文字继续在锚点编辑后才发布。 */
-  onCreate(layer: DesignLayer, base: Version, anchor: Point): void
+  onCreate(layer: DesignLayer, base: VersionSummary, anchor: Point): void
 }
 
 /** 只在松开指针后发布；绘制预览和相机都不进入源码。 */
@@ -73,7 +73,7 @@ export function BoardDrawingSurface({ board, tool, version, onCreate }: SurfaceP
   const [preview, setPreview] = useState<CanvasBounds | string | null>(null)
   const { width, height } = board
 
-  const commitShape = (start: Point, end: Point, base: Version, anchor: Point) => {
+  const commitShape = (start: Point, end: Point, base: VersionSummary, anchor: Point) => {
     if (tool.kind === 'stroke') return
     const [presetWidth, presetHeight] = PRESET_SIZE[tool.kind]
     const moved = Math.hypot(end.x - start.x, end.y - start.y) >= 3

@@ -1,4 +1,4 @@
-import type { Version } from '@akasha/protocol'
+import type { VersionSummary } from '@akasha/protocol'
 import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
 import {
@@ -18,7 +18,7 @@ export interface VersionTimelineProps {
   publicId: string
   activeVersion: number
   headVersion: number
-  versions: readonly Version[]
+  versions: readonly VersionSummary[]
   canRevert?: boolean
   onSelectVersion: (version?: number) => void
 }

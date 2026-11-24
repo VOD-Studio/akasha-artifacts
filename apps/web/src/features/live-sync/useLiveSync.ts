@@ -1,4 +1,9 @@
-import type { JsonPatchOp, RealtimeServerEvent } from '@akasha/protocol'
+import type {
+  ArtifactWorkspaceDetail,
+  JsonPatchOp,
+  RealtimeServerEvent,
+  VersionSummary,
+} from '@akasha/protocol'
 import { type QueryClient, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import { type ArtifactDetailResponse, artifactKeys } from '@/entities/artifact'
@@ -50,12 +55,30 @@ export function applyRealtimeEventToCache(
           }
         },
       )
+      queryClient.setQueryData<ArtifactWorkspaceDetail>(
+        artifactKeys.canvas(event.artifactId),
+        (prev) => {
+          if (!prev || prev.access || prev.canvas || event.version.version <= prev.version.version)
+            return prev
+          return {
+            ...prev,
+            artifact: {
+              ...prev.artifact,
+              title: event.version.title,
+              headVersion: event.version.version,
+              updatedAt: event.version.createdAt,
+            },
+            version: event.version,
+          }
+        },
+      )
+      const { source: _source, ...summary } = event.version
       queryClient.setQueryData(
         artifactKeys.versions(event.artifactId),
-        (prev: ArtifactDetailResponse['version'][] | undefined) => {
-          if (!prev) return [event.version]
-          const filtered = prev.filter((v) => v.version !== event.version.version)
-          return [...filtered, event.version].sort((a, b) => a.version - b.version)
+        (prev: VersionSummary[] | undefined) => {
+          if (!prev) return [summary]
+          const filtered = prev.filter((v) => v.version !== summary.version)
+          return [...filtered, summary].sort((a, b) => a.version - b.version)
         },
       )
       void queryClient.invalidateQueries({ queryKey: artifactKeys.all, exact: false })

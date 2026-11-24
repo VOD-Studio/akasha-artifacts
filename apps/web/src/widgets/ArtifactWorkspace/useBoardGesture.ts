@@ -1,4 +1,4 @@
-import { ARTBOARD_GEOMETRY_LIMITS, type Version } from '@akasha/protocol'
+import { ARTBOARD_GEOMETRY_LIMITS, type VersionSummary } from '@akasha/protocol'
 import { type MouseEvent, type PointerEvent, useEffect, useRef, useState } from 'react'
 import type { CanvasBounds, Point } from './canvas-camera'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
@@ -15,7 +15,7 @@ interface Gesture extends GestureStart {
   pointerId: number
   handle: HTMLButtonElement
   start: Point
-  base: Version
+  base: VersionSummary
   moved: boolean
   minDelta: Point
   maxDelta: Point
@@ -87,7 +87,7 @@ export function useBoardGesture(
   const active = useRef<Gesture | null>(null)
   const [preview, setPreview] = useState<BoardPreview | null>(null)
   const draggedTitle = useRef<HTMLButtonElement | null>(null)
-  const saving = editing?.draft?.status === 'saving'
+  const saving = editing?.busy
   useEffect(() => {
     if (preview?.phase === 'saving' && !saving) setPreview(null)
   }, [preview?.phase, saving])

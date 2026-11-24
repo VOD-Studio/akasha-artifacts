@@ -1,11 +1,13 @@
-import { type ArtifactHandoffReference, isAnnotationKind, type JsonPatchOp } from '@akasha/protocol'
+import {
+  type ArtboardIndex,
+  type ArtifactHandoffReference,
+  type ArtifactWorkspaceDetail,
+  isAnnotationKind,
+  type JsonPatchOp,
+} from '@akasha/protocol'
 import { useLocation, useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import {
-  type ArtifactDetailResponse,
-  useArtifactDetailQuery,
-  useArtifactVersionsQuery,
-} from '@/entities/artifact'
+import { useArtifactVersionsQuery, useArtifactWorkspaceQuery } from '@/entities/artifact'
 import { useDaemonStatusQuery } from '@/entities/daemon'
 import { readAnnotationDraft, useArtifactFeedbackQuery } from '@/entities/feedback'
 import { useSelectionStore } from '@/entities/selection'
@@ -31,7 +33,7 @@ import { OpeningArtifact, UnavailableArtifact } from './ArtifactRouteStatus'
 type HandoffScope = Pick<ArtifactHandoffReference, 'pageId' | 'boardId' | 'element'>
 
 function getHandoffReference(
-  { artifact, version }: ArtifactDetailResponse,
+  { artifact, version }: ArtifactWorkspaceDetail,
   scope?: HandoffScope,
 ): ArtifactHandoffReference {
   return {
@@ -55,7 +57,9 @@ export function ArtifactRouteView({
   const search = useLocation({ select: (location) => location.searchStr })
   const [exportTarget, setExportTarget] = useState<DesignExportTarget | null>(null)
   const [handoffTarget, setHandoffTarget] = useState<ArtifactHandoffTarget | null>(null)
-  const [shareTarget, setShareTarget] = useState<DesignExportTarget | null>(null)
+  const [shareTarget, setShareTarget] = useState<
+    (DesignExportTarget & { canvas?: ArtboardIndex }) | null
+  >(null)
   const [transferTarget, setTransferTarget] = useState<ArtifactTransferTarget | null>(null)
   const [expiredShare, setExpiredShare] = useState<string | null>(null)
   const [agentPanel, setAgentPanel] = useState<{
@@ -94,7 +98,7 @@ export function ArtifactRouteView({
     [navigate],
   )
   const { data: daemonStatus } = useDaemonStatusQuery()
-  const detailQuery = useArtifactDetailQuery(identifier, requestedVersion)
+  const detailQuery = useArtifactWorkspaceQuery(identifier, requestedVersion)
   const shareAccess = detailQuery.data?.access
   const expiresAt = shareAccess?.expiresAt
   const shareExpired = Boolean(expiresAt && expiredShare === expiresAt)
@@ -194,7 +198,8 @@ export function ArtifactRouteView({
   const viewingFixedVersion = shareAccess?.version ?? requestedVersion
 
   const detail = detailQuery.data
-  const versions = versionsQuery.data ?? [detail.version]
+  const versions =
+    shareAccess?.version !== undefined ? [detail.version] : (versionsQuery.data ?? [detail.version])
   const feedbacks = feedbackQuery.data?.items ?? []
   const rounds = detail.rounds
   const sandboxOrigin = resolveSandboxOrigin(daemonStatus?.sandboxPort)
@@ -228,7 +233,8 @@ export function ArtifactRouteView({
   }
   const askAgent = (label: string, scope: HandoffScope) =>
     openAgent({ label, reference: getHandoffReference(detail, scope) })
-  const openShare = () => setShareTarget({ artifact: detail.artifact, version: detail.version })
+  const openShare = () =>
+    setShareTarget({ artifact: detail.artifact, version: detail.version, canvas: detail.canvas })
   const openVersion = (version?: number) => {
     const publicId = detail.artifact.publicId
     if (version === undefined) {
@@ -319,6 +325,7 @@ export function ArtifactRouteView({
         <ArtifactShareDialog
           artifact={shareTarget.artifact}
           version={shareTarget.version}
+          canvas={shareTarget.canvas}
           onClose={() => setShareTarget(null)}
         />
       ) : null}

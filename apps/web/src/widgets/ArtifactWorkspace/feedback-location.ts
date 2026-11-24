@@ -39,6 +39,7 @@ function indexLegacyBlocks(canvas: CanvasDocument) {
       seen.add(board.id)
       add(board.id, board.id)
       if (board.legacyBlockId) add(board.legacyBlockId, board.id, board.id)
+      if (board.source === undefined) continue
       template.innerHTML = board.source
       for (const node of template.content.querySelectorAll('[data-ak-block]')) {
         const id = node.getAttribute('data-ak-block')?.trim()

@@ -86,6 +86,7 @@ export function planViewport(
   selected: string | null,
   keyboardBoard: string | null,
   moved?: ReadonlyMap<string, CanvasBounds>,
+  recent?: ReadonlySet<string>,
 ) {
   const { scale } = camera
   const clip = {
@@ -130,6 +131,28 @@ export function planViewport(
       a.distance - b.distance ||
       a.order - b.order,
   )
+  const detail = ranks.slice(0, MAX_DETAIL_BOARDS).map(({ id }) => id)
+  const runtime = new Set(detail)
+  if (viewport.width && viewport.height && scale >= DETAIL_SCALE && recent?.size) {
+    // 只复用已安排过的近邻帧；缓冲区从不触发请求，留优先名额给新进视口的板。
+    const leadX = viewport.width / (2 * scale)
+    const leadY = viewport.height / (2 * scale)
+    const area = {
+      left: clip.left - leadX,
+      right: clip.right + leadX,
+      top: clip.top - leadY,
+      bottom: clip.bottom + leadY,
+    }
+    for (const id of recent) {
+      if (runtime.size === MAX_DETAIL_BOARDS) break
+      if (runtime.has(id)) continue
+      const item = index.byId.get(id)
+      const box = moved?.get(id)
+      if (!item || !intersects(box ? areaOf(box) : item.area, area)) continue
+      runtime.add(id)
+      if (!hits.has(id)) hits.set(id, item)
+    }
+  }
   for (const id of [selected, keyboardBoard]) {
     const retained = id && index.byId.get(id)
     if (retained && !hits.has(retained.board.id)) hits.set(retained.board.id, retained)
@@ -138,6 +161,7 @@ export function planViewport(
     boards: Array.from(hits.values())
       .sort((a, b) => a.order - b.order)
       .map(({ board }) => board),
-    detail: ranks.slice(0, MAX_DETAIL_BOARDS).map(({ id }) => id),
+    detail,
+    runtime,
   }
 }

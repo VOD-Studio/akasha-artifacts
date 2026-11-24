@@ -1,4 +1,11 @@
-import type { Artifact, EditOp, ElementRef, SandboxToShellMessage, Version } from '@akasha/protocol'
+import type {
+  Artifact,
+  EditOp,
+  ElementRef,
+  SandboxToShellMessage,
+  Version,
+  VersionSummary,
+} from '@akasha/protocol'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -21,7 +28,7 @@ import {
 
 interface Options {
   artifact: Artifact
-  version: Version
+  version: VersionSummary
   enabled: boolean
   send: (message: ShellOutgoingPayload) => void
   onAnnotate: (element: ElementRef) => void
@@ -39,7 +46,7 @@ export interface PickedTarget {
 /**
  * 可视化直改控制器。
  *
- * @remarks `available` 只在查看头版本的 `react` 或 `html` 制品时为 true；
+ * @remarks `available` 只在已加载全文且查看头版本的 `react` 或 `html` 制品时为 true；
  * `active` 是当前生效的目标，所基于的版本不再是正在查看的版本时为 `null`。
  */
 export interface VisualEditController {
@@ -78,8 +85,11 @@ export function useVisualEdit(options: Options): VisualEditController {
   const [picked, setPicked] = useState<PickedTarget | null>(null)
   const [busy, setBusy] = useState(false)
   const saving = useRef(false)
+  const versionSource =
+    'source' in version && typeof version.source === 'string' ? version.source : undefined
   const available =
     enabled &&
+    versionSource !== undefined &&
     version.version === artifact.headVersion &&
     (artifact.type === 'react' || artifact.type === 'html')
   const active = available && picked?.baseVersion === version.version ? picked : null
@@ -189,7 +199,7 @@ export function useVisualEdit(options: Options): VisualEditController {
         const { source } = await previewVisualEdit(artifact.publicId, input)
         if (request !== revision.current || optionsRef.current.version.version !== version.version)
           return
-        if (source === version.source) return
+        if (source === versionSource) return
         optionsRef.current.send({
           type: 'apply.preview',
           version: version.version,
