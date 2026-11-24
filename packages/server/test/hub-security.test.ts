@@ -628,16 +628,23 @@ describe('Cloud Hub 身份与制品权限', () => {
     expect((await send(`${board}?version=1`)).status).toBe(404)
     expect((await send(`${board}?version=2`, { headers })).status).toBe(404)
     expect((await send(`${path}?view=canvas&version=2`, { headers })).status).toBe(404)
-    const detail = await (await send(`${path}?view=canvas`, { headers })).json()
+    const detail = z
+      .object({
+        artifact: z.unknown(),
+        version: z.unknown(),
+        canvas: z.unknown(),
+      })
+      .parse(await (await send(`${path}?view=canvas`, { headers })).json())
     expect(detail).toMatchObject({
       artifact: { headVersion: 1 },
       version: { version: 1 },
       canvas: { boards: [{ id: 'checkout/v1' }] },
     })
     expect(detail.version).not.toHaveProperty('source')
-    expect(
-      (await (await send(`${path}/versions?view=metadata`, { headers })).json()).versions,
-    ).toEqual([expect.objectContaining({ version: 1 })])
+    const history = z
+      .object({ versions: z.array(z.unknown()) })
+      .parse(await (await send(`${path}/versions?view=metadata`, { headers })).json())
+    expect(history.versions).toEqual([expect.objectContaining({ version: 1 })])
     const fixed = await send(`${board}?version=1`, { headers })
     expect(await fixed.json()).toMatchObject({ version: 1, board: { html: '<h1>原版</h1>' } })
     expect(fixed.headers.get('cache-control')).toBe('private, no-store')
