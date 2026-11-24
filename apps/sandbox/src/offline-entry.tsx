@@ -28,7 +28,7 @@ const rootElement = document.getElementById('root')
 let failure: string | undefined
 function failed(message: string) {
   if (failure) return
-  failure = message.slice(0, 600) || '离线预览不能启动'
+  failure = message.slice(0, 600) || '无法打开离线预览'
   if (rootElement?.parentElement) {
     const notice = document.createElement('p')
     notice.setAttribute('role', 'alert')
@@ -53,7 +53,7 @@ async function rendered() {
     await new Promise((resolve) => window.setTimeout(resolve, 30))
     if (!failure) notify('ready')
   } catch {
-    failed('离线画板有无法解码的图片资源')
+    failed('有图片无法离线加载')
   }
 }
 
@@ -66,7 +66,7 @@ try {
   installSandboxStorage(null)
   registerBuiltinRenderers()
   const render = getRenderer(payload.type)
-  if (!render) throw new Error('该制品类型不能离线渲染')
+  if (!render) throw new Error('此作品无法离线打开')
 
   window.addEventListener('securitypolicyviolation', (event) => {
     const location =

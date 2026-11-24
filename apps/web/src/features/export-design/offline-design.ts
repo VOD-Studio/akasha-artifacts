@@ -141,7 +141,7 @@ function preflight(html: string, width: number, height: number, signal: AbortSig
       else resolve()
     }
     function abort() {
-      finish(signal.aborted ? signal.reason : new Error('离线沙盒未能完成渲染'))
+      finish(signal.aborted ? signal.reason : new Error('画板无法离线打开'))
     }
     function receive({ source, origin, data }: MessageEvent) {
       if (origin !== 'null' || source !== frame.contentWindow) return
@@ -212,13 +212,13 @@ export async function composeOfflineDesign(
 function offlinePage(data: string) {
   return `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>离线试玩</title><style>
-body{margin:0;font:15px system-ui,sans-serif;color:#182031;background:#eef1f6}
-header{position:sticky;top:0;background:white;padding:.75rem 1rem;border-bottom:1px solid #c8cfdb;display:flex;align-items:center;gap:.65rem;flex-wrap:wrap}
+<title>离线预览</title><style>
+body{margin:0;font:15px system-ui,sans-serif;color:#171717;background:#f5f5f5}
+header{position:sticky;top:0;background:white;padding:.75rem 1rem;border-bottom:1px solid #d4d4d4;display:flex;align-items:center;gap:.65rem;flex-wrap:wrap}
 h1{font-size:1rem;margin:0}select,button{font:inherit}nav{display:flex;gap:.4rem;flex-wrap:wrap}
-main{padding:1rem;display:grid;justify-items:center}iframe{box-sizing:border-box;max-width:100%;border:1px solid #c8cfdb;background:white}
+main{padding:1rem;display:grid;justify-items:center}iframe{box-sizing:border-box;max-width:100%;border:1px solid #d4d4d4;background:white}
 #status:empty{display:none}</style></head><body>
-<header><h1></h1><span>离线试玩</span><label>画板 <select></select></label><nav aria-label="可前往的画板"></nav><span id="status" role="status"></span></header>
-<main><iframe title="试玩画板" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe></main>
+<header><h1></h1><span>离线预览</span><label>画板 <select></select></label><nav aria-label="跳转画板"></nav><span id="status" role="status"></span></header>
+<main><iframe title="画板" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe></main>
 <script type="application/json" id="akasha-offline-data">${data}</script><script>${player}</script></body></html>`
 }

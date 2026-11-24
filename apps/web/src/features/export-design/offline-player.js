@@ -10,8 +10,8 @@ let current
 function show(board) {
   current = board
   picker.value = board.id
-  status.textContent = '正在启动画板…'
-  frame.title = board.title
+  status.textContent = '正在打开…'
+  frame.title = `画板内容：${board.title}`
   frame.width = board.width
   frame.height = board.height
   frame.srcdoc =
@@ -32,7 +32,7 @@ window.addEventListener('message', ({ source, origin, data }) => {
   if (source !== frame.contentWindow || origin !== 'null' || !data) return
   if (data.type === 'akasha.offline.ready') status.textContent = ''
   if (data.type === 'akasha.offline.error' && typeof data.message === 'string') {
-    status.textContent = `离线试玩失败：${data.message.slice(0, 600)}`
+    status.textContent = `无法打开画板：${data.message.slice(0, 600)}`
   }
   if (data.type === 'akasha.offline.exit') picker.focus()
   if (data.type !== 'akasha.offline.navigate' || typeof data.target !== 'string') return
@@ -41,9 +41,7 @@ window.addEventListener('message', ({ source, origin, data }) => {
       from === current.id && (to === data.target || boards.get(to).legacyId === data.target),
   )
   if (canGo) show(boards.get(canGo.to))
-  else
-    status.textContent =
-      boards.size === 1 ? '这条路径不在单板交付包内。' : '未声明从这里出发的路径。'
+  else status.textContent = '当前画板无法跳转到该目标。'
 })
 
 title.textContent = `${bundle.title} · v${bundle.version}`
