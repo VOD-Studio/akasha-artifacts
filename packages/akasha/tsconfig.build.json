@@ -5,5 +5,12 @@
     "outDir": "dist"
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts"]
+  "exclude": ["src/**/*.test.ts"],
+  "references": [
+    { "path": "../protocol/tsconfig.build.json" },
+    { "path": "../server/tsconfig.build.json" },
+    { "path": "../mcp/tsconfig.build.json" },
+    { "path": "../hooks/tsconfig.build.json" },
+    { "path": "../skills/tsconfig.build.json" }
+  ]
 }

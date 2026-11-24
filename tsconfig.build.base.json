@@ -2,6 +2,8 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "customConditions": [],
+    "composite": true,
+    "tsBuildInfoFile": "${configDir}/dist/.tsbuildinfo",
     "noEmit": false,
     "declaration": true,
     "declarationMap": true,

@@ -227,11 +227,13 @@ make lint      # Run Biome check, architecture dependency guard, TypeScript type
 make typecheck # Run only the TypeScript typecheck
 make test      # Run Vitest unit tests across workspace packages
 make build     # Build all workspace packages and export protocol JSON Schemas
-make serve     # Build and start the workbench, backend, and sandbox
-make dev       # Start frontend and sandbox hot reload without the backend
+make dev       # Start full-stack development with frontend hot reload and backend auto-restart
+make serve     # Build and run the complete application without watching source files
 ```
 
-After `make serve`, open [http://127.0.0.1:24321](http://127.0.0.1:24321), or use the workbench port printed by the daemon. Stop `make dev` before running `make serve` to avoid port conflicts.
+Run `make dev` for day-to-day development. Once `开发 Daemon 已就绪` (development Daemon ready) appears, open [http://127.0.0.1:5173](http://127.0.0.1:5173). The command starts the workbench, the isolated development sandbox (`5174`), and the local Daemon. Frontend and sandbox changes hot reload; the Daemon restarts after a successful backend build without invalidating the browser session.
+
+Run `make serve` to verify the built application at [http://127.0.0.1:24321](http://127.0.0.1:24321), or use the port printed by the Daemon. Stop one command before starting the other when they share the same `AKASHA_HOME`. To use a different API port in development, set `AKASHA_DEV_DAEMON_PORT`, for example `AKASHA_DEV_DAEMON_PORT=24323 make dev`.
 
 ---
 

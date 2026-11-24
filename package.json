@@ -11,7 +11,7 @@
     "test": "vitest run",
     "lint": "biome check && node scripts/check-deps.mjs",
     "format": "biome check --write",
-    "dev": "pnpm -r --parallel dev"
+    "dev": "pnpm --filter @akasha/sandbox build:offline --outDir ../../node_modules/.cache/akasha-dev/offline && node scripts/stage-offline-runtime.mjs --dev && pnpm -r --parallel dev"
   },
   "repository": {
     "type": "git",

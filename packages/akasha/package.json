@@ -23,6 +23,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json && chmod +x dist/cli.js",
+    "dev": "node ../../scripts/dev-daemon.mjs",
     "typecheck": "tsc --noEmit"
   },
   "repository": {

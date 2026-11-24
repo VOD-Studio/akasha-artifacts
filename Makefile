@@ -24,10 +24,10 @@ test: ## 运行单元测试
 build: ## 构建所有工作区产物
 	pnpm build
 
-dev: ## 启动前端和沙盒的热更新开发服务（不含后端）
+dev: ## 启动全栈开发（前端与沙盒热更新，后端自动重启）
 	pnpm dev
 
-serve: build ## 构建并启动完整应用（工作台、后端和沙盒）
+serve: build ## 构建并启动完整应用（工作台、后端和沙盒，无源码热更新）
 	node packages/akasha/dist/cli.js serve
 
 hub-image: ## 构建单容器 Cloud Hub 镜像
