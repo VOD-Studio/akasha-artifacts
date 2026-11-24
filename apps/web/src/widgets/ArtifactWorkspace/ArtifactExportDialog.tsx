@@ -6,10 +6,13 @@ import { Radio, RadioGroup } from '@akasha/ui/radio'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
 import { Download } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { fetchArtifactDetail } from '../../entities/artifact'
+import {
+  type CanvasBoard,
+  createCanvasDocument,
+  fetchArtifactDetail,
+} from '../../entities/artifact'
 import { composeDesignPdf } from '../../features/export-design/design-pdf'
 import { captureBoardPng } from '../../shared/bridge/capture-png'
-import { type CanvasBoard, createCanvasDocument } from './canvas-model'
 
 /** 打开面板时固定版本；不因 Agent 推进头版本而改变下载内容。 */
 export interface DesignExportTarget {

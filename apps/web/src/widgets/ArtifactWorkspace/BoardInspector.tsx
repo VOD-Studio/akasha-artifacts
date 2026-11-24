@@ -12,6 +12,7 @@ import { Button } from '@akasha/ui/button'
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@akasha/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@akasha/ui/tabs'
 import { useState } from 'react'
+import type { CanvasDocument, CanvasLocation } from '../../entities/artifact'
 import { useSelectionStore } from '../../entities/selection'
 import { useWorkspaceStore } from '../../entities/workspace/store'
 import { ElementPickerButton } from '../../features/element-picker/ElementPickerButton'
@@ -22,7 +23,6 @@ import {
   type LayoutSelection,
   layoutSelectionIds,
 } from './canvas-arrangement'
-import type { CanvasDocument, CanvasLocation } from './canvas-model'
 import { DesignLayerLayout } from './DesignLayerLayout'
 import { LayerTree } from './LayerTree'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'

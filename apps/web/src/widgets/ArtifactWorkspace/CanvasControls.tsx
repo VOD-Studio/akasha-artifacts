@@ -16,11 +16,11 @@ import {
   Undo2,
 } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
+import type { CanvasPage } from '../../entities/artifact'
 import { ElementPickerButton } from '../../features/element-picker/ElementPickerButton'
 import { DRAWING_TOOLS, type DrawingTool } from './BoardDrawingSurface'
 import { CanvasPageActions, type CanvasPageEditing } from './CanvasPageActions'
 import type { Camera } from './canvas-camera'
-import type { CanvasPage } from './canvas-model'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
 
 const ZOOM_STEP = 1.25

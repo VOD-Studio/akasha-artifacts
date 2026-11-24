@@ -7,10 +7,10 @@ import {
   type Version,
 } from '@akasha/protocol'
 import { useCallback, useRef, useState } from 'react'
+import type { CanvasBoard } from '../../entities/artifact'
 import { fetchVisualEditTarget, previewVisualEdit } from '../../shared/api/client'
 import type { ShellOutgoingPayload } from '../../shared/bridge/host'
 import type { Point } from './canvas-camera'
-import type { CanvasBoard } from './canvas-model'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
 
 /** 有纯文本正文的原生设计对象。 */

@@ -7,9 +7,9 @@ import { useState } from 'react'
 import {
   type ArtifactDetailResponse,
   artifactKeys,
+  type CanvasPage,
   publishHumanVersion,
 } from '../../entities/artifact'
-import type { CanvasPage } from './canvas-model'
 import { type CanvasPageEdit, editCanvasPages } from './canvas-page-source'
 
 /** 可保存页面的头版本快照。 */

@@ -1,8 +1,8 @@
 import type { DesignLayer, Version } from '@akasha/protocol'
 import { Circle, PenLine, Square, StickyNote, Type } from 'lucide-react'
 import { type PointerEvent, useRef, useState } from 'react'
+import type { CanvasBoard } from '../../entities/artifact'
 import type { CanvasBounds, Point } from './canvas-camera'
-import type { CanvasBoard } from './canvas-model'
 
 /** 原生图层工具按声明顺序出现在画布工具条。 */
 export const DRAWING_TOOLS = [

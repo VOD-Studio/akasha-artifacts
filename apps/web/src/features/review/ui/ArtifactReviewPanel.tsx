@@ -7,20 +7,23 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@akasha/ui/sheet'
 import { useEffect, useRef, useState } from 'react'
-import { selectionForVersion, useSelectionStore } from '../../entities/selection'
-import { useWorkspaceStore } from '../../entities/workspace/store'
-import { AnnotationComposer, ReviewActionsBar } from '../../features/review'
-import { RoundSubmitBar } from '../RoundSubmitBar/RoundSubmitBar'
+import { selectionForVersion, useSelectionStore } from '../../../entities/selection'
+import { useWorkspaceStore } from '../../../entities/workspace/store'
+import { AnnotationComposer } from './AnnotationComposer'
 import { InspectorFeedbackCard } from './InspectorFeedbackCard'
+import { ReviewActionsBar } from './ReviewActionsBar'
+import { RoundSubmitBar } from './RoundSubmitBar'
 
-export interface InspectorPanelProps {
+interface ArtifactReviewPanelProps {
   artifactId: string
   projectId: string
+  /** 控制编辑和定位的快照；历史线程仍可展示，但不套用到当前元素。 */
   activeVersion: number
   activeRound: ReviewRound | null
   feedbacks: readonly Feedback[]
   /** 查看者可读线程；分享审阅者可批注但不能投递 Agent。 */
   canComment?: boolean
+  /** 分享会话不提供把反馈投递给所有者本机 Agent 的入口。 */
   notifyAgent?: boolean
   /** 仅包含当前版本、当前页内有确定画板归属的线程。 */
   pageFeedbackIds?: ReadonlySet<string>
@@ -40,7 +43,7 @@ function InspectorContent({
   pageFeedbackIds,
   threads,
   onFocusThread,
-}: InspectorPanelProps) {
+}: ArtifactReviewPanelProps) {
   const selectedElement = useSelectionStore((s) =>
     selectionForVersion(s, artifactId, activeVersion),
   )
@@ -168,10 +171,8 @@ function InspectorContent({
   )
 }
 
-/**
- * 批注与评审的非模态抽屉，开合不改变画布尺寸。
- */
-export function InspectorPanel(props: InspectorPanelProps) {
+/** 批注与评审的非模态抽屉；开合不改变画布尺寸，线程定位由工作区处理。 */
+export function ArtifactReviewPanel(props: ArtifactReviewPanelProps) {
   const open = useWorkspaceStore((s) => s.inspectorTab === 'review')
   const setTab = useWorkspaceStore((s) => s.setInspectorTab)
 

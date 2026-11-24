@@ -7,8 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useMutation } from '@tanstack/react-query'
 import { type FormEvent, useId, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { createArtifactShare } from '../../entities/artifact'
-import { createCanvasDocument } from './canvas-model'
+import { createArtifactShare, createCanvasDocument } from '../../entities/artifact'
 
 interface ArtifactShareDialogProps {
   artifact: Artifact

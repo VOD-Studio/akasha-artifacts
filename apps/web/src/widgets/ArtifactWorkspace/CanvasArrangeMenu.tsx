@@ -2,9 +2,9 @@ import { Button } from '@akasha/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@akasha/ui/popover'
 import { Group } from 'lucide-react'
 import { useState } from 'react'
+import type { CanvasBoard } from '../../entities/artifact'
 import { ALIGNMENTS, alignItems } from './canvas-arrangement'
 import type { CanvasBounds } from './canvas-camera'
-import type { CanvasBoard } from './canvas-model'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
 
 interface ArrangeMenuProps {

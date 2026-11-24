@@ -3,10 +3,10 @@ import { Button } from '@akasha/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@akasha/ui/popover'
 import { Download, Ellipsis, Focus, Play } from 'lucide-react'
 import { type MouseEventHandler, useState } from 'react'
+import type { CanvasBoard } from '../../entities/artifact'
 import { CanvasGeometryFields, sameGeometry } from './CanvasGeometryFields'
 import type { CanvasBoardEdit } from './canvas-board-source'
 import type { CanvasBounds } from './canvas-camera'
-import type { CanvasBoard } from './canvas-model'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
 
 interface QuickActionsProps {

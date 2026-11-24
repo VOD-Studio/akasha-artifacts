@@ -32,15 +32,14 @@ import { useWorkspaceStore } from '../src/entities/workspace/store'
 import { ElementPickerButton } from '../src/features/element-picker/ElementPickerButton'
 import { RuntimeErrorPanel } from '../src/features/error-recovery/RuntimeErrorPanel'
 import { applyRealtimeEventToCache } from '../src/features/live-sync/useLiveSync'
-import { AnnotationComposer } from '../src/features/review'
+import { AnnotationComposer, ArtifactReviewPanel } from '../src/features/review'
+import { RoundSubmitBar } from '../src/features/review/ui/RoundSubmitBar'
 import { VersionDiffView } from '../src/features/version-diff/VersionDiffView'
 import { AkashaWsClient } from '../src/shared/api/ws'
 import { SANDBOX_IFRAME_SANDBOX_ATTR, SandboxBridgeHost } from '../src/shared/bridge/host'
 import { ArtifactWorkspace } from '../src/widgets/ArtifactWorkspace/ArtifactWorkspace'
-import { InspectorPanel } from '../src/widgets/InspectorPanel/InspectorPanel'
 import { LibraryShell } from '../src/widgets/LibraryShell/LibraryShell'
 import { useLibraryView } from '../src/widgets/LibraryShell/library-view'
-import { RoundSubmitBar } from '../src/widgets/RoundSubmitBar/RoundSubmitBar'
 import { TopBar } from '../src/widgets/TopBar/TopBar'
 
 const SAMPLE_ARTIFACT: Artifact = {
@@ -1024,7 +1023,7 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     // 提交后可撤回当前轮次
     rerender(
       <QueryClientProvider client={queryClient}>
-        <InspectorPanel
+        <ArtifactReviewPanel
           artifactId={SAMPLE_ARTIFACT.publicId}
           projectId={SAMPLE_ARTIFACT.projectId}
           activeVersion={2}

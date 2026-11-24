@@ -24,3 +24,10 @@ export {
   useRevertArtifactMutation,
   useSetArtifactFavoriteMutation,
 } from './api/queries'
+export {
+  type CanvasBoard,
+  type CanvasDocument,
+  type CanvasLocation,
+  type CanvasPage,
+  createCanvasDocument,
+} from './model/canvas'

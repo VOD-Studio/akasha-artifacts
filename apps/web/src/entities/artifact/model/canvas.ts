@@ -4,21 +4,26 @@ import {
   type ArtifactType,
   canvasIds,
   type DesignLayer,
-  type ElementRef,
   parseArtboard,
   STANDALONE_BOARD_ID,
 } from '@akasha/protocol'
 
 /** 画布上的一块画板。 */
 export interface CanvasBoard {
+  /** 用于页面链接与跨版本选板；兼容旧源码的映射见 `legacyBlockId`。 */
   id: string
   title: string
+  /** 作者提供的补充说明；不是占位标题。 */
   subtitle?: string
+  /** 作者标注的推荐项，不表示已做评审决定。 */
   recommended?: boolean
   /** 画板 id 被改写以保持稳定时，保留源码里原来的 id。 */
   legacyBlockId?: string
+  /** 画板独立视口宽度，单位为 CSS 像素。 */
   width: number
+  /** 画板独立视口高度，单位为 CSS 像素。 */
   height: number
+  /** 传给沙盒的渲染器类型；并排多画板的每块内容是 HTML。 */
   type: ArtifactType
   /** 未声明时沿用旧制品的网格布局。 */
   position?: { x: number; y: number }
@@ -26,6 +31,7 @@ export interface CanvasBoard {
   layoutGroup?: string
   /** 持久化图层与作者写的 HTML 独立渲染。 */
   designLayers?: DesignLayer[]
+  /** 交给沙盒渲染的单板源码，不是外层画布文档。 */
   source: string
   /** 从说明合成的内容并非源码片段。 */
   generated?: true
@@ -33,9 +39,12 @@ export interface CanvasBoard {
   scoped: boolean
 }
 
+/** 负责显示一组画板的页面；总览和未分组页可以由模型生成。 */
 export interface CanvasPage {
+  /** 稳定的页面定位；空串是合成页面，不是持久化 ID。 */
   id: string
   title: string
+  /** 顺序用于总览和导出；可包含由多页共用的画板。 */
   boards: readonly CanvasBoard[]
   /** 署名页面上的直属画板数；总览等虚拟页面不支持改名或删除。 */
   ownedBoardCount?: number
@@ -53,8 +62,9 @@ export interface CanvasDocument {
   columns: number
   /** 画板之间的流程连线，两端是画板 id。 */
   flows: readonly { from: string; to: string; label?: string }[]
-  /** 只控制画布上的箭头，不影响试玩中声明的导航。 */
+  /** 只控制画布上的箭头，不影响原型交互中声明的导航。 */
   showFlows: boolean
+  /** 只影响画布连线的外观，不改端点和导航顺序。 */
   handDrawnFlows: boolean
 }
 
@@ -181,52 +191,4 @@ export function createCanvasDocument(
     showFlows: Boolean(overlay?.showFlows ?? data.showFlows),
     handDrawnFlows: Boolean(overlay?.handDrawnFlows ?? data.handDrawnFlows),
   }
-}
-
-interface BlockPlacement {
-  boardId: string
-  blockId: string
-}
-
-/**
- * 返回一个函数，为只带 `blockId` 的历史反馈补上画板归属。
- *
- * @returns 元素已带 `boardId` 或没有 `blockId` 时原样返回；否则按画板源码里的
- * `data-ak-block` 找到所属画板并补上 `boardId`。同一个块标识出现在多个画板时不补。
- */
-export function createCanvasElementResolver(canvas: CanvasDocument) {
-  let legacyBoards: Map<string, BlockPlacement | null> | undefined
-  return (element: ElementRef): ElementRef => {
-    if (element.boardId || !element.blockId) return element
-    legacyBoards ??= indexLegacyBlocks(canvas)
-    const placement = legacyBoards.get(element.blockId)
-    return placement ? { ...element, ...placement } : element
-  }
-}
-
-function indexLegacyBlocks(canvas: CanvasDocument) {
-  const placements = new Map<string, BlockPlacement | null>()
-  const add = (key: string, boardId: string, blockId = key) => {
-    const previous = placements.get(key)
-    if (previous === undefined) placements.set(key, { boardId, blockId })
-    else if (previous?.boardId !== boardId || previous.blockId !== blockId)
-      placements.set(key, null)
-  }
-  const seen = new Set<string>()
-  // 只在未带 boardId 的历史反馈上读取惰性模板；不把源码节点插入工作台 DOM。
-  const template = document.createElement('template')
-  for (const page of canvas.pages) {
-    for (const board of page.boards) {
-      if (!board.scoped || seen.has(board.id)) continue
-      seen.add(board.id)
-      add(board.id, board.id)
-      if (board.legacyBlockId) add(board.legacyBlockId, board.id, board.id)
-      template.innerHTML = board.source
-      for (const node of template.content.querySelectorAll('[data-ak-block]')) {
-        const id = node.getAttribute('data-ak-block')?.trim()
-        if (id) add(id, board.id)
-      }
-    }
-  }
-  return placements
 }

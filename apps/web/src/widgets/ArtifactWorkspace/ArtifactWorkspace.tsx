@@ -9,26 +9,25 @@ import {
   STANDALONE_BOARD_ID,
 } from '@akasha/protocol'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ArtifactDetailResponse } from '../../entities/artifact'
-import { selectionForVersion, useSelectionStore } from '../../entities/selection'
-import { useWorkspaceStore } from '../../entities/workspace/store'
-import { SplitCodeEditor } from '../../features/code-editor/SplitCodeEditor'
-import { selectActiveRound } from '../../features/review'
-import { VersionDiffView } from '../../features/version-diff/VersionDiffView'
-import { useVisualEdit } from '../../features/visual-edit/useVisualEdit'
-import { VisualEditPanel } from '../../features/visual-edit/VisualEditPanel'
-import { syncProjectSelection } from '../../shared/api/client'
-import { InspectorPanel } from '../InspectorPanel/InspectorPanel'
-import { ArtifactCanvas, type InspectorReveal } from './ArtifactCanvas'
-import { ArtifactFrame, type BoardFramePurpose, type FrameConnection } from './ArtifactFrame'
-import { BoardInspector, type BoardInspectorHandoff } from './BoardInspector'
 import {
+  type ArtifactDetailResponse,
   type CanvasBoard,
   type CanvasLocation,
   type CanvasPage,
   createCanvasDocument,
-  createCanvasElementResolver,
-} from './canvas-model'
+} from '../../entities/artifact'
+import { selectionForVersion, useSelectionStore } from '../../entities/selection'
+import { useWorkspaceStore } from '../../entities/workspace/store'
+import { SplitCodeEditor } from '../../features/code-editor/SplitCodeEditor'
+import { ArtifactReviewPanel, selectActiveRound } from '../../features/review'
+import { VersionDiffView } from '../../features/version-diff/VersionDiffView'
+import { useVisualEdit } from '../../features/visual-edit/useVisualEdit'
+import { VisualEditPanel } from '../../features/visual-edit/VisualEditPanel'
+import { syncProjectSelection } from '../../shared/api/client'
+import { ArtifactCanvas, type InspectorReveal } from './ArtifactCanvas'
+import { ArtifactFrame, type BoardFramePurpose, type FrameConnection } from './ArtifactFrame'
+import { BoardInspector, type BoardInspectorHandoff } from './BoardInspector'
+import { createCanvasElementResolver } from './feedback-location'
 import { InlineCanvasText } from './InlineCanvasText'
 import { useBoardInspection } from './useBoardInspection'
 import { useCanvasBoardEditing } from './useCanvasBoardEditing'
@@ -524,7 +523,7 @@ export function ArtifactWorkspace({
         </div>
       </main>
 
-      <InspectorPanel
+      <ArtifactReviewPanel
         artifactId={artifact.publicId}
         projectId={artifact.projectId}
         activeVersion={version.version}
