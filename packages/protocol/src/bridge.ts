@@ -4,6 +4,9 @@ import { EditOpSchema, ElementRectSchema, ElementRefSchema, JsonPatchOpSchema } 
 import { ArtifactTypeSchema, PROTOCOL_VERSION } from './primitives.js'
 import { ArtifactStorageOperationSchema } from './storage.js'
 
+/** 常驻总览画板位图的最大边长（像素）；不限制用户导出。 */
+export const CANVAS_PREVIEW_MAX_EDGE = 256
+
 const LayerIdSchema = z.string().min(1).max(1024)
 const CanvasLayerSchema = z.object({
   // 同一沙盒的 DOM 节点标识；重排时不会指向占据旧位置的其他节点
@@ -62,13 +65,23 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
     boardId: z.string().min(1).optional(),
     // 仅显式试玩启用原型导航；缺省仍是设计视图
     playback: z.literal(true).optional(),
+    // 仅 scoped 总览下发；首帧可以直接停在原位，不先启动再暂停
+    overviewAnimation: z.boolean().optional(),
     version: z.number().int().min(1),
+    // 区分同一连接中版本号相同的不同渲染，仅常驻总览需要。
+    renderId: z.number().int().positive().optional(),
     source: z.string(),
     designLayers: DesignLayersSchema.optional(),
     // 完整的初始状态快照
     state: z.record(z.string(), z.unknown()),
     // 上一次沙盒上报的保态快照
     preservedState: PreservedViewStateSchema.optional(),
+  }),
+  z.object({
+    ...BridgeEnvelopeBase,
+    type: z.literal('animation.set'),
+    version: z.number().int().min(1),
+    animate: z.boolean(),
   }),
   z.object({
     ...BridgeEnvelopeBase,
@@ -137,6 +150,8 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
     ...BridgeEnvelopeBase,
     type: z.literal('capture.png'),
     version: z.number().int().min(1),
+    // 常驻画板可多次捕获；区分过期响应。一次性导出不传此字段。
+    requestId: z.string().min(1).max(64).optional(),
     // 保持固有 CSS 视口；scale 只决定输出位图大小
     width: z.number().int().min(1).max(8192),
     height: z.number().int().min(1).max(8192),
@@ -172,6 +187,7 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
     // 一次渲染完成；`height` 是内容高度，供外壳自适应
     type: z.literal('rendered'),
     version: z.number().int().min(1),
+    renderId: z.number().int().positive().optional(),
     height: z.number().nonnegative().optional(),
     // 该版本的沙盒内容包含至少一个可操作控件
     playable: z.boolean().optional(),
@@ -199,6 +215,7 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
     ...BridgeEnvelopeBase,
     type: z.literal('capture.png.result'),
     version: z.number().int().min(1),
+    requestId: z.string().min(1).max(64).optional(),
     // 通过结构化克隆发送 Blob，不把 PNG 放进 JSON 或源码
     png: z
       .instanceof(Blob)
@@ -210,6 +227,7 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
     ...BridgeEnvelopeBase,
     type: z.literal('capture.png.failure'),
     version: z.number().int().min(1),
+    requestId: z.string().min(1).max(64).optional(),
     message: z.string().min(1),
   }),
   z.object({
