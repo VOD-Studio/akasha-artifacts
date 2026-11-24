@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { type Artifact, type Feedback, PROTOCOL_VERSION, type Version } from '@akasha/protocol'
+import {
+  type Artifact,
+  type Feedback,
+  PROTOCOL_VERSION,
+  projectArtboard,
+  type Version,
+} from '@akasha/protocol'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
@@ -120,8 +126,49 @@ afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   useSelectionStore.getState().clearSelection(artifact.publicId)
-  useWorkspaceStore.setState({ inspectorTab: null })
+  useWorkspaceStore.setState({ inspectorTab: null, viewMode: 'preview' })
   sessionStorage.clear()
+})
+
+it('切版读取源码期间隐藏旧版的保存入口，加载后打开当前版本', async () => {
+  const next = detailFor(
+    2,
+    JSON.stringify({ boards: [{ id: 'next', title: '下一版', html: '<h1>新稿</h1>' }] }),
+  )
+  const projection = projectArtboard(next.version.source, 2)
+  if (!projection) throw new Error('测试画稿未投影')
+  const { source: _source, ...summary } = next.version
+  const pending = Promise.withResolvers<Response>()
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = new URL(String(input), window.location.origin)
+    if (url.pathname.endsWith('/boards')) {
+      return Response.json({
+        artifactId: artifact.publicId,
+        version: 2,
+        board: projection.contents[0],
+      })
+    }
+    if (url.pathname.endsWith(artifact.publicId) && url.search === '?version=2') {
+      return await pending.promise
+    }
+    return Response.json({})
+  })
+  useWorkspaceStore.getState().setViewMode('edit')
+  const view = showWorkspace()
+  const editor = screen.getByRole('region', { name: '代码编辑区' })
+  view.update(
+    <ArtifactWorkspace
+      detail={{ ...next, version: summary, canvas: projection.index }}
+      versions={[summary]}
+      sandboxOrigin="http://127.0.0.1:24331"
+    />,
+  )
+  expect(screen.getByText('正在读取源码…')).toBeTruthy()
+  expect(screen.queryByRole('region', { name: '代码编辑区' })).toBeNull()
+  expect(screen.queryByRole('button', { name: /^保存/ })).toBeNull()
+  pending.resolve(Response.json(next))
+  expect(await screen.findByRole('region', { name: '代码编辑区' })).toBe(editor)
+  expect(screen.getByTestId('l3-code-editor').textContent).toContain('v2')
 })
 
 it('展开的画板报错时，仍用作品原始链接向 Agent 投递', async () => {

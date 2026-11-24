@@ -97,7 +97,7 @@ export function ArtifactWorkspace({
   const shareCanEdit = !access || (access.role === 'edit' && fixedVersion === undefined)
   const canComment = access?.role !== 'view'
   const rounds = roundsOverride ?? detail.rounds
-  const [liveEditSource, setLiveEditSource] = useState<string | null>(null)
+  const [liveEdit, setLiveEdit] = useState<{ version: number; source: string } | null>(null)
   const [canvasLocation, setCanvasLocation] = useState<CanvasLocation | null>(null)
   const [inspectorReveal, setInspectorReveal] = useState<InspectorReveal | null>(null)
   const clearInspectorReveal = useCallback(() => setInspectorReveal(null), [])
@@ -117,19 +117,29 @@ export function ArtifactWorkspace({
   const sourceRead = useArtifactSourceQuery(
     artifact.publicId,
     version.version,
-    !inline && ((editorMounted && shareCanEdit) || viewMode === 'source'),
+    !inline && (viewMode === 'edit' || viewMode === 'source'),
   )
   const fullVersion = inline ?? sourceRead.data
   const headSource = useArtifactSourceQuery(
     artifact.publicId,
     latestVersion.version,
-    editorMounted &&
-      shareCanEdit &&
+    viewMode === 'edit' &&
       latestVersion.version > version.version &&
       !hasVersionSource(latestVersion),
   )
   const editorVersion = useRef<Version | undefined>(undefined)
   if (fullVersion) editorVersion.current = fullVersion
+  const previewVersion = fullVersion?.version
+  const updateLivePreview = useCallback(
+    (source: string | null) => {
+      setLiveEdit(
+        source !== null && previewVersion !== undefined
+          ? { source, version: previewVersion }
+          : null,
+      )
+    },
+    [previewVersion],
+  )
   useEffect(() => {
     if (viewMode === 'edit') {
       setEditorMounted(true)
@@ -217,7 +227,11 @@ export function ArtifactWorkspace({
 
   const savedIndex = detail.canvas
   const definition = detail.canvas === undefined ? detail.version.source : detail.canvas
-  const editedSource = viewMode === 'edit' ? liveEditSource : null
+  const editedSource =
+    viewMode === 'edit' && fullVersion && liveEdit?.version === version.version
+      ? liveEdit.source
+      : null
+  const readEditorPending = viewMode === 'edit' && !fullVersion
   const canvasProps = fixedVersion === undefined ? state.snapshot.props : undefined
   const savedCanvas = useMemo(
     () =>
@@ -522,19 +536,24 @@ export function ArtifactWorkspace({
           <div
             className={viewMode === 'edit' ? 'h-1/2 min-h-0 shrink-0 md:h-auto md:w-1/2' : 'hidden'}
           >
-            {editorVersion.current ? (
-              <SplitCodeEditor
-                artifact={artifact}
-                version={editorVersion.current}
-                latestVersion={
-                  hasVersionSource(latestVersion) ? latestVersion : (headSource.data ?? fullVersion)
-                }
-                notifyAgent={!access}
-                onLivePreviewChange={setLiveEditSource}
-                onVersionSaved={onVersionSaved}
-                onVersionAdopted={onVersionAdopted}
-              />
-            ) : (
+            {editorVersion.current && (
+              <div className="size-full" hidden={readEditorPending}>
+                <SplitCodeEditor
+                  artifact={artifact}
+                  version={editorVersion.current}
+                  latestVersion={
+                    hasVersionSource(latestVersion)
+                      ? latestVersion
+                      : (headSource.data ?? fullVersion)
+                  }
+                  notifyAgent={!access}
+                  onLivePreviewChange={updateLivePreview}
+                  onVersionSaved={onVersionSaved}
+                  onVersionAdopted={onVersionAdopted}
+                />
+              </div>
+            )}
+            {readEditorPending && (
               <SourceStatus error={sourceRead.error} retry={() => void sourceRead.refetch()} />
             )}
           </div>
