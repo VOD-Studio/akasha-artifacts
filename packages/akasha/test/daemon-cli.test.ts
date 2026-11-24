@@ -82,6 +82,7 @@ describe('Local singleton Daemon lifecycle & security', () => {
     expect(sbRes.status).toBe(200)
     const csp = sbRes.headers.get('content-security-policy') ?? ''
     expect(csp).toContain("connect-src 'none'")
+    expect(csp.split('; ')).toContain('media-src data: blob:')
     expect(csp).toContain(`http://127.0.0.1:${first.state.port}`)
     expect(sbRes.headers.get('access-control-allow-origin')).toBe('*')
 

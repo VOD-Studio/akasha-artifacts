@@ -67,7 +67,7 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
     boardId: z.string().min(1).optional(),
     // 仅显式试玩启用原型导航；缺省仍是设计视图
     playback: z.literal(true).optional(),
-    // 仅 scoped 总览下发；首帧可以直接停在原位，不先启动再暂停
+    // scoped 设计帧可直接以静帧开始；试玩不接受此开关。
     overviewAnimation: z.boolean().optional(),
     version: z.number().int().min(1),
     // 区分同一连接中版本号相同的不同渲染，仅常驻总览需要。
@@ -202,6 +202,8 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
     height: z.number().nonnegative().optional(),
     // 该版本的沙盒内容包含至少一个可操作控件
     playable: z.boolean().optional(),
+    // 没有新声明的旧画板，可按沙盒实际发现的可控时间轴调度。
+    animated: z.boolean().optional(),
   }),
   z.object({
     ...BridgeEnvelopeBase,

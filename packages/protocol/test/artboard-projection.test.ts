@@ -47,3 +47,31 @@ it('布局、单板读取和旧稿链接使用相同标识，不在索引传输�
   expect(board).not.toHaveProperty('tweaks')
   expect(JSON.stringify(index)).not.toMatch(/保留原内容|已完成/)
 })
+
+it('独立的播放声明随索引传输，不把缺省当作关闭', () => {
+  const projection = projectArtboard(
+    JSON.stringify({
+      boards: [
+        { title: '旧稿' },
+        { title: '静态', presentation: { animation: false, interactive: false } },
+        { title: '仅动画', presentation: { animation: true } },
+        { title: '仅原型', presentation: { interactive: true } },
+        { title: '动画和原型', presentation: { animation: true, interactive: true } },
+        { title: '无效字段', presentation: { animation: 'true', interactive: false } },
+      ],
+    }),
+    4,
+  )
+  if (!projection) throw new Error('画板夹具不能解析')
+  expect(projection.index.boards.map(({ presentation }) => presentation)).toEqual([
+    undefined,
+    { animation: false, interactive: false },
+    { animation: true },
+    { interactive: true },
+    { animation: true, interactive: true },
+    { interactive: false },
+  ])
+  for (const board of projection.contents) {
+    expect(board).not.toHaveProperty('presentation')
+  }
+})

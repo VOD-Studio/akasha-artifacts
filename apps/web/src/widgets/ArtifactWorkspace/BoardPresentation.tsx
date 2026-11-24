@@ -1,5 +1,5 @@
 import { Button } from '@akasha/ui/button'
-import { ArrowLeft, Minus, Play, Plus } from 'lucide-react'
+import { ArrowLeft, Download, Minus, Play, Plus } from 'lucide-react'
 import { type MouseEventHandler, type ReactNode, useLayoutEffect, useRef, useState } from 'react'
 import type { CanvasBoard } from '@/entities/artifact'
 import { useViewportSize } from './useViewportSize'
@@ -9,6 +9,7 @@ interface BoardPresentationProps {
   visible?: boolean
   playback?: boolean
   onPlay?: MouseEventHandler<HTMLButtonElement>
+  onExport?: () => void
   onClose: () => void
   children: ReactNode
 }
@@ -34,6 +35,7 @@ export function BoardPresentation({
   visible = true,
   playback = false,
   onPlay,
+  onExport,
   onClose,
   children,
 }: BoardPresentationProps) {
@@ -70,47 +72,59 @@ export function BoardPresentation({
           <h2 className="min-w-0 break-words text-sm font-medium">{board.title}</h2>
         </div>
         {!playback && (
-          <fieldset className="flex min-w-0 flex-wrap items-center gap-1">
-            <legend className="sr-only">画板缩放</legend>
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-pressed={zoom === 'fit'}
-              onClick={() => setZoom('fit')}
-            >
-              适应窗口
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-pressed={zoom === 'fill'}
-              onClick={() => setZoom('fill')}
-            >
-              填充宽度
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              iconOnly
-              aria-label="缩小"
-              disabled={scale <= 0.001}
-              onClick={() => setZoom(clampScale(scale / SCALE_STEP))}
-            >
-              <Minus size={15} />
-            </Button>
-            <Button variant="ghost" size="sm" aria-label="实际大小" onClick={() => setZoom(1)}>
-              <output aria-label="画板缩放比例">{Math.round(scale * 1000) / 10}%</output>
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              iconOnly
-              aria-label="放大"
-              disabled={scale >= 4}
-              onClick={() => setZoom(clampScale(scale * SCALE_STEP))}
-            >
-              <Plus size={15} />
-            </Button>
+          <div className="flex min-w-0 flex-wrap items-center gap-1">
+            <fieldset className="flex min-w-0 flex-wrap items-center gap-1">
+              <legend className="sr-only">画板缩放</legend>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-pressed={zoom === 'fit'}
+                onClick={() => setZoom('fit')}
+              >
+                适应窗口
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-pressed={zoom === 'fill'}
+                onClick={() => setZoom('fill')}
+              >
+                填充宽度
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                iconOnly
+                aria-label="缩小"
+                disabled={scale <= 0.001}
+                onClick={() => setZoom(clampScale(scale / SCALE_STEP))}
+              >
+                <Minus size={15} />
+              </Button>
+              <Button variant="ghost" size="sm" aria-label="实际大小" onClick={() => setZoom(1)}>
+                <output aria-label="画板缩放比例">{Math.round(scale * 1000) / 10}%</output>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                iconOnly
+                aria-label="放大"
+                disabled={scale >= 4}
+                onClick={() => setZoom(clampScale(scale * SCALE_STEP))}
+              >
+                <Plus size={15} />
+              </Button>
+            </fieldset>
+            {onExport && (
+              <Button
+                variant="ghost"
+                size="sm"
+                leftIcon={<Download size={15} />}
+                onClick={onExport}
+              >
+                导出画板
+              </Button>
+            )}
             {onPlay && (
               <Button
                 variant="primary"
@@ -122,7 +136,7 @@ export function BoardPresentation({
                 播放原型
               </Button>
             )}
-          </fieldset>
+          </div>
         )}
       </header>
       <section

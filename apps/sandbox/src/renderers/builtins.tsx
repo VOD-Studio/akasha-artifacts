@@ -13,6 +13,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { preparePrototypeMedia } from '../prototype-media'
 import { ArtifactCompileError, compileReactArtifact } from '../runtime/compiler'
 import { usePersistentControl } from '../state/preserve'
 import { DataStoryRenderer } from './data-story'
@@ -24,6 +25,7 @@ import {
   VerifyRenderer,
 } from './kit-renderers'
 import { PrWalkthroughRenderer } from './pr-walkthrough'
+import { freezePreviewBitmaps } from './preview-bitmaps'
 import { type RendererProps, registerRenderer } from './registry'
 import { sanitizeMarkup } from './sanitize'
 
@@ -102,7 +104,14 @@ class ArtifactErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryS
   }
 }
 
-function HtmlRenderer({ source, boardId, version, preserved, onRendered }: RendererProps) {
+function HtmlRenderer({
+  source,
+  boardId,
+  artboardView,
+  version,
+  preserved,
+  onRendered,
+}: RendererProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const onRenderedRef = useRef(onRendered)
   onRenderedRef.current = onRendered
@@ -112,11 +121,39 @@ function HtmlRenderer({ source, boardId, version, preserved, onRendered }: Rende
     if (!el) return
     // 对画板使用片段内行列；外壳不把它当成整份 artboard JSON 的编辑坐标。
     const instrumented = injectHtmlLocations(source).code
-    el.innerHTML = sanitizeMarkup(instrumented, 'html')
-    const cleanup = preserved.bindDomPersistence(el, window)
-    onRenderedRef.current(version)
-    return cleanup
-  }, [source, version, preserved])
+    const markup = sanitizeMarkup(instrumented, 'html')
+    const rendered = () => {
+      const cleanup = preserved.bindDomPersistence(el, window)
+      onRenderedRef.current(version)
+      return cleanup
+    }
+    if (!artboardView) {
+      el.innerHTML = markup
+      return rendered()
+    }
+
+    const template = el.ownerDocument.createElement('template')
+    template.innerHTML = markup
+    const fragment = template.content
+    preparePrototypeMedia(fragment, artboardView === 'play')
+    const mount = () => {
+      el.replaceChildren(fragment)
+      return rendered()
+    }
+    if (artboardView === 'play') return mount()
+    const controller = new AbortController()
+    const pending = freezePreviewBitmaps(fragment, el.ownerDocument, controller.signal)
+    if (!pending) return mount()
+    el.replaceChildren()
+    let cleanup: (() => void) | undefined
+    void pending.then(() => {
+      if (!controller.signal.aborted) cleanup = mount()
+    })
+    return () => {
+      controller.abort()
+      cleanup?.()
+    }
+  }, [source, version, preserved, artboardView])
 
   return (
     <div

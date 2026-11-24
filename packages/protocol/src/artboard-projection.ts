@@ -1,6 +1,6 @@
 import { type ArtboardBoard, type ArtboardData, canvasIds, parseArtboard } from './artboard.js'
 
-/** 布局所需的单板元数据；正文与渲染声明一律通过单板读取。 */
+/** 布局与播放入口所需的单板元数据；正文一律通过单板读取。 */
 export interface ArtboardIndexBoard
   extends Pick<
     ArtboardBoard,
@@ -11,6 +11,7 @@ export interface ArtboardIndexBoard
     | 'position'
     | 'layoutGroup'
     | 'recommended'
+    | 'presentation'
     | 'legacyId'
   > {
   /** 外壳无需读取正文就能裁剪轮廓和缩略图；颜色仍只随正文派发。 */
@@ -68,6 +69,7 @@ export function projectArtboard(source: string, version: number): ArtboardProjec
       position: board.position,
       layoutGroup: board.layoutGroup,
       recommended: board.recommended,
+      presentation: board.presentation,
       legacyId: id === board.id ? board.legacyId : board.id,
       ...(pageId ? { pageId } : {}),
       ...(board.pageId && !pageId ? { unplaced: true } : {}),

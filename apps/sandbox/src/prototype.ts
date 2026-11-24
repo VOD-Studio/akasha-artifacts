@@ -1,26 +1,47 @@
-const CONTROL = [
-  'button',
-  'input:not([type="hidden"]):not([readonly])',
+const NATIVE_CONTROL = [
   'select',
   'textarea:not([readonly])',
   'details > summary',
-  'a[href], a[data-ak-next]',
-  '[contenteditable="true"]',
-  '[role="button"][tabindex]',
+  '[contenteditable=""], [contenteditable="true" i], [contenteditable="plaintext-only" i]',
 ].join(',')
 const ACTION =
   'button, input[type="button"], input[type="submit"], input[type="image"], a, [role="button"][tabindex]'
+const CONTROL = `${NATIVE_CONTROL},${ACTION},input:not([type="hidden"]):not([readonly])`
 
-/** 只把实际可用的控件视为试玩入口；普通外链不会在试玩中打开。 */
-export function hasPlayableControls(root: HTMLElement): boolean {
+/** 片段 HTML 不运行作者脚本；只有独立 React 允许把动态绑定的按钮作为旧稿入口。 */
+export function hasPlayableControls(
+  root: HTMLElement,
+  { scoped = false }: { scoped?: boolean } = {},
+): boolean {
   for (const element of root.querySelectorAll(CONTROL)) {
-    if (element.matches(':disabled, [aria-disabled="true"]')) continue
+    if (element.matches(':disabled, [aria-disabled="true"], audio, video, input[type="hidden"]')) {
+      continue
+    }
     if (element.closest('[hidden], [inert], [aria-hidden="true"]')) continue
     if (element.checkVisibility?.({ visibilityProperty: true }) === false) continue
-    if (element.matches('a') && !nextBoard(element) && !isLocalLink(element)) continue
-    return true
+    if (element.matches('a')) {
+      if (nextBoard(element) || isLocalLink(element)) return true
+      continue
+    }
+    if (!scoped || (element.matches(ACTION) && nextBoard(element))) return true
+    if (hasNativeAction(element, root)) return true
   }
   return false
+}
+
+function hasNativeAction(element: Element, root: HTMLElement): boolean {
+  if (element.matches(NATIVE_CONTROL)) return true
+  if (!(element instanceof HTMLButtonElement || element instanceof HTMLInputElement)) return false
+  const { type, form } = element
+  if (type === 'button' || (!form && element instanceof HTMLButtonElement)) {
+    const id = element.getAttribute('popovertarget')
+    const popover = id ? root.ownerDocument.getElementById(id) : null
+    if (popover && root.contains(popover) && popover.hasAttribute('popover')) return true
+  }
+  if (type === 'submit' || type === 'image' || type === 'reset') {
+    return form !== null && root.contains(form)
+  }
+  return element instanceof HTMLInputElement && type !== 'button' && !element.readOnly
 }
 
 function nextBoard(element: Element | null): string | undefined {

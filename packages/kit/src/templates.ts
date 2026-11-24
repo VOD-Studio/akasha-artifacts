@@ -508,7 +508,10 @@ export const ARTBOARD_TEMPLATE: KitTemplateDefinition<ArtboardData> = {
     'tweaks 最多 32 项；每项包含板内唯一 id（小写字母开头，可含小写字母、数字及连字符）、label、可选 labels（语言标签到文案）及 default。' +
     'type 为 number 时必填 min/max；enum 使用 options: [{ value, label, labels? }]，value 是稳定单词，default 必须为其中一项；boolean 用 true/false；color 用六位 #RRGGBB。' +
     '在当前板的 HTML 样式中以 var(--akasha-tweak-<id>) 消费该值；数值无单位，布尔为 1 或 0。' +
-    '界面覆写只预览当前画板，不写入版本或整份模板状态流；固定快照及导出使用源码默认值。',
+    '界面覆写只预览当前画板，不写入版本或整份模板状态流；固定快照及导出使用源码默认值。' +
+    '\n每板可用 presentation: { animation?: boolean, interactive?: boolean } 单独声明循环动效与交互。两个字段可同时为 true；false 明确关闭该能力，省略时由旧稿的实际动效或控件决定。' +
+    '原型用 flows 与 data-ak-next 声明跳转；原生表单、详情折叠和输入控件可在试玩时操作。普通按钮图案或音频不构成试玩。' +
+    'CSS 关键帧和内联 SVG 可在可见总览循环，无需脚本；GIF/APNG 总览只显示静帧。音视频仅用内嵌媒体，进入试玩后也须手动播放。',
   example: JSON.stringify(
     {
       title: '结账页布局探索',

@@ -37,6 +37,7 @@ import { BoardResourceView, readLoadedBoard, useBoardResource } from './BoardRes
 import { BoardResources } from './board-resources'
 import { createBoardTweakPreviewStore } from './board-tweak-previews'
 import { InlineCanvasText } from './InlineCanvasText'
+import { useBoardCapabilities } from './useBoardCapabilities'
 import { useBoardInspection } from './useBoardInspection'
 import { useCanvasBoardEditing } from './useCanvasBoardEditing'
 import { useInlineCanvasText } from './useInlineCanvasText'
@@ -343,34 +344,10 @@ export function ArtifactWorkspace({
     [artifact.publicId, fixedVersion],
   )
   const canvasSessionKey = `akasha:canvas:${artifact.publicId}/${fixedVersion ?? 'head'}`
-  const [playable, setPlayable] = useState<{
-    artifactId: string
-    version: number
-    previewSource: string | null
-    ids: ReadonlySet<string>
-  } | null>(null)
-  const onPlayable = useCallback(
-    (board: CanvasBoard, activeVersion: number, available: boolean) => {
-      setPlayable((previous) => {
-        const ids =
-          previous?.artifactId === artifact.publicId &&
-          previous.version === activeVersion &&
-          previous.previewSource === editedSource
-            ? previous.ids
-            : undefined
-        if (available === Boolean(ids?.has(board.id))) return previous
-        const next = new Set(ids)
-        if (available) next.add(board.id)
-        else next.delete(board.id)
-        return {
-          artifactId: artifact.publicId,
-          version: activeVersion,
-          previewSource: editedSource,
-          ids: next,
-        }
-      })
-    },
-    [artifact.publicId, editedSource],
+  const { canPlay, canAnimate, onObserve } = useBoardCapabilities(
+    artifact.publicId,
+    version.version,
+    editedSource,
   )
   const revealBoard = useCallback((location: InspectorReveal) => {
     useWorkspaceStore.getState().setViewMode('preview')
@@ -502,7 +479,7 @@ export function ArtifactWorkspace({
                 }
               : undefined
           }
-          onPlayable={onPlayable}
+          onCapabilities={onObserve}
           watchLayers={overview && watchBoard === board.id}
           onLayers={inspection.onLayers}
           onElementTarget={onElementTarget}
@@ -532,7 +509,7 @@ export function ArtifactWorkspace({
       focusAndRemember,
       registerFrame,
       registerFocusedFrame,
-      onPlayable,
+      onObserve,
       watchBoard,
       inspection.onLayers,
       onElementTarget,
@@ -609,12 +586,8 @@ export function ArtifactWorkspace({
             }
             renderBoard={renderBoard}
             onDemandChange={onDemandChange}
-            canPlay={(board) =>
-              playable?.artifactId === artifact.publicId &&
-              playable.version === version.version &&
-              playable.previewSource === editedSource &&
-              playable.ids.has(board.id)
-            }
+            canPlay={canPlay}
+            canAnimate={canAnimate}
             visible={showCanvas}
             visualEdit={
               visual.available

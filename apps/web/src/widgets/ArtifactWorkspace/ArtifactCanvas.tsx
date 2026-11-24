@@ -22,6 +22,7 @@ import {
 } from './CanvasBoardActions'
 import { CanvasToolbar, PageNavigator } from './CanvasControls'
 import type { CanvasPageEditing } from './CanvasPageActions'
+import { CanvasPlaybackMenu } from './CanvasPlaybackMenu'
 import {
   changeLayoutSelection,
   fitSelection,
@@ -48,6 +49,7 @@ import { useBoardGesture } from './useBoardGesture'
 import { useBoardPresentation } from './useBoardPresentation'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
 import type { CanvasTextTools } from './useInlineCanvasText'
+import { useOverviewPlayback } from './useOverviewPlayback'
 import { useViewportSize } from './useViewportSize'
 
 /** 显式选板要求适配；元素指认与图层选择只在画板不可见时移动相机。 */
@@ -83,6 +85,7 @@ interface ArtifactCanvasProps {
   /** 从最新的可见范围提交优先队列，不把占位板或遗留选区当成加载需求。 */
   onDemandChange: (ids: readonly string[], idle: boolean) => void
   canPlay: (board: CanvasBoard) => boolean
+  canAnimate: (board: CanvasBoard) => boolean
   /** 可视化直改的开关；省略时画布不提供直改入口。 */
   visualEdit?: { isPicking: boolean; toggle: () => void; cancel: () => void }
 }
@@ -104,6 +107,7 @@ interface CanvasView {
 }
 
 const DEFAULT_PAGE: PageView = { selected: null, camera: null }
+const NO_MOTION: ReadonlySet<string> = new Set()
 const KEYBOARD_CONTROL =
   'input, textarea, select, button, a[href], [contenteditable]:not([contenteditable="false"]), [role="button"]'
 
@@ -180,6 +184,7 @@ export function ArtifactCanvas({
   renderBoard,
   onDemandChange,
   canPlay,
+  canAnimate,
   visualEdit,
 }: ArtifactCanvasProps) {
   const viewportRef = useRef<HTMLElement>(null)
@@ -205,6 +210,7 @@ export function ArtifactCanvas({
   const [dragging, setDragging] = useState(false)
   const presentation = useBoardPresentation(document, visible)
   const showOverview = visible && !presentation.focused && !presentation.playing
+  const motion = useOverviewPlayback()
   const size = useViewportSize(viewportRef, showOverview)
   const measurable = showOverview && size.width > 0 && size.height > 0
 
@@ -485,11 +491,18 @@ export function ArtifactCanvas({
   useLayoutEffect(() => {
     recent.current = showOverview ? { index: viewportIndex, ids: plan.runtime } : null
   }, [showOverview, viewportIndex, plan.runtime])
-  const animatedIds = useMemo(
-    () => new Set(plan.detail.slice(0, MAX_ANIMATED_BOARDS)),
-    [plan.detail],
-  )
-  const activePresentation = presentation.playing ?? presentation.focused
+  const animatedIds = useMemo(() => {
+    if (!showOverview || !motion.allowsAnimation) return NO_MOTION
+    const ids = new Set<string>()
+    for (const id of plan.detail) {
+      const board = viewportIndex.byId.get(id)?.board
+      if (board && canAnimate(board)) ids.add(id)
+      if (ids.size === MAX_ANIMATED_BOARDS) break
+    }
+    return ids
+  }, [showOverview, motion.allowsAnimation, plan.detail, viewportIndex, canAnimate])
+  const focused = presentation.focused
+  const activePresentation = presentation.playing ?? focused
   const demand = useMemo(() => {
     if (!visible || invalidAddress) return []
     if (activePresentation)
@@ -710,6 +723,13 @@ export function ArtifactCanvas({
       zoomCamera(current, factor, { x: size.width / 2, y: size.height / 2 }),
     )
 
+  const openFromMenu = (boardId: string, trigger: HTMLButtonElement, play: boolean) => {
+    if (!page) return
+    pauseCanvasTools()
+    const target = { pageId: page.id, boardId }
+    if (play) presentation.openPlay(target, trigger)
+    else presentation.openFocus(target, trigger)
+  }
   const activateTitle = (boardId: string, event: MouseEvent<HTMLButtonElement>) => {
     if (boardGesture.consumesClick(event) || (handActive && event.detail !== 0)) return
     onClearElement()
@@ -1060,6 +1080,19 @@ export function ArtifactCanvas({
         </section>
         <CanvasToolbar
           camera={camera}
+          playbackMenu={
+            !invalidAddress && page && page.boards.length > 0 ? (
+              <CanvasPlaybackMenu
+                boards={page.boards}
+                canPlay={canPlay}
+                canAnimate={canAnimate}
+                paused={motion.paused}
+                onTogglePause={motion.togglePause}
+                onOpen={(id, trigger) => openFromMenu(id, trigger, false)}
+                onPlay={(id, trigger) => openFromMenu(id, trigger, true)}
+              />
+            ) : undefined
+          }
           hand={hand}
           onChangeTool={setCanvasTool}
           designTools={
@@ -1118,14 +1151,15 @@ export function ArtifactCanvas({
           }}
         />
       </div>
-      {presentation.focus && presentation.focused ? (
+      {presentation.focus && focused ? (
         <BoardPresentation
           key={`focus:${JSON.stringify(presentation.focus)}`}
-          board={presentation.focused}
+          board={focused}
           visible={visible && !presentation.playing}
           onClose={presentation.closeFocus}
+          onExport={onExportBoard ? () => onExportBoard(focused.id) : undefined}
           onPlay={
-            isPrototype(presentation.focused) && canPlay(presentation.focused)
+            canPlay(focused)
               ? (event) => {
                   if (presentation.focus)
                     presentation.openPlay(presentation.focus, event.currentTarget)
@@ -1133,9 +1167,7 @@ export function ArtifactCanvas({
               : undefined
           }
         >
-          {visible && !presentation.playing
-            ? renderBoard(presentation.focused, { type: 'focus' }, true)
-            : null}
+          {visible && !presentation.playing ? renderBoard(focused, { type: 'focus' }, true) : null}
         </BoardPresentation>
       ) : null}
       {visible && presentation.play && presentation.playing ? (
@@ -1147,11 +1179,9 @@ export function ArtifactCanvas({
         >
           {renderBoard(
             presentation.playing,
-            {
-              type: 'play',
-              onNavigate: presentation.navigate,
-              onExit: presentation.closePlay,
-            },
+            presentation.playing.presentation?.interactive === false
+              ? { type: 'focus' }
+              : { type: 'play', onNavigate: presentation.navigate, onExit: presentation.closePlay },
             true,
           )}
         </BoardPresentation>
