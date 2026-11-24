@@ -275,7 +275,7 @@ export function PropsPanel({
                       nextChecked,
                     )
                   }}
-                  className="h-4 w-4 accent-violet-600"
+                  className="h-4 w-4 accent-primary"
                 />
               </label>
             )
@@ -335,7 +335,7 @@ export function PropsPanel({
                       nextNum,
                     )
                   }}
-                  className="w-full accent-violet-600"
+                  className="w-full accent-primary"
                 />
               </div>
             )

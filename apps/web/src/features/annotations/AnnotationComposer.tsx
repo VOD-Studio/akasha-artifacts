@@ -135,14 +135,12 @@ export function AnnotationComposer({
       </div>
 
       {target ? (
-        <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-violet-200 bg-violet-50/70 px-2.5 py-1.5 text-[11px] text-violet-950">
+        <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-border bg-selected px-2.5 py-1.5 text-[11px] text-selected-foreground">
           <div className="flex min-w-0 items-center gap-1.5">
-            <Target size={12} className="shrink-0 text-violet-600" />
+            <Target size={12} className="shrink-0" />
             <span className="truncate font-mono font-medium">{elementLabel(target)}</span>
             {target.textPreview && !target.dataPoints && !target.blockId?.startsWith('pr-line:') ? (
-              <span className="truncate text-violet-700/80">
-                「{target.textPreview.slice(0, 24)}」
-              </span>
+              <span className="truncate text-ink-muted">「{target.textPreview.slice(0, 24)}」</span>
             ) : null}
           </div>
           <button
@@ -153,7 +151,7 @@ export function AnnotationComposer({
               clearSelection(artifactId)
               if (draft?.body) changeDraft({ element: null })
             }}
-            className="shrink-0 rounded p-0.5 text-violet-600 hover:bg-violet-100"
+            className="shrink-0 rounded p-0.5 hover:bg-selected-hover"
           >
             <X size={12} />
           </button>
@@ -161,7 +159,7 @@ export function AnnotationComposer({
       ) : null}
 
       {target?.dataPoints && (
-        <details className="mb-2 rounded-lg border border-violet-200 px-2.5 py-1.5 text-xs text-violet-950">
+        <details className="mb-2 rounded-lg border border-border px-2.5 py-1.5 text-xs text-ink">
           <summary className="cursor-pointer">{target.dataPoints.valueLabel} · 所选数据点</summary>
           <ul className="mt-1 max-h-36 list-disc space-y-1 overflow-auto pl-4">
             {target.dataPoints.points.map((point) => (

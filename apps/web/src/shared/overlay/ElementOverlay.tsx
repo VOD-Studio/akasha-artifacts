@@ -45,11 +45,11 @@ export function ElementOverlay({
             width: `${hovered.rect.width}px`,
             height: `${hovered.rect.height}px`,
           }}
-          className="absolute top-0 left-0 rounded border border-dashed border-sky-500 bg-sky-500/8 transition-[transform,width,height] duration-75"
+          className="absolute top-0 left-0 rounded border border-dashed border-primary shadow-[0_0_0_1px_var(--card)] transition-[transform,width,height] duration-75"
         >
           <span
             style={{ top: hovered.rect.y < 24 ? '2px' : '-22px' }}
-            className="absolute left-0 rounded bg-sky-600 px-1.5 py-0.5 font-mono text-[10px] leading-none text-white shadow-sm"
+            className="absolute left-0 rounded bg-primary px-1.5 py-0.5 font-mono text-[10px] leading-none text-primary-foreground shadow-sm"
           >
             {formatLocatorLabel(hovered)}
           </span>
@@ -64,11 +64,11 @@ export function ElementOverlay({
             width: `${selected.rect.width}px`,
             height: `${selected.rect.height}px`,
           }}
-          className="absolute top-0 left-0 rounded border-2 border-violet-600 bg-violet-500/10 shadow-[0_0_0_2px_rgba(124,58,237,0.18)]"
+          className="absolute top-0 left-0 rounded border-2 border-primary bg-foreground/10 shadow-[0_0_0_1px_var(--card)]"
         >
           <span
             style={{ top: selected.rect.y < 24 ? '2px' : '-22px' }}
-            className="absolute left-0 rounded bg-violet-700 px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-white shadow"
+            className="absolute left-0 rounded bg-primary px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-primary-foreground shadow"
           >
             已选中 · {formatLocatorLabel(selected)}
           </span>
@@ -93,7 +93,7 @@ export function ElementOverlay({
             ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
             : fb.draft
               ? 'border-dashed border-amber-500 bg-amber-50 text-amber-800'
-              : 'border-violet-600 bg-violet-600 text-white'
+              : 'border-primary bg-primary text-primary-foreground'
 
         return (
           <button
@@ -107,7 +107,7 @@ export function ElementOverlay({
               transform: `translate3d(${pinX}px, ${pinY}px, 0)`,
             }}
             className={`pointer-events-auto absolute top-0 left-0 inline-flex h-6 min-w-6 items-center justify-center gap-0.5 rounded-full border px-1.5 text-[10px] font-semibold shadow-sm transition hover:scale-105 ${toneCls} ${
-              isFocused ? 'ring-2 ring-violet-400 ring-offset-1' : ''
+              isFocused ? 'ring-2 ring-ring ring-offset-1' : ''
             }`}
           >
             <MessageSquare size={10} />

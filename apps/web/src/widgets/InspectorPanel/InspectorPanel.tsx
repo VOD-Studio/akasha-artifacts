@@ -193,7 +193,7 @@ function InspectorContent({
                       fb.draft
                         ? 'border-dashed border-amber-300 bg-amber-50/50'
                         : 'border-border bg-surface'
-                    } ${isFocused ? 'ring-2 ring-violet-400' : ''}`}
+                    } ${isFocused ? 'ring-2 ring-ring' : ''}`}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-1.5">
                       <div className="flex items-center gap-1.5">

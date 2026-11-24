@@ -148,7 +148,7 @@ export function ReviewActionsBar({
                           onClick={() => void handleGroupChoice(group, opt)}
                           className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition ${
                             selected
-                              ? 'border-violet-600 bg-violet-50 font-semibold text-violet-900'
+                              ? 'border-ring bg-selected font-semibold text-selected-foreground'
                               : 'border-border bg-surface text-ink hover:bg-muted'
                           } disabled:cursor-not-allowed disabled:opacity-60`}
                         >
