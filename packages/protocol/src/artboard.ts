@@ -24,6 +24,14 @@ export interface ArtboardPage {
   includeSharedBoards?: false
 }
 
+/** 作者可以分别覆盖总览动画和原型入口的旧稿判定。 */
+export interface ArtboardPresentation {
+  /** 总览中允许自动播放画板动画；`false` 禁止，省略沿用旧稿判定。 */
+  animation?: boolean
+  /** 提供播放原型入口；`false` 禁止，省略沿用旧稿判定。 */
+  interactive?: boolean
+}
+
 /** 画板：画布上的一个设计画面。 */
 export interface ArtboardBoard {
   /** 源码里的 `id`；缺省时按数组下标生成 `board-<n>`。流程连线以它引用画板。 */
@@ -50,6 +58,8 @@ export interface ArtboardBoard {
   position?: { x: number; y: number }
   /** 标记为推荐方案。 */
   recommended?: boolean
+  /** 随布局索引分发的能力声明，与画板正文分开读取。 */
+  presentation?: ArtboardPresentation
   /** 画板内容的 HTML 片段。 */
   html?: string
   /** 作者声明的原生设计图层；任意 HTML 内容不会被解释为可拖拽对象。 */
@@ -185,6 +195,9 @@ export function parseArtboardValue(value: unknown): ArtboardParseResult {
     const position = asRecord(rec.position)
     const x = asNumber(position?.x)
     const y = asNumber(position?.y)
+    const presentation = asRecord(rec.presentation)
+    const animation = asBoolean(presentation?.animation)
+    const interactive = asBoolean(presentation?.interactive)
     const designLayers =
       rec.designLayers === undefined ? undefined : DesignLayersSchema.safeParse(rec.designLayers)
     if (designLayers && !designLayers.success) {
@@ -226,6 +239,14 @@ export function parseArtboardValue(value: unknown): ArtboardParseResult {
         ? { position: { x, y } }
         : {}),
       recommended: asBoolean(rec.recommended),
+      ...(animation !== undefined || interactive !== undefined
+        ? {
+            presentation: {
+              ...(animation !== undefined && { animation }),
+              ...(interactive !== undefined && { interactive }),
+            },
+          }
+        : {}),
       html: asString(rec.html),
       designLayers: designLayers?.data,
       tweaks: tweaks?.data,

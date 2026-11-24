@@ -63,7 +63,11 @@ interface ArtifactFrameProps {
   register?: (id: string, frame: FrameConnection | null) => void
   /** 仅 scoped 总览上报首绘；参数处于默认值时才提供截图回调。 */
   onReady?: (boardId: string, capture?: CapturePreview) => void
-  onPlayable: (board: CanvasBoard, version: number, playable: boolean) => void
+  onCapabilities: (
+    id: string,
+    version: number,
+    capabilities: { playable?: boolean; animated?: boolean },
+  ) => void
   watchLayers: boolean
   onLayers: (id: string, version: number, layers: CanvasLayer[], truncated: boolean) => void
   /** 仅把当前设计帧的命中回报交给工作区；请求标识由工作区核对。 */
@@ -129,7 +133,7 @@ export function ArtifactFrame({
   purpose,
   register,
   onReady,
-  onPlayable,
+  onCapabilities,
   watchLayers,
   onLayers,
   onElementTarget,
@@ -142,9 +146,9 @@ export function ArtifactFrame({
   const focused = purpose.type === 'focus'
   const isolated = focused || playback
   const interactive = playback || (purpose.type === 'overview' && purpose.interactive)
+  const scopedOverview = scoped && purpose.type === 'overview'
   const overviewAnimation =
-    scoped && purpose.type === 'overview' ? purpose.animate !== false : undefined
-  const scopedOverview = overviewAnimation !== undefined
+    scoped && !playback ? purpose.type === 'overview' && purpose.animate !== false : undefined
   const purposeType = purpose.type
   const viewKey = frameViewKey(artifactId, id, scoped, focused)
   const iframeRef = useRef<HTMLIFrameElement>(null)
@@ -234,7 +238,7 @@ export function ArtifactFrame({
     board,
     onReady,
     tweakPreview,
-    onPlayable,
+    onCapabilities,
     watchLayers,
     onLayers,
     onElementTarget,
@@ -251,7 +255,7 @@ export function ArtifactFrame({
     board,
     onReady,
     tweakPreview,
-    onPlayable,
+    onCapabilities,
     watchLayers,
     onLayers,
     onElementTarget,
@@ -421,7 +425,10 @@ export function ArtifactFrame({
           }
           setError(null)
           if (playback) break
-          latest.current.onPlayable(latest.current.board, activeVersion, message.playable === true)
+          latest.current.onCapabilities(id, activeVersion, {
+            playable: message.playable === true,
+            animated: message.animated,
+          })
           const currentSelection = selectionForVersion(selectionStore, artifactId, activeVersion)
           const layer = selectionStore.layersByArtifact[artifactId]
           if (currentSelection) {
@@ -516,7 +523,7 @@ export function ArtifactFrame({
         }
         case 'prototype.availability':
           if (!playback && message.version === activeVersion) {
-            latest.current.onPlayable(latest.current.board, activeVersion, message.playable)
+            latest.current.onCapabilities(id, activeVersion, { playable: message.playable })
           }
           break
         case 'prototype.navigate': {
@@ -561,7 +568,7 @@ export function ArtifactFrame({
     let renderId = previous?.renderId
     if (needsRender) {
       captureControl.current?.invalidate('画板已重新渲染')
-      renderId = overviewAnimation !== undefined ? ++renderSequence.current : undefined
+      renderId = scopedOverview ? ++renderSequence.current : undefined
       const currentState = latest.current.state
       const preservedState = playback
         ? undefined
@@ -620,6 +627,7 @@ export function ArtifactFrame({
     playback,
     render,
     scoped,
+    scopedOverview,
     tweakPreview,
     versionNumber,
     versionPins,

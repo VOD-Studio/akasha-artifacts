@@ -9,6 +9,8 @@ export interface RendererProps {
   source: string
   /** HTML 画板的作用域；源码片段行列不等同于整个制品的位置。 */
   boardId?: string
+  /** 仅限 scoped HTML；设计视图使用静帧，交互预览保留作者媒体。 */
+  artboardView?: 'design' | 'play'
   version: number
   /** 实时状态流；状态更新只触发重渲染，不替换渲染器实例。 */
   stateStore: ArtifactStateStore

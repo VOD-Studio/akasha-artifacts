@@ -3,6 +3,7 @@ import {
   type ArtboardAppearance,
   type ArtboardContent,
   type ArtboardIndex,
+  type ArtboardPresentation,
   type ArtboardTweak,
   type ArtifactType,
   type DesignLayer,
@@ -19,6 +20,8 @@ export interface CanvasBoard {
   subtitle?: string
   /** 作者标注的推荐项，不表示已做评审决定。 */
   recommended?: boolean
+  /** 随索引提供；未声明的能力由渲染器报告。 */
+  presentation?: ArtboardPresentation
   /** 画板 id 被改写以保持稳定时，保留源码里原来的 id。 */
   legacyBlockId?: string
   /** 画板独立视口宽度，单位为 CSS 像素。 */
@@ -166,6 +169,7 @@ function composeDocument<B extends CanvasBoard>(
       title: board.title,
       subtitle: board.subtitle,
       recommended: board.recommended,
+      presentation: board.presentation,
       legacyBlockId: board.legacyId,
       type: 'html',
       scoped: true,

@@ -392,6 +392,38 @@ it('显式播放原型才能交互和跨页，退出后返回原来的画板查�
   expect(document.activeElement).toBe(play)
 })
 
+it('从播放菜单展开静态画板，返回后不替换原选区且还原触发焦点', () => {
+  stubResizeObserver()
+  const source = JSON.stringify({
+    ...design,
+    boards: design.boards.map((board) => ({
+      ...board,
+      presentation:
+        board.id === 'mobile' ? { interactive: true } : { animation: false, interactive: false },
+    })),
+  })
+  showWorkspace(detailFor(1, source))
+  const canvas = screen.getByRole('region', { name: '画布' })
+  const selected = within(canvas).getByRole('button', { name: '手机首页' })
+  fireEvent.click(selected)
+  const trigger = screen.getByRole('button', { name: '播放' })
+  fireEvent.keyDown(trigger, { key: 'Enter' })
+  const staticBoards = screen.getByRole('group', { name: '静态画板' })
+  expect(
+    within(screen.getByRole('group', { name: '可交互原型' })).getByRole('menuitem', {
+      name: '播放原型：手机首页',
+    }),
+  ).toBeTruthy()
+  fireEvent.click(within(staticBoards).getByRole('menuitem', { name: '展开画板：宽屏首页' }))
+
+  const focus = screen.getByRole('region', { name: '画板查看' })
+  expect(within(focus).getByTitle('画板内容：宽屏首页').hasAttribute('inert')).toBe(true)
+  const back = within(focus).getByRole('button', { name: '返回总览' })
+  fireEvent.keyDown(back, { key: 'Escape' })
+  expect(selected.getAttribute('aria-pressed')).toBe('true')
+  expect(document.activeElement).toBe(trigger)
+})
+
 function stubResizeObserver() {
   vi.stubGlobal(
     'ResizeObserver',

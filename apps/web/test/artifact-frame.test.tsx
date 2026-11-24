@@ -84,7 +84,7 @@ it('握手后才发送最新临时参数；总览只给默认参数安排截图�
       onFocusPin={() => {}}
       purpose={{ type: 'overview', interactive: false, animate: false }}
       onReady={onReady}
-      onPlayable={() => {}}
+      onCapabilities={() => {}}
       watchLayers={false}
       onLayers={() => {}}
       onElementTarget={() => {}}

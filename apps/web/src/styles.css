@@ -245,7 +245,7 @@ body,
   transform: translateX(-50%);
 }
 
-@media (width < 360px) {
+@media (width < 520px) {
   .artifact-canvas-zoom {
     inset-block-start: 52px;
   }

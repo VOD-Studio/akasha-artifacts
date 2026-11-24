@@ -11,7 +11,12 @@ import type { SandboxBridgeClient } from './bridge/client'
 import { captureSandboxPng } from './capture-png'
 import { SandboxInspector } from './inspector/index'
 import { readCanvasLayers } from './inspector/layers'
-import { type OverviewMotion, pauseOverviewMotion } from './overview-motion'
+import {
+  hasOverviewMotion,
+  loopOverviewMotion,
+  type OverviewMotion,
+  pauseOverviewMotion,
+} from './overview-motion'
 import { bindPrototype, hasPlayableControls } from './prototype'
 import { artboardStyle } from './renderers/artboard-style'
 import { registerBuiltinRenderers } from './renderers/builtins'
@@ -78,7 +83,7 @@ export function SandboxApp({
   const committedPayloadRef = useRef<RenderPayload | null>(initialRender)
   const renderedVisualVersionRef = useRef(0)
   const renderedOverviewRef = useRef<RenderPayload | null>(null)
-  const overviewMotion = useRef<OverviewMotion | null>(null)
+  const syncOverviewMotion = useRef<(() => void) | null>(null)
   const [watchLayers, setWatchLayers] = useState(false)
   const refreshLayers = useRef<(() => void) | null>(null)
   const lastPlayable = useRef<boolean | undefined>(undefined)
@@ -116,13 +121,30 @@ export function SandboxApp({
 
     let capture: { requestId?: string; controller: AbortController } | null = null
     let overviewVersion: number | undefined
+    let looping: OverviewMotion | undefined
+    let paused: OverviewMotion | undefined
+    const releaseMotion = () => {
+      paused?.resume()
+      looping?.resume()
+      paused = undefined
+      looping = undefined
+    }
     const setOverviewAnimation = (animate: boolean) => {
+      const root = rootRef.current
+      if (!root) return
       if (animate) {
-        overviewMotion.current?.resume()
-        overviewMotion.current = null
-      } else if (!overviewMotion.current && rootRef.current) {
-        overviewMotion.current = pauseOverviewMotion(rootRef.current)
+        looping ??= loopOverviewMotion(root)
+        paused?.resume()
+        paused = undefined
+      } else {
+        // 保留循环的相位，避免把已循环一轮的 CSS 动画恢复为「已结束」。
+        paused ??= pauseOverviewMotion(root)
       }
+      looping?.sync()
+    }
+    syncOverviewMotion.current = () => {
+      paused?.sync()
+      looping?.sync()
     }
     const off = bridge.onMessage((msg) => {
       if (msg.type === 'render') {
@@ -136,7 +158,8 @@ export function SandboxApp({
           msg.overviewAnimation !== undefined
             ? msg.version
             : undefined
-        setOverviewAnimation(overviewVersion === undefined || msg.overviewAnimation !== false)
+        releaseMotion()
+        if (overviewVersion !== undefined) setOverviewAnimation(msg.overviewAnimation === true)
         stateStore.replace(msg.state)
         preserved.hydrate(msg.preservedState)
         const next: RenderPayload = {
@@ -284,7 +307,8 @@ export function SandboxApp({
 
     return () => {
       capture?.controller.abort()
-      setOverviewAnimation(true)
+      releaseMotion()
+      syncOverviewMotion.current = null
       inspector.dispose()
       visualInspector.dispose()
       inspectorRef.current = null
@@ -307,13 +331,14 @@ export function SandboxApp({
   }, [bridge, playbackVersion])
 
   const supportsPrototype = payload?.artifactType === 'html' || payload?.artifactType === 'react'
+  const strictControls = payload?.artifactType === 'html'
   useEffect(() => {
     const root = rootRef.current
     if (!bridge || !root || !supportsPrototype || playbackVersion) return
     const observer = new MutationObserver(() => {
       const version = renderedVisualVersionRef.current
       if (!version || version !== versionRef.current) return
-      const playable = hasPlayableControls(root)
+      const playable = hasPlayableControls(root, { scoped: strictControls })
       if (lastPlayable.current === playable) return
       lastPlayable.current = playable
       bridge.send({ type: 'prototype.availability', version, playable })
@@ -328,9 +353,12 @@ export function SandboxApp({
         'contenteditable',
         'data-ak-next',
         'disabled',
+        'form',
         'hidden',
         'href',
+        'id',
         'inert',
+        'open',
         'readonly',
         'role',
         'style',
@@ -339,7 +367,7 @@ export function SandboxApp({
       ],
     })
     return () => observer.disconnect()
-  }, [bridge, playbackVersion, supportsPrototype])
+  }, [bridge, playbackVersion, supportsPrototype, strictControls])
 
   useEffect(() => {
     const root = rootRef.current
@@ -416,19 +444,24 @@ export function SandboxApp({
       ) {
         return
       }
-      overviewMotion.current?.sync()
+      syncOverviewMotion.current?.()
       const renderId = payload === committedPayloadRef.current ? payload?.renderId : undefined
       if (renderId !== undefined) renderedOverviewRef.current = payload
       renderedVisualVersionRef.current = ver
-      const height = rootRef.current
-        ? Math.max(0, Math.round(rootRef.current.scrollHeight))
-        : undefined
-      lastPlayable.current = rootRef.current ? hasPlayableControls(rootRef.current) : false
+      const root = rootRef.current
+      const height = root ? Math.max(0, Math.round(root.scrollHeight)) : undefined
+      lastPlayable.current =
+        root && !payload?.playback
+          ? hasPlayableControls(root, { scoped: payload?.artifactType === 'html' })
+          : false
+      const animated =
+        root && payload?.boardId && !payload.playback ? hasOverviewMotion(root) : undefined
       bridge.send({
         type: 'rendered',
         version: ver,
         ...(renderId !== undefined ? { renderId } : {}),
         playable: lastPlayable.current,
+        ...(animated === undefined ? {} : { animated }),
         ...(height !== undefined ? { height } : {}),
       })
       refreshLayers.current?.()
@@ -492,7 +525,7 @@ export function SandboxApp({
               renderer({
                 source: payload.source,
                 ...(payload.artifactType === 'html' && payload.boardId
-                  ? { boardId: payload.boardId }
+                  ? { boardId: payload.boardId, artboardView: payload.playback ? 'play' : 'design' }
                   : {}),
                 version: payload.version,
                 stateStore,

@@ -204,6 +204,7 @@ export function CanvasToolbar({
   onComment,
   history,
   arrangementMenu,
+  playbackMenu,
 }: {
   camera: Camera
   hand: boolean
@@ -220,6 +221,7 @@ export function CanvasToolbar({
   onComment: () => void
   history?: Pick<CanvasBoardEditing, 'undo' | 'redo'>
   arrangementMenu?: ReactNode
+  playbackMenu?: ReactNode
 }) {
   const [shapesOpen, setShapesOpen] = useState(false)
   const selectActive = !hand && !designTools?.value && !visualEditActive
@@ -231,7 +233,8 @@ export function CanvasToolbar({
   }
   return (
     <>
-      <section aria-label="画布缩放" className="artifact-canvas-zoom">
+      <section aria-label="画布播放与缩放" className="artifact-canvas-zoom">
+        {playbackMenu}
         <Button
           variant="ghost"
           size="sm"
