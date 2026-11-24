@@ -324,6 +324,10 @@ sequenceDiagram
 | CSP    | `default-src 'none'`，脚本和样式只允许沙盒自己的资源，`connect-src 'none'`，`frame-ancestors` 只允许外壳 origin                                   |
 | 凭据   | 沙盒不接触任何 token；需要持久化时通过 Bridge 请求外壳代办                                                                                        |
 
+`make dev` 在回环地址的 `5173`（外壳）和 `5174`（沙盒）运行 Vite。开发沙盒仍使用不透明 origin，
+只允许开发外壳嵌入；为了热更新，开发 CSP 另允许内联脚本和沙盒端口的 HMR WebSocket。
+开发代理只转换开发外壳自己的 Origin，凭据仍由 Daemon 校验。`make serve` 的产物与隔离策略不变。
+
 ### 7.2 渲染流水线与 Artifact 形态
 
 制品链接默认打开画布，项目库另作导航入口。`artboard` 制品按页面展示独立画板；普通 HTML／React 制品使用一个默认画板。页面链接只定位视图，不授予访问权限；版本链接可定位到固定快照。

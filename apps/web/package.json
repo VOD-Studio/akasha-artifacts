@@ -6,7 +6,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "dev": "vite --port 24321",
+    "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit"
   },
