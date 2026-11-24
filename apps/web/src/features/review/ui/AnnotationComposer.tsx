@@ -10,8 +10,8 @@ import {
   type AnnotationDraft,
   readAnnotationDraft,
   writeAnnotationDraft,
-} from '../../../entities/feedback'
-import { useSelectionStore } from '../../../entities/selection'
+} from '@/entities/feedback'
+import { useSelectionStore } from '@/entities/selection'
 import { useSubmitFeedbackMutation } from '../api/mutations'
 
 export interface AnnotationComposerProps {

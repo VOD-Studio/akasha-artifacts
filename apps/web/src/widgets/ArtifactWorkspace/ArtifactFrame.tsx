@@ -11,20 +11,20 @@ import {
   type Version,
 } from '@akasha/protocol'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CanvasBoard } from '../../entities/artifact'
-import { submitArtifactFeedback } from '../../entities/feedback'
-import { selectionForVersion, useSelectionStore } from '../../entities/selection'
-import { type SandboxErrorRecord, useWorkspaceStore } from '../../entities/workspace/store'
-import { RuntimeErrorPanel } from '../../features/error-recovery/RuntimeErrorPanel'
+import type { CanvasBoard } from '@/entities/artifact'
+import { submitArtifactFeedback } from '@/entities/feedback'
+import { selectionForVersion, useSelectionStore } from '@/entities/selection'
+import { type SandboxErrorRecord, useWorkspaceStore } from '@/entities/workspace'
+import { RuntimeErrorPanel } from '@/features/error-recovery'
 import {
   buildSandboxIframeUrl,
   createBridgeNonce,
   SANDBOX_IFRAME_SANDBOX_ATTR,
   SandboxBridgeHost,
   type ShellOutgoingPayload,
-} from '../../shared/bridge/host'
-import { createStorageRelay } from '../../shared/bridge/storage-relay'
-import { ElementOverlay } from '../../shared/overlay/ElementOverlay'
+} from '@/shared/bridge/host'
+import { createStorageRelay } from '@/shared/bridge/storage-relay'
+import { ElementOverlay } from '@/shared/overlay/ElementOverlay'
 
 /** 一块画板的沙盒向外壳提供的连接，登记到工作区后由工作区使用。 */
 export interface FrameConnection {

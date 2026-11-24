@@ -2,11 +2,14 @@ import { type ElementRef, ElementRefSchema } from '@akasha/protocol'
 
 /** 尚未提交的正文和发起时的目标；换页、换选区和头版本推进都不改写锚点。 */
 export interface AnnotationDraft {
+  /** 打开草稿时必须回到该版本，不能跟随最新推送重绑元素。 */
   version: number
+  /** 为 `null` 时批注针对整个版本。 */
   element: ElementRef | null
-  // 不把另一个活动轮次误当成原轮次。
+  /** 草拟时所属的轮次；`null` 表示不参加轮次。 */
   roundId: string | null
   body: string
+  /** 仅表示用户选择的投递对象，草稿本身不会通知 Agent。 */
   sendToAgent: boolean
 }
 

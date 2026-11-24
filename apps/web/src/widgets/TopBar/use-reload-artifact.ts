@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { artifactKeys } from '../../entities/artifact'
-import { feedbackKeys } from '../../entities/feedback'
+import { artifactKeys } from '@/entities/artifact'
+import { feedbackKeys } from '@/entities/feedback'
 
 /** 重读当前作品、权限和反馈，不刷新页面，也不清除画布或未保存输入。 */
 export function useReloadArtifactMutation(id: string) {

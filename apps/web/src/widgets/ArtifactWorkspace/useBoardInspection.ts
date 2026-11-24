@@ -5,9 +5,9 @@ import {
   STANDALONE_BOARD_ID,
 } from '@akasha/protocol'
 import { useCallback, useState } from 'react'
-import type { CanvasDocument, CanvasLocation } from '../../entities/artifact'
-import { selectionForVersion, useSelectionStore } from '../../entities/selection'
-import { useWorkspaceStore } from '../../entities/workspace/store'
+import type { CanvasDocument, CanvasLocation } from '@/entities/artifact'
+import { selectionForVersion, useSelectionStore } from '@/entities/selection'
+import { useWorkspaceStore } from '@/entities/workspace'
 
 interface BoardInspectionInput {
   artifactId: string

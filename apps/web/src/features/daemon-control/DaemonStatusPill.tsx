@@ -7,14 +7,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Activity, Power, RefreshCw, Terminal } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import {
-  useDaemonLogsQuery,
-  useDaemonStatusQuery,
-  useStopDaemonMutation,
-} from '../../entities/daemon/queries'
-import { useProjectsQuery } from '../../entities/project/queries'
-import { useWorkspaceStore } from '../../entities/workspace/store'
-import { formatUptime } from '../../shared/lib/format'
+import { useDaemonLogsQuery, useDaemonStatusQuery, useStopDaemonMutation } from '@/entities/daemon'
+import { useProjectsQuery } from '@/entities/project'
+import { useWorkspaceStore } from '@/entities/workspace'
+import { formatUptime } from '@/shared/lib/format'
 
 const RELAY_LABELS: Record<
   DaemonStatus['relayState'],

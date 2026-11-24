@@ -9,13 +9,8 @@ import {
   useRef,
   useState,
 } from 'react'
-import type {
-  CanvasBoard,
-  CanvasDocument,
-  CanvasLocation,
-  CanvasPage,
-} from '../../entities/artifact'
-import { useSelectionStore } from '../../entities/selection'
+import type { CanvasBoard, CanvasDocument, CanvasLocation, CanvasPage } from '@/entities/artifact'
+import { useSelectionStore } from '@/entities/selection'
 import type { BoardFramePurpose } from './ArtifactFrame'
 import { BoardDrawingSurface, type DrawingTool } from './BoardDrawingSurface'
 import { BoardPresentation } from './BoardPresentation'

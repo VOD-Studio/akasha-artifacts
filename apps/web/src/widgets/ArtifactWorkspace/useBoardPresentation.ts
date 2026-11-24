@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { CanvasDocument } from '../../entities/artifact'
+import type { CanvasDocument } from '@/entities/artifact'
 
 interface Target {
   pageId: string

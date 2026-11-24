@@ -3,10 +3,10 @@ import type { Artifact, Version } from '@akasha/protocol'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { useWorkspaceStore } from '../src/entities/workspace/store'
-import { SplitCodeEditor } from '../src/features/code-editor/SplitCodeEditor'
+import { useWorkspaceStore } from '../src/entities/workspace'
+import { SplitCodeEditor } from '../src/features/code-editor'
 import { ApiError } from '../src/shared/api/error'
-import { ArtifactWorkspace } from '../src/widgets/ArtifactWorkspace/ArtifactWorkspace'
+import { ArtifactWorkspace } from '../src/widgets/ArtifactWorkspace'
 
 beforeAll(() => {
   if (typeof globalThis.ResizeObserver === 'undefined') {

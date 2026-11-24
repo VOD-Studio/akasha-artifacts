@@ -2,7 +2,7 @@
 import type { Artifact, Version } from '@akasha/protocol'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
-import { ArtifactExportDialog } from '../src/widgets/ArtifactWorkspace/ArtifactExportDialog'
+import { ArtifactExportDialog } from '../src/widgets/ArtifactWorkspace'
 
 const now = '2026-11-22T10:00:00.000Z'
 const artifact: Artifact = {

@@ -6,13 +6,8 @@ import { Radio, RadioGroup } from '@akasha/ui/radio'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
 import { Download } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import {
-  type CanvasBoard,
-  createCanvasDocument,
-  fetchArtifactDetail,
-} from '../../entities/artifact'
-import { composeDesignPdf } from '../../features/export-design/design-pdf'
-import { captureBoardPng } from '../../shared/bridge/capture-png'
+import { type CanvasBoard, createCanvasDocument, fetchArtifactDetail } from '@/entities/artifact'
+import { captureBoardPng } from '@/shared/bridge/capture-png'
 
 /** 打开面板时固定版本；不因 Agent 推进头版本而改变下载内容。 */
 export interface DesignExportTarget {
@@ -146,7 +141,7 @@ export function ArtifactExportDialog({ target, onClose }: ExportDialogProps) {
       const boards = selected ? [selected] : Array.from(available.values(), ({ board }) => board)
       if (!boards.length) throw new Error('指定版本没有可导出的画板')
       if (format === 'html') {
-        const { composeOfflineDesign } = await import('../../features/export-design/offline-design')
+        const { composeOfflineDesign } = await import('@/features/export-design')
         const output = await composeOfflineDesign(
           {
             title: result.version.title,
@@ -179,10 +174,13 @@ export function ArtifactExportDialog({ target, onClose }: ExportDialogProps) {
       }
 
       const pages = renderPages(boards, version.version, signal, setProgress)
-      const output =
-        format === 'png' && selected
-          ? (await pages.next()).value?.png
-          : await composeDesignPdf(`${result.version.title} · v${version.version}`, pages)
+      let output: Blob | undefined
+      if (format === 'png' && selected) {
+        output = (await pages.next()).value?.png
+      } else {
+        const { composeDesignPdf } = await import('@/features/export-design')
+        output = await composeDesignPdf(`${result.version.title} · v${version.version}`, pages)
+      }
       signal.throwIfAborted()
       if (!output) throw new Error('没有成功渲染的画面')
       const suffix = selected ? `-${filePart(selected.title)}` : ''

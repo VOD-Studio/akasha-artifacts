@@ -6,14 +6,15 @@ interface ScopedLayer {
   id: string
 }
 
+/** 当前指认状态与按作品隔离的选区。 */
 export interface SelectionStoreState {
   /** 指认模式是否开启；关闭时清空悬停元素。 */
   pickerActive: boolean
   /** 当前悬停的元素；同一时刻只有一个。 */
   hoveredElement: ElementRef | null
-  /** 每个制品当前选中的元素；切换制品后返回时仍然保留。 */
+  /** 按作品公开标识保存；切回同一作品仍能恢复。 */
   selectedByArtifact: Record<string, ElementRef | null>
-  /** 结构选择器只属于原画板的渲染节点，不能套用到另一版本。 */
+  /** 结构选择器限定在选中时的画板和版本，不能套用到其他快照。 */
   layersByArtifact: Record<string, ScopedLayer | undefined>
   /** 当前聚焦的反馈 id。 */
   focusedFeedbackId: string | null

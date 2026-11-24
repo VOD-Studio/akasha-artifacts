@@ -1,10 +1,10 @@
 import { type CommandGroup, type CommandItem, CommandList } from '@akasha/ui/command'
 import { FileCode2, FolderGit2, Home } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { useArtifactsQuery } from '../../entities/artifact'
-import { useProjectsQuery } from '../../entities/project/queries'
-import { useWorkspaceStore } from '../../entities/workspace/store'
-import { ARTIFACT_TYPE_LABELS } from '../../shared/lib/format'
+import { useArtifactsQuery } from '@/entities/artifact'
+import { useProjectsQuery } from '@/entities/project'
+import { useWorkspaceStore } from '@/entities/workspace'
+import { ARTIFACT_TYPE_LABELS } from '@/shared/lib/format'
 
 export interface ArtifactCommandPaletteProps {
   onNavigate: (to: string) => void

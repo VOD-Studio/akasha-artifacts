@@ -2,12 +2,8 @@ import type { AnnotationThread } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Textarea } from '@akasha/ui/textarea'
 import { useId, useState } from 'react'
-import {
-  readReplyDraft,
-  useAnnotationThreadMutation,
-  writeReplyDraft,
-} from '../../../entities/feedback'
-import { formatRelativeTime } from '../../../shared/lib/format'
+import { readReplyDraft, useAnnotationThreadMutation, writeReplyDraft } from '@/entities/feedback'
+import { formatRelativeTime } from '@/shared/lib/format'
 
 interface AnnotationThreadActionsProps {
   artifactId: string

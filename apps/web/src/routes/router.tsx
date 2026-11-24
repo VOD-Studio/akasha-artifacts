@@ -11,11 +11,11 @@ import {
   useParams,
 } from '@tanstack/react-router'
 import { useLayoutEffect } from 'react'
-import { useWorkspaceStore } from '../entities/workspace/store'
-import { ArtifactCommandPalette } from '../features/command-palette/ArtifactCommandPalette'
-import { useLiveSync } from '../features/live-sync/useLiveSync'
-import { isCloudHub } from '../shared/config/runtime'
-import { LibraryShell } from '../widgets/LibraryShell/LibraryShell'
+import { useWorkspaceStore } from '@/entities/workspace'
+import { ArtifactCommandPalette } from '@/features/command-palette'
+import { useLiveSync } from '@/features/live-sync'
+import { isCloudHub } from '@/shared/config/runtime'
+import { LibraryShell } from '@/widgets/LibraryShell'
 import { ArtifactRouteView } from './ArtifactRouteView'
 
 function RootLayout() {

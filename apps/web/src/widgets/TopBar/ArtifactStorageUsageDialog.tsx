@@ -1,7 +1,7 @@
 import { Button } from '@akasha/ui/button'
 import { Modal } from '@akasha/ui/dialog'
 import { Skeleton } from '@akasha/ui/skeleton'
-import { useArtifactStorageUsageQuery } from '../../entities/artifact'
+import { useArtifactStorageUsageQuery } from '@/entities/artifact'
 
 interface ArtifactStorageUsageDialogProps {
   artifactId: string

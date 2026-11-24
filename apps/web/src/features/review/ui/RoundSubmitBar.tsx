@@ -3,7 +3,7 @@ import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
 import { CheckCheck, RotateCcw, Send } from 'lucide-react'
 import { toast } from 'sonner'
-import { useWorkspaceStore } from '../../../entities/workspace/store'
+import { useWorkspaceStore } from '@/entities/workspace'
 import { useSubmitRoundMutation, useWithdrawRoundMutation } from '../api/mutations'
 import { summarizeRoundProgress } from '../model/round-utils'
 

@@ -6,8 +6,10 @@ import {
   type ArtifactDetailResponse,
   artifactKeys,
   parseVersionConflictDetails,
-} from '../../entities/artifact'
-import { feedbackKeys } from '../../entities/feedback'
+} from '@/entities/artifact'
+import { feedbackKeys } from '@/entities/feedback'
+import { ApiError } from '@/shared/api/error'
+import type { ShellOutgoingPayload } from '@/shared/bridge/host'
 import {
   fetchVisualEditTarget,
   fetchVisualUndo,
@@ -15,9 +17,7 @@ import {
   saveVisualEdit,
   type VisualEditCommand,
   type VisualEditTarget,
-} from '../../shared/api/client'
-import { ApiError } from '../../shared/api/error'
-import type { ShellOutgoingPayload } from '../../shared/bridge/host'
+} from '../api/client'
 
 interface Options {
   artifact: Artifact

@@ -7,9 +7,9 @@ import {
   type Version,
 } from '@akasha/protocol'
 import { useCallback, useRef, useState } from 'react'
-import type { CanvasBoard } from '../../entities/artifact'
-import { fetchVisualEditTarget, previewVisualEdit } from '../../shared/api/client'
-import type { ShellOutgoingPayload } from '../../shared/bridge/host'
+import type { CanvasBoard } from '@/entities/artifact'
+import { fetchVisualEditTarget, previewVisualEdit } from '@/features/visual-edit'
+import type { ShellOutgoingPayload } from '@/shared/bridge/host'
 import type { Point } from './canvas-camera'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
 

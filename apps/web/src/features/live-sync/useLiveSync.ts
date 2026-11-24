@@ -1,13 +1,13 @@
 import type { JsonPatchOp, RealtimeServerEvent } from '@akasha/protocol'
 import { type QueryClient, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
-import { type ArtifactDetailResponse, artifactKeys } from '../../entities/artifact'
-import { feedbackKeys } from '../../entities/feedback'
-import { projectKeys } from '../../entities/project/queries'
-import { useWorkspaceStore } from '../../entities/workspace/store'
-import { AkashaWsClient } from '../../shared/api/ws'
-import { getWsUrl, isCloudHub } from '../../shared/config/runtime'
-import { applyJsonPatchClient } from '../../shared/lib/json-patch'
+import { type ArtifactDetailResponse, artifactKeys } from '@/entities/artifact'
+import { feedbackKeys } from '@/entities/feedback'
+import { projectKeys } from '@/entities/project'
+import { useWorkspaceStore } from '@/entities/workspace'
+import { AkashaWsClient } from '@/shared/api/ws'
+import { getWsUrl, isCloudHub } from '@/shared/config/runtime'
+import { applyJsonPatchClient } from '@/shared/lib/json-patch'
 
 /** `state.patched` 事件的要点，供调用方把补丁转发给沙盒。 */
 export interface StatePatchedCallbackPayload {

@@ -1,11 +1,7 @@
 import type { Artifact, Version } from '@akasha/protocol'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import {
-  type ArtifactDetailResponse,
-  artifactKeys,
-  publishHumanVersion,
-} from '../../../entities/artifact'
-import { feedbackKeys, notifyHumanVersionEdit } from '../../../entities/feedback'
+import { type ArtifactDetailResponse, artifactKeys, publishHumanVersion } from '@/entities/artifact'
+import { feedbackKeys, notifyHumanVersionEdit } from '@/entities/feedback'
 
 interface SaveHumanVersionVariables {
   artifact: Artifact

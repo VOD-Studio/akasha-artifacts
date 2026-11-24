@@ -15,8 +15,8 @@ import {
   type Visibility,
   type WithdrawnArtifact,
 } from '@akasha/protocol'
-import { ApiError } from '../../../shared/api/error'
-import { requestJson } from '../../../shared/api/request'
+import { ApiError } from '@/shared/api/error'
+import { requestJson } from '@/shared/api/request'
 
 /** 工作区打开一个可读快照所需的数据；源码版本和运行状态是两条独立的版本线。 */
 export interface ArtifactDetailResponse {

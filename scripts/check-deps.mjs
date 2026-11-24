@@ -2,9 +2,10 @@
 // 架构依赖方向检查（依据 docs/design/architecture.md 第 12 节）：
 // 1. 工作区包间 DAG，禁止反向依赖；
 // 2. packages/server 内 DDD 分层，domain 不依赖框架或 IO，application 不依赖 HTTP 框架；
-// 3. apps/web 内 FSD 分层（routes → widgets → features → entities → shared）。
+// 3. apps/web 源码的 FSD 分层与切片边界；routes、shared 不要求切片入口。
 import fs from 'node:fs'
 import path from 'node:path'
+import ts from 'typescript'
 
 const ROOT = process.cwd()
 
@@ -54,7 +55,7 @@ const DOMAIN_FORBIDDEN_IMPORTS = [
 // application 层禁止引入 HTTP 框架
 const APPLICATION_FORBIDDEN_IMPORTS = [/^hono(?:\/|$)/]
 
-// web FSD 层级顺序：只允许高层指向低层或同层
+// 数值越大越靠近页面装配；同层切片另有隔离规则。
 const WEB_FSD_RANK = {
   shared: 0,
   entities: 1,
@@ -62,6 +63,8 @@ const WEB_FSD_RANK = {
   widgets: 3,
   routes: 4,
 }
+
+const WEB_FSD_SLICE_LAYERS = new Set(['entities', 'features', 'widgets'])
 
 const IMPORT_RE =
   /(?:^|[\s;])(?:import|export)\s+(?:type\s+)?(?:[\s\S]*?\s+from\s+)?['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)/gm
@@ -101,6 +104,118 @@ function packageRootName(spec) {
   return spec.split('/')[0]
 }
 
+function webLayerPath(srcDir, file) {
+  const parts = path.relative(srcDir, file).split(path.sep)
+  return Object.hasOwn(WEB_FSD_RANK, parts[0]) ? parts : []
+}
+
+function checkWebSliceEntries(srcDir, violations) {
+  for (const layer of WEB_FSD_SLICE_LAYERS) {
+    const dir = path.join(srcDir, layer)
+    if (!fs.existsSync(dir)) continue
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name.startsWith('.')) continue
+      const index = path.join(dir, entry.name, 'index.ts')
+      if (!ts.sys.fileExists(index) && walk(path.dirname(index)).length > 0) {
+        violations.push(`${path.relative(ROOT, index)}: 外壳 FSD 切片缺少根入口，请创建 index.ts`)
+      }
+    }
+  }
+}
+
+function createWebFsdResolver(pkgDir, violations) {
+  const configPath = path.join(pkgDir, 'tsconfig.json')
+  let options = { moduleResolution: ts.ModuleResolutionKind.Bundler }
+  if (ts.sys.fileExists(configPath)) {
+    const { config, error } = ts.readConfigFile(configPath, ts.sys.readFile)
+    if (error) {
+      violations.push(
+        `${path.relative(ROOT, configPath)}: ${ts.flattenDiagnosticMessageText(error.messageText, '\n')}`,
+      )
+    } else {
+      options = ts.parseJsonConfigFileContent(config, ts.sys, pkgDir, undefined, configPath).options
+    }
+  }
+
+  const cache = ts.createModuleResolutionCache(pkgDir, (file) => file, options)
+  return (spec, file, mode) =>
+    ts.resolveModuleName(spec, file, options, ts.sys, cache, undefined, mode).resolvedModule
+}
+
+function checkWebFsd(srcDir, file, rel, content, resolve, violations) {
+  const [fromLayer, fromSlice, ...fromRest] = webLayerPath(srcDir, file)
+  const inSlice = WEB_FSD_SLICE_LAYERS.has(fromLayer) && fromRest.length > 0
+
+  const checkSpecifier = (spec, mode = ts.ModuleKind.ESNext) => {
+    const relative = /^\.{1,2}(?:\/|$)/.test(spec)
+    const resolved = resolve(spec, file, mode)
+    if (resolved?.isExternalLibraryImport) return
+    // 尚未存在的相对路径也要检查方向，不能靠省略目标文件掩盖反向依赖。
+    const target =
+      resolved?.resolvedFileName ?? (relative && path.resolve(path.dirname(file), spec))
+    if (!target) return
+    const [toLayer, toSlice, ...toRest] = webLayerPath(srcDir, target)
+    if (!toLayer) return
+
+    if (fromLayer && WEB_FSD_RANK[toLayer] > WEB_FSD_RANK[fromLayer]) {
+      violations.push(`${rel}: 违反外壳 FSD 分层 ${fromLayer} → ${toLayer} ("${spec}")`)
+      return
+    }
+    if (!WEB_FSD_SLICE_LAYERS.has(toLayer) || !toSlice) return
+    // 层下的单文件不是切片；未解析的根目录导入仍可用现有目录识别。
+    if (toRest.length === 0 && !ts.sys.directoryExists(target)) return
+
+    const slice = `${toLayer}/${toSlice}`
+    const index = `${slice}/index.ts`
+    const usesIndex =
+      toRest.length === 0 ||
+      (toRest.length === 1 &&
+        (toRest[0] === 'index.ts' || (!resolved && /^index(?:\.js)?$/.test(toRest[0]))))
+
+    // 横向依赖不能用公开入口修复，优先指出切片边界。
+    if (inSlice && fromLayer === toLayer) {
+      if (fromSlice !== toSlice) {
+        violations.push(
+          `${rel}: 禁止外壳 FSD 同层跨切片依赖 ${fromLayer}/${fromSlice} → ${slice} ("${spec}")`,
+        )
+      } else if (usesIndex) {
+        violations.push(`${rel}: 外壳 FSD 切片内部禁止导入自身根入口 ${index} ("${spec}")`)
+      } else if (!relative) {
+        violations.push(`${rel}: 外壳 FSD 切片内部请使用相对路径导入实现 ("${spec}")`)
+      }
+    } else if (!usesIndex) {
+      violations.push(`${rel}: 违反外壳 FSD 切片入口，请从 ${index} 导入 ("${spec}")`)
+    }
+  }
+
+  // AST 保留类型导入、命名空间重导出和带字面量的运行时导入，不扫描字符串或注释。
+  const visit = (node) => {
+    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
+      if (node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+        checkSpecifier(node.moduleSpecifier.text)
+      }
+    } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) {
+      if (ts.isStringLiteral(node.argument.literal)) checkSpecifier(node.argument.literal.text)
+    } else if (ts.isExternalModuleReference(node) && ts.isStringLiteral(node.expression)) {
+      checkSpecifier(node.expression.text, ts.ModuleKind.CommonJS)
+    } else if (ts.isCallExpression(node)) {
+      const {
+        expression,
+        arguments: [argument],
+      } = node
+      if (argument && ts.isStringLiteralLike(argument)) {
+        if (expression.kind === ts.SyntaxKind.ImportKeyword) checkSpecifier(argument.text)
+        if (ts.isIdentifier(expression) && expression.text === 'require') {
+          checkSpecifier(argument.text, ts.ModuleKind.CommonJS)
+        }
+      }
+    }
+    ts.forEachChild(node, visit)
+  }
+
+  visit(ts.createSourceFile(file, content, ts.ScriptTarget.Latest))
+}
+
 const violations = []
 
 for (const group of ['packages', 'apps']) {
@@ -132,9 +247,13 @@ for (const group of ['packages', 'apps']) {
 
     // 2. 扫描源码中的 import 语句
     const srcDir = path.join(pkgDir, 'src')
+    const resolveWebModule =
+      pkgName === '@akasha/web' ? createWebFsdResolver(pkgDir, violations) : undefined
+    if (resolveWebModule) checkWebSliceEntries(srcDir, violations)
     for (const file of walk(srcDir)) {
       const rel = path.relative(ROOT, file)
       const content = fs.readFileSync(file, 'utf8')
+      if (resolveWebModule) checkWebFsd(srcDir, file, rel, content, resolveWebModule, violations)
       const specs = extractSpecifiers(content)
 
       for (const spec of specs) {
@@ -174,26 +293,6 @@ for (const group of ['packages', 'apps']) {
               ) {
                 violations.push(
                   `${rel}: 违反服务端 DDD 分层 ${fromLayer} → ${targetLayer} ("${spec}")`,
-                )
-              }
-            }
-          }
-        }
-
-        // 4. apps/web FSD 分层检查
-        if (pkgName === '@akasha/web' && spec.startsWith('.')) {
-          const fromLayer = path.relative(srcDir, file).split(path.sep)[0]
-          if (fromLayer in WEB_FSD_RANK) {
-            const target = path.resolve(path.dirname(file), spec)
-            const targetRel = path.relative(srcDir, target)
-            if (!targetRel.startsWith('..')) {
-              const targetLayer = targetRel.split(path.sep)[0]
-              if (
-                targetLayer in WEB_FSD_RANK &&
-                WEB_FSD_RANK[targetLayer] > WEB_FSD_RANK[fromLayer]
-              ) {
-                violations.push(
-                  `${rel}: 违反外壳 FSD 分层 ${fromLayer} → ${targetLayer} ("${spec}")`,
                 )
               }
             }

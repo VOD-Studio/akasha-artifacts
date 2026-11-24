@@ -1,5 +1,5 @@
 import type { Version } from '@akasha/protocol'
-import { computeLineDiff } from '../../../shared/lib/diff'
+import { computeLineDiff } from '@/shared/lib/diff'
 import { submitArtifactFeedback } from './client'
 
 function summarizeHumanEdit(

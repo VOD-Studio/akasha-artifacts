@@ -15,15 +15,13 @@ import {
   type CanvasLocation,
   type CanvasPage,
   createCanvasDocument,
-} from '../../entities/artifact'
-import { selectionForVersion, useSelectionStore } from '../../entities/selection'
-import { useWorkspaceStore } from '../../entities/workspace/store'
-import { SplitCodeEditor } from '../../features/code-editor/SplitCodeEditor'
-import { ArtifactReviewPanel, selectActiveRound } from '../../features/review'
-import { VersionDiffView } from '../../features/version-diff/VersionDiffView'
-import { useVisualEdit } from '../../features/visual-edit/useVisualEdit'
-import { VisualEditPanel } from '../../features/visual-edit/VisualEditPanel'
-import { syncProjectSelection } from '../../shared/api/client'
+} from '@/entities/artifact'
+import { selectionForVersion, syncProjectSelection, useSelectionStore } from '@/entities/selection'
+import { useWorkspaceStore } from '@/entities/workspace'
+import { SplitCodeEditor } from '@/features/code-editor'
+import { ArtifactReviewPanel, selectActiveRound } from '@/features/review'
+import { VersionDiffView } from '@/features/version-diff'
+import { useVisualEdit, VisualEditPanel } from '@/features/visual-edit'
 import { ArtifactCanvas, type InspectorReveal } from './ArtifactCanvas'
 import { ArtifactFrame, type BoardFramePurpose, type FrameConnection } from './ArtifactFrame'
 import { BoardInspector, type BoardInspectorHandoff } from './BoardInspector'

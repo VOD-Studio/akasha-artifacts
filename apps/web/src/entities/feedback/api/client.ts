@@ -6,7 +6,7 @@ import type {
   ReviewRound,
   Verdict,
 } from '@akasha/protocol'
-import { requestJson } from '../../../shared/api/request'
+import { requestJson } from '@/shared/api/request'
 
 /** 写到指定作品版本的批注、修改记录或诊断。 */
 export interface SubmitFeedbackInput {

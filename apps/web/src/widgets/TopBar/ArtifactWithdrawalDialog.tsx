@@ -3,7 +3,7 @@ import { Button } from '@akasha/ui/button'
 import { Modal } from '@akasha/ui/dialog'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { artifactKeys, withdrawArtifact } from '../../entities/artifact'
+import { artifactKeys, withdrawArtifact } from '@/entities/artifact'
 
 interface ArtifactWithdrawalDialogProps {
   artifact: Artifact

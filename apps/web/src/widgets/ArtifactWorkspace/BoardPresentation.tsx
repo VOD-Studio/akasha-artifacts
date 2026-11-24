@@ -1,7 +1,7 @@
 import { Button } from '@akasha/ui/button'
 import { ArrowLeft, Minus, Play, Plus } from 'lucide-react'
 import { type MouseEventHandler, type ReactNode, useLayoutEffect, useRef, useState } from 'react'
-import type { CanvasBoard } from '../../entities/artifact'
+import type { CanvasBoard } from '@/entities/artifact'
 import { useViewportSize } from './useViewportSize'
 
 interface BoardPresentationProps {

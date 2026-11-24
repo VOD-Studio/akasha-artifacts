@@ -1,4 +1,4 @@
-import type { CanvasBoard } from '../../entities/artifact'
+import type { CanvasBoard } from '@/entities/artifact'
 
 /** 画布坐标系里的点，单位 CSS 像素。 */
 export interface Point {

@@ -1,5 +1,5 @@
 import { type QueryClient, useMutation, useQueryClient } from '@tanstack/react-query'
-import { artifactKeys } from '../../../entities/artifact'
+import { artifactKeys } from '@/entities/artifact'
 import {
   feedbackKeys,
   type RecordHumanDecisionInput,
@@ -8,7 +8,7 @@ import {
   submitArtifactFeedback,
   submitReviewRound,
   withdrawReviewRound,
-} from '../../../entities/feedback'
+} from '@/entities/feedback'
 
 function invalidateReviewQueries(queryClient: QueryClient, artifactId: string): void {
   // 写入成功后同时刷新反馈与制品详情；不等待重新拉取，避免阻塞提交完成和后续通知。

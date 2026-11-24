@@ -2,7 +2,7 @@ import type { Version } from '@akasha/protocol'
 import { Empty } from '@akasha/ui/empty'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
 import { useEffect, useMemo, useState } from 'react'
-import { computeLineDiff, type DiffLine } from '../../shared/lib/diff'
+import { computeLineDiff, type DiffLine } from '@/shared/lib/diff'
 
 export interface VersionDiffViewProps {
   versions: readonly Version[]

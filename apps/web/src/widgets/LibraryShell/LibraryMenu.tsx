@@ -13,8 +13,8 @@ import {
 } from '@akasha/ui/dropdown-menu'
 import { Archive, Ellipsis, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { useRemoveProjectMutation } from '../../entities/project/queries'
-import { useWorkspaceStore } from '../../entities/workspace/store'
+import { useRemoveProjectMutation } from '@/entities/project'
+import { useWorkspaceStore } from '@/entities/workspace'
 
 interface LibraryMenuProps {
   projects: readonly Project[]

@@ -4,8 +4,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type ArtifactDetailResponse, artifactKeys } from '../src/entities/artifact'
-import { applyRealtimeEventToCache } from '../src/features/live-sync/useLiveSync'
-import { buildPropPatch, PropsPanel } from '../src/features/props-panel/PropsPanel'
+import { applyRealtimeEventToCache } from '../src/features/live-sync'
+import { PropsPanel } from '../src/features/props-panel'
+import { buildPropPatch } from '../src/features/props-panel/PropsPanel'
 
 beforeEach(() => {
   vi.stubGlobal(

@@ -6,10 +6,10 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, expect, it, vi } from 'vitest'
 import type { ArtifactDetailResponse } from '../src/entities/artifact'
 import { useSelectionStore } from '../src/entities/selection'
-import { useWorkspaceStore } from '../src/entities/workspace/store'
+import { useWorkspaceStore } from '../src/entities/workspace'
 import { createAppRouter } from '../src/routes/router'
-import { ArtifactWorkspace } from '../src/widgets/ArtifactWorkspace/ArtifactWorkspace'
-import { TopBar } from '../src/widgets/TopBar/TopBar'
+import { ArtifactWorkspace } from '../src/widgets/ArtifactWorkspace'
+import { TopBar } from '../src/widgets/TopBar'
 
 const artifact: Artifact = {
   publicId: 'CanvasExamplePublicId1',

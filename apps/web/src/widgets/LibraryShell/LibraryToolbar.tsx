@@ -10,8 +10,8 @@ import {
 import { SearchInput } from '@akasha/ui/input'
 import { ChevronDown, LayoutGrid, List, Star } from 'lucide-react'
 import { type ReactNode, useEffect, useRef } from 'react'
-import { useWorkspaceStore } from '../../entities/workspace/store'
-import { ARTIFACT_TYPE_LABELS } from '../../shared/lib/format'
+import { useWorkspaceStore } from '@/entities/workspace'
+import { ARTIFACT_TYPE_LABELS } from '@/shared/lib/format'
 import { useLibraryView } from './library-view'
 
 interface FilterMenuProps {

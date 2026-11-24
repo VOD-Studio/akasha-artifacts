@@ -2,7 +2,7 @@ import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
 import { AlertTriangle, Check, RefreshCw } from 'lucide-react'
 import { useMemo } from 'react'
-import { computeLineDiff } from '../../shared/lib/diff'
+import { computeLineDiff } from '@/shared/lib/diff'
 
 export interface EditorConflictState {
   reason: 'http_409' | 'remote_updated'

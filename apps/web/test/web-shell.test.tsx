@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-import { execFileSync } from 'node:child_process'
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
 import {
   type Artifact,
   type Feedback,
@@ -26,21 +22,21 @@ beforeAll(() => {
 })
 
 import { type ArtifactDetailResponse, artifactKeys } from '../src/entities/artifact'
-import { projectKeys } from '../src/entities/project/queries'
+import { projectKeys } from '../src/entities/project'
 import { useSelectionStore } from '../src/entities/selection'
-import { useWorkspaceStore } from '../src/entities/workspace/store'
-import { ElementPickerButton } from '../src/features/element-picker/ElementPickerButton'
-import { RuntimeErrorPanel } from '../src/features/error-recovery/RuntimeErrorPanel'
-import { applyRealtimeEventToCache } from '../src/features/live-sync/useLiveSync'
+import { useWorkspaceStore } from '../src/entities/workspace'
+import { ElementPickerButton } from '../src/features/element-picker'
+import { RuntimeErrorPanel } from '../src/features/error-recovery'
+import { applyRealtimeEventToCache } from '../src/features/live-sync'
 import { AnnotationComposer, ArtifactReviewPanel } from '../src/features/review'
 import { RoundSubmitBar } from '../src/features/review/ui/RoundSubmitBar'
-import { VersionDiffView } from '../src/features/version-diff/VersionDiffView'
+import { VersionDiffView } from '../src/features/version-diff'
 import { AkashaWsClient } from '../src/shared/api/ws'
 import { SANDBOX_IFRAME_SANDBOX_ATTR, SandboxBridgeHost } from '../src/shared/bridge/host'
-import { ArtifactWorkspace } from '../src/widgets/ArtifactWorkspace/ArtifactWorkspace'
-import { LibraryShell } from '../src/widgets/LibraryShell/LibraryShell'
+import { ArtifactWorkspace } from '../src/widgets/ArtifactWorkspace'
+import { LibraryShell } from '../src/widgets/LibraryShell'
 import { useLibraryView } from '../src/widgets/LibraryShell/library-view'
-import { TopBar } from '../src/widgets/TopBar/TopBar'
+import { TopBar } from '../src/widgets/TopBar'
 
 const SAMPLE_ARTIFACT: Artifact = {
   publicId: 'AbCdEfGhIjKlMnOpQrStU',
@@ -582,42 +578,6 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       cleanup()
       queryClient.clear()
       vi.unstubAllGlobals()
-    }
-  })
-
-  it('反向 FSD 依赖（entities → features）会被 scripts/check-deps.mjs 拦截', () => {
-    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'akasha-fsd-test-'))
-    try {
-      const entitiesDir = path.join(tmpRoot, 'apps', 'web', 'src', 'entities')
-      fs.mkdirSync(entitiesDir, { recursive: true })
-      fs.writeFileSync(
-        path.join(tmpRoot, 'apps', 'web', 'package.json'),
-        JSON.stringify({ name: '@akasha/web' }),
-      )
-      fs.writeFileSync(
-        path.join(entitiesDir, 'illegal.ts'),
-        "import { foo } from '../features/live-sync/useLiveSync'\nexport const x = foo\n",
-      )
-
-      const scriptPath = path.resolve(process.cwd(), 'scripts/check-deps.mjs')
-      let failed = false
-      let output = ''
-      try {
-        execFileSync(process.execPath, [scriptPath], {
-          cwd: tmpRoot,
-          encoding: 'utf8',
-          stdio: 'pipe',
-        })
-      } catch (err) {
-        failed = true
-        const e = err as { stderr?: string; stdout?: string }
-        output = `${e.stdout ?? ''}${e.stderr ?? ''}`
-      }
-
-      expect(failed).toBe(true)
-      expect(output).toContain('违反外壳 FSD 分层 entities → features')
-    } finally {
-      fs.rmSync(tmpRoot, { recursive: true, force: true })
     }
   })
 

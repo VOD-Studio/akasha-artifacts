@@ -11,9 +11,9 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { ArtifactDetailResponse } from '../src/entities/artifact'
 import { useSelectionStore } from '../src/entities/selection'
-import { useWorkspaceStore } from '../src/entities/workspace/store'
+import { useWorkspaceStore } from '../src/entities/workspace'
 import { SANDBOX_IFRAME_SANDBOX_ATTR } from '../src/shared/bridge/host'
-import { ArtifactWorkspace } from '../src/widgets/ArtifactWorkspace/ArtifactWorkspace'
+import { ArtifactWorkspace } from '../src/widgets/ArtifactWorkspace'
 
 beforeAll(() => {
   if (typeof globalThis.ResizeObserver === 'undefined') {

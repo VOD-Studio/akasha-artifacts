@@ -6,7 +6,7 @@ import { Spinner } from '@akasha/ui/indicator'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { artifactKeys, fetchWithdrawnArtifacts, restoreArtifact } from '../../entities/artifact'
+import { artifactKeys, fetchWithdrawnArtifacts, restoreArtifact } from '@/entities/artifact'
 
 interface WithdrawnArtifactsDialogProps {
   onOpenArtifact: (publicId: string) => void

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { expect, it } from 'vitest'
-import { composeOfflineDesign } from '../src/features/export-design/offline-design'
+import { composeOfflineDesign } from '../src/features/export-design'
 
 it('即使是后续画板内隐藏的外部资源，也在请求运行器前阻止下载并指出具体画板', async () => {
   const board = { id: 'first', width: 360, height: 640, title: '起始', type: 'html' as const }

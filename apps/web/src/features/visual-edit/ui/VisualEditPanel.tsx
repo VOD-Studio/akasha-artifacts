@@ -5,7 +5,7 @@ import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@akasha
 import { Textarea } from '@akasha/ui/textarea'
 import { GripVertical, RotateCcw } from 'lucide-react'
 import { type FormEvent, useId, useRef, useState } from 'react'
-import type { PickedTarget, VisualEditController } from './useVisualEdit'
+import type { PickedTarget, VisualEditController } from '../model/useVisualEdit'
 
 interface Props {
   controller: VisualEditController

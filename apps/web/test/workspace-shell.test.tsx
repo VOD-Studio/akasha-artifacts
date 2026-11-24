@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
+import { HubAccountButton } from '@/features/hub'
 import { type ArtifactDetailResponse, artifactKeys } from '../src/entities/artifact'
 import { createAppRouter } from '../src/routes/router'
 
@@ -138,4 +139,31 @@ it('首次读取作品失败时可重试，成功后打开同一作品', async (
   fireEvent.click(screen.getByRole('button', { name: '重试' }))
   expect(await screen.findByTitle('画板内容：确认订单')).toBeTruthy()
   expect(screen.queryByText('无法打开作品')).toBeNull()
+})
+
+it('Hub 登录与退出使用工作台同源，不把会话 Cookie 发往作品 API 地址', async () => {
+  vi.stubGlobal('__AKASHA_CONFIG__', { hub: true, apiBaseUrl: 'https://api.example.test' })
+  const request = vi.spyOn(window, 'fetch').mockImplementation(async (url) => {
+    if (url === '/api/v1/auth/session')
+      return Response.json({ user: { login: 'reviewer', member: true } })
+    return new Response(null, { status: 503 })
+  })
+  render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <HubAccountButton />
+    </QueryClientProvider>,
+  )
+  fireEvent.click(await screen.findByRole('button', { name: '退出 @reviewer' }))
+  expect(request).toHaveBeenCalledWith(
+    '/api/v1/auth/session',
+    expect.objectContaining({ credentials: 'same-origin' }),
+  )
+  await waitFor(() => {
+    expect(request).toHaveBeenCalledWith(
+      '/api/v1/auth/logout',
+      expect.objectContaining({ method: 'POST', credentials: 'same-origin' }),
+    )
+  })
 })

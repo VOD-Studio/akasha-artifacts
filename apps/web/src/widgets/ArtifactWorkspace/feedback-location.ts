@@ -1,5 +1,5 @@
 import type { ElementRef } from '@akasha/protocol'
-import type { CanvasDocument } from '../../entities/artifact'
+import type { CanvasDocument } from '@/entities/artifact'
 
 interface BlockPlacement {
   boardId: string

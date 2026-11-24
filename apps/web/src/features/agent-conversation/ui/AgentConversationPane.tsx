@@ -4,10 +4,10 @@ import { Textarea } from '@akasha/ui/textarea'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Send, X } from 'lucide-react'
 import { type ChangeEventHandler, type FormEventHandler, useLayoutEffect, useRef } from 'react'
-import { fetchArtifactConversation, sendArtifactConversation } from '../../shared/api/client'
-import { ApiError } from '../../shared/api/error'
+import { ApiError } from '@/shared/api/error'
+import { fetchArtifactConversation, sendArtifactConversation } from '../api/client'
+import { useAgentDraft } from '../model/agent-draft'
 import { AgentTurnList, describeAgentTarget } from './AgentTurnList'
-import { useAgentDraft } from './agent-draft'
 
 export interface ConversationTarget {
   /** 用户看到的页面和画板名只用于显示；提交时发送准确引用。 */

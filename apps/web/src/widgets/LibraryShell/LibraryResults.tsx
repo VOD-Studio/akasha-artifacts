@@ -12,7 +12,7 @@ import { Empty } from '@akasha/ui/empty'
 import { Skeleton } from '@akasha/ui/skeleton'
 import { Star } from 'lucide-react'
 import type { MouseEventHandler } from 'react'
-import { ARTIFACT_TYPE_LABELS, formatRelativeTime } from '../../shared/lib/format'
+import { ARTIFACT_TYPE_LABELS, formatRelativeTime } from '@/shared/lib/format'
 import { LibraryArtwork } from './LibraryArtwork'
 
 const CARD_GRID = 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3'

@@ -1,13 +1,9 @@
 import { type Artifact, stabilizeArtboardSource, type Version } from '@akasha/protocol'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
-import {
-  type ArtifactDetailResponse,
-  artifactKeys,
-  publishHumanVersion,
-} from '../../entities/artifact'
-import { notifyHumanVersionEdit } from '../../entities/feedback'
-import { ApiError } from '../../shared/api/error'
+import { type ArtifactDetailResponse, artifactKeys, publishHumanVersion } from '@/entities/artifact'
+import { notifyHumanVersionEdit } from '@/entities/feedback'
+import { ApiError } from '@/shared/api/error'
 import {
   type CanvasBoardEdit,
   type CanvasSourceChange,

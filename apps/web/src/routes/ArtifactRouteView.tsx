@@ -5,34 +5,27 @@ import {
   type ArtifactDetailResponse,
   useArtifactDetailQuery,
   useArtifactVersionsQuery,
-} from '../entities/artifact'
-import { useDaemonStatusQuery } from '../entities/daemon/queries'
-import { readAnnotationDraft, useArtifactFeedbackQuery } from '../entities/feedback'
-import { useSelectionStore } from '../entities/selection'
-import { useWorkspaceStore } from '../entities/workspace/store'
-import {
-  AgentConversationPane,
-  type ConversationTarget,
-} from '../features/agent-conversation/AgentConversationPane'
-import { useLiveSync } from '../features/live-sync/useLiveSync'
-import { ApiError } from '../shared/api/error'
-import { useLocalArtifactRedirect } from '../shared/config/local-artifact'
-import { isCloudHub, resolveSandboxOrigin } from '../shared/config/runtime'
+} from '@/entities/artifact'
+import { useDaemonStatusQuery } from '@/entities/daemon'
+import { readAnnotationDraft, useArtifactFeedbackQuery } from '@/entities/feedback'
+import { useSelectionStore } from '@/entities/selection'
+import { useWorkspaceStore } from '@/entities/workspace'
+import { AgentConversationPane, type ConversationTarget } from '@/features/agent-conversation'
+import { useLiveSync } from '@/features/live-sync'
+import { ApiError } from '@/shared/api/error'
+import { useLocalArtifactRedirect } from '@/shared/config/local-artifact'
+import { isCloudHub, resolveSandboxOrigin } from '@/shared/config/runtime'
 import {
   ArtifactExportDialog,
-  type DesignExportTarget,
-} from '../widgets/ArtifactWorkspace/ArtifactExportDialog'
-import {
   ArtifactHandoffDialog,
   type ArtifactHandoffTarget,
-} from '../widgets/ArtifactWorkspace/ArtifactHandoffDialog'
-import { ArtifactShareDialog } from '../widgets/ArtifactWorkspace/ArtifactShareDialog'
-import {
+  ArtifactShareDialog,
   ArtifactTransferDialog,
   type ArtifactTransferTarget,
-} from '../widgets/ArtifactWorkspace/ArtifactTransferDialog'
-import { ArtifactWorkspace } from '../widgets/ArtifactWorkspace/ArtifactWorkspace'
-import { TopBar } from '../widgets/TopBar/TopBar'
+  ArtifactWorkspace,
+  type DesignExportTarget,
+} from '@/widgets/ArtifactWorkspace'
+import { TopBar } from '@/widgets/TopBar'
 import { OpeningArtifact, UnavailableArtifact } from './ArtifactRouteStatus'
 
 type HandoffScope = Pick<ArtifactHandoffReference, 'pageId' | 'boardId' | 'element'>

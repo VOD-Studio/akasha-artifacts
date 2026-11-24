@@ -9,7 +9,7 @@ import {
   artifactKeys,
   type CanvasPage,
   publishHumanVersion,
-} from '../../entities/artifact'
+} from '@/entities/artifact'
 import { type CanvasPageEdit, editCanvasPages } from './canvas-page-source'
 
 /** 可保存页面的头版本快照。 */

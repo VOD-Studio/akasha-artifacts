@@ -1,8 +1,8 @@
 import { Alert } from '@akasha/ui/alert'
 import { Button } from '@akasha/ui/button'
 import { Spinner } from '@akasha/ui/indicator'
-import { HubAccountButton } from '../features/hub/HubActions'
-import { ApiError } from '../shared/api/error'
+import { HubAccountButton } from '@/features/hub'
+import { ApiError } from '@/shared/api/error'
 
 /** 解析本机直连与读取作品共用同一个等待状态。 */
 export function OpeningArtifact() {

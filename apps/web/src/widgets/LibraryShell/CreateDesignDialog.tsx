@@ -6,15 +6,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@akasha/ui/textarea'
 import { type UseQueryResult, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { type ChangeEventHandler, useId, useState } from 'react'
-import { artifactKeys } from '../../entities/artifact'
-import { AgentTurnList } from '../../features/agent-conversation/AgentTurnList'
-import { useAgentDraft } from '../../features/agent-conversation/agent-draft'
+import { artifactKeys } from '@/entities/artifact'
 import {
+  AgentTurnList,
   fetchAgentConnections,
   fetchAgentDesignSession,
   startAgentDesign,
-} from '../../shared/api/client'
-import { ApiError } from '../../shared/api/error'
+  useAgentDraft,
+} from '@/features/agent-conversation'
+import { ApiError } from '@/shared/api/error'
 
 interface DesignAttempt {
   /** 实际受理之后才有的本机会话。 */
