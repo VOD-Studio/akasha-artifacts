@@ -280,12 +280,14 @@ export function useCanvasKeyboardEditing({
       if (focusSelectionToolbar()) {
         event.preventDefault()
         event.stopPropagation()
+        event.nativeEvent.stopPropagation()
       }
       return
     }
     if (key === 'Escape') {
       event.preventDefault()
       event.stopPropagation()
+      event.nativeEvent.stopPropagation()
       onSelectLayer(null)
       focusBoardTitle(activeBoard.id)
       return
@@ -450,10 +452,25 @@ export function useCanvasKeyboardEditing({
     }
   })
 
+  const handleDocumentF6 = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key !== 'F6' || event.ctrlKey || event.metaKey || event.altKey) return
+    const shell = viewportRef.current?.parentElement
+    if (!acceptsCanvasShortcut(event, shell)) return
+    const target = event.target instanceof Element ? event.target : null
+    if (selectionToolbarRef.current?.contains(target)) return
+    if (!focusSelectionToolbar()) return
+    event.preventDefault()
+    event.stopPropagation()
+  })
+
   useEffect(() => {
     if (!visible) return
+    document.addEventListener('keydown', handleDocumentF6, true)
     window.addEventListener('keydown', handleGlobalKey)
-    return () => window.removeEventListener('keydown', handleGlobalKey)
+    return () => {
+      document.removeEventListener('keydown', handleDocumentF6, true)
+      window.removeEventListener('keydown', handleGlobalKey)
+    }
   }, [visible])
 
   return {

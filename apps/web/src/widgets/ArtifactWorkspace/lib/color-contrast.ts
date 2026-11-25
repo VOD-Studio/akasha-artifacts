@@ -61,6 +61,14 @@ export function parseCssColor(input: string): Rgba | null {
   return { r: clampByte(r), g: clampByte(g), b: clampByte(b), a: parseAlpha(rgb[4]) }
 }
 
+/** 将 `#rgb`、`#rrggbb` 或 `rgb()/rgba()` 颜色归一化为小写 `#rrggbb`；无法识别时返回 `null`。 */
+export function cssColorToHex(input: string): string | null {
+  const parsed = parseCssColor(input)
+  if (!parsed) return null
+  const hex = (byte: number) => byte.toString(16).padStart(2, '0')
+  return `#${hex(parsed.r)}${hex(parsed.g)}${hex(parsed.b)}`
+}
+
 function linearizeChannel(byte: number): number {
   const s = byte / 255
   return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4

@@ -45,6 +45,7 @@ import { useSelectedVisualTarget } from './hooks/useSelectedVisualTarget'
 import { BoardInspector, type BoardInspectorHandoff } from './inspector/BoardInspector'
 import { BoardResources } from './model/board-resources'
 import { createBoardTweakPreviewStore } from './model/board-tweak-previews'
+import { SelectionToolbar } from './toolbar/SelectionToolbar'
 import { ArtifactCanvas, type InspectorReveal } from './ui/ArtifactCanvas'
 import { ArtifactFrame, type BoardFramePurpose, type FrameConnection } from './ui/ArtifactFrame'
 import { BoardOverflowLayers } from './ui/BoardOverflowLayers'
@@ -706,6 +707,29 @@ export function ArtifactWorkspace({
             }
             renderBoard={renderBoard}
             renderBoardOverflow={renderBoardOverflow}
+            renderSelectionToolbar={
+              canvas === savedCanvas && activeBoard
+                ? (anchor) => (
+                    <SelectionToolbar
+                      anchor={anchor}
+                      board={activeBoard}
+                      runtimeLayer={selectedLayer}
+                      designLayer={selectedDesignLayer}
+                      presentation={inspection.presentation}
+                      visualTarget={runtimeVisualTarget.target}
+                      propertiesOpen={inspection.open && inspectorPage === 'properties'}
+                      drawerOpen={inspectorOpen}
+                      canEditBoards={canEditBoards}
+                      canEditText={canEditText}
+                      canComment={canComment}
+                      editing={canEditText ? boardEditing : undefined}
+                      textTools={canEditText ? inlineText.tools : undefined}
+                      onApplyRuntimeOp={runtimeVisualTarget.applyOp}
+                      onComment={() => setInspectorTab('review')}
+                    />
+                  )
+                : undefined
+            }
             layerSelection={
               canvas === savedCanvas
                 ? {

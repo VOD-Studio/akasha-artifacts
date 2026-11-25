@@ -24,6 +24,8 @@ export interface CanvasTextTools {
   place: (board: CanvasBoard, layer: DesignTextLayer, base: VersionSummary, anchor: Point) => void
   /** 检查器可从已选文字对象直接进入同一编辑器。 */
   edit: (board: CanvasBoard, layer: DesignTextLayer, anchor: Point) => void
+  /** 选区工具栏可从已验证的静态源码文字直接进入同一编辑器。 */
+  editSource: (board: CanvasBoard, loc: string, text: string, anchor: Point) => void
 }
 
 /** 一个已定位的编辑或只读提示，保留打开时的版本和外壳定位。 */
@@ -157,6 +159,18 @@ export function useInlineCanvasText(input: TextEditingInput) {
       if (draft || !input.enabled || !input.editing.available) return
       pending.current = null
       setDraft({ kind: 'native', boardId: board.id, anchor, base: input.version, layer })
+    },
+    editSource(board, loc, text, anchor) {
+      if (draft || !input.enabled || !input.editing.available) return
+      pending.current = null
+      setDraft({
+        kind: 'source',
+        boardId: board.scoped ? board.id : undefined,
+        anchor,
+        base: input.version,
+        loc,
+        text,
+      })
     },
   }
 
