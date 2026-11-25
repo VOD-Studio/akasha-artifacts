@@ -1,4 +1,9 @@
-import { DESIGN_LAYER_COLORS, type DesignLayer, type VersionSummary } from '@akasha/protocol'
+import {
+  DESIGN_LAYER_COLORS,
+  type DesignLayer,
+  type DesignLayerPaletteColor,
+  type VersionSummary,
+} from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Field } from '@akasha/ui/field'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
@@ -28,7 +33,12 @@ export const DESIGN_LAYER_COLOR_LABELS = {
   rose: '玫红',
   amber: '琥珀色',
   mint: '薄荷绿',
-} as const satisfies Record<NonNullable<DesignLayer['color']> | 'auto', string>
+} as const satisfies Record<DesignLayerPaletteColor | 'auto', string>
+
+/** 判断色值是否属于内置调色板；自定义十六进制颜色直接原样展示。 */
+export function isPaletteColor(color: DesignLayer['color']): color is DesignLayerPaletteColor {
+  return color !== undefined && color in DESIGN_LAYER_COLOR_LABELS
+}
 
 interface LayoutDraft {
   base: VersionSummary
@@ -114,9 +124,10 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
           <Select
             value={color ?? 'auto'}
             disabled={!editing.available}
-            onValueChange={(value) =>
-              update({ color: DESIGN_LAYER_COLORS.find((item) => item === value) })
-            }
+            onValueChange={(value) => {
+              if (value === 'auto') update({ color: undefined })
+              else update({ color: value as DesignLayer['color'] })
+            }}
           >
             <SelectTrigger controlSize="sm">
               <SelectValue />
@@ -128,6 +139,9 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
                   {t(DESIGN_LAYER_COLOR_LABELS[item])}
                 </SelectItem>
               ))}
+              {color && !isPaletteColor(color) ? (
+                <SelectItem value={color}>{color}</SelectItem>
+              ) : null}
             </SelectContent>
           </Select>
         </Field>

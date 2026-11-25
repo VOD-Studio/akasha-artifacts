@@ -832,8 +832,67 @@ it('原生图层和作者 HTML 独立渲染，同名标记不能接走原生图�
     reason: 'sync',
     version: 2,
     element: { blockId: 'design-layer:note', textPreview: '原生便签' },
+    presentation: expect.objectContaining({ isText: true }),
   })
   expect(container.querySelector('p')?.getAttribute('data-ak-loc')).toBe('1:7')
+})
+
+it('原生图层按排版、自定义十六进制色与镜像翻转渲染', async () => {
+  const { bridge, dispatchFromHost, nonce } = createMockBridgeHarness()
+  render(
+    <SandboxApp
+      bridge={bridge}
+      stateStore={new ArtifactStateStore()}
+      preserved={new PreservedStateManager()}
+    />,
+  )
+  act(() => {
+    dispatchFromHost({
+      v: PROTOCOL_VERSION,
+      nonce,
+      type: 'render',
+      artifactType: 'html',
+      boardId: 'styled',
+      version: 1,
+      source: '',
+      designLayers: [
+        {
+          id: 'title',
+          kind: 'text',
+          x: 10,
+          y: 20,
+          width: 240,
+          height: 60,
+          text: '加粗居中',
+          color: '#1d4ed8',
+          fontSize: 24,
+          fontWeight: 'bold',
+          textAlign: 'center',
+          flipX: true,
+        },
+        {
+          id: 'badge',
+          kind: 'ellipse',
+          x: 20,
+          y: 90,
+          width: 80,
+          height: 80,
+          color: '#ef4444',
+          flipY: true,
+        },
+      ],
+      state: {},
+    })
+  })
+  const textLayer = await screen.findByText('加粗居中')
+  expect(textLayer.style.fontSize).toBe('24px')
+  expect(textLayer.style.fontWeight).toBe('700')
+  expect(textLayer.style.textAlign).toBe('center')
+  expect(textLayer.style.color).toBe('rgb(29, 78, 216)')
+  expect(textLayer.style.transform).toBe('scale(-1, 1)')
+  const shapeLayer = screen.getByTitle('椭圆')
+  expect(shapeLayer.style.backgroundColor).toBe('rgb(239, 68, 68)')
+  expect(shapeLayer.style.transform).toBe('scale(1, -1)')
 })
 
 it('只有专用纸宽帧按固定版读取页，保留版内外观和图层，不采纳临时预览', async () => {

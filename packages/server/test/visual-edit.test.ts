@@ -242,4 +242,69 @@ describe('可视化直改版本与反馈', () => {
       await close()
     }
   })
+
+  it('画板内静态流元素支持重排、样式类名与删除并可单步撤销', async () => {
+    const document = {
+      boards: [
+        {
+          id: 'main',
+          title: '主画板',
+          html: '<section><p class="text-left">第一段</p><p class="text-left">第二段</p></section>',
+        },
+      ],
+    }
+    const { request, path, close } = await createFixture(JSON.stringify(document), 'artboard')
+    const readVersion = z.object({ version: z.object({ version: z.number(), source: z.string() }) })
+    try {
+      const target = await request(`${path}?baseVersion=1&boardId=main&loc=1%3A10`)
+      expect(target.status).toBe(200)
+      const inspected = z
+        .object({
+          target: z.object({
+            order: z.object({
+              parentLoc: z.string(),
+              siblings: z.array(z.object({ loc: z.string() })),
+            }),
+          }),
+        })
+        .parse(await target.json())
+      expect(inspected.target.order.siblings).toHaveLength(2)
+
+      const moved = await request(path, {
+        baseVersion: 1,
+        boardId: 'main',
+        op: {
+          kind: 'move',
+          loc: inspected.target.order.siblings[0].loc,
+          targetParentLoc: inspected.target.order.parentLoc,
+          index: 1,
+        },
+      })
+      expect(moved.status).toBe(200)
+      const v2 = readVersion.parse(await moved.json()).version
+      expect(JSON.parse(v2.source).boards[0].html).toBe(
+        '<section><p class="text-left">第二段</p><p class="text-left">第一段</p></section>',
+      )
+
+      const styled = await request(path, {
+        baseVersion: 2,
+        boardId: 'main',
+        op: { kind: 'className', loc: '1:10', value: 'text-center font-bold' },
+      })
+      expect(styled.status).toBe(200)
+      const v3 = readVersion.parse(await styled.json()).version
+      expect(JSON.parse(v3.source).boards[0].html).toBe(
+        '<section><p class="text-center font-bold">第二段</p><p class="text-left">第一段</p></section>',
+      )
+
+      const undone = await request(path, { baseVersion: 3, undoVersion: 3 })
+      expect(undone.status).toBe(200)
+      const v4 = readVersion.parse(await undone.json()).version
+      expect(JSON.parse(v4.source).boards[0].html).toBe(
+        '<section><p class="text-left">第二段</p><p class="text-left">第一段</p></section>',
+      )
+    } finally {
+      await close()
+    }
+  })
 })
