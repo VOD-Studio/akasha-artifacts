@@ -835,3 +835,51 @@ it('原生图层和作者 HTML 独立渲染，同名标记不能接走原生图�
   })
   expect(container.querySelector('p')?.getAttribute('data-ak-loc')).toBe('1:7')
 })
+
+it('按运行节点订阅作者样式，切版后不把同位置的新样式归给旧选区', async () => {
+  const { bridge, posted, dispatchFromHost, nonce } = createMockBridgeHarness()
+  render(
+    <SandboxApp
+      bridge={bridge}
+      stateStore={new ArtifactStateStore()}
+      preserved={new PreservedStateManager()}
+    />,
+  )
+  const send = (message: object) =>
+    act(() => dispatchFromHost({ v: PROTOCOL_VERSION, nonce, ...message }))
+  const paint = (version: number, color: string) =>
+    send({
+      type: 'render',
+      artifactType: 'html',
+      version,
+      state: {},
+      source: `<main id="poster" style="color:${color}"><span style="letter-spacing:2px">标题</span></main>`,
+    })
+  const snapshot = () =>
+    posted.map(({ data }) => data).findLast((entry) => entry.type === 'inspect.layers.snapshot')
+  paint(1, 'red')
+  send({ type: 'inspect.layers.watch', active: true })
+  const first = await waitFor(() => {
+    const id = snapshot()?.layers.find((entry) => entry.label === '标题')?.id
+    if (!id) throw new Error('等待标题的运行节点')
+    return id
+  })
+  expect(snapshot()?.styles).toBeUndefined()
+  send({ type: 'inspect.layers.watch', active: true, styleLayerId: first })
+  await waitFor(() =>
+    expect(snapshot()?.styles).toMatchObject({
+      layerId: first,
+      declarations: expect.arrayContaining([
+        expect.objectContaining({ property: 'letter-spacing', value: '2px', source: 'style' }),
+        expect.objectContaining({
+          property: 'color',
+          value: 'red',
+          inheritedFrom: expect.stringContaining('poster'),
+        }),
+      ]),
+    }),
+  )
+  paint(2, 'blue')
+  await waitFor(() => expect(snapshot()?.version).toBe(2))
+  expect(snapshot()?.styles).toBeUndefined()
+})

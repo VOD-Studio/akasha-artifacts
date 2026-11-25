@@ -84,7 +84,7 @@ export function SandboxApp({
   const renderedVisualVersionRef = useRef(0)
   const renderedOverviewRef = useRef<RenderPayload | null>(null)
   const syncOverviewMotion = useRef<(() => void) | null>(null)
-  const [watchLayers, setWatchLayers] = useState(false)
+  const [layerWatch, setLayerWatch] = useState<{ styleLayerId?: string } | null>(null)
   const refreshLayers = useRef<(() => void) | null>(null)
   const lastPlayable = useRef<boolean | undefined>(undefined)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -271,7 +271,7 @@ export function SandboxApp({
           })
         }
       } else if (msg.type === 'inspect.layers.watch') {
-        setWatchLayers(msg.active)
+        setLayerWatch(msg.active ? { styleLayerId: msg.styleLayerId } : null)
       } else if (msg.type === 'highlight') {
         inspector.highlight(msg.element, msg.reveal, msg.layer)
       } else if (msg.type === 'pins.track') {
@@ -373,7 +373,7 @@ export function SandboxApp({
 
   useEffect(() => {
     const root = rootRef.current
-    if (!bridge || !root || !watchLayers || playbackVersion) return
+    if (!bridge || !root || !layerWatch || playbackVersion) return
     let pending: number | undefined
     const schedule = () => {
       if (pending !== undefined) return
@@ -382,7 +382,11 @@ export function SandboxApp({
         pending = undefined
         const version = renderedVisualVersionRef.current
         if (!version || version !== versionRef.current) return
-        bridge.send({ type: 'inspect.layers.snapshot', version, ...readCanvasLayers(root) })
+        bridge.send({
+          type: 'inspect.layers.snapshot',
+          version,
+          ...readCanvasLayers(root, layerWatch.styleLayerId),
+        })
       }, 100)
     }
     refreshLayers.current = schedule
@@ -399,7 +403,7 @@ export function SandboxApp({
       observer.disconnect()
       window.clearTimeout(pending)
     }
-  }, [bridge, playbackVersion, watchLayers])
+  }, [bridge, playbackVersion, layerWatch])
 
   // 自动向外壳上报容器尺寸变化，便于外壳自适应高度或视口定位
   useEffect(() => {
