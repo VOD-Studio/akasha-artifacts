@@ -73,10 +73,12 @@ function ensureInitialized(defaultTheme: ThemeChoice = 'system'): void {
   if (initialized || typeof window === 'undefined') return
   initialized = true
   publish(readStoredTheme() ?? defaultTheme)
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-    // 仅 system 选择需要响应系统偏好变化。
-    if (state.theme === 'system') publish('system')
-  })
+  if (typeof window.matchMedia === 'function') {
+    window.matchMedia('(prefers-color-scheme: dark)')?.addEventListener?.('change', () => {
+      // 仅 system 选择需要响应系统偏好变化。
+      if (state.theme === 'system') publish('system')
+    })
+  }
 }
 
 function subscribe(listener: () => void): () => void {

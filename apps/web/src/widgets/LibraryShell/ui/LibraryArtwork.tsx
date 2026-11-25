@@ -2,7 +2,20 @@ import type { Artifact } from '@akasha/protocol'
 import { CardFrameImage } from '@akasha/ui/card'
 import { Skeleton } from '@akasha/ui/skeleton'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileText } from 'lucide-react'
+import {
+  BarChart3,
+  CheckCircle2,
+  Code2,
+  Columns2,
+  FileCode2,
+  FileText,
+  GitPullRequest,
+  Globe,
+  Layers,
+  Network,
+  Shapes,
+  Timer,
+} from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { createCanvasDocument, fetchArtifactDetail } from '@/entities/artifact'
 import { captureBoardPng } from '@/shared/bridge/capture-png'
@@ -13,8 +26,44 @@ function previewKey(artifactId: string, version: number) {
   return ['artifact-thumbnail', artifactId, version] as const
 }
 
+function typeFallbackIcon(type: Artifact['type']) {
+  switch (type) {
+    case 'artboard':
+      return Layers
+    case 'document':
+    case 'markdown':
+      return FileText
+    case 'verify':
+      return CheckCircle2
+    case 'pr-walkthrough':
+      return GitPullRequest
+    case 'live-timeline':
+      return Timer
+    case 'option-compare':
+      return Columns2
+    case 'data-story':
+      return BarChart3
+    case 'react':
+      return Code2
+    case 'html':
+      return Globe
+    case 'mermaid':
+      return Network
+    case 'svg':
+      return Shapes
+    default:
+      return FileCode2
+  }
+}
+
 /** 只为出现在视口的卡片读取授权版本；拿不到缩略时不替作品生成内容。 */
-export function LibraryArtwork({ artifact }: { artifact: Artifact }) {
+export function LibraryArtwork({
+  artifact,
+  compact = false,
+}: {
+  artifact: Artifact
+  compact?: boolean
+}) {
   const { publicId, headVersion } = artifact
   const target = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(false)
@@ -74,13 +123,27 @@ export function LibraryArtwork({ artifact }: { artifact: Artifact }) {
   }
 
   const loading = !url && preview.isFetching
+  const FallbackIcon = typeFallbackIcon(artifact.type)
+
   return (
-    <CardFrameImage ref={target}>
-      {url && <img src={url} alt="" className="object-contain" onError={markImageBroken} />}
-      {loading && <Skeleton className="size-full" />}
+    <CardFrameImage
+      ref={target}
+      className={compact ? 'size-full aspect-auto rounded-none' : undefined}
+    >
+      {url && (
+        <img src={url} alt="" className="object-cover object-top" onError={markImageBroken} />
+      )}
+      {loading && <Skeleton className="size-full rounded-none" />}
       {!url && !loading && (
-        <div className="grid size-full place-items-center text-ink-muted" aria-hidden="true">
-          <FileText className="size-7" strokeWidth={1.5} />
+        <div
+          data-slot="artwork-fallback"
+          className="library-artwork-fallback flex size-full items-center justify-center text-ink-muted"
+          aria-hidden="true"
+        >
+          <FallbackIcon
+            className={compact ? 'size-4 opacity-70' : 'size-6 opacity-65'}
+            strokeWidth={1.5}
+          />
         </div>
       )}
     </CardFrameImage>

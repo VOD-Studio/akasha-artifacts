@@ -18,9 +18,9 @@
     border-radius: var(--radius-12);
     background-color: var(--popover);
     color: var(--popover-foreground);
-    box-shadow: var(--shadow-soft);
+    box-shadow: var(--shadow-modal);
     font-size: var(--text-14);
-    line-height: 1.7;
+    line-height: 1.65;
     outline: none;
     transition: inline-size 280ms var(--v-sheet-ease);
   }

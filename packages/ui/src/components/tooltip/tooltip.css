@@ -20,18 +20,18 @@
     z-index: var(--layer-tooltip);
     display: flex;
     align-items: center;
-    gap: 8px;
-    min-block-size: 28px;
+    gap: 6px;
+    min-block-size: 26px;
     max-inline-size: 15rem;
     padding: 4px 10px;
-    border-radius: 8px;
+    border-radius: var(--radius-8, 8px);
     background-color: var(--popover);
     color: var(--popover-foreground);
     box-shadow:
-      var(--shadow-soft),
+      var(--shadow-float),
       0 0 0 1px var(--ol);
-    font-size: 0.8125rem;
-    line-height: 1.5;
+    font-size: 0.75rem;
+    line-height: 1.4;
     overflow-wrap: break-word;
     pointer-events: none;
     transform-origin: var(--radix-tooltip-content-transform-origin);

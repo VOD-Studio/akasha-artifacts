@@ -1,3 +1,4 @@
+import { useTheme } from '@akasha/ui'
 import { UiLocaleProvider } from '@akasha/ui/locale'
 import { Toaster } from '@akasha/ui/sonner'
 import {
@@ -26,6 +27,7 @@ import { ConnectionNotice } from './ConnectionNotice'
 import { routeMessages } from './messages'
 
 function RootLayout() {
+  useTheme('system')
   const { locale, dir, t } = useMessages(routeMessages)
   useLayoutEffect(() => {
     document.documentElement.lang = locale

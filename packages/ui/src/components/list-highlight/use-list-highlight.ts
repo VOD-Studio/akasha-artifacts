@@ -2,13 +2,37 @@
 
 import { type RefCallback, useCallback, useRef } from 'react'
 
-const ITEM = '[data-list-highlight-item]'
-const OWNER = '[data-list-highlight]'
-const DISABLED = ":disabled, [aria-disabled='true'], [data-disabled]"
+const ITEM_SELECTOR = '[data-list-highlight-item]'
+const OWNER_SELECTOR = '[data-list-highlight]'
+const DISABLED_SELECTOR = ":disabled, [aria-disabled='true'], [data-disabled]"
+const SELECTED_SELECTOR = '[data-list-highlight-active="true"], [data-state="open"]'
+const HIGHLIGHT_VARS = ['x', 'y', 'width', 'height', 'radius'] as const
+
+const MUTATION_OPTIONS: MutationObserverInit = {
+  childList: true,
+  subtree: true,
+  attributes: true,
+  attributeFilter: [
+    'disabled',
+    'aria-disabled',
+    'data-disabled',
+    'data-list-highlight-active',
+    'data-state',
+    'class',
+  ],
+}
 
 export type ListHighlightMode = 'pointer' | 'focus' | 'active'
 
-export function isKeyboardFocus(element: Element) {
+type PointerZone = 'outside' | 'inside' | 'disabled'
+
+interface HighlightOptions {
+  mode?: ListHighlightMode
+  /** Dropdown 的安全区统一判断真正离开，由 clearPointer 清除悬停目标。 */
+  manualPointerLeave?: boolean
+}
+
+export function isKeyboardFocus(element: Element): boolean {
   try {
     return element.matches(':focus-visible')
   } catch {
@@ -16,10 +40,232 @@ export function isKeyboardFocus(element: Element) {
   }
 }
 
-interface HighlightOptions {
-  mode?: ListHighlightMode
-  /** Dropdown 的安全区统一判断真正离开，由 clearPointer 清除悬停目标。 */
-  manualPointerLeave?: boolean
+function findOwnItem(root: HTMLElement, target: EventTarget | null): HTMLElement | null {
+  if (!(target instanceof Element)) return null
+  const item = target.closest<HTMLElement>(ITEM_SELECTOR)
+  return item && item.closest(OWNER_SELECTOR) === root ? item : null
+}
+
+function isEnabledItem(root: HTMLElement, item: HTMLElement | null): item is HTMLElement {
+  return (
+    item !== null &&
+    root.contains(item) &&
+    item.closest(OWNER_SELECTOR) === root &&
+    !item.matches(DISABLED_SELECTOR)
+  )
+}
+
+function findSelectedItem(root: HTMLElement): HTMLElement | null {
+  for (const item of root.querySelectorAll<HTMLElement>(SELECTED_SELECTOR)) {
+    if (item.matches(ITEM_SELECTOR) && isEnabledItem(root, item)) return item
+  }
+  return null
+}
+
+function resolveFocusedItem(
+  root: HTMLElement,
+  target: EventTarget | null,
+  mode: ListHighlightMode,
+): HTMLElement | null {
+  if (mode === 'active') return null
+  const item = findOwnItem(root, target)
+  if (!isEnabledItem(root, item)) return null
+  return mode === 'focus' || isKeyboardFocus(item) ? item : null
+}
+
+function applyHighlightRect(root: HTMLElement, item: HTMLElement): void {
+  const rect = item.getBoundingClientRect()
+  const origin = root.getBoundingClientRect()
+  // 包围盒可能包含浮层或缩放变换，底色坐标仍按容器自身 CSS 像素换算。
+  const scaleX = (root.offsetWidth && origin.width / root.offsetWidth) || 1
+  const scaleY = (root.offsetHeight && origin.height / root.offsetHeight) || 1
+  const x = (rect.left - origin.left) / scaleX - root.clientLeft + root.scrollLeft
+  const y = (rect.top - origin.top) / scaleY - root.clientTop + root.scrollTop
+  root.style.setProperty('--v-list-hl-x', `${x}px`)
+  root.style.setProperty('--v-list-hl-y', `${y}px`)
+  root.style.setProperty('--v-list-hl-width', `${rect.width / scaleX}px`)
+  root.style.setProperty('--v-list-hl-height', `${rect.height / scaleY}px`)
+  root.style.setProperty('--v-list-hl-radius', getComputedStyle(item).borderRadius)
+}
+
+function clearHighlightStyles(root: HTMLElement): void {
+  root.removeAttribute('data-list-highlight-visible')
+  root.removeAttribute('data-list-highlight-jump')
+  for (const key of HIGHLIGHT_VARS) {
+    root.style.removeProperty(`--v-list-hl-${key}`)
+  }
+}
+
+function attachListHighlight(
+  root: HTMLElement,
+  { mode = 'pointer', manualPointerLeave = false }: HighlightOptions,
+) {
+  root.setAttribute('data-list-highlight', '')
+
+  let hovered: HTMLElement | null = null
+  let focused = resolveFocusedItem(root, document.activeElement, mode)
+  let active: HTMLElement | null = null
+  let pointerZone: PointerZone = 'outside'
+  let focusInRoot = document.activeElement !== null && root.contains(document.activeElement)
+  let clearFrame = 0
+
+  const cancelClear = () => {
+    if (!clearFrame) return
+    cancelAnimationFrame(clearFrame)
+    clearFrame = 0
+  }
+
+  const measureActive = () => {
+    if (isEnabledItem(root, active)) applyHighlightRect(root, active)
+  }
+
+  const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measureActive)
+
+  const setActive = (next: HTMLElement | null) => {
+    cancelClear()
+    if (next === active) return
+
+    const teleport = active === null || !root.contains(active)
+    if (active) {
+      resize?.unobserve(active)
+      if (mode === 'pointer') active.removeAttribute('data-highlighted')
+    }
+    active = next
+
+    if (!active) {
+      root.setAttribute('data-list-highlight-visible', 'false')
+      return
+    }
+
+    if (mode === 'pointer') active.setAttribute('data-highlighted', '')
+    resize?.observe(active)
+
+    if (teleport) {
+      // 隐藏态首次出现先无过渡落位并强制提交样式，再恢复滑动过渡并淡入，避免首帧飞入或首次移动硬跳。
+      root.setAttribute('data-list-highlight-jump', 'true')
+      applyHighlightRect(root, active)
+      void root.offsetWidth
+      root.removeAttribute('data-list-highlight-jump')
+    } else {
+      applyHighlightRect(root, active)
+    }
+    root.setAttribute('data-list-highlight-visible', 'true')
+  }
+
+  const sync = (deferClear = true): boolean => {
+    if (!isEnabledItem(root, hovered)) hovered = null
+    if (!isEnabledItem(root, focused)) focused = null
+
+    const next = hovered ?? focused ?? findSelectedItem(root)
+    if (next) {
+      const changed = next !== active
+      setActive(next)
+      return changed
+    }
+
+    // Radix 菜单里指针经过条目间隙、分隔线或分组标题时会短暂把焦点交还面板容器；
+    // 只要指针仍在面板内且未停在禁用项上，就保留原高亮作为滑动起点。
+    if (
+      mode === 'focus' &&
+      pointerZone === 'inside' &&
+      focusInRoot &&
+      isEnabledItem(root, active)
+    ) {
+      cancelClear()
+      return false
+    }
+
+    // 键盘换项若同帧先把焦点交还容器，延后一帧确认是否被新项接管。
+    if (mode === 'focus' && deferClear && pointerZone === 'outside' && focusInRoot && active) {
+      if (!clearFrame) {
+        clearFrame = requestAnimationFrame(() => {
+          clearFrame = 0
+          sync(false)
+        })
+      }
+      return false
+    }
+
+    const changed = active !== null
+    setActive(null)
+    return changed
+  }
+
+  const handlePointerEnter = (event: PointerEvent) => {
+    if (event.pointerType === 'touch') return
+    if (pointerZone === 'outside') pointerZone = 'inside'
+  }
+
+  const handlePointer = (event: PointerEvent) => {
+    if (event.pointerType === 'touch' || event.defaultPrevented) return
+    const item = findOwnItem(root, event.target)
+    const nextZone: PointerZone = item && !isEnabledItem(root, item) ? 'disabled' : 'inside'
+
+    if (mode === 'focus') {
+      const zoneChanged = nextZone !== pointerZone
+      pointerZone = nextZone
+      if (zoneChanged && nextZone === 'disabled') sync(false)
+      return
+    }
+
+    pointerZone = nextZone
+    if (mode !== 'pointer') return
+    if (item && item === hovered && isEnabledItem(root, hovered)) return
+    // 条目间隙保留上一个悬停项，避免跨间隙闪烁。
+    if (!item) return
+    hovered = isEnabledItem(root, item) ? item : null
+    sync(false)
+  }
+
+  const handlePointerLeave = () => {
+    pointerZone = 'outside'
+    hovered = null
+    sync(false)
+  }
+
+  const handleFocusIn = (event: FocusEvent) => {
+    focusInRoot = true
+    focused = resolveFocusedItem(root, event.target, mode)
+    if (focused) hovered = null
+    sync(true)
+  }
+
+  const handleFocusOut = (event: FocusEvent) => {
+    focusInRoot = event.relatedTarget instanceof Node && root.contains(event.relatedTarget)
+    focused = resolveFocusedItem(root, event.relatedTarget, mode)
+    sync(true)
+  }
+
+  const mutations = new MutationObserver(() => {
+    if (!sync(false)) measureActive()
+  })
+
+  sync(false)
+  resize?.observe(root)
+  mutations.observe(root, MUTATION_OPTIONS)
+  root.addEventListener('pointerenter', handlePointerEnter)
+  root.addEventListener('pointerover', handlePointer)
+  root.addEventListener('pointermove', handlePointer)
+  if (!manualPointerLeave) root.addEventListener('pointerleave', handlePointerLeave)
+  root.addEventListener('focusin', handleFocusIn)
+  root.addEventListener('focusout', handleFocusOut)
+
+  return {
+    clearPointer: handlePointerLeave,
+    detach: () => {
+      cancelClear()
+      resize?.disconnect()
+      mutations.disconnect()
+      if (mode === 'pointer') active?.removeAttribute('data-highlighted')
+      root.removeEventListener('pointerenter', handlePointerEnter)
+      root.removeEventListener('pointerover', handlePointer)
+      root.removeEventListener('pointermove', handlePointer)
+      root.removeEventListener('pointerleave', handlePointerLeave)
+      root.removeEventListener('focusin', handleFocusIn)
+      root.removeEventListener('focusout', handleFocusOut)
+      clearHighlightStyles(root)
+    },
+  }
 }
 
 export function useListHighlight<T extends HTMLElement = HTMLElement>({
@@ -31,151 +277,11 @@ export function useListHighlight<T extends HTMLElement = HTMLElement>({
   const ref: RefCallback<T> = useCallback(
     (root) => {
       if (!root) return
-      root.setAttribute('data-list-highlight', '')
-      let hovered: HTMLElement | null = null
-      let focused: HTMLElement | null = null
-      let active: HTMLElement | null = null
-      let visible = false
-      let clearFrame = 0
-      const enabled = (item: HTMLElement | null): item is HTMLElement =>
-        item !== null &&
-        root.contains(item) &&
-        item.closest(OWNER) === root &&
-        !item.matches(DISABLED)
-      const findItem = (target: EventTarget | null) => {
-        const item = target instanceof Element ? target.closest<HTMLElement>(ITEM) : null
-        return enabled(item) ? item : null
-      }
-      const measure = () => {
-        if (!enabled(active)) return
-        const rect = active.getBoundingClientRect()
-        const origin = root.getBoundingClientRect()
-        // 包围盒包含浮层出场或展柜缩放，底色仍使用容器自己的 CSS 像素。
-        const scaleX = (root.offsetWidth && origin.width / root.offsetWidth) || 1
-        const scaleY = (root.offsetHeight && origin.height / root.offsetHeight) || 1
-        const x = (rect.left - origin.left) / scaleX - root.clientLeft + root.scrollLeft
-        const y = (rect.top - origin.top) / scaleY - root.clientTop + root.scrollTop
-        const radius = getComputedStyle(active).borderRadius
-        root.style.setProperty('--v-list-hl-x', `${x}px`)
-        root.style.setProperty('--v-list-hl-y', `${y}px`)
-        root.style.setProperty('--v-list-hl-width', `${rect.width / scaleX}px`)
-        root.style.setProperty('--v-list-hl-height', `${rect.height / scaleY}px`)
-        root.style.setProperty('--v-list-hl-radius', radius)
-      }
-      const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
-      const update = (deferClear = true): boolean => {
-        if (!enabled(hovered)) hovered = null
-        if (!enabled(focused)) focused = null
-        let selected: HTMLElement | null = null
-        for (const item of root.querySelectorAll<HTMLElement>(
-          '[data-list-highlight-active="true"], [data-state="open"]',
-        )) {
-          if (item.matches(ITEM) && enabled(item)) {
-            selected = item
-            break
-          }
-        }
-        const next = hovered ?? focused ?? selected
-        // Radix 换项先把焦点还给面板；同帧接管的新项应沿用滑动起点。
-        if (!next && active && mode !== 'pointer' && deferClear) {
-          if (!clearFrame)
-            clearFrame = requestAnimationFrame(() => {
-              clearFrame = 0
-              update(false)
-            })
-          return false
-        }
-        cancelAnimationFrame(clearFrame)
-        clearFrame = 0
-        if (next === active) return false
-        const jump = !visible || (active !== null && !root.contains(active))
-        if (active) {
-          resize?.unobserve(active)
-          if (mode === 'pointer') active.removeAttribute('data-highlighted')
-        }
-        active = next
-        visible = next !== null
-        root.setAttribute('data-list-highlight-visible', String(visible))
-        root.setAttribute('data-list-highlight-jump', String(jump))
-        if (active) {
-          if (mode === 'pointer') active.setAttribute('data-highlighted', '')
-          resize?.observe(active)
-          measure()
-        }
-        return true
-      }
-      const pointer = (event: PointerEvent) => {
-        if (mode !== 'pointer' || event.pointerType === 'touch' || event.defaultPrevented) return
-        if (event.target instanceof Node && hovered?.contains(event.target) && enabled(hovered))
-          return
-        const candidate =
-          event.target instanceof Element ? event.target.closest<HTMLElement>(ITEM) : null
-        // 条目间隙保留上一个目标；嵌套列表不接管父列表。
-        if (!candidate || candidate.closest(OWNER) !== root) return
-        hovered = enabled(candidate) ? candidate : null
-        update()
-      }
-      const leave = () => {
-        hovered = null
-        update()
-      }
-      const focus = (event: FocusEvent) => {
-        if (mode === 'active') return
-        const item = findItem(event.target)
-        focused = item && (mode === 'focus' || isKeyboardFocus(item)) ? item : null
-        if (focused) hovered = null
-        update()
-      }
-      const blur = (event: FocusEvent) => {
-        if (mode === 'active') return
-        const item = findItem(event.relatedTarget)
-        focused = item && (mode === 'focus' || isKeyboardFocus(item)) ? item : null
-        update()
-      }
-      clearRef.current = leave
-      const mutations = new MutationObserver(() => {
-        if (!update()) measure()
-      })
-      const initialFocus = findItem(document.activeElement)
-      focused =
-        mode !== 'active' && initialFocus && (mode === 'focus' || isKeyboardFocus(initialFocus))
-          ? initialFocus
-          : null
-      update()
-      resize?.observe(root)
-      mutations.observe(root, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: [
-          'disabled',
-          'aria-disabled',
-          'data-disabled',
-          'data-list-highlight-active',
-          'data-state',
-          'class',
-        ],
-      })
-      root.addEventListener('pointerover', pointer)
-      root.addEventListener('pointermove', pointer)
-      if (!manualPointerLeave) root.addEventListener('pointerleave', leave)
-      root.addEventListener('focusin', focus)
-      root.addEventListener('focusout', blur)
+      const controller = attachListHighlight(root, { mode, manualPointerLeave })
+      clearRef.current = controller.clearPointer
       return () => {
-        cancelAnimationFrame(clearFrame)
-        resize?.disconnect()
-        mutations.disconnect()
-        if (clearRef.current === leave) clearRef.current = null
-        if (mode === 'pointer') active?.removeAttribute('data-highlighted')
-        root.removeEventListener('pointerover', pointer)
-        root.removeEventListener('pointermove', pointer)
-        root.removeEventListener('pointerleave', leave)
-        root.removeEventListener('focusin', focus)
-        root.removeEventListener('focusout', blur)
-        root.removeAttribute('data-list-highlight-visible')
-        root.removeAttribute('data-list-highlight-jump')
-        for (const key of ['x', 'y', 'width', 'height', 'radius'])
-          root.style.removeProperty(`--v-list-hl-${key}`)
+        if (clearRef.current === controller.clearPointer) clearRef.current = null
+        controller.detach()
       }
     },
     [mode, manualPointerLeave],

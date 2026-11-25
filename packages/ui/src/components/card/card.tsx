@@ -38,14 +38,14 @@ function CardFooter({ className, ...props }: DivProps) {
 }
 
 /**
- * 相框卡根：四周 8px 纸边包住图片，整张卡由 `CardFrameTitle` 的链接承载点击。
+ * 相框卡根：满幅 16:10 封面与底部信息区，整张卡由 `CardFrameTitle` 的链接承载点击。
  * 卡内其他按钮自动浮在链接覆盖层之上，保持独立可点。
  */
 function CardFrame({ className, ...props }: DivProps) {
   return <div data-slot="card-frame" className={cn('v-card-frame', className)} {...props} />
 }
 
-/** 16:10 的图片容器，内部的 `img` 以 cover 填满。 */
+/** 16:10 的图片容器，内部的 `img` 以 cover 填满并在卡片悬停时平滑微缩放。 */
 function CardFrameImage({ className, ...props }: DivProps) {
   return (
     <div data-slot="card-frame-image" className={cn('v-card-frame__image', className)} {...props} />
@@ -58,7 +58,7 @@ function CardFrameBody({ className, ...props }: DivProps) {
   )
 }
 
-/** 元信息：DOM 在标题之后（读屏先读标题），视觉上显示在标题上方。 */
+/** 元信息：展示在标题下方，承载类型、所属项目与更新时间等辅助信息。 */
 function CardFrameMeta({ className, ...props }: DivProps) {
   return (
     <div data-slot="card-frame-meta" className={cn('v-card-frame__meta', className)} {...props} />
