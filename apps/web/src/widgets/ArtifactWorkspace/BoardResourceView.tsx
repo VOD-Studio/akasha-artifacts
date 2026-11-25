@@ -1,7 +1,17 @@
 import { Button } from '@akasha/ui/button'
-import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import {
+  type MouseEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import { type CanvasBoard, type LoadedCanvasBoard, loadCanvasBoard } from '@/entities/artifact'
 import { AkashaMark } from '@/shared/brand'
+import { useMessages } from '@/shared/i18n'
+import { navigationMessages } from './board-navigation-messages'
 import type { BoardResources } from './board-resources'
 
 interface BoardResourceViewProps {
@@ -45,12 +55,14 @@ export function readLoadedBoard(
 }
 
 export function useBoardResource(board: CanvasBoard | undefined, resources: BoardResources) {
+  const { t } = useMessages(navigationMessages)
   const entry = useSyncExternalStore(resources.subscribe, () => board && resources.get(board.id))
   const loadedBoard = useMemo(() => {
     if (board?.source !== undefined) return board as LoadedCanvasBoard
     return board && entry?.type === 'ready' ? loadCanvasBoard(board, entry.data) : undefined
   }, [board, entry])
-  return { loadedBoard, boardReadError: entry?.type === 'error' ? entry.message : undefined }
+  const boardReadError = entry?.type === 'error' ? entry.message || t('无法读取画板') : undefined
+  return { loadedBoard, boardReadError }
 }
 
 function BoardThumbnail({
@@ -62,12 +74,13 @@ function BoardThumbnail({
   id: string
   resources: BoardResources
 }) {
+  const { t } = useMessages(navigationMessages)
   const thumbnail = useSyncExternalStore(resources.subscribe, () => resources.thumbnail(id))
   return thumbnail ? (
     <img
       className="pointer-events-none absolute inset-0 size-full object-fill"
       src={thumbnail}
-      alt={`画板缩略图：${title}`}
+      alt={t('画板缩略图：{title}', { title })}
     />
   ) : null
 }
@@ -75,47 +88,66 @@ function BoardThumbnail({
 type BoardDetailProps = Required<Omit<BoardResourceViewProps, 'detailed'>>
 
 function BoardDetail({ board, resources, showThumbnail, render }: BoardDetailProps) {
+  const { t, dir } = useMessages(navigationMessages)
   const { loadedBoard, boardReadError } = useBoardResource(board, resources)
   const [rendered, setRendered] = useState(false)
   useEffect(() => {
     if (showThumbnail) return () => resources.previewClosed(board.id)
   }, [board.id, resources, showThumbnail])
-  if (loadedBoard) {
-    return (
-      <>
-        {render(loadedBoard, () => setRendered(true))}
-        {showThumbnail && !rendered && (
-          <BoardThumbnail title={board.title} id={board.id} resources={resources} />
-        )}
-      </>
-    )
+  const rootRef = useRef<HTMLDivElement>(null)
+  const retry = (event: MouseEvent<HTMLButtonElement>) => {
+    // 重试按钮会随错误状态卸载；只在焦点确实位于按钮上时移到同一画板。
+    if (document.activeElement === event.currentTarget)
+      rootRef.current?.focus({ preventScroll: true })
+    resources.retry(board.id)
   }
-  if (boardReadError !== undefined) {
-    return (
-      <div
-        role="alert"
-        className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 text-sm text-ink"
-      >
-        <p>画板读取失败：{boardReadError}</p>
-        <Button
-          size="sm"
-          variant="outline"
-          className="pointer-events-auto"
-          onClick={() => resources.retry(board.id)}
-        >
-          重试读取画板
-        </Button>
-      </div>
-    )
-  }
+
   return (
     <div
-      aria-busy="true"
-      className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-ink-muted"
+      ref={rootRef}
+      role="group"
+      tabIndex={-1}
+      aria-label={t('画板内容：{title}', { title: board.title })}
+      className="h-full w-full"
     >
-      {showThumbnail && <BoardThumbnail title={board.title} id={board.id} resources={resources} />}
-      <AkashaMark size={24} loading className="relative text-ink" />
-      <span className="relative">正在读取画板…</span>
+      {loadedBoard && (
+        <>
+          {render(loadedBoard, () => setRendered(true))}
+          {showThumbnail && !rendered && (
+            <BoardThumbnail title={board.title} id={board.id} resources={resources} />
+          )}
+        </>
+      )}
+      {!loadedBoard && boardReadError !== undefined && (
+        <div
+          dir={dir}
+          role="alert"
+          className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 text-sm text-ink"
+        >
+          <p>
+            {boardReadError === t('无法读取画板')
+              ? boardReadError
+              : t('画板读取失败：{error}', { error: boardReadError })}
+          </p>
+          <Button size="sm" variant="outline" className="pointer-events-auto" onClick={retry}>
+            {t('重试读取画板')}
+          </Button>
+        </div>
+      )}
+      {!loadedBoard && boardReadError === undefined && (
+        <div
+          dir={dir}
+          role="status"
+          aria-busy="true"
+          className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-ink-muted"
+        >
+          {showThumbnail && (
+            <BoardThumbnail title={board.title} id={board.id} resources={resources} />
+          )}
+          <AkashaMark size={24} loading className="relative text-ink" />
+          <span className="relative">{t('正在读取画板…')}</span>
+        </div>
+      )}
     </div>
   )
 }

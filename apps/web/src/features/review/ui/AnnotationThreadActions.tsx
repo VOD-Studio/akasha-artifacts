@@ -3,7 +3,10 @@ import { Button } from '@akasha/ui/button'
 import { Textarea } from '@akasha/ui/textarea'
 import { useId, useState } from 'react'
 import { readReplyDraft, useAnnotationThreadMutation, writeReplyDraft } from '@/entities/feedback'
+import { isAccessDenied } from '@/shared/api/error'
+import { useMessages } from '@/shared/i18n'
 import { formatRelativeTime } from '@/shared/lib/format'
+import { panelMessages } from '../messages'
 
 interface AnnotationThreadActionsProps {
   artifactId: string
@@ -20,10 +23,12 @@ export function AnnotationThreadActions({
   thread,
   readOnly = false,
 }: AnnotationThreadActionsProps) {
+  const { t, locale, date } = useMessages(panelMessages)
   const key = useId()
   const [body, setBody] = useState(() => readReplyDraft(artifactId, feedbackId))
   const [replyOpen, setReplyOpen] = useState(Boolean(body))
   const update = useAnnotationThreadMutation(artifactId, feedbackId)
+  const writable = !readOnly && !isAccessDenied(update.error)
   const resolution = thread?.resolution
   const sending = update.isPending && update.variables?.kind === 'reply'
   const resolving = update.isPending && update.variables?.kind === 'resolve'
@@ -44,27 +49,35 @@ export function AnnotationThreadActions({
   return (
     <div className="mt-2 space-y-2 border-t border-border pt-2">
       {thread?.replies.length ? (
-        <ul className="space-y-2 border-l border-border pl-2.5">
+        <ul className="space-y-2 border-s border-border ps-2.5">
           {thread.replies.map((reply) => (
             <li key={reply.id}>
               <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-ink-muted">
-                <span className="font-medium">{reply.author}</span>
-                <time dateTime={reply.createdAt} title={new Date(reply.createdAt).toLocaleString()}>
-                  {formatRelativeTime(reply.createdAt)}
+                <bdi className="font-medium">{reply.author}</bdi>
+                <time
+                  dir="ltr"
+                  dateTime={reply.createdAt}
+                  title={date(reply.createdAt, { dateStyle: 'medium', timeStyle: 'short' })}
+                >
+                  {formatRelativeTime(reply.createdAt, undefined, locale)}
                 </time>
               </div>
-              <p className="mt-0.5 whitespace-pre-wrap break-words text-ink">{reply.body}</p>
+              <p dir="auto" className="mt-0.5 whitespace-pre-wrap break-words text-ink">
+                {reply.body}
+              </p>
             </li>
           ))}
         </ul>
       ) : null}
       {resolution ? (
         <p className="text-[11px] text-ink-muted">
-          {resolution.author} 已解决 ·{' '}
-          <time dateTime={resolution.resolvedAt}>{formatRelativeTime(resolution.resolvedAt)}</time>
+          <bdi>{resolution.author}</bdi> {t('已解决')} ·{' '}
+          <time dir="ltr" dateTime={resolution.resolvedAt}>
+            {formatRelativeTime(resolution.resolvedAt, undefined, locale)}
+          </time>
         </p>
       ) : null}
-      {!readOnly ? (
+      {writable ? (
         <div className="flex flex-wrap gap-1.5">
           <Button
             size="sm"
@@ -77,7 +90,7 @@ export function AnnotationThreadActions({
               setReplyOpen(!replyOpen)
             }}
           >
-            回复
+            {t('回复')}
           </Button>
           <Button
             size="sm"
@@ -86,11 +99,11 @@ export function AnnotationThreadActions({
             loading={resolving}
             onClick={() => update.mutate({ kind: 'resolve', resolved: !resolution })}
           >
-            {resolution ? '重新打开' : '标为已解决'}
+            {resolution ? t('重新打开') : t('标为已解决')}
           </Button>
         </div>
       ) : null}
-      {!readOnly && replyOpen ? (
+      {writable && replyOpen ? (
         <form
           id={key}
           onSubmit={(event) => {
@@ -99,7 +112,8 @@ export function AnnotationThreadActions({
           }}
         >
           <Textarea
-            aria-label="回复内容"
+            dir="auto"
+            aria-label={t('回复内容')}
             value={body}
             rows={2}
             maxLength={8000}
@@ -116,13 +130,16 @@ export function AnnotationThreadActions({
             disabled={!body.trim() || update.isPending}
             loading={sending}
           >
-            发送
+            {t('发送')}
           </Button>
         </form>
       ) : null}
+      {!readOnly && !writable && replyOpen && body && (
+        <Textarea dir="auto" aria-label={t('回复内容')} value={body} readOnly />
+      )}
       {update.error ? (
         <p role="alert" className="text-error">
-          {update.error.message}
+          {isAccessDenied(update.error) ? t('没有批注权限') : update.error.message}
         </p>
       ) : null}
     </div>

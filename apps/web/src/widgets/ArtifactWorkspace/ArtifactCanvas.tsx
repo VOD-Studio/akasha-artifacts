@@ -14,6 +14,7 @@ import {
   useState,
 } from 'react'
 import type { CanvasBoard, CanvasDocument, CanvasLocation, CanvasPage } from '@/entities/artifact'
+import { useMessages } from '@/shared/i18n'
 import type { BoardFramePurpose } from './ArtifactFrame'
 import { BoardDrawingSurface, type DrawingTool } from './BoardDrawingSurface'
 import { BoardPresentation } from './BoardPresentation'
@@ -43,6 +44,8 @@ import {
   zoomCamera,
 } from './canvas-camera'
 import type { CanvasExportSelection } from './canvas-export-selection'
+import { acceptsCanvasShortcut } from './canvas-keyboard'
+import { canvasToolsMessages } from './canvas-tools-messages'
 import {
   DETAIL_SCALE,
   indexViewportBoards,
@@ -196,6 +199,7 @@ export function ArtifactCanvas({
   canAnimate,
   visualEdit,
 }: ArtifactCanvasProps) {
+  const { t, dir } = useMessages(canvasToolsMessages)
   const viewportRef = useRef<HTMLElement>(null)
   const pendingFocus = useRef<{ pageId: string; boardId: string } | null>(null)
   const pendingKeyboardFocus = useRef<string | null>(null)
@@ -549,7 +553,7 @@ export function ArtifactCanvas({
     boardEditing?.available && !handActive && !modifier && !drawingTool && !visualEdit?.isPicking
 
   const keyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (event.defaultPrevented || navigatorOpen) return
+    if (event.defaultPrevented || event.isComposing || navigatorOpen) return
     if (presentation.playing || presentation.focused) {
       if (event.key === 'Escape' && !event.isComposing) {
         event.preventDefault()
@@ -558,17 +562,14 @@ export function ArtifactCanvas({
       }
       return
     }
+    if (!acceptsCanvasShortcut(event, viewportRef.current?.parentElement)) return
     const target = event.target instanceof Element ? event.target : null
     const editing = target?.closest(KEYBOARD_CONTROL)
     if (
       historyEditing &&
       (event.ctrlKey || event.metaKey) &&
       !event.altKey &&
-      !event.isComposing &&
-      event.key.toLowerCase() === 'z' &&
-      target &&
-      (target === window.document.body || viewportRef.current?.contains(target)) &&
-      !target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')
+      event.key.toLowerCase() === 'z'
     ) {
       const action = event.shiftKey ? historyEditing.redo : historyEditing.undo
       if (action) {
@@ -583,8 +584,7 @@ export function ArtifactCanvas({
       setSpace(true)
     }
     if (event.key === 'Control' || event.key === 'Meta') setModifier(true)
-    if (event.key !== 'Escape' || target?.closest('input, textarea, [contenteditable="true"]'))
-      return
+    if (event.key !== 'Escape') return
     boardGesture.cancel()
     setDrawingTool(null)
     setHand(false)
@@ -805,7 +805,8 @@ export function ArtifactCanvas({
         {/* biome-ignore lint/a11y/useKeyWithClickEvents: 键盘用 Escape 清空同一选区；点击这里只处理空白。 */}
         <section
           ref={viewportRef}
-          aria-label="画布"
+          dir="ltr"
+          aria-label={t('画布')}
           tabIndex={-1}
           className="artifact-canvas"
           data-hand={handActive}
@@ -818,8 +819,8 @@ export function ArtifactCanvas({
           onClick={clickBackground}
         >
           {invalidAddress && (
-            <div className="artifact-canvas-message">
-              <p role="alert">{addressedPage ? '链接中的画板不存在' : '链接中的页面不存在'}</p>
+            <div dir={dir} className="artifact-canvas-message">
+              <p role="alert">{t(addressedPage ? '链接中的画板不存在' : '链接中的页面不存在')}</p>
               <Button
                 size="sm"
                 variant="secondary"
@@ -829,7 +830,7 @@ export function ArtifactCanvas({
                   else clearAddress()
                 }}
               >
-                {addressedPage ? '返回页面' : '返回总览'}
+                {t(addressedPage ? '返回页面' : '返回总览')}
               </Button>
             </div>
           )}
@@ -902,7 +903,7 @@ export function ArtifactCanvas({
                       height: bounds.height * camera.scale,
                     }}
                   >
-                    <div className="artifact-canvas-board-header">
+                    <div dir={dir} className="artifact-canvas-board-header">
                       {/* 标题、命中区与尺寸柄的指针边界由画布布局决定。 */}
                       <button
                         type="button"
@@ -974,9 +975,23 @@ export function ArtifactCanvas({
                       >
                         {board.title}
                         {board.recommended ? (
-                          <span className="ml-2 text-[10px] opacity-75">推荐</span>
+                          <span className="ms-2 text-[10px] opacity-75">{t('推荐')}</span>
                         ) : null}
                       </button>
+                      {board === standalone && visualEdit && (
+                        <Button
+                          variant={visualEdit.isPicking ? 'secondary' : 'ghost'}
+                          size="sm"
+                          aria-pressed={visualEdit.isPicking}
+                          onClick={() => {
+                            setHand(false)
+                            setDrawingTool(null)
+                            visualEdit.toggle()
+                          }}
+                        >
+                          {t('编辑元素')}
+                        </Button>
+                      )}
                       <CanvasBoardQuickActions
                         title={board.title}
                         onExpand={(event) => {
@@ -1061,7 +1076,7 @@ export function ArtifactCanvas({
                         <button
                           type="button"
                           tabIndex={-1}
-                          aria-label={`选择画板：${board.title}`}
+                          aria-label={t('选择画板：{title}', { title: board.title })}
                           className="artifact-canvas-board-hit"
                           onClick={(event) => activateContent(board, event, detailed)}
                           onDoubleClick={(event) => editText(board, event)}
@@ -1073,8 +1088,8 @@ export function ArtifactCanvas({
                         type="button"
                         className="artifact-canvas-board-resize"
                         tabIndex={-1}
-                        aria-label={`拖动调整尺寸：${board.title}`}
-                        title="拖动调整尺寸；键盘请使用设置画板"
+                        aria-label={t('拖动调整尺寸：{title}', { title: board.title })}
+                        title={t('拖动调整尺寸；键盘请使用设置画板')}
                         {...boardGesture.events}
                         onPointerDown={(event) =>
                           boardGesture.begin(event, {
@@ -1093,7 +1108,9 @@ export function ArtifactCanvas({
             </>
           )}
           {!invalidAddress && !showBoards && (
-            <p className="artifact-canvas-message text-sm text-ink-muted">此页面没有画板</p>
+            <p dir={dir} className="artifact-canvas-message text-sm text-ink-muted">
+              {t('此页面没有画板')}
+            </p>
           )}
         </section>
         <CanvasToolbar
@@ -1131,7 +1148,7 @@ export function ArtifactCanvas({
                   boardEditing.change({
                     kind: 'create',
                     id: crypto.randomUUID(),
-                    title: `画板 ${page.boards.length + 1}`,
+                    title: t('画板 {index}', { index: page.boards.length + 1 }),
                     pageId: page.id,
                   })
                 }
@@ -1162,11 +1179,6 @@ export function ArtifactCanvas({
               : undefined
           }
           visualEditActive={visualEdit?.isPicking}
-          onToggleVisualEdit={() => {
-            setHand(false)
-            setDrawingTool(null)
-            visualEdit?.toggle()
-          }}
         />
       </div>
       {presentation.focus && focused ? (

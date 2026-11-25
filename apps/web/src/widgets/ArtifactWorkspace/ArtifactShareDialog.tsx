@@ -20,6 +20,9 @@ import {
   createCanvasDocumentFromIndex,
   hasVersionSource,
 } from '@/entities/artifact'
+import { getRequestErrorMessage } from '@/shared/api/error'
+import { useMessages } from '@/shared/i18n'
+import { messages } from './delivery-messages'
 
 interface ArtifactShareDialogProps {
   artifact: Artifact
@@ -46,6 +49,7 @@ export function ArtifactShareDialog({
   canvas,
   onClose,
 }: ArtifactShareDialogProps) {
+  const { t, date } = useMessages(messages)
   const formId = useId()
   const [role, setRole] = useState<ArtifactShareInput['role']>('view')
   const [entryKind, setEntryKind] = useState<ArtifactShareEntry['kind']>('artifact')
@@ -106,7 +110,7 @@ export function ArtifactShareDialog({
       await navigator.clipboard.writeText(issued.url)
       setCopied(true)
     } catch {
-      toast.info('请手动复制链接')
+      toast.info(t('请手动复制链接'))
     } finally {
       setCopying(false)
     }
@@ -118,18 +122,18 @@ export function ArtifactShareDialog({
       onOpenChange={(open) => {
         if (!open) onClose()
       }}
-      title="创建分享链接"
-      description="持链接者可按所选权限访问，授权有效期为 24 小时。普通定位链接不授予访问权。"
+      title={t('创建分享链接')}
+      description={t('持链接者可按所选权限访问，授权有效期为 24 小时。普通定位链接不授予访问权。')}
       footer={
         <>
           {issued && (
             <Button loading={copying} onClick={() => void copyLink()}>
-              {copied ? '已复制' : '复制链接'}
+              {copied ? t('已复制') : t('复制链接')}
             </Button>
           )}
           {!issued && (
             <Button type="submit" form={formId} loading={share.isPending} disabled={!entry}>
-              创建链接
+              {t('创建链接')}
             </Button>
           )}
         </>
@@ -139,48 +143,55 @@ export function ArtifactShareDialog({
         <div className="space-y-2">
           <Input
             type="url"
-            aria-label="分享链接"
+            dir="ltr"
+            aria-label={t('分享链接')}
             readOnly
             value={issued.url}
             onFocus={(event) => event.currentTarget.select()}
           />
           <p className="text-xs text-ink-muted">
-            失效时间：{new Date(issued.expiresAt).toLocaleString()}
+            {t('失效时间：{time}', {
+              time: date(new Date(issued.expiresAt), { dateStyle: 'medium', timeStyle: 'short' }),
+            })}
           </p>
         </div>
       )}
       {!issued && (
         <form id={formId} className="space-y-3" onSubmit={submit}>
-          <Field label="持链接者权限">
+          <Field label={t('持链接者权限')}>
             <Select value={role} disabled={share.isPending} onValueChange={selectRole}>
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="view">仅查看</SelectItem>
-                <SelectItem value="comment">可批注</SelectItem>
+                <SelectItem value="view">{t('仅查看')}</SelectItem>
+                <SelectItem value="comment">{t('可批注')}</SelectItem>
                 <SelectItem value="edit" disabled={entryKind !== 'artifact'}>
-                  可编辑最新版本
+                  {t('可编辑最新版本')}
                 </SelectItem>
               </SelectContent>
             </Select>
           </Field>
-          <Field label="打开位置">
+          <Field label={t('打开位置')}>
             <Select value={entryKind} disabled={share.isPending} onValueChange={selectEntry}>
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="artifact">作品 · 跟随最新版本</SelectItem>
-                <SelectItem value="version">固定版本 · v{version.version}</SelectItem>
+                <SelectItem value="artifact">{t('作品 · 跟随最新版本')}</SelectItem>
+                <SelectItem value="version">
+                  {t('固定版本')} · <bdi dir="ltr">v{version.version}</bdi>
+                </SelectItem>
                 {boards.length > 0 && (
-                  <SelectItem value="play">交互预览 · v{version.version}</SelectItem>
+                  <SelectItem value="play">
+                    {t('交互预览')} · <bdi dir="ltr">v{version.version}</bdi>
+                  </SelectItem>
                 )}
               </SelectContent>
             </Select>
           </Field>
           {entryKind === 'play' && (
-            <Field label="画板">
+            <Field label={t('画板')}>
               <Select
                 value={String(boardIndex)}
                 disabled={share.isPending}
@@ -195,7 +206,7 @@ export function ArtifactShareDialog({
                       key={JSON.stringify([item.pageId, item.boardId])}
                       value={String(index)}
                     >
-                      {item.label}
+                      <bdi>{item.label}</bdi>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -204,7 +215,7 @@ export function ArtifactShareDialog({
           )}
           {share.error && (
             <p role="alert" className="text-sm text-error">
-              {share.error.message}
+              {getRequestErrorMessage(share.error)}
             </p>
           )}
         </form>

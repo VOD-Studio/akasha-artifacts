@@ -6,7 +6,9 @@ import { Input } from '@akasha/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
 import { useState } from 'react'
 import { useStore } from 'zustand'
+import { useMessages } from '@/shared/i18n'
 import type { BoardTweakPreviewStore } from './board-tweak-previews'
+import { panelMessages } from './messages'
 
 interface BoardTweakPanelProps {
   boardId: string
@@ -17,12 +19,12 @@ interface BoardTweakPanelProps {
 
 /** 参数只预览当前画板；模板参数继续走独立的作品状态流。 */
 export function BoardTweakPanel({ boardId, tweaks, previews }: BoardTweakPanelProps) {
+  const { t, locale } = useMessages(panelMessages)
   const overrides = useStore(previews, (state) => state.byBoard.get(boardId))
-  const locale = document.documentElement.lang || navigator.language
 
   return (
-    <section className="flex flex-col gap-3" aria-label="画板参数预览">
-      <p className="text-xs text-ink-muted">仅预览当前画板，不会保存或随作品导出。</p>
+    <section className="flex flex-col gap-3" aria-label={t('画板参数预览')}>
+      <p className="text-xs text-ink-muted">{t('仅预览当前画板，不会保存或随作品导出。')}</p>
       {tweaks.map((tweak) => (
         <TweakControl
           key={tweak.id}
@@ -41,7 +43,7 @@ export function BoardTweakPanel({ boardId, tweaks, previews }: BoardTweakPanelPr
           disabled={!overrides}
           onClick={() => previews.getState().reset(boardId)}
         >
-          重置本板
+          {t('重置本板')}
         </Button>
       </div>
     </section>
@@ -132,14 +134,15 @@ interface TweakNumberInputProps {
 }
 
 function TweakNumberInput({ label, tweak, value, onChange }: TweakNumberInputProps) {
+  const { t, number } = useMessages(panelMessages)
   const [draft, setDraft] = useState<{ text: string; value: number; invalid: boolean } | null>(null)
   const current = draft?.value === value ? draft : null
   const { min, max } = tweak
   return (
     <Field
       label={label}
-      hint={`${min}–${max}`}
-      error={current?.invalid ? `请输入 ${min}–${max}` : undefined}
+      hint={`${number(min)}–${number(max)}`}
+      error={current?.invalid ? t('请输入 {min}–{max}', { min, max }) : undefined}
     >
       <Input
         type="number"

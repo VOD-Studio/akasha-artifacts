@@ -5,6 +5,9 @@ import { Field } from '@akasha/ui/field'
 import { Input } from '@akasha/ui/input'
 import { type ChangeEventHandler, type FormEventHandler, useId, useState } from 'react'
 import { useRenameArtifactMutation } from '@/entities/artifact'
+import { getRequestErrorMessage } from '@/shared/api/error'
+import { useMessages } from '@/shared/i18n'
+import { messages } from './messages'
 
 interface RenameArtifactDialogProps {
   artifact: Artifact
@@ -13,6 +16,7 @@ interface RenameArtifactDialogProps {
 
 /** 修改展示名；保存不改变作品的历史版本和链接。 */
 export function RenameArtifactDialog({ artifact, onClose }: RenameArtifactDialogProps) {
+  const { t } = useMessages(messages)
   const formId = useId()
   const [name, setName] = useState(artifact.title)
   const rename = useRenameArtifactMutation(artifact.publicId)
@@ -34,21 +38,30 @@ export function RenameArtifactDialog({ artifact, onClose }: RenameArtifactDialog
     <Modal
       open
       onOpenChange={changeOpen}
-      title="重命名"
+      title={t('重命名')}
       footer={
         <>
           <Button variant="ghost" disabled={rename.isPending} onClick={onClose}>
-            取消
+            {t('取消')}
           </Button>
           <Button type="submit" form={formId} loading={rename.isPending} disabled={!canSave}>
-            保存
+            {t('保存')}
           </Button>
         </>
       }
     >
       <form id={formId} onSubmit={save}>
-        <Field label="名称" error={rename.error?.message}>
-          <Input value={name} maxLength={240} readOnly={rename.isPending} onChange={changeName} />
+        <Field
+          label={t('名称')}
+          error={rename.error ? getRequestErrorMessage(rename.error) : undefined}
+        >
+          <Input
+            dir="auto"
+            value={name}
+            maxLength={240}
+            readOnly={rename.isPending}
+            onChange={changeName}
+          />
         </Field>
       </form>
     </Modal>

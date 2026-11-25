@@ -2,6 +2,8 @@ import { Button } from '@akasha/ui/button'
 import { MessageSquare, ScanLine } from 'lucide-react'
 import { useSelectionStore } from '@/entities/selection'
 import { useWorkspaceStore } from '@/entities/workspace'
+import { useMessages } from '@/shared/i18n'
+import { messages } from './messages'
 
 /** 检查器与批注共用一个面板状态，开关不改变画布布局。 */
 export function WorkspacePanelButtons({
@@ -11,6 +13,7 @@ export function WorkspacePanelButtons({
   feedbackCount: number
   hasActiveRound: boolean
 }) {
+  const { t, number } = useMessages(messages)
   const panel = useWorkspaceStore((state) => state.inspectorTab)
   const setPanel = useWorkspaceStore((state) => state.setInspectorTab)
   const inspectOpen = panel === 'inspect'
@@ -28,8 +31,8 @@ export function WorkspacePanelButtons({
         variant={inspectOpen ? 'secondary' : 'ghost'}
         size="sm"
         iconOnly
-        aria-label="检查器"
-        title="检查器"
+        aria-label={t('检查器')}
+        title={t('检查器')}
         aria-expanded={inspectOpen}
         aria-haspopup="dialog"
         aria-controls={inspectOpen ? 'design-inspector' : undefined}
@@ -46,8 +49,8 @@ export function WorkspacePanelButtons({
         aria-controls={reviewOpen ? 'artifact-inspector' : undefined}
         onClick={toggleReview}
       >
-        {hasActiveRound ? '评审' : '批注'}
-        {feedbackCount > 0 && ` ${feedbackCount}`}
+        {hasActiveRound ? t('评审') : t('批注')}
+        {feedbackCount > 0 && ` ${number(feedbackCount)}`}
       </Button>
     </>
   )

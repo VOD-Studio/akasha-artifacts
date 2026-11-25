@@ -6,6 +6,8 @@ import {
   resolveArtboardTweaks,
 } from '@akasha/protocol'
 import { resolveSandboxOrigin } from '../config/runtime'
+import { getMessages } from '../i18n/messages'
+import { captureMessages } from './capture-messages'
 import {
   buildSandboxIframeUrl,
   createBridgeNonce,
@@ -33,7 +35,8 @@ export async function captureBoardPng(
   scale: number,
   signal: AbortSignal,
 ): Promise<Blob> {
-  if (!navigator.locks) throw new Error('当前浏览器不能在安全上下文中渲染画板 PNG')
+  if (!navigator.locks)
+    throw new Error(getMessages(captureMessages).t('当前浏览器不能在安全上下文中渲染画板 PNG'))
   return navigator.locks.request('akasha-capture-png', { signal }, () =>
     renderPng(board, version, scale, signal),
   )
@@ -45,7 +48,7 @@ async function renderPng(board: PngBoard, version: number, scale: number, signal
   const nonce = createBridgeNonce()
   const sandboxOrigin = resolveSandboxOrigin()
   const iframe = document.createElement('iframe')
-  iframe.title = '画板渲染任务'
+  iframe.title = getMessages(captureMessages).t('画板渲染任务')
   iframe.width = String(board.width)
   iframe.height = String(board.height)
   iframe.setAttribute('sandbox', SANDBOX_IFRAME_SANDBOX_ATTR)
@@ -80,7 +83,7 @@ async function renderPng(board: PngBoard, version: number, scale: number, signal
         type: 'storage.response',
         requestId: message.requestId,
         ok: false,
-        error: '静态画板不读取或修改制品运行存储',
+        error: getMessages(captureMessages).t('静态画板不读取或修改制品运行存储'),
       })
     }
   })
@@ -108,7 +111,7 @@ async function renderPng(board: PngBoard, version: number, scale: number, signal
       header.getUint32(16) !== Math.round(board.width * scale) ||
       header.getUint32(20) !== Math.round(board.height * scale)
     ) {
-      throw new Error('沙盒返回的 PNG 格式或尺寸不符')
+      throw new Error(getMessages(captureMessages).t('沙盒返回的 PNG 格式或尺寸不符'))
     }
     return png
   } finally {

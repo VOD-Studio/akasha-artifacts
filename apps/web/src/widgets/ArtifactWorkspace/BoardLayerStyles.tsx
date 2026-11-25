@@ -1,5 +1,7 @@
 import type { CanvasLayerStyles } from '@akasha/protocol'
 import { Skeleton } from '@akasha/ui/skeleton'
+import { useMessages } from '@/shared/i18n'
+import { panelMessages } from './messages'
 
 interface BoardLayerStylesProps {
   layerId: string
@@ -8,10 +10,11 @@ interface BoardLayerStylesProps {
 
 /** 换选区后只展示新图层的快照，旧快照不作为空结果。 */
 export function BoardLayerStyles({ layerId, styles }: BoardLayerStylesProps) {
+  const { t } = useMessages(panelMessages)
   if (styles?.layerId !== layerId) {
     return (
       <div role="status">
-        <span className="sr-only">正在读取图层样式</span>
+        <span className="sr-only">{t('正在读取图层样式')}</span>
         <Skeleton className="h-10 w-full" />
       </div>
     )
@@ -24,15 +27,15 @@ export function BoardLayerStyles({ layerId, styles }: BoardLayerStylesProps) {
     else groups.set(declaration.inheritedFrom, [declaration])
   }
   return (
-    <section aria-label="图层样式" className="min-w-0 space-y-3 text-xs">
+    <section aria-label={t('图层样式')} className="min-w-0 space-y-3 text-xs">
       {Array.from(groups, ([ancestor, declarations]) => (
         <div key={ancestor ?? ''} className="space-y-1">
           <h3 className="text-sm font-medium wrap-anywhere">
             {ancestor === undefined ? (
-              '本层声明'
+              t('本层声明')
             ) : (
               <>
-                继承自 <bdi dir="ltr">{ancestor}</bdi>
+                {t('继承自')} <bdi dir="ltr">{ancestor}</bdi>
               </>
             )}
           </h3>
@@ -49,8 +52,10 @@ export function BoardLayerStyles({ layerId, styles }: BoardLayerStylesProps) {
           </dl>
         </div>
       ))}
-      {!groups.size && !styles.truncated && <p className="text-ink-muted">没有可归属的样式声明</p>}
-      {styles.truncated && <p className="text-ink-muted">样式声明不完整</p>}
+      {!groups.size && !styles.truncated && (
+        <p className="text-ink-muted">{t('没有可归属的样式声明')}</p>
+      )}
+      {styles.truncated && <p className="text-ink-muted">{t('样式声明不完整')}</p>}
     </section>
   )
 }

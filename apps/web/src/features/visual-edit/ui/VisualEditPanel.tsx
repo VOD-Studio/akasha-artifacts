@@ -5,6 +5,8 @@ import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@akasha
 import { Textarea } from '@akasha/ui/textarea'
 import { GripVertical, RotateCcw } from 'lucide-react'
 import { type FormEvent, useId, useRef, useState } from 'react'
+import { useMessages } from '@/shared/i18n'
+import { panelMessages } from '../messages'
 import type { PickedTarget, VisualEditController } from '../model/useVisualEdit'
 
 interface Props {
@@ -12,6 +14,7 @@ interface Props {
 }
 
 function LiteralEditor({ controller, picked }: Props & { picked: PickedTarget }) {
+  const { t } = useMessages(panelMessages)
   const { loc, element, target } = picked
   const [text, setText] = useState(target.text ?? '')
   const [classes, setClasses] = useState(target.className)
@@ -49,12 +52,15 @@ function LiteralEditor({ controller, picked }: Props & { picked: PickedTarget })
 
   return (
     <div className="flex flex-col gap-5">
-      <span className="font-mono text-sm">&lt;{target.tagName}&gt;</span>
+      <span dir="ltr" className="font-mono text-sm">
+        &lt;{target.tagName}&gt;
+      </span>
       {target.text !== null ? (
         <form className="flex flex-col items-start gap-2" onSubmit={saveText}>
-          <Field label="文字" className="w-full">
+          <Field label={t('文字')} className="w-full">
             <Textarea
               rows={3}
+              dir="auto"
               value={text}
               onChange={(event) => setText(event.target.value)}
               disabled={busy}
@@ -66,15 +72,18 @@ function LiteralEditor({ controller, picked }: Props & { picked: PickedTarget })
             disabled={busy || text === target.text}
             loading={saving === 'text'}
           >
-            保存
+            {t('保存')}
           </Button>
         </form>
       ) : (
-        <p className="text-sm text-ink-muted">这段文字不能直接编辑。可选择子元素或添加批注。</p>
+        <p className="text-sm text-ink-muted">
+          {t('这段文字不能直接编辑。可选择子元素或添加批注。')}
+        </p>
       )}
       <form className="flex flex-col items-start gap-2" onSubmit={saveStyle}>
-        <Field label="Tailwind 类名" hint="用空格分隔" className="w-full">
+        <Field label={t('Tailwind 类名')} hint={t('用空格分隔')} className="w-full">
           <Textarea
+            dir="ltr"
             className="font-mono"
             rows={2}
             value={classes}
@@ -89,15 +98,15 @@ function LiteralEditor({ controller, picked }: Props & { picked: PickedTarget })
           disabled={busy || classes === target.className}
           loading={saving === 'className'}
         >
-          保存
+          {t('保存')}
         </Button>
       </form>
       {target.order ? (
         <section className="space-y-2" aria-labelledby={orderHeadingId}>
           <h3 id={orderHeadingId} className="text-sm font-medium">
-            元素顺序
+            {t('元素顺序')}
           </h3>
-          <p className="text-xs text-ink-muted">拖动选中项，或使用上移、下移。</p>
+          <p className="text-xs text-ink-muted">{t('拖动选中项，或使用上移、下移。')}</p>
           <ol className="max-h-40 space-y-1 overflow-auto">
             {target.order.siblings.map((sibling, index) => (
               <li
@@ -137,7 +146,7 @@ function LiteralEditor({ controller, picked }: Props & { picked: PickedTarget })
               disabled={busy || currentPosition <= 0}
               onClick={() => move(currentPosition - 1)}
             >
-              上移
+              {t('上移')}
             </Button>
             <Button
               size="sm"
@@ -145,7 +154,7 @@ function LiteralEditor({ controller, picked }: Props & { picked: PickedTarget })
               disabled={busy || currentPosition >= target.order.siblings.length - 1}
               onClick={() => move(currentPosition + 1)}
             >
-              下移
+              {t('下移')}
             </Button>
           </div>
         </section>
@@ -157,7 +166,7 @@ function LiteralEditor({ controller, picked }: Props & { picked: PickedTarget })
           disabled={busy}
           onClick={() => controller.annotate(element)}
         >
-          添加批注
+          {t('添加批注')}
         </Button>
         <Button
           size="sm"
@@ -168,17 +177,17 @@ function LiteralEditor({ controller, picked }: Props & { picked: PickedTarget })
             else setConfirmRemove(true)
           }}
         >
-          {confirmRemove ? '确认删除' : '删除元素'}
+          {confirmRemove ? t('确认删除') : t('删除元素')}
         </Button>
         {confirmRemove ? (
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirmRemove(false)}>
-            取消
+            {t('取消')}
           </Button>
         ) : null}
       </div>
       {confirmRemove && (
         <p role="status" className="text-xs text-ink-muted">
-          元素及其内容将被删除。
+          {t('元素及其内容将被删除。')}
         </p>
       )}
     </div>
@@ -187,6 +196,7 @@ function LiteralEditor({ controller, picked }: Props & { picked: PickedTarget })
 
 /** 可视化直改面板：点选提示、撤销入口，以及编辑选中目标的抽屉。 */
 export function VisualEditPanel({ controller }: Props) {
+  const { t, dir } = useMessages(panelMessages)
   const { active, busy, isPicking, canUndo } = controller
   return (
     <>
@@ -195,11 +205,11 @@ export function VisualEditPanel({ controller }: Props) {
           role="status"
           className="pointer-events-none absolute inset-x-0 top-16 z-10 mx-auto w-fit rounded-lg border border-border bg-surface px-3 py-2 text-xs text-ink"
         >
-          选择要编辑的元素。无法直接编辑时将打开批注。
+          {t('选择要编辑的元素。无法直接编辑时将打开批注。')}
         </p>
       ) : null}
       {canUndo && !active ? (
-        <div className="pointer-events-none absolute right-4 bottom-16 z-10">
+        <div className="pointer-events-none absolute inset-e-4 bottom-16 z-10">
           <Button
             className="pointer-events-auto shadow-sm"
             size="sm"
@@ -207,7 +217,7 @@ export function VisualEditPanel({ controller }: Props) {
             disabled={busy}
             onClick={() => void controller.undo()}
           >
-            <RotateCcw size={14} aria-hidden /> 撤销
+            <RotateCcw size={14} aria-hidden /> {t('撤销')}
           </Button>
         </div>
       ) : null}
@@ -219,12 +229,13 @@ export function VisualEditPanel({ controller }: Props) {
         }}
       >
         <SheetContent
+          side={dir === 'rtl' ? 'left' : 'right'}
           size="sm"
           aria-describedby={undefined}
           className="top-16 bottom-14 overflow-hidden"
         >
           <SheetHeader>
-            <SheetTitle>编辑元素</SheetTitle>
+            <SheetTitle>{t('编辑元素')}</SheetTitle>
           </SheetHeader>
           <SheetBody>
             {active ? (
@@ -242,7 +253,7 @@ export function VisualEditPanel({ controller }: Props) {
                 disabled={busy}
                 onClick={() => void controller.undo()}
               >
-                撤销
+                {t('撤销')}
               </Button>
             ) : null}
           </SheetBody>

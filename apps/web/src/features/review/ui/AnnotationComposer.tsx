@@ -12,7 +12,10 @@ import {
   writeAnnotationDraft,
 } from '@/entities/feedback'
 import { useSelectionStore } from '@/entities/selection'
+import { isAccessDenied } from '@/shared/api/error'
+import { useMessages } from '@/shared/i18n'
 import { useSubmitFeedbackMutation } from '../api/mutations'
+import { panelMessages } from '../messages'
 
 export interface AnnotationComposerProps {
   artifactId: string
@@ -33,13 +36,20 @@ export interface AnnotationComposerProps {
   }) => Promise<unknown>
 }
 
-function elementLabel(el: ElementRef): string {
-  if (el.dataPoints) return `${el.dataPoints.chartTitle} · ${el.dataPoints.points.length} 个数据点`
+function elementLabel(
+  el: ElementRef,
+  t: ReturnType<typeof useMessages<typeof panelMessages>>['t'],
+): string {
+  if (el.dataPoints)
+    return t('{title} · {count} 个数据点', {
+      title: el.dataPoints.chartTitle,
+      count: el.dataPoints.points.length,
+    })
   if (el.blockId?.startsWith('pr-line:') && el.textPreview) return el.textPreview
   if (el.blockId) return `#${el.blockId}`
-  if (el.loc) return `源码 ${el.loc}`
+  if (el.loc) return t('源码 {loc}', { loc: el.loc })
   if (el.selector) return el.selector.slice(0, 36)
-  return el.textPreview?.slice(0, 28) ?? '已选元素'
+  return el.textPreview?.slice(0, 28) ?? t('已选元素')
 }
 
 function submittedMessage(audience: Feedback['audience'], roundId: string | null) {
@@ -63,6 +73,7 @@ export function AnnotationComposer({
   notifyAgent = true,
   onSubmitFeedback,
 }: AnnotationComposerProps) {
+  const { t } = useMessages(panelMessages)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const notifyId = useId()
   const [pendingKind, setPendingKind] = useState<'comment' | 'request_changes' | null>(null)
@@ -75,7 +86,8 @@ export function AnnotationComposer({
   const roundChanged = roundId !== null && roundId !== activeDraftingRound?.id
   const clearSelection = useSelectionStore((s) => s.clearSelection)
   const submitMutation = useSubmitFeedbackMutation(artifactId)
-  const locked = wrongVersion || roundChanged || pendingKind !== null
+  const [denied, setDenied] = useState(false)
+  const locked = denied || wrongVersion || roundChanged || pendingKind !== null
   const showAgentAction = Boolean(target && notifyAgent)
   const canSaveDraft = roundId !== null && !wrongVersion && !roundChanged
 
@@ -121,9 +133,10 @@ export function AnnotationComposer({
         await submitMutation.mutateAsync(payload)
       }
       replaceDraft(null)
-      toast.success(submittedMessage(audience, roundId))
+      toast.success(t(submittedMessage(audience, roundId)))
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '提交批注失败')
+      if (isAccessDenied(err)) setDenied(true)
+      else toast.error(err instanceof Error ? err.message : t('提交批注失败'))
     } finally {
       setPendingKind(null)
     }
@@ -132,7 +145,7 @@ export function AnnotationComposer({
   const requestChanges = () => {
     if (!target || !notifyAgent || locked) return
     if (!draftText.trim()) {
-      changeDraft({ body: `请调整 ${elementLabel(target)}：` })
+      changeDraft({ body: t('请调整 {target}：', { target: elementLabel(target, t) }) })
       textareaRef.current?.focus()
       return
     }
@@ -142,9 +155,11 @@ export function AnnotationComposer({
   return (
     <div className="rounded-xl border border-border bg-surface p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-ink">{target ? '元素批注' : '版本批注'}</span>
+        <span className="text-xs font-semibold text-ink">
+          {target ? t('元素批注') : t('版本批注')}
+        </span>
         {canSaveDraft ? (
-          <Badge tone="warning">本轮草稿</Badge>
+          <Badge tone="warning">{t('本轮草稿')}</Badge>
         ) : (
           <Badge tone="neutral">v{targetVersion}</Badge>
         )}
@@ -154,7 +169,7 @@ export function AnnotationComposer({
         <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-border bg-selected px-2.5 py-1.5 text-[11px] text-selected-foreground">
           <div className="flex min-w-0 items-center gap-1.5">
             <Target size={12} className="shrink-0" />
-            <span className="truncate font-mono font-medium">{elementLabel(target)}</span>
+            <span className="truncate font-mono font-medium">{elementLabel(target, t)}</span>
             {target.textPreview && !target.dataPoints && !target.blockId?.startsWith('pr-line:') ? (
               <span className="truncate text-ink-muted">「{target.textPreview.slice(0, 24)}」</span>
             ) : null}
@@ -163,7 +178,7 @@ export function AnnotationComposer({
             variant="ghost"
             size="sm"
             iconOnly
-            aria-label="清除选中元素"
+            aria-label={t('清除选中元素')}
             disabled={locked}
             onClick={() => {
               clearSelection(artifactId)
@@ -178,11 +193,13 @@ export function AnnotationComposer({
 
       {target?.dataPoints && (
         <details className="mb-2 rounded-lg border border-border px-2.5 py-1.5 text-xs text-ink">
-          <summary className="cursor-pointer">{target.dataPoints.valueLabel} · 所选数据点</summary>
-          <ul className="mt-1 max-h-36 list-disc space-y-1 overflow-auto pl-4">
+          <summary className="cursor-pointer">
+            {target.dataPoints.valueLabel} · {t('所选数据点')}
+          </summary>
+          <ul className="mt-1 max-h-36 list-disc space-y-1 overflow-auto ps-4">
             {target.dataPoints.points.map((point) => (
               <li key={point.id} className="break-words">
-                {point.label || '（空白）'}：{point.value}
+                {point.label || t('（空白）')}：{point.value}
               </li>
             ))}
           </ul>
@@ -196,38 +213,40 @@ export function AnnotationComposer({
               className="font-medium text-accent underline underline-offset-2"
               href={`/a/${encodeURIComponent(artifactId)}/v/${targetVersion}${window.location.search}`}
             >
-              回 v{targetVersion} 继续
+              {t('回 {version} 继续', { version: `v${targetVersion}` })}
             </a>
           )}
           {!wrongVersion && (
             <>
-              <span>原轮次已变更。</span>
+              <span>{t('原轮次已变更。')}</span>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => changeDraft({ roundId: null, sendToAgent: false })}
               >
-                转为独立批注
+                {t('转为独立批注')}
               </Button>
             </>
           )}
           <Button variant="ghost" size="sm" onClick={() => replaceDraft(null)}>
-            放弃草稿
+            {t('放弃草稿')}
           </Button>
         </div>
       )}
 
       <Textarea
         ref={textareaRef}
-        aria-label="批注内容"
+        dir="auto"
+        aria-label={t('批注内容')}
         rows={3}
         value={draftText}
         readOnly={locked}
         onChange={(event) => changeDraft({ body: event.target.value })}
-        placeholder="输入批注"
+        placeholder={t('输入批注')}
       />
 
-      {notifyAgent && (
+      {denied && <p role="alert">{t('没有批注权限')}</p>}
+      {!denied && notifyAgent && (
         <label htmlFor={notifyId} className="mt-2 flex items-center gap-2 text-xs text-ink">
           <Checkbox
             id={notifyId}
@@ -235,35 +254,37 @@ export function AnnotationComposer({
             disabled={locked}
             onCheckedChange={(checked) => changeDraft({ sendToAgent: checked === true })}
           />
-          {roundId ? '随本轮发给 Agent' : '同时发送给 Agent'}
+          {roundId ? t('随本轮发给 Agent') : t('同时发送给 Agent')}
         </label>
       )}
 
-      <div className="mt-2 flex flex-wrap items-center justify-end gap-1.5">
-        {showAgentAction && (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={locked}
-            loading={pendingKind === 'request_changes'}
-            onClick={requestChanges}
-            className="me-auto"
-          >
-            让 Agent 改这里
-          </Button>
-        )}
+      {!denied && (
+        <div className="mt-2 flex flex-wrap items-center justify-end gap-1.5">
+          {showAgentAction && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={locked}
+              loading={pendingKind === 'request_changes'}
+              onClick={requestChanges}
+              className="me-auto"
+            >
+              {t('让 Agent 改这里')}
+            </Button>
+          )}
 
-        <Button
-          variant="primary"
-          size="sm"
-          leftIcon={<Send size={12} />}
-          disabled={locked || !draftText.trim()}
-          loading={pendingKind === 'comment'}
-          onClick={() => void handleSubmit('comment')}
-        >
-          {roundId ? '保存草稿' : '发送'}
-        </Button>
-      </div>
+          <Button
+            variant="primary"
+            size="sm"
+            leftIcon={<Send size={12} />}
+            disabled={locked || !draftText.trim()}
+            loading={pendingKind === 'comment'}
+            onClick={() => void handleSubmit('comment')}
+          >
+            {roundId ? t('保存草稿') : t('发送')}
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

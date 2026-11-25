@@ -10,8 +10,11 @@ import { Field } from '@akasha/ui/field'
 import { Input } from '@akasha/ui/input'
 import { type FormEvent, useState } from 'react'
 import type { CanvasBoard } from '@/entities/artifact'
-import { ARTIFACT_TYPE_LABELS } from '@/shared/lib/format'
+import { useMessages } from '@/shared/i18n'
+import { artifactTypeLabel } from '@/shared/lib/format'
+import { canvasToolsMessages } from './canvas-tools-messages'
 import { DESIGN_LAYER_COLOR_LABELS, DesignLayerLayout } from './DesignLayerLayout'
+import { panelMessages } from './messages'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
 import type { CanvasTextTools } from './useInlineCanvasText'
 
@@ -29,13 +32,13 @@ interface BoardInspectorPropertiesProps {
 
 const measurements = 'grid grid-cols-[max-content_1fr] gap-x-3 gap-y-2 text-sm'
 const term = 'text-ink-muted'
-const kindLabels: Record<DesignLayer['kind'], string> = {
+const kindLabels = {
   text: '文本',
   note: '便签',
   rectangle: '矩形',
   ellipse: '椭圆',
   stroke: '笔迹',
-}
+} as const
 
 /** 一次只检查一个对象：原生层属于版本，运行节点只展示沙盒测量结果。 */
 export function BoardInspectorProperties({
@@ -47,26 +50,28 @@ export function BoardInspectorProperties({
   editing,
   onEditText,
 }: BoardInspectorPropertiesProps) {
+  const { t, locale } = useMessages(panelMessages)
+  const { t: colorLabel } = useMessages(canvasToolsMessages)
   if (designLayer) {
     const textLayer = designLayer.kind === 'text' || designLayer.kind === 'note'
     const canEditText = textLayer && onEditText
     return (
-      <section aria-label="原生图层属性">
+      <section aria-label={t('原生图层属性')}>
         <dl className={measurements}>
-          <dt className={term}>图层</dt>
-          <dd>{runtimeLayer?.label || kindLabels[designLayer.kind]}</dd>
+          <dt className={term}>{t('图层')}</dt>
+          <dd>{runtimeLayer?.label || t(kindLabels[designLayer.kind])}</dd>
           {!editing && (
             <>
-              <dt className={term}>尺寸</dt>
-              <dd>
+              <dt className={term}>{t('尺寸')}</dt>
+              <dd dir="ltr">
                 {designLayer.width} × {designLayer.height} px
               </dd>
-              <dt className={term}>位置</dt>
-              <dd>
+              <dt className={term}>{t('位置')}</dt>
+              <dd dir="ltr">
                 {designLayer.x}, {designLayer.y} px
               </dd>
-              <dt className={term}>颜色</dt>
-              <dd>{DESIGN_LAYER_COLOR_LABELS[designLayer.color ?? 'auto']}</dd>
+              <dt className={term}>{t('颜色')}</dt>
+              <dd>{colorLabel(DESIGN_LAYER_COLOR_LABELS[designLayer.color ?? 'auto'])}</dd>
             </>
           )}
         </dl>
@@ -88,7 +93,7 @@ export function BoardInspectorProperties({
               onEditText(board, designLayer, { x: rect.left, y: rect.top })
             }}
           >
-            编辑文字
+            {t('编辑文字')}
           </Button>
         )}
       </section>
@@ -97,13 +102,15 @@ export function BoardInspectorProperties({
 
   if (runtimeLayer) {
     return (
-      <section aria-label="运行图层属性">
-        <p className="mb-2 text-xs text-ink-muted">运行图层 · 只读测量</p>
+      <section aria-label={t('运行图层属性')}>
+        <p className="mb-2 text-xs text-ink-muted">{t('运行图层 · 只读测量')}</p>
         <dl className={measurements}>
-          <dt className={term}>图层</dt>
-          <dd>{runtimeLayer.label || `<${runtimeLayer.tag}>`}</dd>
-          <dt className={term}>尺寸</dt>
+          <dt className={term}>{t('图层')}</dt>
           <dd>
+            <bdi>{runtimeLayer.label || `<${runtimeLayer.tag}>`}</bdi>
+          </dd>
+          <dt className={term}>{t('尺寸')}</dt>
+          <dd dir="ltr">
             {runtimeLayer.width} × {runtimeLayer.height} px
           </dd>
         </dl>
@@ -113,24 +120,26 @@ export function BoardInspectorProperties({
 
   const current = boardProperties(board)
   return (
-    <section aria-label="画板属性" className="flex flex-col gap-3">
+    <section aria-label={t('画板属性')} className="flex flex-col gap-3">
       <dl className={measurements}>
-        <dt className={term}>页面</dt>
+        <dt className={term}>{t('页面')}</dt>
         <dd>{pageTitle}</dd>
-        <dt className={term}>画板</dt>
+        <dt className={term}>{t('画板')}</dt>
         <dd>{board.title}</dd>
-        <dt className={term}>内容</dt>
-        <dd>{ARTIFACT_TYPE_LABELS[board.type]}</dd>
+        <dt className={term}>{t('内容')}</dt>
+        <dd>{artifactTypeLabel(board.type, locale)}</dd>
         {!editing && (
           <>
-            <dt className={term}>固有宽高（px）</dt>
-            <dd>
+            <dt className={term}>{t('固有宽高（px）')}</dt>
+            <dd dir="ltr">
               {current.width} × {current.height}
             </dd>
-            <dt className={term}>背景</dt>
-            <dd className="font-mono">{current.background}</dd>
-            <dt className={term}>圆角</dt>
-            <dd>{current.cornerRadius} px</dd>
+            <dt className={term}>{t('背景')}</dt>
+            <dd dir="ltr" className="font-mono">
+              {current.background}
+            </dd>
+            <dt className={term}>{t('圆角')}</dt>
+            <dd dir="ltr">{current.cornerRadius} px</dd>
           </>
         )}
       </dl>
@@ -164,6 +173,7 @@ interface BoardAppearanceFormProps {
 }
 
 function BoardAppearanceForm({ boardId, current, editing }: BoardAppearanceFormProps) {
+  const { t } = useMessages(panelMessages)
   const [draft, setDraft] = useState<{ values: Properties; base: VersionSummary } | null>(null)
   const values = draft?.values ?? current
   const changed =
@@ -183,11 +193,11 @@ function BoardAppearanceForm({ boardId, current, editing }: BoardAppearanceFormP
     }
   }
   return (
-    <form onSubmit={save} aria-label="调整画板属性">
+    <form onSubmit={save} aria-label={t('调整画板属性')}>
       <fieldset disabled={!editing.available} className="flex min-w-0 flex-col gap-2">
         <div className="grid grid-cols-2 gap-2">
           {numericFields.map(({ key, label, min }) => (
-            <Field key={key} label={label}>
+            <Field key={key} label={t(label)}>
               <Input
                 type="number"
                 controlSize="sm"
@@ -200,7 +210,7 @@ function BoardAppearanceForm({ boardId, current, editing }: BoardAppearanceFormP
               />
             </Field>
           ))}
-          <Field label="背景">
+          <Field label={t('背景')}>
             <Input
               type="color"
               controlSize="sm"
@@ -216,7 +226,7 @@ function BoardAppearanceForm({ boardId, current, editing }: BoardAppearanceFormP
             disabled={!changed}
             loading={editing.draft?.status === 'saving'}
           >
-            保存
+            {t('保存')}
           </Button>
         </div>
       </fieldset>

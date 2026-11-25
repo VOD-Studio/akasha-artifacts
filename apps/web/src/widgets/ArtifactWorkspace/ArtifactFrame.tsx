@@ -26,7 +26,9 @@ import {
   type ShellOutgoingPayload,
 } from '@/shared/bridge/host'
 import { createStorageRelay } from '@/shared/bridge/storage-relay'
+import { useMessages } from '@/shared/i18n'
 import { ElementOverlay } from '@/shared/overlay/ElementOverlay'
+import { navigationMessages } from './board-navigation-messages'
 import type { BoardTweakPreviewStore } from './board-tweak-previews'
 
 /** 一块画板的沙盒向外壳提供的连接，登记到工作区后由工作区使用。 */
@@ -143,6 +145,7 @@ export function ArtifactFrame({
   onElementTarget,
   onVisualSelect,
 }: ArtifactFrameProps) {
+  const { t, dir } = useMessages(navigationMessages)
   const artifactId = artifact.publicId
   const { id, scoped, source, type, designLayers, appearance, tweaks } = board
   const versionNumber = version.version
@@ -673,7 +676,7 @@ export function ArtifactFrame({
       <iframe
         key={nonce}
         ref={iframeRef}
-        title={`画板内容：${board.title}`}
+        title={t('画板内容：{title}', { title: board.title })}
         src={iframeSrc}
         width={board.width}
         height={board.height}
@@ -693,10 +696,13 @@ export function ArtifactFrame({
         />
       )}
       {error?.version === versionNumber && (
-        <div className="pointer-events-auto absolute inset-x-0 bottom-0 z-20 max-h-full overflow-auto p-2">
+        <div
+          dir={dir}
+          className="pointer-events-auto absolute inset-x-0 bottom-0 z-20 max-h-full overflow-auto p-2"
+        >
           {playback && (
             <p role="alert" className="rounded border border-border bg-surface p-3 text-sm">
-              无法播放原型：{error.message}
+              {t('无法播放原型：{error}', { error: error.message })}
             </p>
           )}
           {!playback && (

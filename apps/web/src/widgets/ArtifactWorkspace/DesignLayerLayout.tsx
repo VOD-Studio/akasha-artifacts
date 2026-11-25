@@ -3,9 +3,11 @@ import { Button } from '@akasha/ui/button'
 import { Field } from '@akasha/ui/field'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
 import { useState } from 'react'
+import { useMessages } from '@/shared/i18n'
 import { CanvasGeometryFields, sameGeometry } from './CanvasGeometryFields'
 import { ALIGNMENTS, alignItems } from './canvas-arrangement'
 import type { CanvasBounds } from './canvas-camera'
+import { canvasToolsMessages } from './canvas-tools-messages'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
 
 interface LayoutProps {
@@ -26,7 +28,7 @@ export const DESIGN_LAYER_COLOR_LABELS = {
   rose: '玫红',
   amber: '琥珀色',
   mint: '薄荷绿',
-} satisfies Record<NonNullable<DesignLayer['color']> | 'auto', string>
+} as const satisfies Record<NonNullable<DesignLayer['color']> | 'auto', string>
 
 interface LayoutDraft {
   base: VersionSummary
@@ -38,6 +40,7 @@ interface LayoutDraft {
 
 /** 仅编辑声明的布局图层；位置作用于选区，尺寸只调整当前图层。 */
 export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutProps) {
+  const { t } = useMessages(canvasToolsMessages)
   const [draft, setDraft] = useState<LayoutDraft | null>(null)
   const color = draft ? draft.color : layer.color
   const changed =
@@ -70,7 +73,7 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
   }
 
   return (
-    <section className="mt-4 space-y-3 border-t border-border pt-3" aria-label="图层布局">
+    <section className="mt-4 space-y-3 border-t border-border pt-3" aria-label={t('图层布局')}>
       <form
         className="space-y-2"
         onSubmit={async (event) => {
@@ -107,7 +110,7 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
           value={draft?.geometry ?? layer}
           onChange={(geometry) => update({ geometry })}
         />
-        <Field label="颜色">
+        <Field label={t('颜色')}>
           <Select
             value={color ?? 'auto'}
             disabled={!editing.available}
@@ -119,22 +122,22 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="auto">{DESIGN_LAYER_COLOR_LABELS.auto}</SelectItem>
+              <SelectItem value="auto">{t(DESIGN_LAYER_COLOR_LABELS.auto)}</SelectItem>
               {DESIGN_LAYER_COLORS.map((item) => (
                 <SelectItem key={item} value={item}>
-                  {DESIGN_LAYER_COLOR_LABELS[item]}
+                  {t(DESIGN_LAYER_COLOR_LABELS[item])}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </Field>
         <Button size="sm" type="submit" disabled={!editing.available || !changed}>
-          应用
+          {t('应用')}
         </Button>
       </form>
       {selected.length > 1 ? (
         <p className="text-xs text-ink-muted">
-          已选 {selected.length} 个图层，仅调整主选图层的尺寸。
+          {t('已选 {count} 个图层，仅调整主选图层的尺寸。', { count: selected.length })}
         </p>
       ) : null}
       {selected.length > 1 || canUngroup ? (
@@ -148,7 +151,7 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
                 disabled={!canAlign}
                 onClick={() => layout(id)}
               >
-                {label}
+                {t(label)}
               </Button>
             ))}
           </div>
@@ -159,7 +162,7 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
               disabled={!canGroup}
               onClick={() => groupLayers(crypto.randomUUID())}
             >
-              分组图层
+              {t('分组图层')}
             </Button>
             <Button
               size="sm"
@@ -167,12 +170,12 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
               disabled={!canUngroup}
               onClick={() => groupLayers(null)}
             >
-              取消分组
+              {t('取消分组')}
             </Button>
           </div>
         </>
       ) : (
-        <p className="text-xs text-ink-muted">按住 Shift 多选原生图层。</p>
+        <p className="text-xs text-ink-muted">{t('按住 Shift 多选原生图层。')}</p>
       )}
       <div className="flex gap-1 border-t border-border pt-2">
         <Button
@@ -188,7 +191,7 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
             })
           }
         >
-          复制图层
+          {t('复制图层')}
         </Button>
         <Button
           size="sm"
@@ -196,7 +199,7 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
           disabled={!editing.available}
           onClick={() => editing.change({ kind: 'layerDelete', boardId, layerId: layer.id })}
         >
-          删除图层
+          {t('删除图层')}
         </Button>
       </div>
     </section>

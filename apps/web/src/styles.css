@@ -241,13 +241,14 @@ body,
 
 .artifact-canvas-tools {
   inset-block-end: 12px;
-  inset-inline-start: 50%;
+  left: 50%;
   transform: translateX(-50%);
 }
 
-@media (width < 520px) {
+@media (width < 700px) {
   .artifact-canvas-zoom {
     inset-block-start: 52px;
+    max-inline-size: calc(100% - 24px);
   }
 }
 

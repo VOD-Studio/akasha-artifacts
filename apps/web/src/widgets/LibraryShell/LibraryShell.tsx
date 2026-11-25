@@ -11,11 +11,14 @@ import { DaemonStatusPill } from '@/features/daemon-control'
 import { HubAccountButton, useHubSession } from '@/features/hub'
 import { AkashaMark } from '@/shared/brand'
 import { isCloudHub } from '@/shared/config/runtime'
+import { LanguageMenu, useMessages } from '@/shared/i18n'
 import { CreateDesignDialog } from './CreateDesignDialog'
 import { LibraryMenu } from './LibraryMenu'
 import { LibraryLoading, LibraryResults } from './LibraryResults'
 import { LibraryToolbar } from './LibraryToolbar'
 import { useLibraryView } from './library-view'
+import { messages } from './messages'
+import { useDesignConnections } from './useDesignConnections'
 import { WithdrawnArtifactsDialog } from './WithdrawnArtifactsDialog'
 
 const LIBRARY_REFRESH_MS = 10_000
@@ -26,6 +29,7 @@ export interface LibraryShellProps {
 
 /** 制品库组合筛选、结果与项目管理；由制品返回时还原库页视图。 */
 export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
+  const { t, locale } = useMessages(messages)
   const selectedProjectId = useWorkspaceStore((state) => state.selectedProjectId)
   const setSelectedProjectId = useWorkspaceStore((state) => state.setSelectedProjectId)
   const search = useLibraryView((state) => state.search)
@@ -37,16 +41,18 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
   const restored = useRef(false)
   const cloudHub = isCloudHub()
   const hubSession = useHubSession()
+  const connections = useDesignConnections(!cloudHub)
+  const [canResume, setCanResume] = useState(false)
   const [showWithdrawn, setShowWithdrawn] = useState(false)
   const [showCreateDesign, setShowCreateDesign] = useState(false)
   const projectsQuery = useProjectsQuery(LIBRARY_REFRESH_MS)
   const artifactsQuery = useArtifactsQuery(undefined, LIBRARY_REFRESH_MS)
   const favoritesQuery = useArtifactFavoritesQuery()
   const favorites = useMemo(
-    () => (favoritesQuery.data ? new Set(favoritesQuery.data) : null),
-    [favoritesQuery.data],
+    () => (favoritesQuery.isSuccess ? new Set(favoritesQuery.data) : null),
+    [favoritesQuery.isSuccess, favoritesQuery.data],
   )
-  const projects = projectsQuery.data
+  const projects = projectsQuery.isSuccess ? projectsQuery.data : undefined
   const artifacts = artifactsQuery.data
   const isLoading = projectsQuery.isLoading || artifactsQuery.isLoading
   const failure = artifactsQuery.error ?? projectsQuery.error
@@ -57,25 +63,35 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
     return map
   }, [projects])
   const visible = useMemo(() => {
-    const keyword = search.trim().toLocaleLowerCase()
+    const keyword = search.trim().toLocaleLowerCase(locale)
     const list = (artifacts ?? []).filter((artifact) => {
       if (favoritesOnly && favorites && !favorites.has(artifact.publicId)) return false
       if (selectedProjectId && artifact.projectId !== selectedProjectId) return false
       if (type !== 'all' && artifact.type !== type) return false
       return (
         !keyword ||
-        artifact.title.toLocaleLowerCase().includes(keyword) ||
-        artifact.slug.toLocaleLowerCase().includes(keyword) ||
-        artifact.publicId.toLocaleLowerCase().includes(keyword) ||
-        projectMap.get(artifact.projectId)?.name.toLocaleLowerCase().includes(keyword)
+        artifact.title.toLocaleLowerCase(locale).includes(keyword) ||
+        artifact.slug.toLocaleLowerCase(locale).includes(keyword) ||
+        artifact.publicId.toLocaleLowerCase(locale).includes(keyword) ||
+        projectMap.get(artifact.projectId)?.name.toLocaleLowerCase(locale).includes(keyword)
       )
     })
     return list.sort(
       order === 'title'
-        ? (a, b) => a.title.localeCompare(b.title)
+        ? (a, b) => a.title.localeCompare(b.title, locale)
         : (a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt),
     )
-  }, [artifacts, favorites, favoritesOnly, order, projectMap, search, selectedProjectId, type])
+  }, [
+    artifacts,
+    favorites,
+    favoritesOnly,
+    locale,
+    order,
+    projectMap,
+    search,
+    selectedProjectId,
+    type,
+  ])
   const presentTypes = useMemo(() => {
     const values = new Set<ArtifactType>()
     for (const artifact of artifacts ?? []) values.add(artifact.type)
@@ -88,7 +104,14 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
     restored.current = true
   }, [isLoading])
 
-  const canManage = !cloudHub || hubSession?.member === true
+  const canManage = cloudHub ? hubSession?.member === true : connections.isSuccess
+  const canCreate =
+    !cloudHub &&
+    connections.isSuccess &&
+    connections.data.connections.some(
+      (entry) => entry.availability === 'ready' && projectMap.has(entry.projectId),
+    )
+  const resume = !cloudHub && canManage && canResume && !canCreate
   const openDesign = () => setShowCreateDesign(true)
   const closeDesign = () => setShowCreateDesign(false)
   const openWithdrawn = () => setShowWithdrawn(true)
@@ -110,12 +133,13 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
 
   return (
     <div className="flex h-dvh flex-col bg-canvas text-ink">
-      <header className="flex min-h-13 shrink-0 items-center justify-between gap-2 border-b border-border bg-surface px-4 sm:px-6">
+      <header className="flex flex-wrap min-h-13 shrink-0 items-center justify-between gap-2 border-b border-border bg-surface px-4 sm:px-6">
         <span className="inline-flex items-center gap-2 font-semibold tracking-tight">
           <AkashaMark size={20} />
           <span>Akasha</span>
         </span>
-        <div className="flex items-center gap-1">
+        <div className="ms-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1">
+          <LanguageMenu />
           {cloudHub ? <HubAccountButton /> : <DaemonStatusPill />}
           {canManage && <LibraryMenu projects={projects ?? []} onOpenWithdrawn={openWithdrawn} />}
         </div>
@@ -124,10 +148,10 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
       <main className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col px-4 sm:px-6">
         <div className="flex flex-none flex-col gap-4 pb-5 pt-6 sm:pt-10">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h1 className="text-3xl font-semibold tracking-tight">作品</h1>
-            {!cloudHub && (
+            <h1 className="text-3xl font-semibold tracking-tight">{t('作品')}</h1>
+            {((canCreate && !!artifacts?.length) || resume) && (
               <Button leftIcon={<Plus size={16} />} onClick={openDesign}>
-                新建设计
+                {resume ? t('继续设计会话') : t('新建设计')}
               </Button>
             )}
           </div>
@@ -139,7 +163,7 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
         </div>
         <ScrollArea
           ref={scrollRef}
-          aria-label="作品列表"
+          aria-label={t('作品列表')}
           className="-mx-1 flex-1 px-1 pt-1 pb-6"
           aria-busy={!failure && isLoading}
           onScroll={rememberScroll}
@@ -147,8 +171,8 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
           {failure && (
             <Alert
               tone="danger"
-              title="无法打开作品库"
-              action={{ label: '重试', onClick: retryLibrary }}
+              title={t('无法打开作品库')}
+              action={{ label: t('重试'), onClick: retryLibrary }}
             />
           )}
           {!failure && isLoading && <LibraryLoading cards={layout === 'cards'} />}
@@ -160,6 +184,7 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
               cards={layout === 'cards'}
               hasArtifacts={Boolean(artifacts?.length)}
               cloudHub={cloudHub}
+              onCreate={canCreate ? openDesign : undefined}
               onResetFilters={resetFilters}
               onOpenArtifact={onOpenArtifact}
             />
@@ -171,11 +196,12 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
         <CreateDesignDialog
           projects={projects ?? []}
           open={showCreateDesign}
+          onResumableChange={setCanResume}
           onClose={closeDesign}
           onOpenArtifact={openPublishedDesign}
         />
       )}
-      {showWithdrawn ? (
+      {canManage && showWithdrawn ? (
         <WithdrawnArtifactsDialog onOpenArtifact={onOpenArtifact} onClose={closeWithdrawn} />
       ) : null}
     </div>

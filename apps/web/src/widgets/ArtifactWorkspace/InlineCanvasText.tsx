@@ -4,6 +4,8 @@ import { Field } from '@akasha/ui/field'
 import { Textarea } from '@akasha/ui/textarea'
 import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useMessages } from '@/shared/i18n'
+import { canvasToolsMessages } from './canvas-tools-messages'
 import type { CanvasTextDraft } from './useInlineCanvasText'
 
 interface InlineTextProps {
@@ -30,6 +32,19 @@ function draftTitle(draft: CanvasTextDraft) {
 
 /** 就地输入不启动试玩；焦点在输入框内时由浏览器处理文本快捷键。 */
 export function InlineCanvasText({ draft, onSave, onClose, onAnnotate }: InlineTextProps) {
+  const { t } = useMessages(canvasToolsMessages)
+  const diagnostic = (message: string) => {
+    switch (message) {
+      case '无法检查文字':
+      case '无法定位可编辑的静态文字。':
+      case '无法保存文字，输入仍保留。':
+      case '当前无法保存文字，输入已保留。':
+      case '无法保存文字，请处理画布上的提示后重试。':
+        return t(message)
+      default:
+        return message
+    }
+  }
   const initial = draftText(draft)
   const [text, setText] = useState(initial)
   const [error, setError] = useState('')
@@ -67,7 +82,7 @@ export function InlineCanvasText({ draft, onSave, onClose, onAnnotate }: InlineT
     }
   }
 
-  const title = draftTitle(draft)
+  const title = t(draftTitle(draft))
   // 非模态对话框贴在命中点上，打开和关闭均不改变画布布局。
   return createPortal(
     <dialog
@@ -92,13 +107,13 @@ export function InlineCanvasText({ draft, onSave, onClose, onAnnotate }: InlineT
       </h2>
       {draft.kind === 'readOnly' ? (
         <>
-          <p className="mb-3 text-sm text-ink-muted">{draft.message}</p>
+          <p className="mb-3 text-sm text-ink-muted">{diagnostic(draft.message)}</p>
           <div className="flex justify-end gap-1">
             <Button size="sm" variant="ghost" onClick={onClose}>
-              关闭
+              {t('关闭')}
             </Button>
             <Button size="sm" onClick={() => onAnnotate(draft.element)}>
-              批注
+              {t('批注')}
             </Button>
           </div>
         </>
@@ -110,9 +125,10 @@ export function InlineCanvasText({ draft, onSave, onClose, onAnnotate }: InlineT
           }}
           className="space-y-2"
         >
-          <Field label={<span className="sr-only">文字</span>} error={error}>
+          <Field label={<span className="sr-only">{t('文字')}</span>} error={diagnostic(error)}>
             <Textarea
               ref={target}
+              dir="auto"
               rows={3}
               variant="outline"
               className="resize-y"
@@ -133,10 +149,10 @@ export function InlineCanvasText({ draft, onSave, onClose, onAnnotate }: InlineT
           </Field>
           <div className="flex justify-end gap-1">
             <Button size="sm" variant="ghost" disabled={busy} onClick={onClose}>
-              取消
+              {t('取消')}
             </Button>
             <Button type="submit" size="sm" disabled={!canSave} loading={busy}>
-              保存
+              {t('保存')}
             </Button>
           </div>
         </form>

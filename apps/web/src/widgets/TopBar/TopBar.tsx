@@ -12,7 +12,9 @@ import { useWorkspaceStore, type WorkspaceViewMode } from '@/entities/workspace'
 import { HubAccountButton } from '@/features/hub'
 import { VersionTimeline } from '@/features/version-timeline'
 import { AkashaMark } from '@/shared/brand'
+import { LanguageMenu, useMessages } from '@/shared/i18n'
 import { ArtifactTitleMenu } from './ArtifactTitleMenu'
+import { messages } from './messages'
 import { WorkspacePanelButtons } from './WorkspacePanelButtons'
 
 export interface TopBarProps {
@@ -60,18 +62,17 @@ export function TopBar({
   onTransfer,
   onSelectVersion,
 }: TopBarProps) {
+  const { t } = useMessages(messages)
   const viewMode = useWorkspaceStore((s) => s.viewMode)
   const setViewMode = useWorkspaceStore((s) => s.setViewMode)
   const setCommandPaletteOpen = useWorkspaceStore((s) => s.setCommandPaletteOpen)
-  const wsStatus = useWorkspaceStore((s) => s.wsStatus)
   const agentActivity = useWorkspaceStore((s) => s.agentActivityByProject[artifact.projectId])
 
   const management = useArtifactManagementQuery(artifact.publicId)
   const canManage = management.data?.canManage === true
 
   const editing = !shareAccess && agentActivity?.state === 'editing'
-  const offline = !editing && wsStatus === 'closed'
-  const statusLabel = shareAccess ? getShareRole(shareAccess, fixedVersion) : undefined
+  const statusLabel = shareAccess ? t(getShareRole(shareAccess, fixedVersion)) : undefined
 
   const showTool = (mode: WorkspaceViewMode) => setViewMode(mode)
   const showCanvas = () => showTool('preview')
@@ -84,11 +85,11 @@ export function TopBar({
           variant="ghost"
           size="sm"
           iconOnly
-          aria-label="返回作品库"
-          title="返回作品库"
+          aria-label={t('返回作品库')}
+          title={t('返回作品库')}
           onClick={onBackToLibrary}
         >
-          <ArrowLeft size={16} />
+          <ArrowLeft size={16} className="rtl:rotate-180" />
         </Button>
         <ArtifactTitleMenu
           artifact={artifact}
@@ -122,17 +123,12 @@ export function TopBar({
             className="hidden items-center gap-1.5 text-xs text-ink-muted sm:flex"
           >
             <AkashaMark size={14} loading className="text-ink" />
-            Agent 正在修改
+            {t('Agent 正在修改')}
           </span>
         ) : null}
-        {!shareAccess && offline && (
-          <span role="status" className="hidden text-xs text-ink-muted sm:inline">
-            离线
-          </span>
-        )}
         {viewMode !== 'preview' ? (
           <Button variant="ghost" size="sm" onClick={showCanvas}>
-            返回画布
+            {t('返回画布')}
           </Button>
         ) : null}
         {onToggleAgent ? (
@@ -140,21 +136,23 @@ export function TopBar({
             ref={agentToggleRef}
             variant={agentOpen ? 'secondary' : 'ghost'}
             size="sm"
-            leftIcon={<PanelLeft size={16} />}
-            aria-label="Agent 对话"
+            leftIcon={<PanelLeft size={16} className="rtl:-scale-x-100" />}
+            aria-label={t('Agent 对话')}
+            title={t('Agent 对话')}
             aria-expanded={agentOpen}
             aria-controls={agentOpen ? 'artifact-agent-conversation' : undefined}
             onClick={onToggleAgent}
           >
-            会话
+            <span className="sr-only sm:not-sr-only">{t('会话')}</span>
           </Button>
         ) : null}
         <WorkspacePanelButtons feedbackCount={feedbackCount} hasActiveRound={hasActiveRound} />
         {canManage && onShare && (
-          <Button size="sm" leftIcon={<Share2 size={14} />} onClick={onShare}>
-            分享
+          <Button size="sm" leftIcon={<Share2 size={14} />} title={t('分享')} onClick={onShare}>
+            <span className="sr-only sm:not-sr-only">{t('分享')}</span>
           </Button>
         )}
+        <LanguageMenu />
         <HubAccountButton />
       </div>
     </header>

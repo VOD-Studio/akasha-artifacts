@@ -19,6 +19,8 @@ export interface AkashaWsClientOptions {
   target?: WsSubscriptionTarget
   onEvent: (event: RealtimeServerEvent) => void
   onStatusChange?: (status: WsConnectionStatus) => void
+  /** 仅在服务端拒绝订阅时通知，不将主动卸载或普通断线误作撤权。 */
+  onAccessDenied?: () => void
   WebSocketImpl?: typeof WebSocket
   // 首次重连的等待（毫秒），缺省 500
   baseRetryMs?: number
@@ -44,6 +46,7 @@ export class AkashaWsClient {
   private readonly url: string
   private readonly onEvent: (event: RealtimeServerEvent) => void
   private readonly onStatusChange?: (status: WsConnectionStatus) => void
+  private readonly onAccessDenied?: () => void
   private readonly WebSocketImpl: typeof WebSocket
   private readonly baseRetryMs: number
   private readonly maxRetryMs: number
@@ -53,6 +56,7 @@ export class AkashaWsClient {
     this.target = options.target ?? {}
     this.onEvent = options.onEvent
     this.onStatusChange = options.onStatusChange
+    this.onAccessDenied = options.onAccessDenied
     this.WebSocketImpl = options.WebSocketImpl ?? WebSocket
     this.baseRetryMs = options.baseRetryMs ?? 500
     this.maxRetryMs = options.maxRetryMs ?? 8000
@@ -153,6 +157,7 @@ export class AkashaWsClient {
       if (this.closedByUser) return
       if (event?.code === 4403) {
         this.onStatusChange?.('closed')
+        this.onAccessDenied?.()
         return
       }
       this.scheduleReconnect()

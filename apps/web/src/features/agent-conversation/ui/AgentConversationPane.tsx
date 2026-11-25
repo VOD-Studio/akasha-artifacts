@@ -4,10 +4,12 @@ import { Textarea } from '@akasha/ui/textarea'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Send, X } from 'lucide-react'
 import { type ChangeEventHandler, type FormEventHandler, useLayoutEffect, useRef } from 'react'
-import { ApiError } from '@/shared/api/error'
+import { ApiError, getRequestErrorMessage } from '@/shared/api/error'
+import { useMessages } from '@/shared/i18n'
 import { fetchArtifactConversation, sendArtifactConversation } from '../api/client'
+import { messages } from '../messages'
 import { useAgentDraft } from '../model/agent-draft'
-import { AgentTurnList, describeAgentTarget } from './AgentTurnList'
+import { AgentTarget, AgentTurnList } from './AgentTurnList'
 
 export interface ConversationTarget {
   /** 用户看到的页面和画板名只用于显示；提交时发送准确引用。 */
@@ -29,7 +31,7 @@ function getConnectionNotice(
   artifactId: string,
   error: Error | null,
   availability?: AgentAvailability,
-) {
+): { text: keyof typeof messages; command?: string } | null {
   if (error instanceof ApiError && error.status === 401) {
     return { text: '登录本机作品库', command: `akasha open ${artifactId}` }
   }
@@ -52,6 +54,7 @@ export function AgentConversationPane({
   onClearTarget,
   onClose,
 }: PaneProps) {
+  const { t } = useMessages(messages)
   const heading = useRef<HTMLHeadingElement>(null)
   useLayoutEffect(() => {
     if (open) heading.current?.focus({ preventScroll: true })
@@ -83,7 +86,8 @@ export function AgentConversationPane({
   const session = denied ? undefined : status.data?.session
   const availability = status.data?.availability
   const running = session?.turns.at(-1)?.status === 'running'
-  const notice = running ? null : getConnectionNotice(artifactId, status.error, availability)
+  const notice =
+    running && !status.error ? null : getConnectionNotice(artifactId, status.error, availability)
   const message = draft.trim()
   const canSend = !status.isError && availability === 'ready' && Boolean(message)
 
@@ -98,21 +102,28 @@ export function AgentConversationPane({
   return (
     <aside
       id="artifact-agent-conversation"
-      aria-label="Agent 对话"
+      aria-label={t('Agent 对话')}
       hidden={!open}
       className="absolute inset-0 z-20 flex min-h-0 flex-col border-border bg-surface text-sm lg:static lg:w-92 lg:shrink-0 lg:border-e xl:w-104"
     >
       <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border p-3">
         <h2 ref={heading} tabIndex={-1} className="font-semibold outline-hidden">
-          Agent 对话
+          {t('Agent 对话')}
         </h2>
-        <Button variant="ghost" size="sm" leftIcon={<ArrowLeft size={15} />} onClick={onClose}>
-          返回画布
+        <Button
+          variant="ghost"
+          size="sm"
+          leftIcon={<ArrowLeft className="rtl:rotate-180" size={15} />}
+          onClick={onClose}
+        >
+          {t('返回画布')}
         </Button>
       </header>
       {notice && (
         <p className="shrink-0 px-3 pt-3 text-xs text-ink-muted" role="status">
-          {notice.text}
+          {notice.text === '无法读取会话'
+            ? getRequestErrorMessage(status.error, t(notice.text))
+            : t(notice.text)}
           {notice.command && (
             <code dir="ltr" className="block select-all wrap-break-word">
               {notice.command}
@@ -127,14 +138,18 @@ export function AgentConversationPane({
         {target ? (
           <div className="flex items-start justify-between gap-2 rounded-md bg-surface-subtle px-2 py-1.5">
             <div className="min-w-0 wrap-break-word text-xs">
-              <p className="font-medium">{target.label}</p>
-              <p className="text-ink-muted">{describeAgentTarget(target.reference)}</p>
+              <p dir="auto" className="font-medium">
+                {target.label}
+              </p>
+              <p className="text-ink-muted">
+                <AgentTarget target={target.reference} />
+              </p>
             </div>
             <Button
               variant="ghost"
               size="sm"
               iconOnly
-              aria-label="移除选区引用"
+              aria-label={t('移除选区引用')}
               onClick={onClearTarget}
               type="button"
             >
@@ -143,7 +158,8 @@ export function AgentConversationPane({
           </div>
         ) : null}
         <Textarea
-          aria-label="消息"
+          aria-label={t('消息')}
+          dir="auto"
           rows={3}
           maxLength={8000}
           value={draft}
@@ -152,7 +168,7 @@ export function AgentConversationPane({
         />
         {send.error ? (
           <p role="alert" className="text-xs">
-            未发送：{send.error.message}
+            {t('未发送：{error}', { error: getRequestErrorMessage(send.error) })}
           </p>
         ) : null}
         <div className="flex justify-end">
@@ -163,7 +179,7 @@ export function AgentConversationPane({
             disabled={!canSend && !send.isPending}
             loading={send.isPending}
           >
-            发送
+            {t('发送')}
           </Button>
         </div>
       </form>

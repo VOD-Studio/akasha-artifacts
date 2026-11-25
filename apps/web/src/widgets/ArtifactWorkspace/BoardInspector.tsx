@@ -22,6 +22,8 @@ import {
 import { selectionForVersion, useSelectionStore } from '@/entities/selection'
 import { useWorkspaceStore } from '@/entities/workspace'
 import { extractPropFieldsFromSpec, PropsPanel } from '@/features/props-panel'
+import { isAccessDenied } from '@/shared/api/error'
+import { useMessages } from '@/shared/i18n'
 import { BoardInspectorProperties } from './BoardInspectorProperties'
 import { BoardInspectorSource } from './BoardInspectorSource'
 import { BoardInspectorTree } from './BoardInspectorTree'
@@ -33,6 +35,7 @@ import {
   type LayoutSelection,
   layoutSelectionIds,
 } from './canvas-arrangement'
+import { panelMessages } from './messages'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
 import type { CanvasTextTools } from './useInlineCanvasText'
 
@@ -107,6 +110,7 @@ export function BoardInspector({
   onSelectLayer,
   onNavigate,
 }: BoardInspectorProps) {
+  const { t, dir } = useMessages(panelMessages)
   const open = useWorkspaceStore((state) => state.inspectorTab === 'inspect')
   const setDrawer = useWorkspaceStore((state) => state.setInspectorTab)
   const page = document.pages.find((item) => item.id === location?.pageId)
@@ -140,6 +144,7 @@ export function BoardInspector({
   )
   const fullSource = inline ?? sourceRead.data?.source
   const sourceReady = usesBoardSource ? board?.source !== undefined : fullSource !== undefined
+  const retrySource = isAccessDenied(sourceRead.error) ? undefined : () => void sourceRead.refetch()
   const retryBoard =
     inspectorBoardId !== undefined && onRetryBoard
       ? () => onRetryBoard(inspectorBoardId)
@@ -173,7 +178,7 @@ export function BoardInspector({
   const designLayer = board?.designLayers?.find(
     (item) => `${DESIGN_LAYER_BLOCK_PREFIX}${item.id}` === selectedBlock,
   )
-  const readOnlyLabel = version.version === artifact.headVersion ? '只读' : '历史版本 · 只读'
+  const readOnlyLabel = version.version === artifact.headVersion ? t('只读') : t('历史版本 · 只读')
   const [extraLayers, setExtraLayers] = useState<(LayoutSelection & { scope: string }) | null>(null)
   const scope = JSON.stringify([artifact.publicId, board?.id])
   const activeDesignSelection: LayoutSelection = {
@@ -220,6 +225,7 @@ export function BoardInspector({
   return (
     <Sheet modal={false} open={open} onOpenChange={(next) => setDrawer(next ? 'inspect' : null)}>
       <SheetContent
+        side={dir === 'rtl' ? 'left' : 'right'}
         id="design-inspector"
         size="sm"
         aria-describedby={undefined}
@@ -227,7 +233,7 @@ export function BoardInspector({
         className="top-13 bottom-0 overflow-hidden"
       >
         <SheetHeader>
-          <SheetTitle>检查器</SheetTitle>
+          <SheetTitle>{t('检查器')}</SheetTitle>
         </SheetHeader>
         <SheetBody>
           <div className="flex flex-col gap-4">
@@ -243,12 +249,14 @@ export function BoardInspector({
               onNavigate={navigate}
             />
             {readOnly && <p className="text-xs text-ink-muted">{readOnlyLabel}</p>}
-            <Tabs value={unavailableTab ? 'properties' : tab} onValueChange={onTabChange}>
-              <TabsList aria-label="检查器选项">
-                <TabsTrigger value="properties">属性</TabsTrigger>
-                <TabsTrigger value="source">源码</TabsTrigger>
-                {Boolean(tweaks?.length) && <TabsTrigger value="tweaks">画板参数</TabsTrigger>}
-                {hasTemplateProps && <TabsTrigger value="template">模板参数</TabsTrigger>}
+            <Tabs dir={dir} value={unavailableTab ? 'properties' : tab} onValueChange={onTabChange}>
+              <TabsList aria-label={t('检查器选项')}>
+                <TabsTrigger value="properties">{t('属性')}</TabsTrigger>
+                <TabsTrigger value="source">{t('源码')}</TabsTrigger>
+                {Boolean(tweaks?.length) && (
+                  <TabsTrigger value="tweaks">{t('画板参数')}</TabsTrigger>
+                )}
+                {hasTemplateProps && <TabsTrigger value="template">{t('模板参数')}</TabsTrigger>}
               </TabsList>
               <TabsContent value="properties" className="pt-3">
                 {board && (
@@ -260,8 +268,8 @@ export function BoardInspector({
                       designLayer={designLayer}
                       runtimeLayer={layer}
                       selectedDesignLayers={selectedDesignLayers}
-                      editing={board.source === undefined ? undefined : editing}
-                      onEditText={onEditText}
+                      editing={readOnly || board.source === undefined ? undefined : editing}
+                      onEditText={readOnly ? undefined : onEditText}
                     />
                     {(layer || designLayer) && canComment ? (
                       <Button
@@ -270,12 +278,12 @@ export function BoardInspector({
                         size="sm"
                         onClick={() => setDrawer('review')}
                       >
-                        批注
+                        {t('批注')}
                       </Button>
                     ) : null}
                     {onHandoff && page ? (
                       <Button
-                        className="mt-3 ml-1"
+                        className="mt-3 ms-1"
                         variant="outline"
                         size="sm"
                         onClick={() =>
@@ -291,12 +299,12 @@ export function BoardInspector({
                           })
                         }
                       >
-                        {handoffElement ? '移交对象' : '移交画板'}
+                        {handoffElement ? t('移交对象') : t('移交画板')}
                       </Button>
                     ) : null}
                     {onAskAgent && page && handoffElement ? (
                       <Button
-                        className="mt-3 ml-1"
+                        className="mt-3 ms-1"
                         variant="outline"
                         size="sm"
                         onClick={() =>
@@ -312,16 +320,16 @@ export function BoardInspector({
                           })
                         }
                       >
-                        问 Agent
+                        {t('问 Agent')}
                       </Button>
                     ) : null}
                   </>
                 )}
-                {!board && <p className="py-2 text-sm text-ink-muted">选择画板以查看属性</p>}
+                {!board && <p className="py-2 text-sm text-ink-muted">{t('选择画板以查看属性')}</p>}
               </TabsContent>
               <TabsContent value="source" className="space-y-4 pt-3">
                 {board && layer && <BoardLayerStyles layerId={layer.id} styles={layers?.styles} />}
-                <h3 className="text-sm font-medium">原始源码</h3>
+                <h3 className="text-sm font-medium">{t('原始源码')}</h3>
                 {sourceReady || designLayer ? (
                   <BoardInspectorSource
                     board={board}
@@ -334,7 +342,7 @@ export function BoardInspector({
                 ) : (
                   <InspectorSourceStatus
                     error={usesBoardSource ? boardReadError : sourceRead.error?.message}
-                    retry={usesBoardSource ? retryBoard : () => void sourceRead.refetch()}
+                    retry={usesBoardSource ? retryBoard : retrySource}
                   />
                 )}
               </TabsContent>
@@ -351,7 +359,9 @@ export function BoardInspector({
               {hasTemplateProps && (
                 <TabsContent value="template" className="flex flex-col gap-2 pt-3">
                   {!templateReadOnly && (
-                    <p className="text-xs text-ink-muted">更改整份作品的运行状态，不会生成版本。</p>
+                    <p className="text-xs text-ink-muted">
+                      {t('更改整份作品的运行状态，不会生成版本。')}
+                    </p>
                   )}
                   {fullSource !== undefined ? (
                     <PropsPanel
@@ -359,15 +369,14 @@ export function BoardInspector({
                       projectId={artifact.projectId}
                       artifactType={artifact.type}
                       source={fullSource}
-                      stateSnapshot={templateReadOnly ? EMPTY_PROPS : stateSnapshot}
+                      stateSnapshot={
+                        version.version === artifact.headVersion ? stateSnapshot : EMPTY_PROPS
+                      }
                       readOnly={templateReadOnly}
                       specOverride={template.data}
                     />
                   ) : (
-                    <InspectorSourceStatus
-                      error={sourceRead.error?.message}
-                      retry={() => void sourceRead.refetch()}
-                    />
+                    <InspectorSourceStatus error={sourceRead.error?.message} retry={retrySource} />
                   )}
                 </TabsContent>
               )}
@@ -385,18 +394,19 @@ interface InspectorSourceStatusProps {
 }
 
 function InspectorSourceStatus({ error, retry }: InspectorSourceStatusProps) {
+  const { t } = useMessages(panelMessages)
   if (error === undefined)
     return (
       <p className="text-xs text-ink-muted" role="status">
-        正在读取源码…
+        {t('正在读取源码…')}
       </p>
     )
   return (
     <div role="alert" className="space-y-2 text-xs">
-      <p>源码读取失败：{error}</p>
+      <p>{t('源码读取失败：{error}', { error })}</p>
       {retry && (
         <Button size="sm" variant="outline" onClick={retry}>
-          重试
+          {t('重试')}
         </Button>
       )}
     </div>

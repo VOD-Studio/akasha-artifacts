@@ -4,6 +4,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@akasha/ui/popover'
 import { Download, Ellipsis, Focus, Play } from 'lucide-react'
 import { type MouseEventHandler, useState } from 'react'
 import type { CanvasBoard } from '@/entities/artifact'
+import { useMessages } from '@/shared/i18n'
+import { useBoardEditError } from './board-edit-error-messages'
+import { navigationMessages } from './board-navigation-messages'
 import { CanvasGeometryFields, sameGeometry } from './CanvasGeometryFields'
 import type { CanvasBoardEdit } from './canvas-board-source'
 import type { CanvasBounds } from './canvas-camera'
@@ -18,6 +21,7 @@ interface QuickActionsProps {
 
 /** 同一画板的查看、交互预览和导出入口；布局编辑仍由设置菜单处理。 */
 export function CanvasBoardQuickActions({ title, onExpand, onPlay, onExport }: QuickActionsProps) {
+  const { t } = useMessages(navigationMessages)
   return (
     <>
       <Button
@@ -25,8 +29,8 @@ export function CanvasBoardQuickActions({ title, onExpand, onPlay, onExport }: Q
         variant="secondary"
         iconOnly
         className="artifact-canvas-board-action"
-        aria-label={`展开画板：${title}`}
-        title="展开画板"
+        aria-label={t('展开画板：{title}', { title })}
+        title={t('展开画板')}
         onClick={onExpand}
       >
         <Focus size={15} />
@@ -37,8 +41,8 @@ export function CanvasBoardQuickActions({ title, onExpand, onPlay, onExport }: Q
           variant="secondary"
           iconOnly
           className="artifact-canvas-board-action"
-          aria-label={`播放原型：${title}`}
-          title="播放原型"
+          aria-label={t('播放原型：{title}', { title })}
+          title={t('播放原型')}
           onClick={onPlay}
         >
           <Play size={15} />
@@ -50,8 +54,8 @@ export function CanvasBoardQuickActions({ title, onExpand, onPlay, onExport }: Q
           variant="secondary"
           iconOnly
           className="artifact-canvas-board-action"
-          aria-label={`导出画板：${title}`}
-          title="导出画板"
+          aria-label={t('导出画板：{title}', { title })}
+          title={t('导出画板')}
           onClick={onExport}
         >
           <Download size={15} />
@@ -77,6 +81,7 @@ export function CanvasBoardActions({
   disabled,
   onChange,
 }: BoardActionsProps) {
+  const { t } = useMessages(navigationMessages)
   const [form, setForm] = useState<{
     base: VersionSummary
     initial: CanvasBounds
@@ -106,8 +111,8 @@ export function CanvasBoardActions({
           iconOnly
           disabled={disabled}
           className="artifact-canvas-board-action"
-          aria-label={`设置画板：${board.title}`}
-          title="设置画板"
+          aria-label={t('设置画板：{title}', { title: board.title })}
+          title={t('设置画板')}
         >
           <Ellipsis size={15} />
         </Button>
@@ -115,18 +120,20 @@ export function CanvasBoardActions({
       <PopoverContent
         align="start"
         className="w-64 space-y-3"
-        aria-label={`设置画板：${board.title}`}
+        aria-label={t('设置画板：{title}', { title: board.title })}
       >
         {form?.confirming && (
           <div className="space-y-3">
-            <p className="text-sm text-ink">删除「{board.title}」及其流程连线？旧版本仍可查看。</p>
+            <p className="text-sm text-ink">
+              {t('删除「{title}」及其流程连线？旧版本仍可查看。', { title: board.title })}
+            </p>
             <div className="flex justify-end gap-2">
               <Button
                 size="sm"
                 variant="ghost"
                 onClick={() => setForm({ ...form, confirming: false })}
               >
-                取消
+                {t('取消')}
               </Button>
               <Button
                 size="sm"
@@ -134,7 +141,7 @@ export function CanvasBoardActions({
                 disabled={disabled}
                 onClick={() => apply({ kind: 'delete', ids: [board.id] })}
               >
-                删除
+                {t('删除')}
               </Button>
             </div>
           </div>
@@ -157,7 +164,7 @@ export function CanvasBoardActions({
                 type="submit"
                 disabled={disabled || sameGeometry(form.bounds, form.initial)}
               >
-                应用
+                {t('应用')}
               </Button>
             </form>
             <div className="flex gap-1 border-t border-border pt-2">
@@ -180,7 +187,7 @@ export function CanvasBoardActions({
                   })
                 }}
               >
-                复制
+                {t('复制')}
               </Button>
               <Button
                 size="sm"
@@ -188,7 +195,7 @@ export function CanvasBoardActions({
                 disabled={disabled}
                 onClick={() => setForm({ ...form, confirming: true })}
               >
-                删除…
+                {t('删除…')}
               </Button>
             </div>
           </>
@@ -200,12 +207,14 @@ export function CanvasBoardActions({
 
 /** 版本冲突时仍可取回未保存源码；不会将失败的候选当成新版本。 */
 export function CanvasBoardEditNotice({ editing }: { editing: CanvasBoardEditing }) {
+  const { t } = useMessages(navigationMessages)
   const { draft, inputError } = editing
+  const errorText = useBoardEditError(draft?.error ?? inputError)
   if (!draft && !inputError) return null
   if (draft?.status === 'saving') {
     return (
       <p role="status" className="rounded-md bg-surface px-3 py-2 text-xs text-ink-muted">
-        正在保存…
+        {t('正在保存…')}
       </p>
     )
   }
@@ -214,11 +223,11 @@ export function CanvasBoardEditNotice({ editing }: { editing: CanvasBoardEditing
       role="alert"
       className="max-w-xs space-y-2 rounded-md border border-border bg-surface p-3 text-sm text-ink shadow-sm"
     >
-      <p>{draft?.error ?? inputError}</p>
+      <p>{errorText}</p>
       {draft ? (
         <>
           <p className="text-xs text-ink-muted">
-            未保存的改动已保留（基于 v{draft.base.version}）。
+            {t('未保存的改动已保留（基于 {version}）。', { version: `v${draft.base.version}` })}
           </p>
           <Button
             size="sm"
@@ -234,12 +243,12 @@ export function CanvasBoardEditNotice({ editing }: { editing: CanvasBoardEditing
               window.setTimeout(() => URL.revokeObjectURL(url), 1000)
             }}
           >
-            下载草稿
+            {t('下载草稿')}
           </Button>
         </>
       ) : null}
       <Button size="sm" variant="ghost" onClick={editing.dismissDraft}>
-        {draft ? '放弃改动' : '关闭'}
+        {t(draft ? '放弃改动' : '关闭')}
       </Button>
     </div>
   )

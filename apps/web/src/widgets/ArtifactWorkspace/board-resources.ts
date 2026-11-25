@@ -12,7 +12,7 @@ type Capture = (signal: AbortSignal) => Promise<Blob>
 
 type Entry =
   | { type: 'ready'; data: ArtboardContent; bytes: number }
-  | { type: 'error'; message: string; bytes: 0 }
+  | { type: 'error'; message?: string; bytes: 0 }
 
 interface Thumbnail {
   url: string
@@ -172,7 +172,7 @@ export class BoardResources {
       if (controller.signal.aborted) return
       entry = {
         type: 'error',
-        message: error instanceof Error ? error.message : '无法读取画板',
+        message: error instanceof Error ? error.message : undefined,
         bytes: 0,
       }
     }

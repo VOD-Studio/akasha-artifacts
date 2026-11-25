@@ -6,6 +6,8 @@ import {
 } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import type { CanvasBoard } from '@/entities/artifact'
+import { useMessages } from '@/shared/i18n'
+import { panelMessages } from './messages'
 
 interface BoardInspectorSourceProps {
   board?: CanvasBoard
@@ -26,9 +28,10 @@ export function BoardInspectorSource({
   runtimeLayer,
   onOpenEditor,
 }: BoardInspectorSourceProps) {
+  const { t } = useMessages(panelMessages)
   const fromBoard = Boolean(board?.scoped && !board.generated)
   const source = fromBoard ? board?.source : fullSource
-  const scope = fromBoard ? '画板源码' : '整份作品快照'
+  const scope = fromBoard ? t('画板源码') : t('整份作品快照')
   const authored =
     board && designLayer && fullSource !== undefined
       ? sourceForDesignLayer(fullSource, version.version, board.id, designLayer.id)
@@ -38,13 +41,18 @@ export function BoardInspectorSource({
     !native && !board?.generated && runtimeLayer && source !== undefined
       ? locateSource(source, runtimeLayer)
       : null
-  const fallback = runtimeLayer || designLayer ? `无法定位此图层的源码。以下为${scope}。` : scope
+  const fallback =
+    runtimeLayer || designLayer ? t('无法定位此图层的源码。以下为{scope}。', { scope }) : scope
 
   return (
     <div className="flex flex-col gap-2">
       {native && (
         <SourceBlock
-          label={authored ? '唯一图层声明 · 画板源码' : `原生图层记录 · v${version.version}`}
+          label={
+            authored
+              ? t('唯一图层声明 · 画板源码')
+              : t('原生图层记录 · {version}', { version: `v${version.version}` })
+          }
           source={native}
         />
       )}
@@ -55,7 +63,7 @@ export function BoardInspectorSource({
       {onOpenEditor && (
         <div>
           <Button size="sm" variant="outline" onClick={onOpenEditor}>
-            编辑整份源码
+            {t('编辑整份源码')}
           </Button>
         </div>
       )}
@@ -85,12 +93,16 @@ interface SourceExcerpt {
 }
 
 function SourceLines({ excerpt, scope }: { excerpt: SourceExcerpt; scope: string }) {
+  const { t } = useMessages(panelMessages)
   return (
     <>
       <p className="text-xs text-ink-muted">
-        唯一片段 · {scope} ·{' '}
+        {t('唯一片段 · {scope}', { scope })} ·{' '}
         <span>
-          源码位置 {excerpt.line}:{excerpt.column}
+          {t('源码位置')}{' '}
+          <bdi dir="ltr">
+            {excerpt.line}:{excerpt.column}
+          </bdi>
         </span>
       </p>
       <pre dir="ltr" className="max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs leading-5">

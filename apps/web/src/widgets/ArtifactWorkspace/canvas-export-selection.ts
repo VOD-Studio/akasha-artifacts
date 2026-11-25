@@ -1,6 +1,8 @@
 import type { VersionSummary } from '@akasha/protocol'
 import type { CanvasDocument, LoadedCanvasBoard } from '@/entities/artifact'
+import { getMessages, type Locale } from '@/shared/i18n'
 import { type CanvasBounds, layoutBoards } from './canvas-camera'
+import { messages } from './export-messages'
 
 /** 同一作品固定版本、同一页面的画板选区；空字符串指合成页面。 */
 export interface CanvasExportSelection {
@@ -21,24 +23,26 @@ export function resolveSelectedExportBoards(
   document: CanvasDocument<LoadedCanvasBoard>,
   version: Pick<VersionSummary, 'artifactId' | 'version'>,
   selection: CanvasExportSelection,
+  locale?: Locale,
 ): LoadedCanvasBoard[] {
+  const { t } = getMessages(messages, locale)
   if (selection.artifactId !== version.artifactId || selection.version !== version.version) {
-    throw new Error('所选画板不属于此作品的固定版本')
+    throw new Error(t('所选画板不属于此作品的固定版本'))
   }
-  if (selection.boardIds.length === 0) throw new Error('未选择画板')
+  if (selection.boardIds.length === 0) throw new Error(t('未选择画板'))
   const page = document.pages.find(({ id }) => id === selection.pageId)
-  if (!page) throw new Error('固定版本中没有选区所在的页面')
+  if (!page) throw new Error(t('固定版本中没有选区所在的页面'))
 
   const ids = new Set(selection.boardIds)
   const selected = page.boards.filter((board) => ids.has(board.id))
-  if (selected.length !== ids.size) throw new Error('当前页面不包含全部所选画板')
+  if (selected.length !== ids.size) throw new Error(t('当前页面不包含全部所选画板'))
 
   let bounds: Map<string, CanvasBounds> | undefined
   const positionOf = (board: LoadedCanvasBoard) => {
     if (board.position) return board.position
     bounds ??= layoutBoards(page.boards, selection.columns).bounds
     const position = bounds.get(board.id)
-    if (!position) throw new Error('无法确定所选画板在页面中的位置')
+    if (!position) throw new Error(t('无法确定所选画板在页面中的位置'))
     return position
   }
   return selected.sort((a, b) => {
