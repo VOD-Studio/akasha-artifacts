@@ -24,6 +24,15 @@ export function useArtifactFeedbackQuery(
     queryFn: () => fetchArtifactFeedback(artifactId),
     enabled: enabled && Boolean(artifactId),
     staleTime: 2_000,
+    refetchInterval: (query) => {
+      const threads = query.state.data?.threads
+      if (!threads) return false
+      return Object.values(threads).some(
+        (thread) => thread.agent?.state === 'queued' || thread.agent?.state === 'running',
+      )
+        ? 1_500
+        : false
+    },
   })
 }
 

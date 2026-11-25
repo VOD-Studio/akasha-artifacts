@@ -79,6 +79,8 @@ export interface ArtifactWorkspaceProps {
   onClearAddress?: () => void
   /** 将当前讨论定位写入路由，刷新后仍回到相同线程。 */
   onRememberThread?: (id: string) => void
+  /** 从批注线程打开原快照或 Agent 发布的版本并携带定位片段。 */
+  onOpenVersion?: (version: number, hash?: string) => void
   /** 只导出当前已保存快照中的画板，编辑器临时预览不提供出口。 */
   onExportBoard?: (boardId: string) => void
   /** 仅在已保存的画布可见时，供导出入口按需读取当前选区。 */
@@ -112,6 +114,7 @@ export function ArtifactWorkspace({
   fixedVersion,
   onClearAddress,
   onRememberThread,
+  onOpenVersion,
   onExportBoard,
   exportSelectionRef,
   onHandoff,
@@ -382,23 +385,34 @@ export function ArtifactWorkspace({
     useWorkspaceStore.getState().setViewMode('preview')
     setInspectorReveal(location)
   }, [])
+  const handleHighlightElement = useCallback(
+    (element: ElementRef) => {
+      setSelectedElement(artifact.publicId, element)
+      const frameId = element.boardId ?? STANDALONE_BOARD_ID
+      frames.current.get(frameId)?.send({ type: 'highlight', element })
+    },
+    [artifact.publicId, setSelectedElement],
+  )
   const restoredThread = useRef<string | null>(null)
   const focusThread = useCallback(
-    (feedback: Feedback, reveal: boolean) => {
+    (feedback: Feedback, reveal: boolean, locateAcrossVersions = false) => {
       if (feedback.artifactId !== artifact.publicId) return
       useSelectionStore.getState().setFocusedFeedbackId(feedback.id)
       setInspectorTab('review')
-      if (!reveal || !feedback.element || feedback.version !== version.version) return
+      if (!reveal || !feedback.element) return
+      if (!locateAcrossVersions && feedback.version !== version.version) return
       if (savedIndex && !feedback.element.boardId) return
       const boardId = feedback.element.boardId ?? STANDALONE_BOARD_ID
       const active = savedCanvas.pages.find((page) => page.id === canvasLocation?.pageId)
       const includesBoard = (page: CanvasPage) => page.boards.some((board) => board.id === boardId)
       const page = active && includesBoard(active) ? active : savedCanvas.pages.find(includesBoard)
       if (page) revealBoard({ pageId: page.id, boardId })
+      handleHighlightElement(feedback.element)
     },
     [
       artifact.publicId,
       canvasLocation?.pageId,
+      handleHighlightElement,
       revealBoard,
       savedCanvas.pages,
       setInspectorTab,
@@ -409,40 +423,35 @@ export function ArtifactWorkspace({
 
   const focusAndRemember = useCallback(
     (feedback: Feedback, reveal: boolean) => {
-      restoredThread.current = `${version.version}:${feedback.id}`
+      restoredThread.current = `${version.version}:${feedback.id}:${reveal ? '1' : '0'}`
       focusThread(feedback, reveal)
       onRememberThread?.(feedback.id)
     },
     [focusThread, onRememberThread, version.version],
   )
 
-  const linkedThread = useMemo(
-    () => new URLSearchParams(address.replace(/^#/, '')).get('thread'),
-    [address],
-  )
+  const threadHash = useMemo(() => {
+    const params = new URLSearchParams(address.replace(/^#/, ''))
+    return {
+      thread: params.get('thread'),
+      locate: params.get('locate') === '1',
+    }
+  }, [address])
   useEffect(() => {
-    if (!linkedThread) {
+    if (!threadHash.thread) {
       restoredThread.current = null
       return
     }
-    const key = `${version.version}:${linkedThread}`
+    const key = `${version.version}:${threadHash.thread}:${threadHash.locate ? '1' : '0'}`
     if (restoredThread.current === key) return
     const feedback = feedbacks.find(
-      (entry) => entry.id === linkedThread && isAnnotationKind(entry.kind),
+      (entry) => entry.id === threadHash.thread && isAnnotationKind(entry.kind),
     )
     if (feedback) {
       restoredThread.current = key
-      focusThread(feedback, true)
+      focusThread(feedback, true, threadHash.locate)
     }
-  }, [feedbacks, focusThread, linkedThread, version.version])
-  const handleHighlightElement = useCallback(
-    (element: ElementRef) => {
-      setSelectedElement(artifact.publicId, element)
-      const frameId = element.boardId ?? STANDALONE_BOARD_ID
-      frames.current.get(frameId)?.send({ type: 'highlight', element })
-    },
-    [artifact.publicId, setSelectedElement],
-  )
+  }, [feedbacks, focusThread, threadHash.locate, threadHash.thread, version.version])
   const sendBoard = useCallback(
     (boardId: string, message: Parameters<FrameConnection['send']>[0]) =>
       frames.current.get(boardId)?.send(message),
@@ -800,6 +809,7 @@ export function ArtifactWorkspace({
         threads={threads}
         pageFeedbackIds={pageFeedbackIds}
         onFocusThread={(feedback) => focusAndRemember(feedback, true)}
+        onOpenVersion={onOpenVersion}
       />
       <BoardInspector
         artifact={artifact}

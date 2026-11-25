@@ -260,6 +260,7 @@ export function ArtifactFrame({
     onLayers,
     onElementTarget,
     onSelectSync,
+    selected,
   })
   latest.current = {
     nonce,
@@ -278,6 +279,7 @@ export function ArtifactFrame({
     onLayers,
     onElementTarget,
     onSelectSync,
+    selected,
   }
 
   useEffect(() => {
@@ -639,6 +641,9 @@ export function ArtifactFrame({
       })
     }
     if (!playback && (needsRender || previous?.pins !== versionPins)) trackPins(host, versionPins)
+    if (!playback && needsRender && latest.current.selected) {
+      host.send({ type: 'highlight', element: latest.current.selected })
+    }
     applied.current = {
       render,
       renderId,
