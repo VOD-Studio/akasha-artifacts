@@ -8,18 +8,37 @@ import {
   ArtboardPrintLayoutSchema,
   DEFAULT_ARTBOARD_APPEARANCE,
   type DesignLayer,
+  type DesignLayerFontWeight,
   DesignLayersSchema,
+  type DesignLayerTextAlign,
   readEditableArtboardSource,
 } from '@akasha/protocol'
 import type { CanvasBounds } from '@/entities/artifact'
+import { fitSelection } from './canvas-arrangement'
 import { removeCanvasBoards } from './canvas-edit-source'
 
 /** 一次画板编辑只产生一个新快照。几何不包含相机状态。 */
 export type CanvasBoardEdit =
-  | { kind: 'create'; id: string; title: string; pageId: string }
+  | { kind: 'create'; id: string; title: string; pageId: string; bounds?: CanvasBounds }
   | { kind: 'duplicate'; boardId: string; id: string; bounds: CanvasBounds }
+  | {
+      kind: 'pasteBoards'
+      pageId: string
+      boards: readonly {
+        id: string
+        title: string
+        bounds: CanvasBounds
+        raw: Record<string, unknown>
+      }[]
+    }
   | { kind: 'delete'; ids: readonly string[] }
   | { kind: 'geometry'; changes: readonly { id: string; bounds: CanvasBounds }[] }
+  | {
+      kind: 'boardFlip'
+      ids: readonly string[]
+      bounds: ReadonlyMap<string, CanvasBounds>
+      axis: 'horizontal' | 'vertical'
+    }
   | {
       kind: 'boardProperties'
       boardId: string
@@ -44,10 +63,30 @@ export type CanvasBoardEdit =
         color?: NonNullable<DesignLayer['color']> | null
       }[]
     }
+  | {
+      kind: 'layerStyle'
+      boardId: string
+      layerIds: readonly string[]
+      patch: {
+        color?: NonNullable<DesignLayer['color']> | null
+        fontSize?: number | null
+        fontWeight?: DesignLayerFontWeight | null
+        textAlign?: DesignLayerTextAlign | null
+      }
+    }
+  | {
+      kind: 'layerFlip'
+      boardId: string
+      layerIds: readonly string[]
+      axis: 'horizontal' | 'vertical'
+    }
+  | { kind: 'layerReorder'; boardId: string; layerId: string; delta: -1 | 1 }
   | { kind: 'layerGroup'; boardId: string; ids: readonly string[]; layoutGroup: string | null }
   | { kind: 'layerCreate'; boardId: string; layer: DesignLayer }
+  | { kind: 'layerPaste'; boardId: string; layers: readonly DesignLayer[] }
   | { kind: 'layerDuplicate'; boardId: string; layerId: string; id: string }
   | { kind: 'layerDelete'; boardId: string; layerId: string }
+  | { kind: 'layerDeleteMany'; boardId: string; layerIds: readonly string[] }
   | { kind: 'layerText'; boardId: string; layerId: string; text: string }
 
 /** 版本重放用真实源码，而不是可变 DOM 或相机快照。 */
@@ -101,8 +140,54 @@ export function editCanvasBoards(
         id: edit.id,
         title: edit.title,
         ...(edit.pageId ? { pageId: edit.pageId } : {}),
+        ...(edit.bounds ? geometry(edit.bounds) : {}),
         html: '',
       })
+      break
+    }
+    case 'pasteBoards': {
+      if (edit.pageId && !pages.has(edit.pageId)) throw new Error('该页面已不存在')
+      if (!edit.boards.length) return { before, after: source }
+      for (const entry of edit.boards) {
+        if (boards.has(entry.id)) throw new Error('画板标识已存在')
+        const copy = {
+          ...structuredClone(entry.raw),
+          ...geometry(entry.bounds),
+          id: entry.id,
+          title: entry.title,
+        } as Record<string, unknown>
+        if (edit.pageId) copy.pageId = edit.pageId
+        else delete copy.pageId
+        delete copy.legacyId
+        delete copy.groupId
+        raw.boards.push(copy)
+      }
+      break
+    }
+    case 'boardFlip': {
+      if (edit.ids.length < 2) return { before, after: source }
+      const boxes: Array<{ id: string; box: CanvasBounds }> = []
+      for (const id of edit.ids) {
+        const box = edit.bounds.get(id)
+        if (!box || !boards.has(id)) throw new Error('要翻转的画板已不存在')
+        boxes.push({ id, box })
+      }
+      const fit = fitSelection(boxes.map(({ box }) => box))
+      if (!fit) return { before, after: source }
+      let changed = false
+      for (const { id, box } of boxes) {
+        const target = boards.get(id)
+        if (!target) continue
+        const next: CanvasBounds =
+          edit.axis === 'horizontal'
+            ? { ...box, x: Math.round(fit.x + fit.width - (box.x - fit.x) - box.width) }
+            : { ...box, y: Math.round(fit.y + fit.height - (box.y - fit.y) - box.height) }
+        if (next.x !== box.x || next.y !== box.y) {
+          changed = true
+          Object.assign(target.raw, geometry(next))
+        }
+      }
+      if (!changed) return { before, after: source }
       break
     }
     case 'duplicate': {
@@ -202,13 +287,32 @@ export function editCanvasBoards(
     }
     case 'layerText':
     case 'layerCreate':
+    case 'layerPaste':
     case 'layerDuplicate':
-    case 'layerDelete': {
+    case 'layerDelete':
+    case 'layerDeleteMany':
+    case 'layerReorder': {
       const board = boards.get(edit.boardId)
       if (!board) throw new Error('原生图层所在的画板已变更')
       const layers = (board.raw.designLayers ?? []) as Array<Record<string, unknown>>
       if (edit.kind === 'layerCreate') {
         layers.push(edit.layer)
+      } else if (edit.kind === 'layerPaste') {
+        if (!edit.layers.length) return { before, after: source }
+        layers.push(...edit.layers.map((layer) => structuredClone(layer)))
+      } else if (edit.kind === 'layerDeleteMany') {
+        const drop = new Set(edit.layerIds)
+        const remaining = layers.filter((layer) => !drop.has(String(layer.id)))
+        if (remaining.length === layers.length) return { before, after: source }
+        layers.length = 0
+        layers.push(...remaining)
+      } else if (edit.kind === 'layerReorder') {
+        const index = layers.findIndex((layer) => layer.id === edit.layerId)
+        if (index === -1) throw new Error('图层已不存在')
+        const nextIndex = index + edit.delta
+        if (nextIndex < 0 || nextIndex >= layers.length) return { before, after: source }
+        const [moved] = layers.splice(index, 1)
+        if (moved) layers.splice(nextIndex, 0, moved)
       } else {
         const index = layers.findIndex((layer) => layer.id === edit.layerId)
         if (index === -1) throw new Error('图层已不存在')
@@ -238,6 +342,8 @@ export function editCanvasBoards(
       break
     }
     case 'layerGeometry':
+    case 'layerStyle':
+    case 'layerFlip':
     case 'layerGroup': {
       const board = boards.get(edit.boardId)
       if (!board || !Array.isArray(board.raw.designLayers))
@@ -256,6 +362,79 @@ export function editCanvasBoards(
           Object.assign(layer, position, viewport)
           if (color === null) delete layer.color
           else if (color !== undefined) layer.color = color
+        }
+      } else if (edit.kind === 'layerStyle') {
+        let changed = false
+        for (const id of edit.layerIds) {
+          const layer = layers.get(id)
+          if (!layer) throw new Error('要调整的图层已不存在')
+          const isText = layer.kind === 'text' || layer.kind === 'note'
+          if (edit.patch.color !== undefined) {
+            if (edit.patch.color === null) {
+              if ('color' in layer) {
+                delete layer.color
+                changed = true
+              }
+            } else if (layer.color !== edit.patch.color) {
+              layer.color = edit.patch.color
+              changed = true
+            }
+          }
+          if (isText && edit.patch.fontSize !== undefined) {
+            if (edit.patch.fontSize === null) {
+              if ('fontSize' in layer) {
+                delete layer.fontSize
+                changed = true
+              }
+            } else if (layer.fontSize !== edit.patch.fontSize) {
+              layer.fontSize = edit.patch.fontSize
+              changed = true
+            }
+          }
+          if (isText && edit.patch.fontWeight !== undefined) {
+            if (edit.patch.fontWeight === null) {
+              if ('fontWeight' in layer) {
+                delete layer.fontWeight
+                changed = true
+              }
+            } else if (layer.fontWeight !== edit.patch.fontWeight) {
+              layer.fontWeight = edit.patch.fontWeight
+              changed = true
+            }
+          }
+          if (isText && edit.patch.textAlign !== undefined) {
+            if (edit.patch.textAlign === null) {
+              if ('textAlign' in layer) {
+                delete layer.textAlign
+                changed = true
+              }
+            } else if (layer.textAlign !== edit.patch.textAlign) {
+              layer.textAlign = edit.patch.textAlign
+              changed = true
+            }
+          }
+        }
+        if (!changed) return { before, after: source }
+      } else if (edit.kind === 'layerFlip') {
+        const targets = edit.layerIds.map((id) => {
+          const layer = layers.get(id)
+          const parsed = board.board.designLayers?.find((item) => item.id === id)
+          if (!layer || !parsed) throw new Error('要翻转的图层已不存在')
+          return { layer, parsed }
+        })
+        if (!targets.length) return { before, after: source }
+        const fit = targets.length > 1 ? fitSelection(targets.map(({ parsed }) => parsed)) : null
+        for (const { layer, parsed } of targets) {
+          const flag = edit.axis === 'horizontal' ? 'flipX' : 'flipY'
+          if (layer[flag]) delete layer[flag]
+          else layer[flag] = true
+          if (fit) {
+            if (edit.axis === 'horizontal') {
+              layer.x = Math.round(fit.x + fit.width - (parsed.x - fit.x) - parsed.width)
+            } else {
+              layer.y = Math.round(fit.y + fit.height - (parsed.y - fit.y) - parsed.height)
+            }
+          }
         }
       } else {
         for (const id of edit.ids) {
