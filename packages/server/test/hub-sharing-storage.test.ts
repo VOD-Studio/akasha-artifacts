@@ -126,8 +126,10 @@ const exerciseSharing = async (first: HubSharingRepository, second: HubSharingRe
 }
 
 it('内存 Hub 容器使用相同的授权、撤销和身份索引契约', async () => {
-  const { sharing } = createMemoryContainer().repositories
+  const { artifacts, sharing } = createMemoryContainer().repositories
+  await artifacts.saveArtifact(artifact)
   await exerciseSharing(sharing, sharing)
+  expect(await artifacts.lifecycle.activeShareGeneration(artifact.publicId)).toBe(1)
 })
 
 it('SQLite 两个连接共享授权，关闭重开后仍不继承旧范围且保留密文与邮箱索引', async () => {
@@ -163,7 +165,8 @@ it('SQLite 两个连接共享授权，关闭重开后仍不继承旧范围且保
     try {
       expect(await first.artifacts.findByPublicId(artifact.publicId)).toEqual(artifact)
       await exerciseSharing(first.sharing, second.sharing)
-      await first.sharing.createGrant({ ...invitation, id: 'after-restriction' })
+      expect(await second.artifacts.lifecycle.activeShareGeneration(artifact.publicId)).toBe(1)
+      await first.sharing.createGrant({ ...invitation, generation: 1, id: 'after-restriction' })
       expect(await second.sharing.acceptGrant('after-restriction', '101')).toBe(true)
     } finally {
       first.close()
@@ -175,8 +178,8 @@ it('SQLite 两个连接共享授权，关闭重开后仍不继承旧范围且保
         restricted: true,
         override: inherited,
       })
-      expect(await reopened.sharing.listGrants(artifact.publicId, 0)).toEqual([
-        { ...invitation, id: 'after-restriction', acceptedUserId: '101' },
+      expect(await reopened.sharing.listGrants(artifact.publicId, 1)).toEqual([
+        { ...invitation, generation: 1, id: 'after-restriction', acceptedUserId: '101' },
       ])
       expect(await reopened.sharing.getDefaults()).toEqual({
         externalLinks: false,
@@ -208,6 +211,7 @@ it.skipIf(!postgresUrl)('PostgreSQL 两个独立连接池并发接受、撤销�
     try {
       await first.artifacts.saveArtifact(artifact)
       await exerciseSharing(first.sharing, second.sharing)
+      expect(await second.artifacts.lifecycle.activeShareGeneration(artifact.publicId)).toBe(1)
     } finally {
       await Promise.all([first.close(), second.close()])
     }

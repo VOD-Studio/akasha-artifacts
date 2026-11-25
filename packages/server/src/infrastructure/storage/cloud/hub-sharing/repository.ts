@@ -141,6 +141,13 @@ export function createSqlHubSharingRepository(
     async restrictToOwner(artifactId) {
       await batch([
         enterScope(artifactId, true),
+        // 目录查询可以跨越本事务；持旧代数的签发请求不得在另一个连接上恢复访问。
+        [
+          `INSERT INTO artifact_lifecycle (artifact_id, withdrawn_at, share_generation) VALUES (?, NULL, 1)
+           ON CONFLICT (artifact_id) DO UPDATE SET share_generation = artifact_lifecycle.share_generation + 1
+           WHERE artifact_lifecycle.withdrawn_at IS NULL`,
+          artifactId,
+        ],
         ['DELETE FROM hub_sharing_grants WHERE artifact_id = ?', artifactId],
       ])
     },

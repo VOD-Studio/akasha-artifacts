@@ -11,7 +11,9 @@ const copyScope = (scope?: HubSharingScope): HubSharingScope => ({
 })
 
 /** 单个内存容器独占授权状态；所有读改写均在同一同步片段完成。 */
-export function createMemoryHubSharingRepository(): HubSharingRepository {
+export function createMemoryHubSharingRepository(
+  invalidateShares: (id: string) => void,
+): HubSharingRepository {
   let defaults = { ...defaultHubSharingPolicy }
   const scopes = new Map<string, HubSharingScope>()
   const grants = new Map<string, HubGrant>()
@@ -49,6 +51,7 @@ export function createMemoryHubSharingRepository(): HubSharingRepository {
     },
     async restrictToOwner(artifactId) {
       ensureScope(artifactId).restricted = true
+      invalidateShares(artifactId)
       for (const [id, grant] of grants) {
         if (grant.artifactId === artifactId) grants.delete(id)
       }

@@ -1,3 +1,4 @@
+import { EventEmitter, once } from 'node:events'
 import { expect, it } from 'vitest'
 import { sqliteHub } from './sqlite-hub.js'
 
@@ -76,4 +77,42 @@ it('仅本人同时撤掉旧公开可见性、已接受的邀请和已兑换的�
     grants: [],
   })
   expect((await send(work.path, 'GET', owner)).status).toBe(200)
+})
+
+it('另一份会话切到仅本人后，不再签发尚在目录中查询的旧邀请；仍可重新邀请', async () => {
+  const { login, publish, send, open, provider, invite, accept } = await sqliteHub()
+  const owner = await login('owner')
+  const member = await login('member')
+  const work = await publish(owner, 'pending-invitation')
+  const directory = new EventEmitter()
+  const started = once(directory, 'started')
+  const resume = once(directory, 'resume')
+  const fetchIdentity = provider.oauth.fetch
+  provider.oauth.fetch = async (input, init) => {
+    if (new URL(new Request(input, init).url).pathname === '/users/member') {
+      directory.emit('started')
+      await resume
+    }
+    return fetchIdentity(input, init)
+  }
+  const peer = await open()
+  const target = { kind: 'member', login: 'member' } as const
+  const pending = peer.send(`${work.path}/invitations`, 'POST', owner, {
+    target,
+    role: 'edit',
+    ttlSeconds: 300,
+  })
+  await started
+  try {
+    expect((await send(`${work.path}/sharing/only-me`, 'POST', owner, {})).status).toBe(200)
+  } finally {
+    directory.emit('resume')
+  }
+  expect((await pending).status).toBe(404)
+  expect(await (await peer.send(`${work.path}/sharing`, 'GET', owner)).json()).toMatchObject({
+    restricted: true,
+    grants: [],
+  })
+  const fresh = await invite(work.path, owner, target, 'view')
+  expect((await accept(fresh, member)).status).toBe(200)
 })

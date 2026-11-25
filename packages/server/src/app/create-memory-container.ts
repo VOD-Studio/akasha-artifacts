@@ -28,7 +28,7 @@ export function createMemoryContainer(options: MemoryContainerOptions = {}) {
   const rounds = new InMemoryRoundRepository()
   const feedbacks = new InMemoryFeedbackRepository()
   const receipts = new InMemoryReceiptRepository()
-  const sharing = createMemoryHubSharingRepository()
+  const sharing = createMemoryHubSharingRepository((id) => artifacts.invalidateShares(id))
   const realtime = new InMemoryRealtimeBus(clock)
 
   const service = new ArtifactService({
