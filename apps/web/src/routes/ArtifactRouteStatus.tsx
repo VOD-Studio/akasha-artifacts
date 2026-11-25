@@ -3,6 +3,7 @@ import { Button } from '@akasha/ui/button'
 import { Skeleton } from '@akasha/ui/skeleton'
 import { HubAccountButton } from '@/features/hub'
 import { ApiError, getRequestErrorMessage } from '@/shared/api/error'
+import { AkashaMark } from '@/shared/brand'
 import { LanguageMenu, useMessages } from '@/shared/i18n'
 import { routeMessages } from './messages'
 
@@ -13,7 +14,10 @@ export function OpeningArtifact() {
     <div className="flex h-dvh flex-col bg-canvas" role="status" aria-busy="true">
       <span className="sr-only">{t('正在打开…')}</span>
       <div className="flex min-h-13 shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4">
-        <Skeleton className="h-6 w-40 max-w-1/2" />
+        <div className="flex min-w-0 max-w-1/2 items-center gap-2">
+          <AkashaMark size={20} loading />
+          <Skeleton className="h-6 w-40" />
+        </div>
         <Skeleton className="h-6 w-20" />
       </div>
       <div className="flex flex-1 items-center justify-center p-8">
