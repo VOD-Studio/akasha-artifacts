@@ -14,6 +14,7 @@ import {
   useArtifactSourceQuery,
 } from '@/entities/artifact'
 import { captureBoardPng } from '@/shared/bridge/capture-png'
+import { type CanvasExportSelection, resolveSelectedExportBoards } from './canvas-export-selection'
 
 /** 打开面板时固定版本；不因 Agent 推进头版本而改变下载内容。 */
 export interface DesignExportTarget {
@@ -21,6 +22,8 @@ export interface DesignExportTarget {
   version: VersionSummary
   /** 从画板就地入口打开时预选该画板；默认整份制品。 */
   boardId?: string
+  /** 打开面板时的已保存选区；不随之后的选板或头版本变化。 */
+  selection?: CanvasExportSelection
 }
 
 interface ExportDialogProps {
@@ -43,7 +46,7 @@ function boardsFor(type: Artifact['type'], version: VersionSummary, source: stri
         })
     }
   }
-  return { boards, flows: document.flows }
+  return { boards, document }
 }
 
 function filePart(text: string) {
@@ -75,6 +78,7 @@ function captureError(cause: unknown) {
 async function* renderPages(
   boards: readonly LoadedCanvasBoard[],
   version: number,
+  scale: 1 | 2,
   signal: AbortSignal,
   onProgress: (text: string) => void,
 ) {
@@ -82,7 +86,7 @@ async function* renderPages(
     signal.throwIfAborted()
     onProgress(`正在渲染 ${index + 1}/${boards.length}：${board.title}`)
     try {
-      const png = await captureBoardPng(board, version, 1, signal)
+      const png = await captureBoardPng(board, version, scale, signal)
       yield { png, width: board.width, height: board.height }
     } catch (cause) {
       if (signal.aborted) throw signal.reason
@@ -124,25 +128,41 @@ function ExportDialog({
   source?: string
   load?: { error?: string; fetching: boolean; retry: () => void }
 }) {
-  const { artifact, version } = target
+  const { artifact, version, selection } = target
   const preview = useMemo(
     () => (source === undefined ? undefined : boardsFor(artifact.type, version, source)),
     [artifact.type, version, source],
   )
   const initialBoards = preview?.boards
-  const [boardId, setBoardId] = useState(target.boardId ?? '')
+  const [scope, setScope] = useState(target.boardId ? `board:${target.boardId}` : 'design')
+  const boardId = scope.startsWith('board:') ? scope.slice('board:'.length) : undefined
+  const isSelection = scope === 'selection'
+  const [pngScale, setPngScale] = useState<1 | 2>(1)
   const [format, setFormat] = useState<'png' | 'pdf' | 'html'>(target.boardId ? 'png' : 'pdf')
   const [error, setError] = useState('')
   const [progress, setProgress] = useState('')
   const job = useRef<AbortController | null>(null)
   const busy = Boolean(progress)
   const extension = format === 'html' && boardId ? 'zip' : format
+  const board = boardId ? initialBoards?.get(boardId)?.board : undefined
+  const selectionPreview = useMemo(() => {
+    if (!isSelection || !preview || !selection) return
+    try {
+      return { boards: resolveSelectedExportBoards(preview.document, version, selection) }
+    } catch (cause) {
+      return { error: captureError(cause) }
+    }
+  }, [isSelection, preview, selection, version])
+  const canDownload =
+    Boolean(initialBoards?.size) &&
+    (!boardId || Boolean(board)) &&
+    (!isSelection || Boolean(selectionPreview?.boards?.length))
   useEffect(() => () => job.current?.abort(), [])
 
   const selectScope = (value: string) => {
-    const next = value === 'design' ? '' : value.slice('board:'.length)
-    setBoardId(next)
-    setFormat(next ? 'png' : 'pdf')
+    if (value === 'selection' && !selection?.boardIds.length) return
+    setScope(value)
+    setFormat(value.startsWith('board:') ? 'png' : 'pdf')
     setError('')
   }
 
@@ -151,9 +171,14 @@ function ExportDialog({
     setFormat(value)
     setError('')
   }
+  const selectScale = (value: string) => {
+    if (value !== '1' && value !== '2') return
+    setPngScale(value === '1' ? 1 : 2)
+    setError('')
+  }
 
   const download = async () => {
-    if (job.current || !preview) return
+    if (job.current || !preview || !canDownload) return
     const controller = new AbortController()
     const { signal } = controller
     job.current = controller
@@ -170,13 +195,24 @@ function ExportDialog({
         result.version.version !== version.version
       )
         throw new Error('未能读取指定版本')
-      const { boards: available, flows } =
+      const snapshot =
         'source' in result.version && typeof result.version.source === 'string'
           ? boardsFor(result.artifact.type, result.version, result.version.source)
           : preview
-      const selected = boardId ? available.get(boardId)?.board : undefined
+      const selected = boardId ? snapshot.boards.get(boardId)?.board : undefined
       if (boardId && !selected) throw new Error('指定版本没有这张画板')
-      const boards = selected ? [selected] : Array.from(available.values(), ({ board }) => board)
+      let boards: readonly LoadedCanvasBoard[]
+      if (isSelection) {
+        if (!selection) throw new Error('未选择画板')
+        boards =
+          snapshot === preview && selectionPreview?.boards
+            ? selectionPreview.boards
+            : resolveSelectedExportBoards(snapshot.document, version, selection)
+      } else if (selected) {
+        boards = [selected]
+      } else {
+        boards = Array.from(snapshot.boards.values(), ({ board }) => board)
+      }
       if (!boards.length) throw new Error('指定版本没有可导出的画板')
       if (format === 'html') {
         const { composeOfflineDesign } = await import('@/features/export-design')
@@ -197,7 +233,7 @@ function ExportDialog({
               boardAppearance: board.appearance,
               boardTweaks: board.tweaks?.length ? resolveArtboardTweaks(board.tweaks) : undefined,
             })),
-            flows,
+            flows: snapshot.document.flows,
           },
           Boolean(selected),
           signal,
@@ -213,9 +249,16 @@ function ExportDialog({
         return
       }
 
-      const pages = renderPages(boards, version.version, signal, setProgress)
+      const pages = renderPages(
+        boards,
+        version.version,
+        format === 'png' ? pngScale : 1,
+        signal,
+        setProgress,
+      )
       let output: Blob | undefined
-      if (format === 'png' && selected) {
+      if (format === 'png') {
+        if (!selected) throw new Error('请选择一张画板导出 PNG')
         output = (await pages.next()).value?.png
       } else {
         const { composeDesignPdf } = await import('@/features/export-design')
@@ -223,7 +266,9 @@ function ExportDialog({
       }
       signal.throwIfAborted()
       if (!output) throw new Error('没有成功渲染的画面')
-      const suffix = selected ? `-${filePart(selected.title)}` : ''
+      let suffix = isSelection ? '-选区' : ''
+      if (selected) suffix = `-${filePart(selected.title)}`
+      if (format === 'png' && pngScale === 2) suffix += '@2x'
       downloadFile(
         output,
         `${filePart(result.version.title)}-v${version.version}${suffix}.${format}`,
@@ -253,7 +298,7 @@ function ExportDialog({
           <Button
             leftIcon={<Download size={16} />}
             loading={busy}
-            disabled={!initialBoards?.size || (boardId !== '' && !initialBoards.has(boardId))}
+            disabled={!canDownload}
             onClick={() => void download()}
           >
             导出
@@ -265,7 +310,7 @@ function ExportDialog({
         {initialBoards && (
           <Field label="导出范围">
             <Select
-              value={boardId ? `board:${boardId}` : 'design'}
+              value={scope}
               disabled={busy || !initialBoards.size}
               onValueChange={selectScope}
             >
@@ -274,6 +319,9 @@ function ExportDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="design">整份作品（{initialBoards.size} 张）</SelectItem>
+                <SelectItem value="selection" disabled={!selection?.boardIds.length}>
+                  选中画板（{selection?.boardIds.length ?? 0} 张）
+                </SelectItem>
                 {Array.from(initialBoards, ([id, { label }]) => (
                   <SelectItem key={id} value={`board:${id}`}>
                     {label}
@@ -282,6 +330,20 @@ function ExportDialog({
               </SelectContent>
             </Select>
           </Field>
+        )}
+        {selectionPreview?.boards && (
+          <ol aria-label="选区 PDF 页序" className="max-h-32 list-decimal overflow-auto ps-6">
+            {selectionPreview.boards.map((item) => (
+              <li key={item.id}>
+                <bdi>{item.title}</bdi>
+              </li>
+            ))}
+          </ol>
+        )}
+        {selectionPreview?.error && (
+          <p role="alert" className="text-error">
+            {selectionPreview.error}
+          </p>
         )}
         {Boolean(initialBoards?.size) && (
           <FieldSet legend="格式">
@@ -293,8 +355,24 @@ function ExportDialog({
             >
               {boardId && <Radio value="png" label="PNG" />}
               <Radio value="pdf" label="PDF" />
-              <Radio value="html" label={boardId ? 'HTML ZIP' : '离线 HTML'} />
+              {!isSelection && <Radio value="html" label={boardId ? 'HTML ZIP' : '离线 HTML'} />}
             </RadioGroup>
+          </FieldSet>
+        )}
+        {format === 'png' && board && (
+          <FieldSet legend="PNG 倍率">
+            <RadioGroup
+              orientation="horizontal"
+              value={String(pngScale)}
+              disabled={busy}
+              onValueChange={selectScale}
+            >
+              <Radio value="1" label="1×" />
+              <Radio value="2" label="2×" />
+            </RadioGroup>
+            <output aria-label="输出像素尺寸" className="text-ink-muted tabular-nums">
+              {board.width * pngScale} × {board.height * pngScale} 像素
+            </output>
           </FieldSet>
         )}
         {initialBoards?.size === 0 && <p className="text-ink-muted">当前版本没有可导出的画板。</p>}
