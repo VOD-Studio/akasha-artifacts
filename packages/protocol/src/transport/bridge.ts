@@ -65,6 +65,23 @@ const CanvasLayerSchema = z.object({
 /** 检查器可见的渲染节点。几何量以固有画板视口 CSS 像素计。 */
 export type CanvasLayer = z.infer<typeof CanvasLayerSchema>
 
+/** 单个命中元素的计算呈现摘要，供选区浮栏展示排版与对比度提示。 */
+export const CanvasElementPresentationSchema = z.object({
+  // 计算后的文字前景色（CSS rgb/hex 字符串）
+  color: z.string().max(64).optional(),
+  // 沿祖先链解析到的有效背景色，用于计算对比度
+  backgroundColor: z.string().max(64).optional(),
+  // 计算后的字号，单位 CSS 像素
+  fontSize: z.number().positive().max(512).optional(),
+  // 计算后的字重（100–900）
+  fontWeight: z.number().int().min(100).max(900).optional(),
+  // 计算后的水平对齐方式
+  textAlign: z.enum(['left', 'center', 'right', 'justify']).optional(),
+  // 目标是否为文字或包含直接文本内容的元素
+  isText: z.boolean().optional(),
+})
+export type CanvasElementPresentation = z.infer<typeof CanvasElementPresentationSchema>
+
 /**
  * 外壳与沙盒热更新时共享的视图与控件保态快照。
  *
@@ -336,6 +353,7 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
     // 图层定位和坐标同步使用精确选择器，不回退到祖先的块标识
     layerSelector: z.string().min(1).max(1024).optional(),
     version: z.number().int().min(1).optional(),
+    presentation: CanvasElementPresentationSchema.optional(),
   }),
   z.object({
     ...BridgeEnvelopeBase,
@@ -393,6 +411,7 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
       .string()
       .regex(/^\d{1,8}:\d{1,8}$/)
       .optional(),
+    presentation: CanvasElementPresentationSchema.optional(),
   }),
 ])
 export type SandboxToShellMessage = z.infer<typeof SandboxToShellMessageSchema>

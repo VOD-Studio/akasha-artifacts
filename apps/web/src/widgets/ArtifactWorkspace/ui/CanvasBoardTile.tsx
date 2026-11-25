@@ -17,6 +17,10 @@ interface CanvasBoardTileProps {
   onFocusTitle: (id: string, title: HTMLButtonElement, bounds: CanvasBounds) => void
   onNavigate: (boardId: string) => void
   onSelectTitle: (id: string, event: MouseEvent<HTMLButtonElement>) => void
+  /** 在画板标题上按 Return 时进入该画板的顶层图层。 */
+  onEnterBoard?: (boardId: string) => void
+  /** 跨板边界的原生图层外部溢出展示，与画板裁切区平级。 */
+  overflow?: ReactNode
   actions: ReactNode
   children: ReactNode
 }
@@ -34,6 +38,8 @@ export function CanvasBoardTile({
   onFocusTitle,
   onNavigate,
   onSelectTitle,
+  onEnterBoard,
+  overflow,
   actions,
   children,
 }: CanvasBoardTileProps) {
@@ -66,6 +72,19 @@ export function CanvasBoardTile({
           onFocus={(event) => onFocusTitle(board.id, event.currentTarget, bounds)}
           onKeyDown={(event) => {
             const { key } = event
+            if (
+              key === 'Enter' &&
+              !event.shiftKey &&
+              !event.altKey &&
+              !event.ctrlKey &&
+              !event.metaKey &&
+              !event.nativeEvent.isComposing &&
+              onEnterBoard
+            ) {
+              event.preventDefault()
+              onEnterBoard(board.id)
+              return
+            }
             if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(key))
               return
             event.preventDefault()
@@ -86,6 +105,7 @@ export function CanvasBoardTile({
         {actions}
       </div>
       {children}
+      {overflow}
       {primary && canDrag ? (
         <button
           type="button"

@@ -1,5 +1,11 @@
 import { expect, it } from 'vitest'
-import { getArtboardPaperSize, parseArtboardValue, projectArtboard } from '../src/index.js'
+import {
+  DesignLayerSchema,
+  getArtboardPaperSize,
+  parseArtboardValue,
+  projectArtboard,
+  resolveDesignLayerColors,
+} from '../src/index.js'
 
 const appearance = { background: '#f0f0f0', cornerRadius: 18 }
 const tweaks = [
@@ -102,4 +108,65 @@ it('独立的播放声明随索引传输，不把缺省当作关闭', () => {
   for (const board of projection.contents) {
     expect(board).not.toHaveProperty('presentation')
   }
+})
+
+it('原生图层校验排版、翻转和十六进制颜色，拒绝非法样式值', () => {
+  const text = DesignLayerSchema.parse({
+    id: 'heading',
+    kind: 'text',
+    x: -20,
+    y: 12,
+    width: 240,
+    height: 60,
+    text: '自定义标题',
+    color: '#9ca3af',
+    fontSize: 24,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    flipX: true,
+  })
+  expect(resolveDesignLayerColors(text, '#ffffff')).toEqual({
+    foreground: '#9ca3af',
+    surface: undefined,
+    contrastBackground: '#ffffff',
+  })
+  const rect = DesignLayerSchema.parse({
+    id: 'card',
+    kind: 'rectangle',
+    x: 0,
+    y: 0,
+    width: 120,
+    height: 80,
+    color: '#2563eb',
+    flipY: true,
+  })
+  expect(resolveDesignLayerColors(rect)).toEqual({
+    foreground: '#2563eb',
+    surface: '#2563eb',
+    contrastBackground: '#ffffff',
+  })
+  expect(
+    DesignLayerSchema.safeParse({
+      id: 'bad-color',
+      kind: 'text',
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 40,
+      text: 'x',
+      color: 'rgb(0,0,0)',
+    }).success,
+  ).toBe(false)
+  expect(
+    DesignLayerSchema.safeParse({
+      id: 'bad-size',
+      kind: 'text',
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 40,
+      text: 'x',
+      fontSize: 9,
+    }).success,
+  ).toBe(false)
 })

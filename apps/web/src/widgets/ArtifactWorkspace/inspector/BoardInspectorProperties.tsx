@@ -16,7 +16,7 @@ import type { CanvasBoardEditing } from '../hooks/useCanvasBoardEditing'
 import type { CanvasTextTools } from '../hooks/useInlineCanvasText'
 import { canvasToolsMessages } from '../toolbar/canvas-tools-messages'
 import { BoardPrintSettings } from './BoardPrintSettings'
-import { DESIGN_LAYER_COLOR_LABELS, DesignLayerLayout } from './DesignLayerLayout'
+import { DESIGN_LAYER_COLOR_LABELS, DesignLayerLayout, isPaletteColor } from './DesignLayerLayout'
 import { panelMessages } from './messages'
 
 interface BoardInspectorPropertiesProps {
@@ -56,6 +56,13 @@ export function BoardInspectorProperties({
   if (designLayer) {
     const textLayer = designLayer.kind === 'text' || designLayer.kind === 'note'
     const canEditText = textLayer && onEditText
+    const customColor = designLayer.color !== undefined && !isPaletteColor(designLayer.color)
+    let layerColorText = colorLabel(DESIGN_LAYER_COLOR_LABELS.auto)
+    if (designLayer.color !== undefined) {
+      layerColorText = isPaletteColor(designLayer.color)
+        ? colorLabel(DESIGN_LAYER_COLOR_LABELS[designLayer.color])
+        : designLayer.color
+    }
     return (
       <section aria-label={t('原生图层属性')}>
         <dl className={measurements}>
@@ -72,7 +79,7 @@ export function BoardInspectorProperties({
                 {designLayer.x}, {designLayer.y} px
               </dd>
               <dt className={term}>{t('颜色')}</dt>
-              <dd>{colorLabel(DESIGN_LAYER_COLOR_LABELS[designLayer.color ?? 'auto'])}</dd>
+              <dd dir={customColor ? 'ltr' : undefined}>{layerColorText}</dd>
             </>
           )}
         </dl>

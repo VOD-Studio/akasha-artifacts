@@ -1,9 +1,17 @@
-import type { VersionSummary } from '@akasha/protocol'
+import type {
+  CanvasElementPresentation,
+  CanvasLayer,
+  DesignLayer,
+  EditOp,
+  ElementRef,
+  VersionSummary,
+} from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import {
   type MouseEvent,
   type ReactNode,
   type Ref,
+  type RefObject,
   useEffect,
   useEffectEvent,
   useImperativeHandle,
@@ -20,18 +28,21 @@ import type {
   CanvasPage,
 } from '@/entities/artifact'
 import type { CanvasExportSelection } from '@/features/export-design'
+import type { VisualEditTarget } from '@/features/visual-edit'
 import { useMessages } from '@/shared/i18n'
 import { useBoardGesture } from '../hooks/useBoardGesture'
 import { useBoardPresentation } from '../hooks/useBoardPresentation'
 import type { CanvasBoardEditing } from '../hooks/useCanvasBoardEditing'
 import { useCanvasCameraInput } from '../hooks/useCanvasCameraInput'
+import { useCanvasKeyboardEditing } from '../hooks/useCanvasKeyboardEditing'
+import { useCanvasMarquee } from '../hooks/useCanvasMarquee'
 import { useCanvasShortcuts } from '../hooks/useCanvasShortcuts'
 import { useCanvasView } from '../hooks/useCanvasView'
 import type { CanvasTextTools } from '../hooks/useInlineCanvasText'
 import { useOverviewPlayback } from '../hooks/useOverviewPlayback'
 import { useViewportSize } from '../hooks/useViewportSize'
 import { fitSelection } from '../lib/canvas-arrangement'
-import { fitCamera, type Point, zoomCamera } from '../lib/canvas-camera'
+import { type Camera, fitCamera, type Point, zoomCamera } from '../lib/canvas-camera'
 import { indexViewportBoards, MAX_ANIMATED_BOARDS, planViewport } from '../lib/canvas-viewport'
 import type { CanvasPageEditing } from '../navigation/CanvasPageDialog'
 import { CanvasPlaybackMenu } from '../navigation/CanvasPlaybackMenu'
@@ -50,9 +61,38 @@ import { BoardPresentation } from './BoardPresentation'
 import { type CanvasBoardInput, CanvasBoardSurface } from './CanvasBoardSurface'
 import { CanvasBoardTile } from './CanvasBoardTile'
 import { CanvasFlowLines } from './CanvasFlowLines'
+import { CanvasArtboardPlacer, CanvasBlankDrawingOverlay } from './CanvasPlacementOverlay'
 
 /** 显式选板要求适配；元素指认与图层选择只在画板不可见时移动相机。 */
 export type InspectorReveal = CanvasLocation & { fit?: true }
+
+/** 画布内当前选中图层的键盘导航与直改上下文。 */
+export interface CanvasLayerSelectionContext {
+  board?: CanvasBoard
+  layers: readonly CanvasLayer[]
+  selectedLayer?: CanvasLayer
+  selectedDesignLayer?: DesignLayer
+  selectedElement: ElementRef | null
+  presentation: CanvasElementPresentation | null
+  visualTarget: VisualEditTarget | null
+  onSelectLayer: (layer: CanvasLayer | null, shouldReveal?: boolean) => void
+  onEnterBoard: (boardId: string) => void
+  onApplyRuntimeOp: (op: EditOp) => Promise<boolean>
+  readFullSource: () => Promise<string | null>
+  /** 从标题按 Return 进入图层时递增，触发把键盘焦点移到图层宿主。 */
+  focusToken: number
+}
+
+/** 选区浮栏的定位和焦点回调。 */
+export interface SelectionToolbarAnchor {
+  toolbarRef: RefObject<HTMLElement | null>
+  /** 选中对象在画布视口内的屏幕坐标包围盒。 */
+  rect: CanvasBounds
+  viewport: { width: number; height: number }
+  returnFocusToTarget: () => void
+  onFlip: (axis: 'horizontal' | 'vertical') => void
+  onReorderFlow: (delta: -1 | 1) => void
+}
 
 interface ArtifactCanvasProps {
   document: CanvasDocument
@@ -83,12 +123,54 @@ interface ArtifactCanvasProps {
   exportVersion: VersionSummary
   exportSelectionRef?: Ref<() => CanvasExportSelection | undefined>
   renderBoard: (board: CanvasBoard, purpose: BoardFramePurpose, detailed: boolean) => ReactNode
+  /** 渲染画板边界之外的原生图层溢出，允许点击选中所属图层。 */
+  renderBoardOverflow?: (board: CanvasBoard, scale: number, interactive: boolean) => ReactNode
+  /** 选中画板内图层时提供键盘层级导航与直改上下文。 */
+  layerSelection?: CanvasLayerSelectionContext
+  /** 渲染贴靠当前选区的浮动工具栏。 */
+  renderSelectionToolbar?: (anchor: SelectionToolbarAnchor) => ReactNode
   /** 从最新的可见范围提交优先队列，不把占位板或遗留选区当成加载需求。 */
   onDemandChange: (ids: readonly string[], idle: boolean) => void
   canPlay: (board: CanvasBoard) => boolean
   canAnimate: (board: CanvasBoard) => boolean
   /** 可视化直改的开关；省略时画布不提供直改入口。 */
   visualEdit?: { isPicking: boolean; toggle: () => void; cancel: () => void }
+}
+
+function resolveSelectedLayerRect(
+  layerSelection: CanvasLayerSelectionContext | undefined,
+  boardBounds: CanvasBounds,
+  camera: Camera,
+): { rect: CanvasBounds; label: string } {
+  const design = layerSelection?.selectedDesignLayer
+  const elemRect = layerSelection?.selectedElement?.rect
+  let localRect: CanvasBounds = {
+    x: 0,
+    y: 0,
+    width: boardBounds.width,
+    height: boardBounds.height,
+  }
+  if (design) {
+    localRect = { x: design.x, y: design.y, width: design.width, height: design.height }
+  } else if (elemRect && elemRect.width > 0 && elemRect.height > 0) {
+    localRect = elemRect
+  }
+  let label = layerSelection?.selectedLayer?.label || layerSelection?.selectedLayer?.tag || ''
+  if (!label && design) {
+    label =
+      design.kind === 'text' || design.kind === 'note'
+        ? design.text.trim().slice(0, 40) || design.kind
+        : design.kind
+  }
+  return {
+    rect: {
+      x: camera.x + (boardBounds.x + localRect.x) * camera.scale,
+      y: camera.y + (boardBounds.y + localRect.y) * camera.scale,
+      width: Math.max(8, localRect.width * camera.scale),
+      height: Math.max(8, localRect.height * camera.scale),
+    },
+    label,
+  }
 }
 
 const NO_MOTION: ReadonlySet<string> = new Set()
@@ -115,6 +197,9 @@ export function ArtifactCanvas({
   exportVersion,
   exportSelectionRef,
   renderBoard,
+  renderBoardOverflow,
+  layerSelection,
+  renderSelectionToolbar,
   onDemandChange,
   canPlay,
   canAnimate,
@@ -122,12 +207,17 @@ export function ArtifactCanvas({
 }: ArtifactCanvasProps) {
   const { t, dir } = useMessages(canvasToolsMessages)
   const viewportRef = useRef<HTMLElement>(null)
+  const layerFocusRef = useRef<HTMLButtonElement>(null)
+  const selectionToolbarRef = useRef<HTMLElement>(null)
   const pendingKeyboardFocus = useRef<string | null>(null)
   const [keyboardBoard, setKeyboardBoard] = useState<string | null>(null)
   const [navigatorOpen, setNavigatorOpen] = useState(false)
   const [copyStatus, setCopyStatus] = useState('')
+  const [blankNotice, setBlankNotice] = useState('')
   const [hiddenGuideBoards, setHiddenGuideBoards] = useState<ReadonlySet<string>>(() => new Set())
   const [drawingTool, setDrawingTool] = useState<DrawingTool | null>(null)
+  const [artboardPlacing, setArtboardPlacing] = useState(false)
+  const [drawingDragging, setDrawingDragging] = useState(false)
   const presentation = useBoardPresentation(document, visible)
   const showOverview = visible && !presentation.focused && !presentation.playing
   const motion = useOverviewPlayback()
@@ -148,6 +238,7 @@ export function ArtifactCanvas({
     hand,
     setHand,
     selectBoard,
+    selectBoards,
     updateCamera,
     clearAddress,
     navigate: navigateView,
@@ -203,6 +294,9 @@ export function ArtifactCanvas({
   const navigate = (target: CanvasPage, boardId?: string | null) => {
     navigateView(target, boardId)
     setDrawingTool(null)
+    setArtboardPlacing(false)
+    setDrawingDragging(false)
+    setBlankNotice('')
     setNavigatorOpen(false)
     setCopyStatus('')
   }
@@ -247,22 +341,89 @@ export function ArtifactCanvas({
   const focused = presentation.focused
   const activePresentation = presentation.playing ?? focused
   const closePresentation = presentation.playing ? presentation.closePlay : presentation.closeFocus
+  const hasSelectedLayer = Boolean(
+    layerSelection?.selectedLayer || layerSelection?.selectedDesignLayer,
+  )
+  const keyboardEditing = useCanvasKeyboardEditing({
+    visible: showOverview,
+    viewportRef,
+    layerFocusRef,
+    selectionToolbarRef,
+    page,
+    selectedBoards,
+    boardBounds: layout.bounds,
+    activeBoard: layerSelection?.board,
+    layers: layerSelection?.layers ?? [],
+    selectedLayer: layerSelection?.selectedLayer,
+    selectedDesignLayer: layerSelection?.selectedDesignLayer,
+    visualTarget: layerSelection?.visualTarget ?? null,
+    editing: boardEditing,
+    canEditBoards: Boolean(boardEditing),
+    canEditRuntime: Boolean(historyEditing?.available),
+    versionNumber: version,
+    readFullSource: layerSelection?.readFullSource ?? (async () => null),
+    onSelectLayer: layerSelection?.onSelectLayer ?? (() => {}),
+    onSelectBoard: (id) => selectBoard(id),
+    onApplyRuntimeOp: layerSelection?.onApplyRuntimeOp ?? (async () => false),
+  })
+  const focusToken = layerSelection?.focusToken ?? 0
+  useEffect(() => {
+    if (!focusToken || !showOverview) return
+    layerFocusRef.current?.focus({ preventScroll: true })
+  }, [focusToken, showOverview])
+
   const { space, modifier, resetModifiers } = useCanvasShortcuts({
     visible,
     viewportRef,
     navigatorOpen,
     closePresentation: activePresentation ? closePresentation : undefined,
     historyEditing,
-    cancelGesture: boardGesture.cancel,
+    cancelGesture: () => {
+      boardGesture.cancel()
+      marquee.cancel()
+    },
     clearSelection: () => {
-      setDrawingTool(null)
-      setHand(false)
+      if (drawingTool || artboardPlacing || hand) {
+        setDrawingTool(null)
+        setArtboardPlacing(false)
+        setDrawingDragging(false)
+        setBlankNotice('')
+        setHand(false)
+        visualEdit?.cancel()
+        return
+      }
+      if (hasSelectedLayer && selected) {
+        onClearElement()
+        keyboardEditing.focusBoardTitle(selected)
+        return
+      }
+      setBlankNotice('')
       onClearElement()
       visualEdit?.cancel()
       selectBoard(null)
     },
   })
   const handActive = hand || space
+  const marquee = useCanvasMarquee({
+    enabled: Boolean(
+      showOverview &&
+        !handActive &&
+        !modifier &&
+        !drawingTool &&
+        !artboardPlacing &&
+        !visualEdit?.isPicking &&
+        !invalidAddress &&
+        page &&
+        !standalone,
+    ),
+    boards: page?.boards ?? [],
+    bounds: layout.bounds,
+    camera,
+    onCommit: (ids, additive) => {
+      onClearElement()
+      selectBoards(ids, additive)
+    },
+  })
   const { dragging, wheelActive, wasPinching, startPointer, movePointer, endPointer } =
     useCanvasCameraInput({
       viewportRef,
@@ -271,7 +432,9 @@ export function ArtifactCanvas({
       invalidAddress,
       pageId,
       handActive,
-      wheelLocked: Boolean(drawingTool || boardGesture.preview?.phase === 'dragging'),
+      wheelLocked: Boolean(
+        drawingDragging || boardGesture.preview?.phase === 'dragging' || marquee.active,
+      ),
       updateCamera,
     })
   const recent = useRef<{ index: typeof viewportIndex; ids: ReadonlySet<string> } | null>(null)
@@ -324,19 +487,39 @@ export function ArtifactCanvas({
     }
   }, [plan.boards, showOverview])
   const boundsFor = (id: string) => moved?.get(id) ?? layout.bounds.get(id)
+  const selectedLayerBoardBounds = layerSelection?.board?.id
+    ? boundsFor(layerSelection.board.id)
+    : undefined
+  const selectedLayerOverlay =
+    showOverview && hasSelectedLayer && selectedLayerBoardBounds
+      ? resolveSelectedLayerRect(layerSelection, selectedLayerBoardBounds, camera)
+      : null
   const canDragBoards =
-    boardEditing?.available && !handActive && !modifier && !drawingTool && !visualEdit?.isPicking
+    boardEditing?.available &&
+    !handActive &&
+    !modifier &&
+    !drawingTool &&
+    !artboardPlacing &&
+    !visualEdit?.isPicking
 
   const setCanvasTool = (next: boolean) => {
     boardGesture.cancel()
+    marquee.cancel()
     setDrawingTool(null)
+    setArtboardPlacing(false)
+    setDrawingDragging(false)
+    setBlankNotice('')
     setHand(next)
     visualEdit?.cancel()
   }
 
   const pauseCanvasTools = () => {
     boardGesture.cancel()
+    marquee.cancel()
     setDrawingTool(null)
+    setArtboardPlacing(false)
+    setDrawingDragging(false)
+    setBlankNotice('')
     setNavigatorOpen(false)
     resetModifiers()
     visualEdit?.cancel()
@@ -386,7 +569,14 @@ export function ArtifactCanvas({
     }
   }
   const clickBackground = (event: MouseEvent<HTMLElement>) => {
-    if (event.target !== event.currentTarget || handActive || wasPinching.current || drawingTool)
+    if (marquee.consumeBackgroundClick()) return
+    if (
+      event.target !== event.currentTarget ||
+      handActive ||
+      wasPinching.current ||
+      drawingTool ||
+      artboardPlacing
+    )
       return
     onClearElement()
     selectBoard(null)
@@ -412,6 +602,14 @@ export function ArtifactCanvas({
             onStatus={setCopyStatus}
           />
           {historyEditing ? <CanvasBoardEditNotice editing={historyEditing} /> : null}
+          {blankNotice ? (
+            <p
+              role="status"
+              className="mt-1 max-w-xs rounded-md border border-border bg-surface px-3 py-2 text-xs text-ink shadow-sm"
+            >
+              {blankNotice}
+            </p>
+          ) : null}
         </div>
         {/* biome-ignore lint/a11y/useKeyWithClickEvents: 键盘用 Escape 清空同一选区；点击这里只处理空白。 */}
         <section
@@ -422,13 +620,58 @@ export function ArtifactCanvas({
           className="artifact-canvas"
           data-hand={handActive}
           data-dragging={dragging}
-          onPointerDown={startPointer}
-          onPointerMove={movePointer}
-          onPointerUp={endPointer}
-          onPointerCancel={endPointer}
-          onLostPointerCapture={endPointer}
+          onPointerDown={(event) => {
+            if (marquee.onPointerDown(event)) return
+            startPointer(event)
+          }}
+          onPointerMove={(event) => {
+            if (marquee.onPointerMove(event)) return
+            movePointer(event)
+          }}
+          onPointerUp={(event) => {
+            if (marquee.onPointerUp(event)) return
+            endPointer(event)
+          }}
+          onPointerCancel={(event) => {
+            marquee.cancel()
+            endPointer(event)
+          }}
+          onLostPointerCapture={(event) => {
+            marquee.cancel()
+            endPointer(event)
+          }}
           onClick={clickBackground}
         >
+          {showOverview &&
+          !invalidAddress &&
+          page &&
+          drawingTool &&
+          boardEditing?.available &&
+          !standalone ? (
+            <CanvasBlankDrawingOverlay
+              key={drawingTool.kind}
+              tool={drawingTool}
+              camera={camera}
+              boards={page.boards}
+              bounds={layout.bounds}
+              version={boardEditing.version}
+              onDraggingChange={setDrawingDragging}
+              onUnowned={() => {
+                setBlankNotice(t('空白画布区域不保存游离图层，请落入画板或跨越画板边界。'))
+                setDrawingTool(null)
+              }}
+              onCreate={(targetBoard, layer, base, anchor) => {
+                setBlankNotice('')
+                selectBoard(targetBoard.id)
+                setDrawingTool(null)
+                if (layer.kind === 'text' || layer.kind === 'note') {
+                  textTools?.place(targetBoard, layer, base, anchor)
+                } else {
+                  boardEditing.change({ kind: 'layerCreate', boardId: targetBoard.id, layer }, base)
+                }
+              }}
+            />
+          ) : null}
           {invalidAddress && (
             <div dir={dir} className="artifact-canvas-message">
               <p role="alert">{t(addressedPage ? '链接中的画板不存在' : '链接中的页面不存在')}</p>
@@ -464,6 +707,8 @@ export function ArtifactCanvas({
                   detailed &&
                   board === standalone &&
                   (!isPrototype(board) || Boolean(visualEdit?.isPicking))
+                const tileSelected =
+                  activeSelection.has(board.id) || marquee.previewIds.has(board.id)
                 return (
                   <CanvasBoardTile
                     key={board.id}
@@ -471,17 +716,32 @@ export function ArtifactCanvas({
                     page={page}
                     bounds={bounds}
                     camera={camera}
-                    isSelected={activeSelection.has(board.id)}
+                    isSelected={tileSelected}
                     primary={selected === board.id}
                     canDrag={Boolean(canDragBoards)}
                     gesture={boardGesture}
                     onSelectTitle={activateTitle}
                     onFocusTitle={focusTitle}
+                    onEnterBoard={
+                      layerSelection
+                        ? (boardId) => {
+                            selectBoard(boardId)
+                            layerSelection.onEnterBoard(boardId)
+                          }
+                        : undefined
+                    }
                     onNavigate={(id) => {
                       pendingKeyboardFocus.current = id
                       onClearElement()
                       navigate(page, id)
                     }}
+                    overflow={
+                      renderBoardOverflow?.(
+                        board,
+                        camera.scale,
+                        !handActive && !drawingTool && !artboardPlacing && !visualEdit?.isPicking,
+                      ) ?? null
+                    }
                     actions={
                       <>
                         {board === standalone && visualEdit && (
@@ -492,6 +752,7 @@ export function ArtifactCanvas({
                             onClick={() => {
                               setHand(false)
                               setDrawingTool(null)
+                              setArtboardPlacing(false)
                               visualEdit.toggle()
                             }}
                           >
@@ -530,7 +791,12 @@ export function ArtifactCanvas({
                       selectBoard={selectBoard}
                       onClearElement={onClearElement}
                       onSelectPoint={detailed ? onSelectPoint : undefined}
-                      onDrawingEnd={() => setDrawingTool(null)}
+                      onDrawingEnd={() => {
+                        setDrawingTool(null)
+                        setDrawingDragging(false)
+                        setBlankNotice('')
+                      }}
+                      onDraggingChange={setDrawingDragging}
                     >
                       {renderBoard(
                         board,
@@ -552,6 +818,87 @@ export function ArtifactCanvas({
               {t('此页面没有画板')}
             </p>
           )}
+          {marquee.box ? (
+            <div
+              data-testid="canvas-marquee"
+              aria-hidden="true"
+              className="artifact-canvas-marquee"
+              style={{
+                left: marquee.box.x,
+                top: marquee.box.y,
+                width: marquee.box.width,
+                height: marquee.box.height,
+              }}
+            />
+          ) : null}
+          {showOverview && hasSelectedLayer && selectedLayerBoardBounds && (
+            <>
+              <button
+                ref={layerFocusRef}
+                type="button"
+                data-testid="canvas-layer-focus"
+                className="artifact-canvas-layer-focus"
+                aria-label={t(
+                  '当前图层：{label}（Tab 遍历，Return 进入，Shift+Return 退一层，F6 选区工具栏，Esc 回板）',
+                  { label: selectedLayerOverlay?.label || t('画布') },
+                )}
+                style={
+                  selectedLayerOverlay
+                    ? {
+                        left: selectedLayerOverlay.rect.x,
+                        top: selectedLayerOverlay.rect.y,
+                        width: selectedLayerOverlay.rect.width,
+                        height: selectedLayerOverlay.rect.height,
+                      }
+                    : undefined
+                }
+                onKeyDown={keyboardEditing.onLayerKeyDown}
+              />
+              {selectedLayerOverlay &&
+                renderSelectionToolbar?.({
+                  toolbarRef: selectionToolbarRef,
+                  rect: selectedLayerOverlay.rect,
+                  viewport: size,
+                  returnFocusToTarget: () => {
+                    if (layerFocusRef.current) {
+                      layerFocusRef.current.focus({ preventScroll: true })
+                    } else if (layerSelection?.board?.id) {
+                      keyboardEditing.focusBoardTitle(layerSelection.board.id)
+                    }
+                  },
+                  onFlip: (axis) => void keyboardEditing.flipSelection(axis),
+                  onReorderFlow: (delta) => void keyboardEditing.reorderSelectedFlow(delta),
+                })}
+            </>
+          )}
+          {artboardPlacing && boardEditing && page && !invalidAddress ? (
+            <CanvasArtboardPlacer
+              camera={camera}
+              version={boardEditing.version}
+              size={size}
+              onDraggingChange={setDrawingDragging}
+              onCancel={() => setArtboardPlacing(false)}
+              onPlace={(bounds, base) => {
+                setArtboardPlacing(false)
+                setBlankNotice('')
+                const id = crypto.randomUUID()
+                void boardEditing
+                  .change(
+                    {
+                      kind: 'create',
+                      id,
+                      title: t('画板 {index}', { index: page.boards.length + 1 }),
+                      pageId: page.id,
+                      bounds,
+                    },
+                    base,
+                  )
+                  .then((ok) => {
+                    if (ok) selectBoard(id)
+                  })
+              }}
+            />
+          ) : null}
         </section>
         <CanvasToolbar
           camera={camera}
@@ -584,19 +931,22 @@ export function ArtifactCanvas({
                 }
               : undefined
           }
-          onAddBoard={
+          artboardTool={
             boardEditing && page && !invalidAddress
-              ? () => {
-                  boardEditing.change({
-                    kind: 'create',
-                    id: crypto.randomUUID(),
-                    title: t('画板 {index}', { index: page.boards.length + 1 }),
-                    pageId: page.id,
-                  })
+              ? {
+                  active: artboardPlacing,
+                  disabled: !boardEditing.available,
+                  toggle: () => {
+                    if (artboardPlacing) {
+                      setArtboardPlacing(false)
+                    } else {
+                      setCanvasTool(false)
+                      setArtboardPlacing(true)
+                    }
+                  },
                 }
               : undefined
           }
-          canAddBoard={boardEditing?.available}
           onComment={onComment}
           history={historyEditing}
           arrangementMenu={

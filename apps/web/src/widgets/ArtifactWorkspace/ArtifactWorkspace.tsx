@@ -1,6 +1,7 @@
 import {
   type AnnotationThread,
   type ArtifactWorkspaceDetail,
+  DESIGN_LAYER_BLOCK_PREFIX,
   type ElementRef,
   type Feedback,
   isAnnotationKind,
@@ -12,8 +13,10 @@ import {
   type VersionSummary,
 } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
+import { useQueryClient } from '@tanstack/react-query'
 import { type Ref, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  artifactSourceOptions,
   type CanvasBoard,
   type CanvasLocation,
   type CanvasPage,
@@ -38,11 +41,14 @@ import { useBoardCapabilities } from './hooks/useBoardCapabilities'
 import { useBoardInspection } from './hooks/useBoardInspection'
 import { useCanvasBoardEditing } from './hooks/useCanvasBoardEditing'
 import { useInlineCanvasText } from './hooks/useInlineCanvasText'
+import { useSelectedVisualTarget } from './hooks/useSelectedVisualTarget'
 import { BoardInspector, type BoardInspectorHandoff } from './inspector/BoardInspector'
 import { BoardResources } from './model/board-resources'
 import { createBoardTweakPreviewStore } from './model/board-tweak-previews'
+import { SelectionToolbar } from './toolbar/SelectionToolbar'
 import { ArtifactCanvas, type InspectorReveal } from './ui/ArtifactCanvas'
 import { ArtifactFrame, type BoardFramePurpose, type FrameConnection } from './ui/ArtifactFrame'
+import { BoardOverflowLayers } from './ui/BoardOverflowLayers'
 import { BoardResourceView, readLoadedBoard, useBoardResource } from './ui/BoardResourceView'
 import { InlineCanvasText } from './ui/InlineCanvasText'
 
@@ -116,6 +122,7 @@ export function ArtifactWorkspace({
   onVersionAdopted,
 }: ArtifactWorkspaceProps) {
   const { access, artifact, version, state } = detail
+  const queryClient = useQueryClient()
   const shareCanEdit = !access || (access.role === 'edit' && fixedVersion === undefined)
   const canWriteVersion =
     shareCanEdit && fixedVersion === undefined && version.version === artifact.headVersion
@@ -125,6 +132,7 @@ export function ArtifactWorkspace({
   const [canvasLocation, setCanvasLocation] = useState<CanvasLocation | null>(null)
   const [inspectorReveal, setInspectorReveal] = useState<InspectorReveal | null>(null)
   const [inspectorPage, setInspectorPage] = useState('properties')
+  const [layerFocusToken, setLayerFocusToken] = useState(0)
   const clearInspectorReveal = useCallback(() => setInspectorReveal(null), [])
   const latestVersion = useMemo(() => {
     if (versions.length === 0) return version
@@ -441,15 +449,69 @@ export function ArtifactWorkspace({
     [],
   )
   const followsEditableHead = fixedVersion === undefined && (!access || access.role === 'edit')
+  const activeBoard = inspected.loadedBoard ?? inspectedBoardLayout
+  const onEnteredLayer = useCallback(() => {
+    setLayerFocusToken((count) => count + 1)
+  }, [])
   const inspection = useBoardInspection({
     artifactId: artifact.publicId,
     version: version.version,
     followHead: followsEditableHead,
-    board: inspected.loadedBoard ?? inspectedBoardLayout,
+    board: activeBoard,
     current: canvasLocation,
     reveal: revealBoard,
     send: sendBoard,
+    onEnteredLayer,
   })
+  const selectedLayer = useMemo(
+    () => inspection.layers?.layers.find((entry) => entry.id === inspection.selectedId),
+    [inspection.layers, inspection.selectedId],
+  )
+  const selectedBlock = useSelectionStore((state) => {
+    const scope = state.layersByArtifact[artifact.publicId]
+    const target = state.selectedByArtifact[artifact.publicId]
+    if (!target || (target.boardId ?? STANDALONE_BOARD_ID) !== activeBoard?.id) return undefined
+    if (selectionForVersion(state, artifact.publicId, version.version)) return target.blockId
+    if (
+      followsEditableHead &&
+      scope &&
+      scope.version < version.version &&
+      target.blockId?.startsWith(DESIGN_LAYER_BLOCK_PREFIX)
+    )
+      return target.blockId
+    return undefined
+  })
+  const selectedDesignLayer = useMemo(() => {
+    if (!activeBoard?.designLayers?.length) return undefined
+    if (selectedLayer?.designId) {
+      return activeBoard.designLayers.find((item) => item.id === selectedLayer.designId)
+    }
+    if (selectedBlock?.startsWith(DESIGN_LAYER_BLOCK_PREFIX)) {
+      const id = selectedBlock.slice(DESIGN_LAYER_BLOCK_PREFIX.length)
+      return activeBoard.designLayers.find((item) => item.id === id)
+    }
+    return undefined
+  }, [activeBoard, selectedBlock, selectedLayer])
+  const runtimeVisualTarget = useSelectedVisualTarget({
+    artifact,
+    version,
+    boardId: activeBoard?.id,
+    scoped: Boolean(activeBoard?.scoped),
+    loc: !selectedDesignLayer && !activeBoard?.generated ? selectedLayer?.sourceLoc : undefined,
+    enabled: Boolean(canEditText && canvas === savedCanvas && activeBoard),
+    editing: boardEditing,
+  })
+  const readFullSource = useCallback(async () => {
+    if (fullVersion?.source !== undefined) return fullVersion.source
+    try {
+      const loaded = await queryClient.fetchQuery(
+        artifactSourceOptions(artifact.publicId, version.version),
+      )
+      return loaded.source
+    } catch {
+      return null
+    }
+  }, [artifact.publicId, fullVersion?.source, queryClient, version.version])
   const inlineText = useInlineCanvasText({
     artifact,
     version,
@@ -472,7 +534,7 @@ export function ArtifactWorkspace({
     },
     [onPointTarget, onTextTarget],
   )
-  const inspectedBoard = inspection.open ? canvasLocation?.boardId : inspection.pendingBoardId
+  const inspectedBoard = canvasLocation?.boardId ?? inspection.pendingBoardId
   const watchBoard = canvas === savedCanvas ? inspectedBoard : undefined
   const styleLayerId =
     inspection.open && inspectorPage === 'source' ? inspection.selectedId : undefined
@@ -509,6 +571,7 @@ export function ArtifactWorkspace({
           styleLayerId={watchLayers ? styleLayerId : undefined}
           onLayers={inspection.onLayers}
           onElementTarget={onElementTarget}
+          onSelectSync={inspection.onSelectSync}
           onVisualSelect={onVisualSelect}
         />
       )
@@ -540,11 +603,37 @@ export function ArtifactWorkspace({
       watchBoard,
       styleLayerId,
       inspection.onLayers,
+      inspection.onSelectSync,
       onElementTarget,
       onVisualSelect,
       readBoards,
       resources,
     ],
+  )
+
+  const selectOverflowLayer = useCallback(
+    (boardId: string, layerId: string) => {
+      const page = savedCanvas.pages.find((entry) => entry.boards.some((b) => b.id === boardId))
+      if (page) revealBoard({ pageId: page.id, boardId })
+      handleHighlightElement({
+        boardId,
+        blockId: `${DESIGN_LAYER_BLOCK_PREFIX}${layerId}`,
+      })
+    },
+    [handleHighlightElement, revealBoard, savedCanvas.pages],
+  )
+  const renderBoardOverflow = useCallback(
+    (board: CanvasBoard, scale: number, interactive: boolean) =>
+      board.scoped ? (
+        <BoardOverflowEntry
+          board={board}
+          resources={resources}
+          scale={scale}
+          interactive={interactive}
+          onSelectLayer={selectOverflowLayer}
+        />
+      ) : null,
+    [resources, selectOverflowLayer],
   )
 
   const openCodeEditor = () => {
@@ -617,6 +706,48 @@ export function ArtifactWorkspace({
                 : undefined
             }
             renderBoard={renderBoard}
+            renderBoardOverflow={renderBoardOverflow}
+            renderSelectionToolbar={
+              canvas === savedCanvas && activeBoard
+                ? (anchor) => (
+                    <SelectionToolbar
+                      anchor={anchor}
+                      board={activeBoard}
+                      runtimeLayer={selectedLayer}
+                      designLayer={selectedDesignLayer}
+                      presentation={inspection.presentation}
+                      visualTarget={runtimeVisualTarget.target}
+                      propertiesOpen={inspection.open && inspectorPage === 'properties'}
+                      drawerOpen={inspectorOpen}
+                      canEditBoards={canEditBoards}
+                      canEditText={canEditText}
+                      canComment={canComment}
+                      editing={canEditText ? boardEditing : undefined}
+                      textTools={canEditText ? inlineText.tools : undefined}
+                      onApplyRuntimeOp={runtimeVisualTarget.applyOp}
+                      onComment={() => setInspectorTab('review')}
+                    />
+                  )
+                : undefined
+            }
+            layerSelection={
+              canvas === savedCanvas
+                ? {
+                    board: activeBoard,
+                    layers: inspection.layers?.layers ?? [],
+                    selectedLayer,
+                    selectedDesignLayer,
+                    selectedElement,
+                    presentation: inspection.presentation,
+                    visualTarget: runtimeVisualTarget.target,
+                    onSelectLayer: inspection.onSelect,
+                    onEnterBoard: inspection.enterBoard,
+                    onApplyRuntimeOp: runtimeVisualTarget.applyOp,
+                    readFullSource,
+                    focusToken: layerFocusToken,
+                  }
+                : undefined
+            }
             onDemandChange={onDemandChange}
             canPlay={canPlay}
             canAnimate={canAnimate}
@@ -712,6 +843,32 @@ export function ArtifactWorkspace({
         />
       ) : null}
     </div>
+  )
+}
+
+function BoardOverflowEntry({
+  board,
+  resources,
+  scale,
+  interactive,
+  onSelectLayer,
+}: {
+  board: CanvasBoard
+  resources: BoardResources
+  scale: number
+  interactive: boolean
+  onSelectLayer: (boardId: string, layerId: string) => void
+}) {
+  const { loadedBoard } = useBoardResource(board, resources)
+  const resolved = loadedBoard ?? board
+  return (
+    <BoardOverflowLayers
+      board={resolved}
+      layers={resolved.designLayers}
+      scale={scale}
+      interactive={interactive}
+      onSelectLayer={onSelectLayer}
+    />
   )
 }
 

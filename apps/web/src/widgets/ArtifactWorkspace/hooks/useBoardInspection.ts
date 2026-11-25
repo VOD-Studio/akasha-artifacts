@@ -1,4 +1,5 @@
 import {
+  type CanvasElementPresentation,
   type CanvasLayer,
   type CanvasLayerStyles,
   DESIGN_LAYER_BLOCK_PREFIX,
@@ -11,6 +12,7 @@ import { selectionForVersion, useSelectionStore } from '@/entities/selection'
 import { useWorkspaceStore } from '@/entities/workspace'
 import type { ShellOutgoingPayload } from '@/shared/bridge/host'
 import type { Point } from '../lib/canvas-camera'
+import { firstRootLayer } from '../lib/canvas-layer-navigation'
 
 interface BoardInspectionInput {
   artifactId: string
@@ -20,6 +22,8 @@ interface BoardInspectionInput {
   current: CanvasLocation | null
   reveal: (target: CanvasLocation) => void
   send: (boardId: string, message: ShellOutgoingPayload) => void
+  /** 从画板标题按 Return 进入首个图层后通知工作区将键盘焦点移入画布图层宿主。 */
+  onEnteredLayer?: (boardId: string, layer: CanvasLayer) => void
 }
 
 interface Scope {
@@ -37,19 +41,58 @@ export function useBoardInspection({
   current,
   reveal,
   send,
+  onEnteredLayer,
 }: BoardInspectionInput) {
   const open = useWorkspaceStore((state) => state.inspectorTab === 'inspect')
   const [snapshot, setSnapshot] = useState<
     (Scope & { layers: CanvasLayer[]; truncated: boolean; styles?: CanvasLayerStyles }) | null
   >(null)
+  const [presentation, setPresentation] = useState<
+    (Scope & { layerId?: string; value: CanvasElementPresentation }) | null
+  >(null)
   const pendingPoint = useRef<(Scope & { requestId: string }) | null>(null)
+  const pendingEnterBoard = useRef<string | null>(null)
+  const latest = useRef({ board, current, version, onEnteredLayer })
+  latest.current = { board, current, version, onEnteredLayer }
+
+  const selectLayerDirect = useCallback(
+    (
+      targetBoard: CanvasBoard,
+      targetLocation: CanvasLocation,
+      layer: CanvasLayer,
+      shouldReveal: boolean,
+    ) => {
+      const native =
+        layer.designId && targetBoard.designLayers?.some((item) => item.id === layer.designId)
+      const blockId = native ? `${DESIGN_LAYER_BLOCK_PREFIX}${layer.designId}` : layer.blockId
+      const element = {
+        selector: layer.selector,
+        ...(targetBoard.scoped ? { boardId: targetBoard.id } : {}),
+        ...(blockId ? { blockId } : {}),
+      }
+      const target = { id: layer.id, version: latest.current.version }
+      useSelectionStore.getState().setSelectedElement(artifactId, element, target)
+      if (shouldReveal) reveal(targetLocation)
+      send(targetBoard.id, {
+        type: 'highlight',
+        element,
+        reveal: shouldReveal ? true : undefined,
+        layer: target,
+      })
+    },
+    [artifactId, reveal, send],
+  )
+
   const clearPoint = useCallback(() => {
     pendingPoint.current = null
+    pendingEnterBoard.current = null
+    setPresentation(null)
     const store = useSelectionStore.getState()
     if (store.selectedByArtifact[artifactId]) store.clearSelection(artifactId)
   }, [artifactId])
   const pickPoint = useCallback(
     (boardId: string, point: Point) => {
+      pendingEnterBoard.current = null
       const requestId = crypto.randomUUID()
       pendingPoint.current = { artifactId, version, boardId, requestId }
       send(boardId, { type: 'inspect.at', purpose: 'select', requestId, version, ...point })
@@ -70,8 +113,16 @@ export function useBoardInspection({
       )
         return
       pendingPoint.current = null
-      const { element, layer } = message
-      if (!element) return
+      const { element, layer, presentation: nextPresentation } = message
+      if (!element) {
+        setPresentation(null)
+        return
+      }
+      setPresentation(
+        nextPresentation
+          ? { artifactId, version, boardId, layerId: layer?.id, value: nextPresentation }
+          : null,
+      )
       const selected = useSelectionStore.getState().setSelectedElement
       if (!layer) {
         selected(artifactId, element)
@@ -85,6 +136,24 @@ export function useBoardInspection({
         { ...element, blockId, selector: layer.selector },
         { id: layer.id, version },
       )
+    },
+    [artifactId, current?.boardId, version],
+  )
+  const onSelectSync = useCallback(
+    (boardId: string, message: Extract<SandboxToShellMessage, { type: 'inspect.select' }>) => {
+      if (
+        !message.presentation ||
+        (message.version !== undefined && message.version !== version) ||
+        current?.boardId !== boardId
+      )
+        return
+      setPresentation({
+        artifactId,
+        version,
+        boardId,
+        layerId: message.layerId,
+        value: message.presentation,
+      })
     },
     [artifactId, current?.boardId, version],
   )
@@ -102,11 +171,17 @@ export function useBoardInspection({
       : undefined
   })
   const layers =
-    open &&
     snapshot?.artifactId === artifactId &&
     snapshot.version === version &&
     snapshot.boardId === current?.boardId
       ? snapshot
+      : null
+  const activePresentation =
+    presentation?.artifactId === artifactId &&
+    presentation.version === version &&
+    presentation.boardId === current?.boardId &&
+    (!selectedId || !presentation.layerId || presentation.layerId === selectedId)
+      ? presentation.value
       : null
   const onLayers = useCallback(
     (
@@ -115,6 +190,16 @@ export function useBoardInspection({
     ) => {
       const { version: activeVersion, layers, truncated, styles } = message
       setSnapshot({ artifactId, version: activeVersion, boardId, layers, truncated, styles })
+      if (pendingEnterBoard.current === boardId && activeVersion === latest.current.version) {
+        pendingEnterBoard.current = null
+        const first = firstRootLayer(layers)
+        const live = latest.current
+        if (first && live.board && live.board.id === boardId && live.current) {
+          selectLayerDirect(live.board, live.current, first, false)
+          live.onEnteredLayer?.(boardId, first)
+          return
+        }
+      }
       const store = useSelectionStore.getState()
       const selected = store.selectedByArtifact[artifactId]
       const oldScope = store.layersByArtifact[artifactId]
@@ -151,38 +236,56 @@ export function useBoardInspection({
         send(boardId, { type: 'highlight', element, layer })
       }
     },
-    [artifactId, followHead, send],
+    [artifactId, followHead, selectLayerDirect, send],
+  )
+
+  const enterBoard = useCallback(
+    (boardId: string) => {
+      pendingPoint.current = null
+      const live = latest.current
+      if (
+        snapshot?.artifactId === artifactId &&
+        snapshot.version === live.version &&
+        snapshot.boardId === boardId &&
+        live.board?.id === boardId &&
+        live.current
+      ) {
+        const first = firstRootLayer(snapshot.layers)
+        if (first) {
+          pendingEnterBoard.current = null
+          selectLayerDirect(live.board, live.current, first, false)
+          live.onEnteredLayer?.(boardId, first)
+          return
+        }
+      }
+      pendingEnterBoard.current = boardId
+    },
+    [artifactId, selectLayerDirect, snapshot],
   )
 
   return {
     open,
     layers,
+    presentation: activePresentation,
     selectedId,
     pendingBoardId,
     onLayers,
     clearPoint,
     pickPoint,
     onPointTarget,
-    onSelect(layer: CanvasLayer | null) {
+    onSelectSync,
+    enterBoard,
+    onSelect(layer: CanvasLayer | null, shouldReveal = true) {
       pendingPoint.current = null
+      pendingEnterBoard.current = null
       if (!layer) {
+        setPresentation(null)
         useSelectionStore.getState().clearSelection(artifactId)
         return
       }
       if (!current || !board || board.id !== current.boardId || !layers?.layers.includes(layer))
         return
-      const native =
-        layer.designId && board.designLayers?.some((item) => item.id === layer.designId)
-      const blockId = native ? `${DESIGN_LAYER_BLOCK_PREFIX}${layer.designId}` : layer.blockId
-      const element = {
-        selector: layer.selector,
-        ...(board.scoped ? { boardId: board.id } : {}),
-        ...(blockId ? { blockId } : {}),
-      }
-      const target = { id: layer.id, version }
-      useSelectionStore.getState().setSelectedElement(artifactId, element, target)
-      reveal(current)
-      send(board.id, { type: 'highlight', element, reveal: true, layer: target })
+      selectLayerDirect(board, current, layer, shouldReveal)
     },
   }
 }

@@ -29,9 +29,20 @@ it('画板保存后提交对应版本的 Agent 编辑反馈，通知失败不回
     if (!previous) throw new Error('缺少保存请求处理器')
     return previous(path, init)
   })
+  vi.stubGlobal('PointerEvent', MouseEvent)
   fireEvent.click(screen.getByRole('button', { name: '添加画板' }))
+  const placer = screen.getByRole('button', { name: '在画布上放置画板' })
+  vi.spyOn(placer, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 1200, 900))
+  fireEvent.pointerDown(placer, { button: 0, pointerId: 1, clientX: 120, clientY: 80 })
+  fireEvent.pointerMove(placer, { pointerId: 1, clientX: 520, clientY: 380 })
+  fireEvent.pointerUp(placer, { pointerId: 1, clientX: 520, clientY: 380 })
   expect(await screen.findByTitle('画板内容：画板 3')).toBeTruthy()
   expect(editor.current.version.version).toBe(2)
+  expect(JSON.parse(editor.current.version.source).boards[3]).toMatchObject({
+    title: '画板 3',
+    position: expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }),
+    viewport: expect.objectContaining({ width: expect.any(Number), height: expect.any(Number) }),
+  })
   expect(notifications).toEqual([
     expect.objectContaining({ kind: 'edit', version: 2, roundId: null }),
   ])

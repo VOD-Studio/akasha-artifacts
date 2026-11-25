@@ -142,11 +142,16 @@ export class ArtifactVisualEdit {
     if ('op' in command) {
       try {
         if (command.boardId !== undefined) {
+          const allowedKind =
+            command.op.kind === 'text' ||
+            command.op.kind === 'className' ||
+            command.op.kind === 'move' ||
+            command.op.kind === 'remove'
           const board =
-            artifact.type === 'artboard' && command.op.kind === 'text'
+            artifact.type === 'artboard' && allowedKind
               ? visualBoardSource(head.source, head.version, command.boardId)
               : null
-          if (!board) throw new VisualEditError('该画板仅支持直改静态文字')
+          if (!board) throw new VisualEditError('画板不支持此直改操作，请改用批注')
           return board.replace(applyVisualEdit('html', board.html, command.op))
         }
         return applyVisualEdit(artifact.type, head.source, command.op)

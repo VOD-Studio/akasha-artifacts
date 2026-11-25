@@ -1,14 +1,18 @@
-import { DESIGN_LAYER_BLOCK_PREFIX, type DesignLayer } from '@akasha/protocol'
+import {
+  DESIGN_LAYER_BLOCK_PREFIX,
+  type DesignLayer,
+  type DesignLayerFontWeight,
+  resolveDesignLayerColors,
+} from '@akasha/protocol'
 import type { CSSProperties } from 'react'
 import { bindDesignLayer } from '../../inspector/layers'
 
-const palette = {
-  ink: { foreground: '#202733', surface: '#dce2eb' },
-  blue: { foreground: '#174f8f', surface: '#cfe6ff' },
-  rose: { foreground: '#a02a45', surface: '#ffd7df' },
-  amber: { foreground: '#71400f', surface: '#fff1b3' },
-  mint: { foreground: '#146356', surface: '#cef6e8' },
-} satisfies Record<NonNullable<DesignLayer['color']>, { foreground: string; surface: string }>
+const fontWeights: Record<DesignLayerFontWeight, number> = {
+  normal: 400,
+  medium: 500,
+  semibold: 600,
+  bold: 700,
+}
 
 const names: Record<DesignLayer['kind'], string> = {
   text: '文本',
@@ -19,8 +23,12 @@ const names: Record<DesignLayer['kind'], string> = {
 }
 
 function layerStyle(layer: DesignLayer, interactive: boolean): CSSProperties {
-  const swatch = palette[layer.color ?? (layer.kind === 'note' ? 'amber' : 'ink')]
+  const { foreground, surface } = resolveDesignLayerColors(layer)
   const text = layer.kind === 'text' || layer.kind === 'note'
+  const flip =
+    layer.flipX || layer.flipY
+      ? `scale(${layer.flipX ? -1 : 1}, ${layer.flipY ? -1 : 1})`
+      : undefined
   return {
     position: 'absolute',
     left: layer.x,
@@ -28,16 +36,19 @@ function layerStyle(layer: DesignLayer, interactive: boolean): CSSProperties {
     width: layer.width,
     height: layer.height,
     pointerEvents: interactive ? 'auto' : 'none',
-    color: swatch.foreground,
-    backgroundColor: layer.kind === 'stroke' || layer.kind === 'text' ? undefined : swatch.surface,
+    color: foreground,
+    backgroundColor: surface,
     borderRadius: layer.kind === 'ellipse' ? '50%' : layer.kind === 'note' ? 4 : undefined,
     padding: layer.kind === 'note' ? 10 : undefined,
     whiteSpace: text ? 'pre-wrap' : undefined,
     overflowWrap: text ? 'anywhere' : undefined,
     overflow: 'hidden',
     fontFamily: 'system-ui, sans-serif',
-    fontSize: 16,
+    fontSize: text ? (layer.fontSize ?? 16) : 16,
+    fontWeight: text ? fontWeights[layer.fontWeight ?? 'normal'] : undefined,
+    textAlign: text ? (layer.textAlign ?? 'left') : undefined,
     lineHeight: 1.4,
+    transform: flip,
   }
 }
 

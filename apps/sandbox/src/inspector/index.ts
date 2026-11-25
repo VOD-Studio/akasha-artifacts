@@ -1,4 +1,5 @@
 import {
+  type CanvasElementPresentation,
   DESIGN_LAYER_BLOCK_PREFIX,
   type ElementRect,
   type ElementRef,
@@ -6,6 +7,114 @@ import {
 } from '@akasha/protocol'
 import type { SandboxBridgeClient } from '../bridge/client'
 import { layerElementId, layerSelector, readDesignLayerId, uniqueLayerBlock } from './layers'
+
+const TEXT_ELEMENTS = new Set([
+  'p',
+  'span',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'a',
+  'button',
+  'label',
+  'li',
+  'strong',
+  'em',
+  'small',
+  'blockquote',
+  'figcaption',
+  'td',
+  'th',
+  'dt',
+  'dd',
+  'code',
+  'pre',
+])
+
+function isTransparentCssColor(value: string): boolean {
+  const trimmed = value.trim().toLowerCase()
+  if (!trimmed || trimmed === 'transparent') return true
+  const rgba = /^rgba?\(\s*[\d.]+\s*[,\s]\s*[\d.]+\s*[,\s]\s*[\d.]+\s*[,/]\s*([\d.]+%?)\s*\)$/.exec(
+    trimmed,
+  )
+  if (!rgba) return false
+  const alpha = rgba[1].endsWith('%')
+    ? Number.parseFloat(rgba[1]) / 100
+    : Number.parseFloat(rgba[1])
+  return Number.isFinite(alpha) && alpha <= 0.01
+}
+
+function readElementPresentation(
+  target: Element,
+  root: HTMLElement,
+): CanvasElementPresentation | undefined {
+  const win = root.ownerDocument.defaultView
+  if (!win?.getComputedStyle) return undefined
+  const computed = win.getComputedStyle(target)
+  const color = computed.color?.trim() || undefined
+  let backgroundColor: string | undefined
+  for (let current: Element | null = target; current; current = current.parentElement) {
+    const bg = win.getComputedStyle(current).backgroundColor?.trim()
+    if (bg && !isTransparentCssColor(bg)) {
+      backgroundColor = bg
+      break
+    }
+    if (current === root) break
+  }
+  backgroundColor ??= 'rgb(255, 255, 255)'
+  const parsedSize = Number.parseFloat(computed.fontSize)
+  const fontSize =
+    Number.isFinite(parsedSize) && parsedSize > 0 && parsedSize <= 512
+      ? Math.round(parsedSize * 10) / 10
+      : undefined
+  const rawWeight = computed.fontWeight?.trim().toLowerCase()
+  let fontWeight: number | undefined
+  if (rawWeight === 'bold') fontWeight = 700
+  else if (rawWeight === 'normal') fontWeight = 400
+  else {
+    const numeric = Number.parseInt(rawWeight ?? '', 10)
+    if (Number.isInteger(numeric) && numeric >= 100 && numeric <= 900) fontWeight = numeric
+  }
+  const rawAlign = computed.textAlign?.trim().toLowerCase()
+  let textAlign: CanvasElementPresentation['textAlign']
+  if (rawAlign === 'left' || rawAlign === 'start') textAlign = 'left'
+  else if (rawAlign === 'center') textAlign = 'center'
+  else if (rawAlign === 'right' || rawAlign === 'end') textAlign = 'right'
+  else if (rawAlign === 'justify') textAlign = 'justify'
+  const hasDirectText = Array.from(target.childNodes).some(
+    (node) => node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.trim()),
+  )
+  const isText = hasDirectText || TEXT_ELEMENTS.has(target.localName)
+  return {
+    ...(color && color.length <= 64 ? { color } : {}),
+    ...(backgroundColor.length <= 64 ? { backgroundColor } : {}),
+    ...(fontSize !== undefined ? { fontSize } : {}),
+    ...(fontWeight !== undefined ? { fontWeight } : {}),
+    ...(textAlign ? { textAlign } : {}),
+    isText,
+  }
+}
+
+function resolveHitElement(target: Element | null, root: HTMLElement): Element | null {
+  if (
+    !target ||
+    target === root ||
+    !root.contains(target) ||
+    target.hasAttribute('data-ak-renderer')
+  )
+    return null
+  for (
+    let current: Element | null = target;
+    current && current !== root;
+    current = current.parentElement
+  ) {
+    if (readDesignLayerId(current)) return current
+  }
+  return target
+}
 
 function escapeCssIdent(value: string): string {
   if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
@@ -224,17 +333,14 @@ export class SandboxInspector {
     if (message.version !== this.getVersion()) return
     const root = this.getRootEl()
     if (!root) return
-    const target = root.ownerDocument.elementFromPoint(message.x, message.y)
-    const hit =
-      target && target !== root && root.contains(target) && !target.hasAttribute('data-ak-renderer')
-        ? target
-        : null
+    const hit = resolveHitElement(root.ownerDocument.elementFromPoint(message.x, message.y), root)
     const picking = message.purpose === 'select'
     if (picking) {
       this.selectedEl = hit
       this.ensureViewportListeners()
     }
     const selector = picking && hit ? layerSelector(hit, root) : undefined
+    const presentation = picking && hit ? readElementPresentation(hit, root) : undefined
     this.bridge.send({
       type: 'inspect.target',
       purpose: message.purpose,
@@ -245,12 +351,14 @@ export class SandboxInspector {
         ? { layer: { id: layerElementId(hit), selector, blockId: uniqueLayerBlock(hit, root) } }
         : {}),
       loc: hit && !picking ? uniqueStaticSourceLocation(hit, root) : undefined,
+      ...(presentation ? { presentation } : {}),
     })
   }
 
   private emitSelection(target: Element, root: HTMLElement) {
     const selector = layerSelector(target, root)
     const version = this.getVersion()
+    const presentation = readElementPresentation(target, root)
     this.bridge.send({
       type: 'inspect.select',
       element: buildElementRef(target, root),
@@ -259,6 +367,7 @@ export class SandboxInspector {
       ...(selector && selector.length <= 1024
         ? { layerId: layerElementId(target), layerSelector: selector }
         : {}),
+      ...(presentation ? { presentation } : {}),
     })
   }
 
