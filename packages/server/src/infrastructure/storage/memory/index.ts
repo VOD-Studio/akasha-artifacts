@@ -168,6 +168,14 @@ export class InMemoryArtifactRepository implements ArtifactRepository {
     },
   }
 
+  /** 清空授权时使尚在签发的旧代数失效，不撤下制品本身。 */
+  invalidateShares(id: PublicId): void {
+    const current = this.withdrawals.get(id)
+    if (this.artifacts.has(id) && !current?.at) {
+      this.withdrawals.set(id, { at: null, generation: (current?.generation ?? 0) + 1 })
+    }
+  }
+
   private slugKey(projectId: string, slug: Slug): string {
     return `${projectId}::${slug}`
   }

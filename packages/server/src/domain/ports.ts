@@ -51,7 +51,7 @@ export interface ArtifactLifecycleRepository {
   setWithdrawal(id: PublicId, at: string | null): Promise<boolean>
   findWithdrawn(id: PublicId): Promise<WithdrawnArtifact | undefined>
   listWithdrawn(): Promise<readonly WithdrawnArtifact[]>
-  /** 只为活动制品返回代数，未撤下过的制品为 0。 */
+  /** 只为活动制品返回分享代数；初始为 0，撤下或切换「仅本人」后旧代数不再有效。 */
   activeShareGeneration(id: PublicId): Promise<number | undefined>
 }
 

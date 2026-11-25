@@ -29,8 +29,10 @@ export interface ArtifactDetailResponse {
   /** 运行状态按 `seq` 更新，不随 `version` 的版本号递增。 */
   state: StateStreamSnapshot
   rounds: ReviewRound[]
-  /** 签名分享授予的版本和权限；未设置时不是分享会话。 */
+  /** 访问所用的链接或身份授权；未设置时不是受邀会话。 */
   access?: ArtifactSharedAccess
+  /** 受控作品的所有者预览也保留在 Hub，不探测本机副本。 */
+  hubRestricted?: true
 }
 
 /** 签发分享链接；普通定位链接不经过这个接口。 */
@@ -38,10 +40,11 @@ export async function createArtifactShare(
   id: string,
   input: ArtifactShareInput,
 ): Promise<{ url: string; expiresAt: string }> {
-  return requestJson(`/api/v1/artifacts/${encodeURIComponent(id)}/share`, {
-    method: 'POST',
-    body: JSON.stringify(input),
-  })
+  return requestJson(
+    `/api/v1/artifacts/${encodeURIComponent(id)}/share`,
+    { method: 'POST', body: JSON.stringify(input) },
+    'workbench',
+  )
 }
 
 /** 读取当前会话的管理权限；能打开作品不代表能修改、撤下或分享。 */

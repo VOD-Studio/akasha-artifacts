@@ -1,3 +1,4 @@
+import type { ArtifactSharedAccess } from '@akasha/protocol'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   type AnnotationThreadAction,
@@ -11,12 +12,17 @@ export const feedbackKeys = {
   list: (artifactId: string) => ['feedback', artifactId] as const,
 }
 
-/** 读取服务端可见的草稿与线程；未选作品时不发请求。 */
-export function useArtifactFeedbackQuery(artifactId: string) {
+/** 受邀会话与固定快照隔离反馈缓存；不能复用作者曾读到的内部讨论和草稿。 */
+export function useArtifactFeedbackQuery(
+  artifactId: string,
+  access: ArtifactSharedAccess | undefined,
+  enabled: boolean,
+) {
+  const key = feedbackKeys.list(artifactId)
   return useQuery({
-    queryKey: feedbackKeys.list(artifactId),
+    queryKey: access ? [...key, 'shared', access.version ?? 'head'] : key,
     queryFn: () => fetchArtifactFeedback(artifactId),
-    enabled: Boolean(artifactId),
+    enabled: enabled && Boolean(artifactId),
     staleTime: 2_000,
   })
 }

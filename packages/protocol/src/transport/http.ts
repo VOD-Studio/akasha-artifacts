@@ -95,17 +95,27 @@ export const ArtifactShareEntrySchema = z.discriminatedUnion('kind', [
 ])
 export type ArtifactShareEntry = z.infer<typeof ArtifactShareEntrySchema>
 
+/** 固定版本与画板均指向不可变快照；只有跟随头版本的入口可以授予编辑权。 */
+export function canGrantShareRole(
+  entry: ArtifactShareEntry,
+  role: z.infer<typeof ArtifactShareRoleSchema>,
+) {
+  return role !== 'edit' || entry.kind === 'artifact'
+}
+
 /** 签发站内分享链接；链接默认为一天有效。 */
-export const ArtifactShareInputSchema = z.object({
-  role: ArtifactShareRoleSchema.default('comment'),
-  entry: ArtifactShareEntrySchema.default({ kind: 'artifact' }),
-  ttlSeconds: z
-    .number()
-    .int()
-    .min(1)
-    .max(7 * 24 * 60 * 60)
-    .default(24 * 60 * 60),
-})
+export const ArtifactShareInputSchema = z
+  .object({
+    role: ArtifactShareRoleSchema.default('comment'),
+    entry: ArtifactShareEntrySchema.default({ kind: 'artifact' }),
+    ttlSeconds: z
+      .number()
+      .int()
+      .min(1)
+      .max(7 * 24 * 60 * 60)
+      .default(24 * 60 * 60),
+  })
+  .refine(({ entry, role }) => canGrantShareRole(entry, role), { path: ['role'] })
 export type ArtifactShareInput = z.infer<typeof ArtifactShareInputSchema>
 
 /** 仅分享访客的详情响应携带权限；不返回签名或会话凭证。 */
@@ -127,6 +137,8 @@ export type ArtifactWorkspaceDetail = WorkspaceVersion & {
   state: StateStreamSnapshot
   rounds: readonly ReviewRound[]
   access?: ArtifactSharedAccess
+  /** 受控设计的所有者也留在 Hub 工作区；个人预览才探测本机副本。 */
+  hubRestricted?: true
 }
 
 /** 复制固定快照或把原制品移动到当前服务内已登记的项目。 */

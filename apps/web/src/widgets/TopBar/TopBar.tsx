@@ -68,8 +68,8 @@ export function TopBar({
   const setCommandPaletteOpen = useWorkspaceStore((s) => s.setCommandPaletteOpen)
   const agentActivity = useWorkspaceStore((s) => s.agentActivityByProject[artifact.projectId])
 
-  const management = useArtifactManagementQuery(artifact.publicId)
-  const canManage = management.data?.canManage === true
+  const management = useArtifactManagementQuery(artifact.publicId, !shareAccess)
+  const canManage = !shareAccess && management.isSuccess && management.data.canManage
 
   const editing = !shareAccess && agentActivity?.state === 'editing'
   const statusLabel = shareAccess ? t(getShareRole(shareAccess, fixedVersion)) : undefined

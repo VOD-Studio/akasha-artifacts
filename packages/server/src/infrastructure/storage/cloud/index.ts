@@ -33,6 +33,8 @@ import {
   boardProjectionStatements,
   createSqlBoardProjectionRepository,
 } from '../board-projections.js'
+import { createSqlHubSharingRepository } from './hub-sharing/repository.js'
+import { hubSharingSchema } from './hub-sharing/schema.js'
 import { schema } from './schema.js'
 import type { SqlDriver, SqlStatement, SqlValue, SqlWriteLock, VersionBlobs } from './types.js'
 
@@ -90,20 +92,30 @@ async function versionBlobKey(version: Readonly<Version>): Promise<string> {
 export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
   const ready = driver
     .batch(
-      [...schema, ...boardProjectionSchema, [artifactLifecycleTable], ...annotationStatements],
+      [
+        ...schema,
+        ...boardProjectionSchema,
+        [artifactLifecycleTable],
+        ...annotationStatements,
+        ...hubSharingSchema,
+      ],
       'schema',
     )
     .then(() => {})
-  async function query<Row>(sql: string, ...params: SqlValue[]): Promise<Row[]> {
+  const execute = async <Row>(statement: SqlStatement): Promise<Row[]> => {
     await ready
-    return driver.execute<Row>([sql, ...params])
+    return driver.execute<Row>(statement)
   }
-  async function first<Row>(sql: string, ...params: SqlValue[]): Promise<Row | undefined> {
-    return (await query<Row>(sql, ...params))[0]
-  }
+  const query = <Row>(...statement: SqlStatement) => execute<Row>(statement)
+  const first = async <Row>(...statement: SqlStatement): Promise<Row | undefined> =>
+    (await execute<Row>(statement))[0]
   async function write<Row>(lock: SqlWriteLock, ...statements: SqlStatement[]): Promise<Row[]> {
     await ready
     return driver.batch<Row>(statements, lock)
+  }
+  const batch = async (statements: SqlStatement[]): Promise<void> => {
+    await ready
+    await driver.batch(statements)
   }
 
   const projects: ProjectRepository = {
@@ -143,13 +155,10 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
 
   const artifacts: ArtifactRepository = {
     boardProjections: createSqlBoardProjectionRepository(
-      <Row>([sql, ...params]: SqlStatement) => first<Row>(sql, ...params),
-      async (statements) => {
-        await ready
-        await driver.batch(statements)
-      },
+      async <Row>(statement: SqlStatement) => (await execute<Row>(statement))[0],
+      batch,
     ),
-    lifecycle: createSqlArtifactLifecycle(([sql, ...args]) => query(sql, ...args)),
+    lifecycle: createSqlArtifactLifecycle(execute),
     async saveArtifact(artifact) {
       await query(
         `INSERT INTO artifacts (public_id, project_id, slug, title, type, visibility, head_version, created_at, updated_at)
@@ -367,9 +376,7 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
   }
 
   const feedbacks: FeedbackRepository = {
-    annotations: createSqlAnnotationRepository(<Row>([sql, ...params]: SqlStatement) =>
-      query<Row>(sql, ...params),
-    ),
+    annotations: createSqlAnnotationRepository(execute),
     async save(feedback) {
       // 投递序号与记录在同一事务提交，避免靠序列取号导致提交乱序、跳过反馈。
       const draft = feedback.draft ? 1 : 0
@@ -545,6 +552,7 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
     rounds,
     feedbacks,
     receipts,
+    sharing: createSqlHubSharingRepository(execute, batch, driver.jsonArrayValues),
     artifactStorage,
     allocateRealtimeSeq,
     ready,

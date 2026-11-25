@@ -39,6 +39,8 @@ function setup(storage?: HubContainerOptions['repositories']) {
       return new Response(null, { status: 404 })
     if (url.pathname === '/user')
       return Response.json({ login, id: users[login as keyof typeof users] })
+    if (url.pathname === '/user/emails')
+      return Response.json([{ email: `${login}@example.test`, verified: true }])
     if (url.pathname === '/user/memberships/orgs/studio') return Response.json({ state: 'active' })
     if (url.pathname === `/orgs/studio/teams/design/memberships/${login}`) {
       return Response.json({ state: login === 'bob' ? 'active' : 'pending' })
@@ -72,11 +74,11 @@ function setup(storage?: HubContainerOptions['repositories']) {
       headers: { 'content-type': 'application/json', ...(cookie ? { cookie, origin } : {}) },
       body: JSON.stringify(body),
     })
-  async function callback(login: keyof typeof users, path = '/auth/login?next=%2Fworkbench') {
+  const callback = async (login: keyof typeof users, path = '/auth/login?next=%2Fworkbench') => {
     const begin = await send(path)
     expect(begin.status).toBe(302)
     const oauth = new URL(begin.headers.get('location') ?? '')
-    expect(oauth.searchParams.get('scope')).toBe('read:org')
+    expect(oauth.searchParams.get('scope')?.split(' ').sort()).toEqual(['read:org', 'user:email'])
     const state = oauth.searchParams.get('state')
     const cookie = begin.headers.get('set-cookie')?.split(';')[0] ?? ''
     return await send(
@@ -84,7 +86,7 @@ function setup(storage?: HubContainerOptions['repositories']) {
       { headers: { cookie } },
     )
   }
-  async function login(login: keyof typeof users) {
+  const login = async (login: keyof typeof users) => {
     const result = await callback(login)
     expect(result.status).toBe(302)
     expect(result.headers.get('location')).toBe('/workbench')
@@ -124,7 +126,9 @@ describe('Cloud Hub 身份与制品权限', () => {
       [eve, '303', false],
     ] as const) {
       const response = await send('/api/v1/auth/session', { headers: { cookie } })
-      expect(await response.json()).toMatchObject({ user: { userId, member, kind: 'session' } })
+      expect(await response.json()).toMatchObject({
+        user: { userId, member, kind: 'session', admin: false },
+      })
     }
     expect(
       (

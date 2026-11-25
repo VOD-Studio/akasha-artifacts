@@ -72,6 +72,7 @@ export function applyRealtimeEventToCache(
     case 'artifact.metadata': {
       void queryClient.invalidateQueries({ queryKey: artifactKeys.lists })
       void queryClient.invalidateQueries({ queryKey: artifactKeys.detailPrefix(event.artifactId) })
+      void queryClient.invalidateQueries({ queryKey: artifactKeys.sharing(event.artifactId) })
       return
     }
 

@@ -1,5 +1,6 @@
 import { ArtifactService } from '../application/artifact-service.js'
 import type { Clock, IdGenerator } from '../domain/ports.js'
+import { createMemoryHubSharingRepository } from '../infrastructure/storage/memory/hub-sharing.js'
 import {
   CryptoIdGenerator,
   InMemoryArtifactRepository,
@@ -27,6 +28,7 @@ export function createMemoryContainer(options: MemoryContainerOptions = {}) {
   const rounds = new InMemoryRoundRepository()
   const feedbacks = new InMemoryFeedbackRepository()
   const receipts = new InMemoryReceiptRepository()
+  const sharing = createMemoryHubSharingRepository((id) => artifacts.invalidateShares(id))
   const realtime = new InMemoryRealtimeBus(clock)
 
   const service = new ArtifactService({
@@ -44,6 +46,6 @@ export function createMemoryContainer(options: MemoryContainerOptions = {}) {
   return {
     service,
     realtime,
-    repositories: { projects, artifacts, states, rounds, feedbacks, receipts },
+    repositories: { projects, artifacts, states, rounds, feedbacks, receipts, sharing },
   }
 }

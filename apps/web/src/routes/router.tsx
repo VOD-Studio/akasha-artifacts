@@ -14,7 +14,10 @@ import {
 import { useLayoutEffect } from 'react'
 import { useWorkspaceStore } from '@/entities/workspace'
 import { ArtifactCommandPalette } from '@/features/command-palette'
+import { HubInvitationPage } from '@/features/hub'
+import { HubSharingPolicyPage } from '@/features/hub-sharing-policy'
 import { useLiveSync } from '@/features/live-sync'
+import { hubArtifactPath } from '@/shared/config/hub-artifact'
 import { isCloudHub } from '@/shared/config/runtime'
 import { useMessages } from '@/shared/i18n'
 import { LibraryShell } from '@/widgets/LibraryShell'
@@ -29,12 +32,12 @@ function RootLayout() {
     document.documentElement.dir = dir
   }, [locale, dir])
   const navigate = useNavigate()
-  const isLibrary = useLocation({ select: (location) => location.pathname === '/' })
+  const isWorkspace = useLocation({ select: (location) => location.pathname.startsWith('/a/') })
   const openArtifact = (to: string) => void navigate({ to })
   return (
     <UiLocaleProvider locale={locale}>
       <Outlet />
-      {!isLibrary && <ArtifactCommandPalette onNavigate={openArtifact} />}
+      {isWorkspace && <ArtifactCommandPalette onNavigate={openArtifact} />}
       <ConnectionNotice />
       <Toaster
         dir={dir}
@@ -53,8 +56,10 @@ function LibraryPage() {
   useLayoutEffect(() => {
     useWorkspaceStore.getState().openArtifactView(null)
   }, [])
-  const openArtifact = (publicId: string) =>
-    void navigate({ to: '/a/$publicId', params: { publicId } })
+  const openArtifact = (publicId: string, destination?: 'hub') => {
+    if (destination === 'hub') void navigate({ href: hubArtifactPath(publicId) })
+    else void navigate({ to: '/a/$publicId', params: { publicId } })
+  }
   return <LibraryShell onOpenArtifact={openArtifact} />
 }
 
@@ -72,6 +77,19 @@ function ArtifactVersionPage() {
       requestedVersion={Number.isInteger(parsed) && parsed >= 1 ? parsed : undefined}
     />
   )
+}
+
+function InvitationRoute() {
+  const { id } = useParams({ from: '/invite/$id' })
+  const navigate = useNavigate()
+  const openShared = (artifactId: string) =>
+    void navigate({ href: hubArtifactPath(artifactId), replace: true })
+  return <HubInvitationPage key={id} invitationId={id} onAccepted={openShared} />
+}
+
+function AdminSharingRoute() {
+  const { id } = useParams({ from: '/admin/sharing/$id' })
+  return <HubSharingPolicyPage key={id} artifactId={id} />
 }
 
 const rootRoute = createRootRoute({
@@ -96,7 +114,25 @@ const artifactVersionRoute = createRoute({
   component: ArtifactVersionPage,
 })
 
-const routeTree = rootRoute.addChildren([indexRoute, artifactHeadRoute, artifactVersionRoute])
+const invitationRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/invite/$id',
+  component: InvitationRoute,
+})
+
+const adminSharingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/admin/sharing/$id',
+  component: AdminSharingRoute,
+})
+
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  artifactHeadRoute,
+  artifactVersionRoute,
+  invitationRoute,
+  adminSharingRoute,
+])
 
 export function createAppRouter(history?: RouterHistory) {
   return createRouter({

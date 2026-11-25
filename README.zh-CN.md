@@ -182,7 +182,7 @@ npx akasha-artifacts login --hub https://akasha.example.com
 npx akasha-artifacts mcp --hub https://akasha.example.com
 ```
 
-本机已绑定该 Hub 且持有同一制品时，打开 Hub 链接会优先进入本机工作台。
+个人预览可优先打开已绑定该 Hub 且持有同一制品的本机工作台。要共享设计，在作品库选择**在 Hub 打开**，再点**分享**。所有者可邀请 GitHub 成员、已验证的邮箱、配置的组织或团队，授予**查看、批注或编辑**权限。将定向邀请转发给其他账号不会给对方授权。所有者可改权、撤销或切换为**仅本人**。管理员从作品库的**分享策略**分别控制外部链接和外部邮箱邀请，也可为单个设计设置例外。详见[部署指南](deploy/docker/README.md)。
 
 ### 3. 制品作用域存储
 

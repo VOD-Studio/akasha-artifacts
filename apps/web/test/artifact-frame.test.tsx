@@ -80,6 +80,7 @@ it('握手后才发送最新临时参数；总览只给默认参数安排截图�
       tweakPreviews={tweakPreviews}
       useTweakPreview
       sandboxOrigin="http://127.0.0.1:24331"
+      notifyAgent
       pins={[]}
       onFocusPin={() => {}}
       purpose={{ type: 'overview', interactive: false, animate: false }}

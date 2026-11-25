@@ -246,16 +246,20 @@ it('切换会话不重建画板，保留选区、倍率、草稿并归还焦点'
   )
 })
 
-it('Hub 中管理者可从顶栏分享，普通读者不显示该入口', async () => {
+it('Hub 中所有者会话可从顶栏管理分享，普通读者不显示该入口', async () => {
   openWorkspace(true, false)
   await screen.findByTitle('画板内容：确认订单')
   expect(screen.queryByRole('button', { name: 'Agent 对话' })).toBeNull()
   expect(screen.queryByRole('button', { name: '分享' })).toBeNull()
   cleanup()
 
-  openWorkspace(true)
+  const { router } = openWorkspace(true, true, undefined, undefined, '/')
+  const openInHub = await screen.findByRole('link', { name: `在 Hub 打开：${title}` })
+  expect(screen.getByRole('link', { name: title }).getAttribute('href')).toBe(`/a/${publicId}`)
+  fireEvent.click(openInHub)
+  await waitFor(() => expect(router.state.location.href).toBe(`/a/${publicId}?shared=1`))
   fireEvent.click(await screen.findByRole('button', { name: '分享' }))
-  expect(screen.getByRole('dialog', { name: '创建分享链接' })).toBeTruthy()
+  expect(screen.getByRole('dialog', { name: '管理作品分享' })).toBeTruthy()
 })
 
 it('首次读取作品失败时可重试，成功后打开同一作品', async () => {

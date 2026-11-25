@@ -45,6 +45,9 @@ async function serveCloudHub(): Promise<void> {
       allowlist: process.env.AKASHA_GITHUB_ALLOWLIST?.split(',')
         .map((login) => login.trim())
         .filter(Boolean),
+      adminIds: process.env.AKASHA_HUB_ADMIN_IDS?.split(',')
+        .map((id) => id.trim())
+        .filter(Boolean),
     },
   })
   let sandbox: { close: () => Promise<void> }

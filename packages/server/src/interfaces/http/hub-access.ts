@@ -4,9 +4,12 @@ import {
   PublicIdSchema,
   type RealtimeServerEvent,
 } from '@akasha/protocol'
+import type { HubSharing } from '../../application/hub-sharing/service.js'
+import type { HubSharingRepository, HubSharingScope } from '../../domain/hub-sharing.js'
 import type { ArtifactRepository } from '../../domain/ports.js'
 import {
   fixedShareVersion,
+  type HubAuth,
   type HubPrincipal,
   type HubShareClaim,
   sameHubOrigin,
@@ -18,32 +21,16 @@ export interface HubRealtimeScope {
   projectId?: string
 }
 
-// 角色由高到低：owner 项目所有者，editor 团队协作者，share 持分享链接者，reader 只读
-type HubArtifactRole = 'owner' | 'editor' | 'reader' | 'share' | 'none'
-export interface HubAccess {
-  /** 凭 cookie 或 Bearer 解析调用方；无法识别时返回 `undefined`。 */
-  authenticate(request: Request): Promise<HubPrincipal | undefined>
-  /** 当前浏览器对制品的链接授权。 */
-  readShare(
-    request: Request,
-    artifactId: string,
-    mode?: 'revocation',
-  ): Promise<HubShareClaim | undefined>
-}
+type DirectRole = 'owner' | 'editor' | 'reader' | 'none'
+type ArtifactAccess =
+  | { role: DirectRole; grant?: undefined }
+  | { role: 'share'; grant: HubShareClaim }
 
 export interface HubArtifactAccess {
-  /** team 和所有者沿用账户权限；其他浏览器按签名的最小授权访问。 */
-  share(
-    request: Request,
-    artifact: Artifact,
-    principal: HubPrincipal | undefined,
-  ): Promise<HubShareClaim | undefined>
-  /** 综合可见性与分享链接，得出调用方对某制品的角色。 */
-  role(
-    request: Request,
-    artifact: Artifact,
-    principal: HubPrincipal | undefined,
-  ): Promise<HubArtifactRole>
+  /** 同一次裁决返回角色和实际授权依据，不能在调用方另按旧可见性补权。 */
+  decide(request: Request, artifact: Artifact, principal?: HubPrincipal): Promise<ArtifactAccess>
+  /** 作品库以账号资格列出；持有者链接及固定版不会让制品出现在库中。 */
+  listVisible(artifacts: readonly Artifact[], principal?: HubPrincipal): Promise<Artifact[]>
   /** 把路径里的标识解析为调用方可见的制品；不可见时返回 `undefined`。 */
   resolve(
     id: string,
@@ -77,47 +64,97 @@ export function ownsHubProject(principal: HubPrincipal | undefined, projectId: s
   return !!principal?.member && projectId.startsWith(hubProjectPrefix(principal))
 }
 
-/**
- * 不考虑分享链接时的角色：项目所有者为 `owner`，成员对 `team` 制品为 `editor`，
- * `public` 制品对任何人为 `reader`，其余为 `none`。
- */
-export function baseArtifactRole(
+/** 旧可见性只在未切换到定向授权的制品上生效。 */
+function visibilityRole(
   artifact: Artifact,
   principal: HubPrincipal | undefined,
-): Exclude<HubArtifactRole, 'share'> {
-  // Hub 只能在当前 GitHub 用户的项目命名空间中创建制品；权限检查无需读取私有版本源码。
-  if (ownsHubProject(principal, artifact.projectId)) return 'owner'
+  externalLinks: boolean,
+): DirectRole {
   if (principal?.member && artifact.visibility === 'team') return 'editor'
-  return artifact.visibility === 'public' ? 'reader' : 'none'
+  return artifact.visibility === 'public' && (principal?.member || externalLinks)
+    ? 'reader'
+    : 'none'
 }
+
+const roleLevel = { view: 0, comment: 1, edit: 2 }
 
 /** 组装 Hub 的制品访问控制；`origin` 用于同源校验。 */
 export function createHubAccess(
   artifacts: ArtifactRepository,
-  auth: HubAccess,
+  auth: Pick<HubAuth, 'authenticate' | 'readShare'>,
   origin: string,
+  repository: HubSharingRepository,
+  sharing: Pick<HubSharing, 'resolveIdentity'>,
 ): HubArtifactAccess {
-  async function share(request: Request, artifact: Artifact, principal: HubPrincipal | undefined) {
-    const base = baseArtifactRole(artifact, principal)
-    if (base === 'owner' || base === 'editor') return
-    return auth.readShare(request, artifact.publicId)
+  const identityGrant = async (artifact: Artifact, principal?: HubPrincipal) => {
+    if (principal?.kind !== 'session') return
+    const generation = await artifacts.lifecycle.activeShareGeneration(artifact.publicId)
+    if (generation !== undefined)
+      return sharing.resolveIdentity(artifact.publicId, generation, principal)
   }
 
-  async function role(
-    request: Request,
+  const directRole = async (
     artifact: Artifact,
     principal: HubPrincipal | undefined,
-  ): Promise<HubArtifactRole> {
-    return (await share(request, artifact, principal))
-      ? 'share'
-      : baseArtifactRole(artifact, principal)
+    { restricted, override }: HubSharingScope,
+  ): Promise<DirectRole> => {
+    if (restricted) return 'none'
+    const needsExternal = artifact.visibility === 'public' && !principal?.member
+    const externalLinks =
+      needsExternal && (override.externalLinks ?? (await repository.getDefaults()).externalLinks)
+    return visibilityRole(artifact, principal, externalLinks)
   }
 
-  async function resolve(
+  const decide = async (
+    request: Request,
+    artifact: Artifact,
+    principal?: HubPrincipal,
+    includeLink = true,
+  ): Promise<ArtifactAccess> => {
+    if (ownsHubProject(principal, artifact.projectId)) return { role: 'owner' }
+    const scope = await repository.getScope(artifact.publicId)
+    const base = await directRole(artifact, principal, scope)
+    if (base === 'editor') return { role: base }
+    const [identity, link] = await Promise.all([
+      scope.restricted ? identityGrant(artifact, principal) : undefined,
+      includeLink ? auth.readShare(request, artifact.publicId) : undefined,
+    ])
+    // 固定快照不能放宽或收窄已有的制品级身份授权；非固定链接则可独立授予更高角色。
+    const grant =
+      link &&
+      (!identity ||
+        (link.entry.kind === 'artifact' && roleLevel[link.role] > roleLevel[identity.role]))
+        ? link
+        : identity
+    return grant ? { role: 'share', grant } : { role: base }
+  }
+
+  const listVisible = async (items: readonly Artifact[], principal?: HubPrincipal) => {
+    const [scopes, defaults] = await Promise.all([
+      repository.getScopes(items.map(({ publicId }) => publicId)),
+      principal?.member ? undefined : repository.getDefaults(),
+    ])
+    const visible = await Promise.all(
+      items.map((item) => {
+        if (ownsHubProject(principal, item.projectId)) return true
+        const scope = scopes.get(item.publicId)
+        return scope?.restricted
+          ? identityGrant(item, principal)
+          : visibilityRole(
+              item,
+              principal,
+              scope?.override.externalLinks ?? defaults?.externalLinks ?? false,
+            ) !== 'none'
+      }),
+    )
+    return items.filter((_, index) => visible[index])
+  }
+
+  const resolve = async (
     id: string,
     projectId: string | undefined,
     principal: HubPrincipal | undefined,
-  ): Promise<Artifact | undefined> {
+  ): Promise<Artifact | undefined> => {
     if (!ArtifactIdentifierSchema.safeParse(id).success) return
     if (PublicIdSchema.safeParse(id).success) {
       const artifact = await artifacts.findByPublicId(id)
@@ -129,42 +166,45 @@ export function createHubAccess(
     return project && principal?.member ? artifacts.findBySlug(project, id) : undefined
   }
 
-  async function authorizeArtifact(
+  const authorizeArtifact = async (
     request: Request,
     publicId: string,
     action: 'read' | 'write',
-  ): Promise<boolean> {
+  ): Promise<boolean> => {
     if (!sameHubOrigin(request, origin) || !PublicIdSchema.safeParse(publicId).success) return false
     const principal = await auth.authenticate(request)
     if (action === 'write' && !principal?.member) return false
     const artifact = await artifacts.findByPublicId(publicId)
     if (!artifact) return false
-    if (action === 'read') return (await role(request, artifact, principal)) !== 'none'
-    const access = baseArtifactRole(artifact, principal)
-    return access === 'owner' || access === 'editor'
+    const { role } = await decide(request, artifact, principal)
+    // 此处的 write 是内部团队写权限，不包含只能改设计稿的受限 edit 授权。
+    return action === 'read' ? role !== 'none' : role === 'owner' || role === 'editor'
   }
 
-  async function authorizeRealtime(request: Request, scope: HubRealtimeScope): Promise<boolean> {
+  const authorizeRealtime = async (request: Request, scope: HubRealtimeScope): Promise<boolean> => {
     if (!sameHubOrigin(request, origin) || scope.projectId === '') return false
     const principal = await auth.authenticate(request)
     if (scope.artifactId !== undefined) {
       if (!PublicIdSchema.safeParse(scope.artifactId).success) return false
       const artifact = await artifacts.findByPublicId(scope.artifactId)
       if (!artifact || (scope.projectId && artifact.projectId !== scope.projectId)) return false
-      return (await role(request, artifact, principal)) !== 'none'
+      return (await decide(request, artifact, principal)).role !== 'none'
     }
     if (!scope.projectId || !principal?.member) return false
     if (ownsHubProject(principal, scope.projectId)) return true
-    return (await artifacts.listByProject(scope.projectId)).some(
-      (artifact) => artifact.visibility !== 'private',
+    const items = await artifacts.listByProject(scope.projectId)
+    const scopes = await repository.getScopes(items.map(({ publicId }) => publicId))
+    return items.some(
+      (item) =>
+        !scopes.get(item.publicId)?.restricted && visibilityRole(item, principal, false) !== 'none',
     )
   }
 
-  async function authorizeRealtimeEvent(
+  const authorizeRealtimeEvent = async (
     request: Request,
     scope: HubRealtimeScope,
     event: RealtimeServerEvent,
-  ): Promise<boolean> {
+  ): Promise<boolean> => {
     if (
       !sameHubOrigin(request, origin) ||
       (!scope.artifactId && !scope.projectId) ||
@@ -185,10 +225,15 @@ export function createHubAccess(
         scope.artifactId === event.artifactId
       ) {
         const withdrawn = await artifacts.lifecycle.findWithdrawn(event.artifactId)
+        if (!withdrawn) return false
+        if (ownsHubProject(principal, withdrawn.artifact.projectId)) return true
+        const direct = await directRole(
+          withdrawn.artifact,
+          principal,
+          await repository.getScope(event.artifactId),
+        )
         return Boolean(
-          withdrawn &&
-            (baseArtifactRole(withdrawn.artifact, principal) !== 'none' ||
-              (await auth.readShare(request, event.artifactId, 'revocation'))),
+          direct !== 'none' || (await auth.readShare(request, event.artifactId, 'revocation')),
         )
       }
       if (
@@ -199,8 +244,10 @@ export function createHubAccess(
         (!scope.artifactId && !principal?.member)
       )
         return false
-      const grant = scope.artifactId ? await share(request, artifact, principal) : undefined
+      const { grant, role } = await decide(request, artifact, principal, Boolean(scope.artifactId))
       if (grant) {
+        // 定向授权和链接都不是项目订阅资格。
+        if (!scope.artifactId) return false
         // 讨论变更只通知重读，再由 HTTP 按版本过滤；不转发正文、轮次、状态和 Agent 活动。
         if (
           event.type === 'annotation.changed' ||
@@ -214,14 +261,14 @@ export function createHubAccess(
             event.version.version === fixedShareVersion(grant))
         )
       }
-      const access = baseArtifactRole(artifact, principal)
+      if (role === 'none') return false
       if (
         (event.type === 'feedback.created' || event.type === 'feedback.updated') &&
         event.feedback.draft
       ) {
-        return access === 'owner' || access === 'editor'
+        return role === 'owner' || role === 'editor'
       }
-      return access !== 'none'
+      return true
     }
     return (
       event.type === 'agent.activity' &&
@@ -231,8 +278,8 @@ export function createHubAccess(
   }
 
   return {
-    share,
-    role,
+    decide,
+    listVisible,
     resolve,
     authorizeArtifact,
     authorizeRealtime,

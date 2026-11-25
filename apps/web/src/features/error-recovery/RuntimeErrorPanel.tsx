@@ -66,6 +66,8 @@ export interface RuntimeErrorPanelProps {
   version: number
   source: string
   error: SandboxErrorRecord
+  /** 分享会话保留诊断信息，不显示向作者发送反馈的入口。 */
+  notifyAgent?: boolean
   onDismiss: () => void
   onSubmitFeedback?: typeof submitArtifactFeedback
 }
@@ -81,6 +83,7 @@ export function RuntimeErrorPanel({
   version,
   source,
   error,
+  notifyAgent = true,
   onDismiss,
   onSubmitFeedback = submitArtifactFeedback,
 }: RuntimeErrorPanelProps) {
@@ -107,7 +110,7 @@ export function RuntimeErrorPanel({
   )
 
   const handleSendToAgent = async () => {
-    if (alreadySent || submitting) return
+    if (!notifyAgent || alreadySent || submitting) return
     setSubmitting(true)
     try {
       const snippetText =
@@ -164,11 +167,12 @@ export function RuntimeErrorPanel({
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5">
-          {alreadySent ? (
+          {notifyAgent && alreadySent && (
             <Badge tone="ok" icon={<Check size={12} />}>
               {t('已交给 Agent 修复')}
             </Badge>
-          ) : (
+          )}
+          {notifyAgent && !alreadySent && (
             <Button
               variant="primary"
               size="sm"

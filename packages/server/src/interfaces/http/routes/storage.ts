@@ -17,7 +17,7 @@ import type { HttpAppDeps } from '../dependencies.js'
 import { parseJsonBody } from '../request-body.js'
 
 interface StorageRoutes
-  extends Pick<HttpAppDeps, 'artifactStorage' | 'storagePrincipal' | 'canReadFavorite'> {
+  extends Pick<HttpAppDeps, 'artifactStorage' | 'storagePrincipal' | 'filterVisibleFavorites'> {
   service: Pick<ArtifactService, 'resolveArtifact'>
   artifacts: Pick<ArtifactRepository, 'findByPublicId'>
 }
@@ -31,14 +31,13 @@ export function mountStorageRoutes(app: Hono, deps: StorageRoutes) {
     const principal = await storagePrincipal(c.req.raw)
     if (!principal) throw new DomainError('UNAUTHORIZED', '请先登录后查看收藏')
     const ids = await listArtifactFavorites(deps.artifactStorage, principal)
-    const visible = await Promise.all(
-      ids.map(async (id) =>
-        deps.canReadFavorite
-          ? deps.canReadFavorite(c.req.raw, id)
-          : Boolean(await deps.artifacts.findByPublicId(id)),
-      ),
-    )
-    return c.json({ artifactIds: ids.filter((_, index) => visible[index]) }, 200, {
+    const candidates = (
+      await Promise.all(ids.map((id) => deps.artifacts.findByPublicId(id)))
+    ).filter((artifact) => artifact !== undefined)
+    const visible = deps.filterVisibleFavorites
+      ? await deps.filterVisibleFavorites(c.req.raw, candidates)
+      : candidates
+    return c.json({ artifactIds: visible.map(({ publicId }) => publicId) }, 200, {
       'Cache-Control': 'private, no-store',
     })
   })
