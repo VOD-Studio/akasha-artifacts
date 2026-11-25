@@ -1,6 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { type ParsedFsArtifactPath, parseArtifactPathFromFs, STATE_DIR_NAME } from './index.js'
+import {
+  type ParsedFsArtifactPath,
+  parseArtifactPathFromFs,
+  STATE_DIR_NAME,
+} from './file-layout.js'
 
 /** 监听器确认属于外部改动后交出的同步事件：文件路径的解析结果加上当前内容。 */
 export interface ExternalArtifactFileEvent extends ParsedFsArtifactPath {
