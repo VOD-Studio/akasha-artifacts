@@ -9,7 +9,7 @@
     --v-kbd-height: 1.5rem;
     --v-kbd-radius: var(--radius-8, 8px);
     --v-kbd-padding-inline: 0.5rem;
-    --v-kbd-bg: var(--muted);
+    --v-kbd-bg: var(--card);
 
     box-sizing: border-box;
     display: inline-flex;
@@ -21,9 +21,12 @@
     padding-inline: var(--v-kbd-padding-inline);
     border-radius: var(--v-kbd-radius);
     background-color: var(--v-kbd-bg);
+    box-shadow:
+      inset 0 0 0 1px var(--border),
+      0 1px 0 var(--border);
     color: var(--muted-foreground);
-    font-family: inherit;
-    font-size: 0.875rem;
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-size: 0.75rem;
     font-weight: 500;
     line-height: 1;
     white-space: nowrap;

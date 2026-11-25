@@ -105,6 +105,8 @@
   --color-scrim-paper: var(--scrim-paper);
   --blur-scrim: var(--scrim-blur);
   --shadow-soft: var(--shadow-soft);
+  --shadow-float: var(--shadow-float);
+  --shadow-modal: var(--shadow-modal);
   --color-category-1: var(--category-1);
   --color-category-1-muted: var(--category-1-muted);
   --color-category-1-foreground: var(--category-1-foreground);
