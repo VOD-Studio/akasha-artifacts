@@ -2,6 +2,8 @@ import type { Messages } from '@/shared/i18n'
 
 export const messages = {
   作品: ['Werke', 'الأعمال', 'Artifacts'],
+  '在 Hub 打开': ['Im Hub öffnen', 'فتح في Hub', 'Open in Hub'],
+  '在 Hub 打开：{title}': ['Im Hub öffnen: {title}', 'فتح في Hub: {title}', 'Open in Hub: {title}'],
   新建设计: ['Neues Design', 'تصميم جديد', 'New design'],
   继续设计会话: ['Designsitzung fortsetzen', 'متابعة جلسة التصميم', 'Resume design session'],
   作品列表: ['Werkliste', 'قائمة الأعمال', 'Artifact list'],

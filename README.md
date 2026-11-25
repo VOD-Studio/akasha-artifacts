@@ -182,7 +182,7 @@ npx akasha-artifacts login --hub https://akasha.example.com
 npx akasha-artifacts mcp --hub https://akasha.example.com
 ```
 
-A Hub link uses the local workbench instead when it is paired to that Hub and already holds the same artifact.
+For a personal preview, the Hub can open a paired local workbench that already holds the artifact. To share a design, choose **Open in Hub** in the library, then **Share**. The owner can invite a GitHub member, a verified email address, the configured organization, or a team with **view, comment, or edit** access. A named invitation cannot be used by a different account. The owner can change or revoke access, or choose **Only me**. Under **Sharing policy** in the library, administrators control external links and external email invitations independently, including exceptions for individual designs. See the [deployment guide](deploy/docker/README.md).
 
 ### 3. Artifact-scoped storage
 

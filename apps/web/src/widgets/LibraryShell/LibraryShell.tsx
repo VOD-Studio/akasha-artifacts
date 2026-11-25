@@ -7,6 +7,7 @@ import { CreateDesignDialog, useDesignAvailability } from '@/features/agent-conv
 import { WithdrawnArtifactsDialog } from '@/features/artifact-management'
 import { DaemonStatusPill } from '@/features/daemon-control'
 import { HubAccountButton, useHubSession } from '@/features/hub'
+import { HubSharingPolicyLauncher } from '@/features/hub-sharing-policy'
 import { AkashaMark } from '@/shared/brand'
 import { isCloudHub } from '@/shared/config/runtime'
 import { LanguageMenu, useMessages } from '@/shared/i18n'
@@ -18,7 +19,8 @@ import { LibraryLoading, LibraryResults } from './ui/LibraryResults'
 import { LibraryToolbar } from './ui/LibraryToolbar'
 
 export interface LibraryShellProps {
-  onOpenArtifact: (publicId: string) => void
+  /** 缺省为个人预览；显式选择 Hub 时不跳至本机副本。 */
+  onOpenArtifact: (publicId: string, destination?: 'hub') => void
 }
 
 /** 制品库组合筛选、结果与项目管理；由制品返回时还原库页视图。 */
@@ -73,6 +75,7 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
         </span>
         <div className="ms-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1">
           <LanguageMenu />
+          {cloudHub && hubSession?.admin && <HubSharingPolicyLauncher />}
           {cloudHub ? <HubAccountButton /> : <DaemonStatusPill />}
           {canManage && <LibraryMenu projects={projects ?? []} onOpenWithdrawn={openWithdrawn} />}
         </div>

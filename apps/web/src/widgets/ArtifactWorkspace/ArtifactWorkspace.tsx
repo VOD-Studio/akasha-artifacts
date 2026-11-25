@@ -491,6 +491,7 @@ export function ArtifactWorkspace({
           tweakPreviews={tweakPreviews}
           useTweakPreview={useTweakPreview}
           sandboxOrigin={sandboxOrigin}
+          notifyAgent={!access}
           pins={overview ? versionPins : EMPTY_FEEDBACKS}
           onFocusPin={(feedback) => focusAndRemember(feedback, false)}
           purpose={purpose}
@@ -525,6 +526,7 @@ export function ArtifactWorkspace({
     },
     [
       artifact,
+      access,
       version,
       state,
       tweakPreviews,

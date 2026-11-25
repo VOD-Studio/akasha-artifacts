@@ -56,6 +56,8 @@ interface ArtifactFrameProps {
   tweakPreviews: BoardTweakPreviewStore
   useTweakPreview: boolean
   sandboxOrigin: string
+  /** 受邀者能查看错误详情，但不能将错误投递到作者的 Agent。 */
+  notifyAgent: boolean
   pins: readonly Feedback[]
   /** 图钉只打开原线程，不覆盖正在撰写的选区。 */
   onFocusPin: (feedback: Feedback) => void
@@ -133,6 +135,7 @@ export function ArtifactFrame({
   tweakPreviews,
   useTweakPreview,
   sandboxOrigin,
+  notifyAgent,
   pins,
   onFocusPin,
   purpose,
@@ -712,6 +715,7 @@ export function ArtifactFrame({
               version={versionNumber}
               source={source}
               error={error}
+              notifyAgent={notifyAgent}
               onDismiss={() => setError(null)}
               onSubmitFeedback={
                 scoped

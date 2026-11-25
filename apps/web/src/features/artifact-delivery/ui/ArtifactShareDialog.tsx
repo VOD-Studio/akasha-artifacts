@@ -1,119 +1,131 @@
 import type {
   ArtboardIndex,
   Artifact,
-  ArtifactShareEntry,
-  ArtifactShareInput,
+  HubArtifactSharing,
+  HubGrantSummary,
   VersionSummary,
 } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
+import { ConfirmDialog } from '@akasha/ui/confirm-dialog'
 import { Modal } from '@akasha/ui/dialog'
-import { Field } from '@akasha/ui/field'
-import { Input } from '@akasha/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
-import { useMutation } from '@tanstack/react-query'
-import { type FormEvent, useId, useMemo, useState } from 'react'
-import { toast } from 'sonner'
-import {
-  type CanvasDocument,
-  createArtifactShare,
-  createCanvasDocument,
-  createCanvasDocumentFromIndex,
-  hasVersionSource,
-} from '@/entities/artifact'
-import { getRequestErrorMessage } from '@/shared/api/error'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
+import { artifactKeys } from '@/entities/artifact'
+import { ApiError, getRequestErrorMessage } from '@/shared/api/error'
+import { AkashaMark } from '@/shared/brand'
 import { useMessages } from '@/shared/i18n'
-import { messages } from '../messages'
+import {
+  changeHubGrantRole,
+  fetchHubArtifactSharing,
+  type HubShareRole,
+  restrictHubSharingToOwner,
+  revokeHubGrant,
+} from '../api/hubSharing'
+import { messages } from '../owner-sharing.messages'
+import { CreateShareLinkDialog } from './CreateShareLinkDialog'
+import { HubInviteForm } from './HubInviteForm'
+import { HubShareGrants } from './HubShareGrants'
 
 interface ArtifactShareDialogProps {
   artifact: Artifact
-  /** 签发时使用打开面板时已经读到的快照；不跟随后台更新。 */
+  /** 签发普通链接时使用打开面板时已经读到的快照；不跟随后台更新。 */
   version: VersionSummary
   canvas?: ArtboardIndex
   onClose: () => void
 }
 
-function shareEntry(
-  kind: ArtifactShareEntry['kind'],
-  version: number,
-  board: { pageId: string; boardId: string } | undefined,
-): ArtifactShareEntry | undefined {
-  if (kind === 'artifact') return { kind }
-  if (kind === 'version') return { kind, version }
-  if (board) return { kind, version, pageId: board.pageId, boardId: board.boardId }
+interface RevokingGrant {
+  grant: HubGrantSummary
+  /** 授权对象的展示名，来自列表行。 */
+  target: string
 }
 
-/** 签名授权与复制普通定位链接分开；只有确认后才签发。 */
+/** 所有者的分享管理；授权、邀请与「仅本人」都走所有者浏览器会话，普通链接仍由链接弹框签发。 */
 export function ArtifactShareDialog({
   artifact,
   version,
   canvas,
   onClose,
 }: ArtifactShareDialogProps) {
-  const { t, date } = useMessages(messages)
-  const formId = useId()
-  const [role, setRole] = useState<ArtifactShareInput['role']>('view')
-  const [entryKind, setEntryKind] = useState<ArtifactShareEntry['kind']>('artifact')
-  const [boardIndex, setBoardIndex] = useState(0)
-  const [copying, setCopying] = useState(false)
-  const [copied, setCopied] = useState(false)
-  const boards = useMemo(() => {
-    let document: CanvasDocument | undefined
-    if (canvas) {
-      document = createCanvasDocumentFromIndex(canvas)
-    } else if (hasVersionSource(version)) {
-      document = createCanvasDocument(
-        artifact.type,
-        version.title,
-        version.source,
-        version.version,
-        undefined,
-      )
-    }
-    if (!document) return []
-    return document.pages.flatMap((page) =>
-      page.boards
-        .filter((board) => board.type === 'html' || board.type === 'react')
-        .map((board) => ({
-          pageId: page.id,
-          boardId: board.id,
-          label: `${page.title} / ${board.title}`,
-        })),
-    )
-  }, [artifact.type, canvas, version])
-  const share = useMutation({
-    mutationFn: (input: ArtifactShareInput) => createArtifactShare(artifact.publicId, input),
+  const { t } = useMessages(messages)
+  const client = useQueryClient()
+  const sharing = useQuery({
+    queryKey: artifactKeys.sharing(artifact.publicId),
+    queryFn: () => fetchHubArtifactSharing(artifact.publicId),
+    retry: false,
   })
-  const issued = share.data
-  const entry = shareEntry(entryKind, version.version, boards[boardIndex])
+  const [linkOpen, setLinkOpen] = useState(false)
+  const [revoking, setRevoking] = useState<RevokingGrant | null>(null)
+  const [restricting, setRestricting] = useState(false)
 
-  const selectEntry = (next: string) => {
-    if (next !== 'artifact' && next !== 'version' && next !== 'play') return
-    setEntryKind(next)
-    if (next !== 'artifact' && role === 'edit') setRole('comment')
+  const refresh = () => {
+    void client.invalidateQueries({ queryKey: artifactKeys.sharing(artifact.publicId) })
   }
 
-  const selectRole = (next: string) => {
-    if (next === 'view' || next === 'comment' || (next === 'edit' && entryKind === 'artifact')) {
-      setRole(next)
-    }
+  const roleChange = useMutation({
+    mutationFn: ({ grantId, role }: { grantId: string; role: HubShareRole }) =>
+      changeHubGrantRole(artifact.publicId, grantId, role),
+  })
+  const revoke = useMutation({
+    mutationFn: (grantId: string) => revokeHubGrant(artifact.publicId, grantId),
+  })
+  const restrict = useMutation({
+    mutationFn: () => restrictHubSharingToOwner(artifact.publicId),
+  })
+
+  const commitRole = (grantId: string, role: HubShareRole) => {
+    if (roleChange.isPending || revoke.isPending || restrict.isPending) return
+    // 乐观更新缓存里的角色；失败后由失效重取回滚，成功后由重取确认。
+    client.setQueryData<HubArtifactSharing>(artifactKeys.sharing(artifact.publicId), (current) =>
+      current
+        ? {
+            ...current,
+            grants: current.grants.map((grant) =>
+              grant.id === grantId ? { ...grant, role } : grant,
+            ),
+          }
+        : current,
+    )
+    roleChange.mutate({ grantId, role }, { onSettled: refresh })
   }
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (entry && !share.isPending) share.mutate({ role, entry, ttlSeconds: 24 * 60 * 60 })
+  const revokeGrant = () => {
+    if (!revoking || revoke.isPending) return
+    revoke.mutate(revoking.grant.id, {
+      onSuccess: () => {
+        setRevoking(null)
+        refresh()
+      },
+    })
   }
 
-  const copyLink = async () => {
-    if (!issued || copying) return
-    setCopying(true)
-    try {
-      await navigator.clipboard.writeText(issued.url)
-      setCopied(true)
-    } catch {
-      toast.info(t('请手动复制链接'))
-    } finally {
-      setCopying(false)
-    }
+  const restrictToOwner = () => {
+    if (restrict.isPending) return
+    restrict.mutate(undefined, {
+      onSuccess: () => {
+        setRestricting(false)
+        refresh()
+      },
+    })
+  }
+
+  const closeLinkDialog = () => {
+    setLinkOpen(false)
+    refresh()
+  }
+
+  const rowError = roleChange.error
+    ? t('调整权限失败：{reason}', { reason: getRequestErrorMessage(roleChange.error) })
+    : undefined
+  const pendingGrantId = roleChange.isPending ? (roleChange.variables?.grantId ?? null) : null
+  const data = sharing.isSuccess ? sharing.data : undefined
+  const accessDenied = sharing.error instanceof ApiError && sharing.error.status === 403
+
+  // 未受限时沿用作品原有的可见性，不暗示它曾对团队或公开；受限且无授权即仅本人。
+  const accessLine = (info: HubArtifactSharing): string => {
+    if (!info.restricted) return t('沿用作品原有的可见性，另加下列授权。')
+    if (info.grants.length === 0) return t('当前仅本人可访问。')
+    return t('仅所有者与下列授权可访问。')
   }
 
   return (
@@ -122,104 +134,125 @@ export function ArtifactShareDialog({
       onOpenChange={(open) => {
         if (!open) onClose()
       }}
-      title={t('创建分享链接')}
-      description={t('持链接者可按所选权限访问，授权有效期为 24 小时。普通定位链接不授予访问权。')}
+      title={t('管理作品分享')}
+      description={t('查看并调整现有授权，或邀请指定的人访问。')}
       footer={
-        <>
-          {issued && (
-            <Button loading={copying} onClick={() => void copyLink()}>
-              {copied ? t('已复制') : t('复制链接')}
+        data ? (
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                restrict.reset()
+                setRestricting(true)
+              }}
+            >
+              {t('仅本人可访问')}
             </Button>
-          )}
-          {!issued && (
-            <Button type="submit" form={formId} loading={share.isPending} disabled={!entry}>
-              {t('创建链接')}
-            </Button>
-          )}
-        </>
+            {data.policy.externalLinks ? (
+              <Button variant="outline" onClick={() => setLinkOpen(true)}>
+                {t('创建链接')}
+              </Button>
+            ) : null}
+          </>
+        ) : undefined
       }
     >
-      {issued && (
+      {sharing.isPending ? (
+        <p role="status" className="flex items-center gap-2 text-sm text-ink-muted">
+          <AkashaMark size={16} loading className="text-ink" />
+          {t('加载中…')}
+        </p>
+      ) : null}
+      {sharing.error ? (
         <div className="space-y-2">
-          <Input
-            type="url"
-            dir="ltr"
-            aria-label={t('分享链接')}
-            readOnly
-            value={issued.url}
-            onFocus={(event) => event.currentTarget.select()}
-          />
-          <p className="text-xs text-ink-muted">
-            {t('失效时间：{time}', {
-              time: date(new Date(issued.expiresAt), { dateStyle: 'medium', timeStyle: 'short' }),
-            })}
+          <p role="alert" className="text-sm text-error">
+            {accessDenied
+              ? t('只有作品所有者可以管理分享。')
+              : t('分享设置加载失败：{reason}', {
+                  reason: getRequestErrorMessage(sharing.error),
+                })}
           </p>
+          {!accessDenied ? (
+            <Button variant="outline" size="sm" onClick={() => void sharing.refetch()}>
+              {t('重试')}
+            </Button>
+          ) : null}
         </div>
-      )}
-      {!issued && (
-        <form id={formId} className="space-y-3" onSubmit={submit}>
-          <Field label={t('持链接者权限')}>
-            <Select value={role} disabled={share.isPending} onValueChange={selectRole}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="view">{t('仅查看')}</SelectItem>
-                <SelectItem value="comment">{t('可批注')}</SelectItem>
-                <SelectItem value="edit" disabled={entryKind !== 'artifact'}>
-                  {t('可编辑最新版本')}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label={t('打开位置')}>
-            <Select value={entryKind} disabled={share.isPending} onValueChange={selectEntry}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="artifact">{t('作品 · 跟随最新版本')}</SelectItem>
-                <SelectItem value="version">
-                  {t('固定版本')} · <bdi dir="ltr">v{version.version}</bdi>
-                </SelectItem>
-                {boards.length > 0 && (
-                  <SelectItem value="play">
-                    {t('交互预览')} · <bdi dir="ltr">v{version.version}</bdi>
-                  </SelectItem>
-                )}
-              </SelectContent>
-            </Select>
-          </Field>
-          {entryKind === 'play' && (
-            <Field label={t('画板')}>
-              <Select
-                value={String(boardIndex)}
-                disabled={share.isPending}
-                onValueChange={(value) => setBoardIndex(Number(value))}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {boards.map((item, index) => (
-                    <SelectItem
-                      key={JSON.stringify([item.pageId, item.boardId])}
-                      value={String(index)}
-                    >
-                      <bdi>{item.label}</bdi>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
+      ) : null}
+      {data ? (
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <p className="text-sm">{accessLine(data)}</p>
+            {data.organization ? (
+              <p className="text-xs text-ink-muted">
+                {t('组织：{organization}', { organization: data.organization })}
+              </p>
+            ) : null}
+            {!data.policy.externalLinks ? (
+              <p className="text-xs text-ink-muted">
+                {t('管理员已停用普通链接；已发出的链接不能再访问。')}
+              </p>
+            ) : null}
+          </div>
+          <HubShareGrants
+            grants={data.grants}
+            organization={data.organization}
+            pendingGrantId={pendingGrantId}
+            error={rowError}
+            onRoleChange={commitRole}
+            onRevoke={(grant, target) => {
+              revoke.reset()
+              setRevoking({ grant, target })
+            }}
+          />
+          <HubInviteForm
+            artifactId={artifact.publicId}
+            organization={data.organization}
+            policy={data.policy}
+          />
+        </div>
+      ) : null}
+      {linkOpen ? (
+        <CreateShareLinkDialog
+          artifact={artifact}
+          version={version}
+          canvas={canvas}
+          onClose={closeLinkDialog}
+        />
+      ) : null}
+      {revoking ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(open) => {
+            if (!open && !revoke.isPending) setRevoking(null)
+          }}
+          title={t('撤回「{target}」的访问？', { target: revoking.target })}
+          description={t(
+            '该授权立即失效。被撤回的普通链接不能重新启用，点名与邮箱邀请需重新创建。',
           )}
-          {share.error && (
-            <p role="alert" className="text-sm text-error">
-              {getRequestErrorMessage(share.error)}
-            </p>
+          confirmLabel={t('撤回')}
+          loading={revoke.isPending}
+          error={revoke.error ? getRequestErrorMessage(revoke.error) : undefined}
+          onConfirm={revokeGrant}
+        />
+      ) : null}
+      {restricting ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(open) => {
+            if (!open && !restrict.isPending) setRestricting(false)
+          }}
+          title={t('撤清所有授权，仅本人可访问？')}
+          description={t(
+            '将移除全部邀请与链接授权，并停止沿用作品原有的可见性；历史匿名链接不能重新启用。',
           )}
-        </form>
-      )}
+          confirmLabel={t('仅本人可访问')}
+          loadingLabel={t('正在撤清授权…')}
+          loading={restrict.isPending}
+          error={restrict.error ? getRequestErrorMessage(restrict.error) : undefined}
+          onConfirm={restrictToOwner}
+        />
+      ) : null}
     </Modal>
   )
 }

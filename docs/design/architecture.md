@@ -535,15 +535,15 @@ Cloudflare Workers 是后置的可选部署方式（[#29](https://github.com/VOD
 
 ## 11. 安全模型
 
-| 威胁                                      | 对策                                                                             |
-| :---------------------------------------- | :------------------------------------------------------------------------------- |
-| 恶意 Artifact 代码窃取凭据                | 独立 origin，不加 `allow-same-origin`，沙盒内不接触任何凭据                      |
-| 恶意 Artifact 代码外传数据                | CSP `connect-src 'none'`；需要持久化时只能通过 Bridge 代办，并有限额             |
-| 用户访问的其他网站调用本地 Daemon（CSRF） | 写接口要求 token 或同源 cookie，并校验 `Origin`                                  |
-| DNS rebinding 攻击本地 Daemon             | 校验 `Host` 头只能是 `localhost` 或 `127.0.0.1` 加上 Daemon 端口                 |
-| 伪造 Bridge 消息                          | 校验 `event.origin`、zod 解析消息、比对 `nonce`                                  |
-| 沙盒嵌入第三方页面                        | `frame-ancestors` 只允许外壳 origin                                              |
-| 外部共享链接中的提示词注入                | 从云端读取的他人 Artifact 一律标记为不可信数据，Skill 明确禁止其触发命令或改配置 |
+| 威胁                                      | 对策                                                                                 |
+| :---------------------------------------- | :----------------------------------------------------------------------------------- |
+| 恶意 Artifact 代码窃取凭据                | 独立 origin，不加 `allow-same-origin`，沙盒内不接触任何凭据                          |
+| 恶意 Artifact 代码外传数据                | CSP `connect-src 'none'`；需要持久化时只能通过 Bridge 代办，并有限额                 |
+| 用户访问的其他网站调用本地 Daemon（CSRF） | 写接口要求 token 或同源 cookie，并校验 `Origin`                                      |
+| DNS rebinding 攻击本地 Daemon             | 校验 `Host` 头只能是 `localhost` 或 `127.0.0.1` 加上 Daemon 端口                     |
+| 伪造 Bridge 消息                          | 校验 `event.origin`、zod 解析消息、比对 `nonce`                                      |
+| 沙盒嵌入第三方页面                        | `frame-ancestors` 只允许外壳 origin                                                  |
+| 外部共享链接中的提示词注入                | 从云端读取的他人 Artifact 一律标记为不可信数据，Skill 明确禁止其触发命令或改配置     |
 | 越权访问团队 Artifact                     | 每次读取或写入校验当前身份、角色与范围；普通分享链接同时校验签名、授权记录和外发策略 |
 
 ---

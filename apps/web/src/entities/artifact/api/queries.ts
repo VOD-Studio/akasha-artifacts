@@ -1,5 +1,7 @@
 import type { ArtifactType, ArtifactWorkspaceDetail, JsonPatchOp } from '@akasha/protocol'
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { isResourceUnavailable } from '@/shared/api/error'
+import { isCloudHub } from '@/shared/config/runtime'
 import {
   fetchArtifactDetail,
   fetchArtifactFavorites,
@@ -28,6 +30,7 @@ export const artifactKeys = {
   source: (id: string, version: number) => ['artifacts', 'source', id, version] as const,
   versions: (id: string) => ['artifacts', 'versions', id] as const,
   management: (id: string) => ['artifacts', 'management', id] as const,
+  sharing: (id: string) => ['artifacts', 'sharing', id] as const,
   withdrawn: ['artifacts', 'withdrawn'] as const,
   favorites: ['artifact-favorites'] as const,
   storageUsage: (id: string) => ['artifacts', 'storage-usage', id] as const,
@@ -49,11 +52,20 @@ export function useArtifactsQuery(projectId?: string, refetchInterval?: number) 
 
 /** 工作台使用布局详情；完整源码不与该查询共享缓存值。 */
 export function useArtifactWorkspaceQuery(id: string, version?: number) {
+  const hub = isCloudHub()
   return useQuery({
     queryKey: artifactKeys.canvas(id, version),
     queryFn: ({ signal }) => fetchArtifactWorkspace(id, version, signal),
     enabled: Boolean(id),
     staleTime: 2_000,
+    refetchOnMount: hub ? 'always' : true,
+    ...(hub && {
+      retry: (count: number, error: Error) => !isResourceUnavailable(error) && count < 1,
+    }),
+    // GitHub 退组没有 Hub 事件，仅在前台持有授权时重读当前作品。
+    refetchInterval: ({ state }) =>
+      state.data?.access && !isResourceUnavailable(state.error) ? 10_000 : false,
+    refetchOnWindowFocus: ({ state }) => (state.data?.access ? 'always' : false),
   })
 }
 
@@ -89,11 +101,11 @@ export function useArtifactVersionsQuery(id: string) {
 }
 
 /** 管理权限独立于详情读取；失败时不在此 hook 重试。 */
-export function useArtifactManagementQuery(id: string) {
+export function useArtifactManagementQuery(id: string, enabled = true) {
   return useQuery({
     queryKey: artifactKeys.management(id),
     queryFn: () => fetchArtifactManagement(id),
-    enabled: Boolean(id),
+    enabled: enabled && Boolean(id),
     retry: false,
   })
 }

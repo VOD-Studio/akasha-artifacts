@@ -2,19 +2,15 @@ import { Button } from '@akasha/ui/button'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { clearAnnotationDrafts } from '@/entities/feedback'
+import { hubSessionOptions } from '@/entities/hub-session'
 import { isCloudHub } from '@/shared/config/runtime'
 import { useMessages } from '@/shared/i18n'
-import { endHubSession, fetchHubSession } from './api/session'
+import { endHubSession } from './api/session'
 import { messages } from './messages'
 
 /** 供界面在服务端授权之外隐藏只对 Hub 成员有意义的入口。 */
 export function useHubSession() {
-  const session = useQuery({
-    queryKey: ['hub-session'],
-    enabled: isCloudHub(),
-    staleTime: 60_000,
-    queryFn: fetchHubSession,
-  })
+  const session = useQuery(hubSessionOptions())
   return session.isSuccess ? session.data.user : undefined
 }
 

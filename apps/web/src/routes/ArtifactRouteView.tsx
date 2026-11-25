@@ -103,13 +103,20 @@ export function ArtifactRouteView({
   )
   const { data: daemonStatus } = useDaemonStatusQuery()
   const detailQuery = useArtifactWorkspaceQuery(identifier, requestedVersion)
+  const cloudHub = isCloudHub()
+  const checkingHubAccess = cloudHub && !detailQuery.isFetchedAfterMount && !detailQuery.isError
+  const denied = isResourceUnavailable(detailQuery.error)
   const shareAccess = detailQuery.data?.access
   const expiresAt = shareAccess?.expiresAt
   const shareExpired = Boolean(expiresAt && expiredShare === expiresAt)
   const probingLocal = useLocalArtifactRedirect(
     identifier,
     requestedVersion,
-    detailQuery.isSuccess && !shareAccess && !new URLSearchParams(search).has('shared'),
+    detailQuery.isSuccess &&
+      !checkingHubAccess &&
+      !detailQuery.data.hubRestricted &&
+      !shareAccess &&
+      !new URLSearchParams(search).has('shared'),
   )
   useEffect(() => {
     if (!expiresAt) return
@@ -125,7 +132,11 @@ export function ArtifactRouteView({
   const publicId = detailQuery.data?.artifact.publicId
   const resolvedPublicId = publicId ?? identifier
   const versionsQuery = useArtifactVersionsQuery(resolvedPublicId)
-  const feedbackQuery = useArtifactFeedbackQuery(resolvedPublicId)
+  const feedbackQuery = useArtifactFeedbackQuery(
+    resolvedPublicId,
+    shareAccess,
+    !cloudHub || (Boolean(publicId) && !checkingHubAccess && !denied && !shareExpired),
+  )
 
   useLayoutEffect(() => {
     if (!publicId) return
@@ -169,7 +180,7 @@ export function ArtifactRouteView({
   useLiveSync({
     artifactId: publicId,
     projectId: shareAccess ? undefined : detailQuery.data?.artifact.projectId,
-    enabled: Boolean(publicId) && !probingLocal && !shareExpired,
+    enabled: Boolean(publicId) && !checkingHubAccess && !denied && !probingLocal && !shareExpired,
     onStatePatched: (evt) => {
       if (
         requestedVersion === undefined &&
@@ -181,9 +192,8 @@ export function ArtifactRouteView({
     },
   })
 
-  if (probingLocal || detailQuery.isLoading) return <OpeningArtifact />
+  if (checkingHubAccess || probingLocal || detailQuery.isLoading) return <OpeningArtifact />
 
-  const denied = isResourceUnavailable(detailQuery.error)
   const backToLibrary = () => void navigate({ to: '/' })
   const retry = () => void detailQuery.refetch()
   // 暂时读不到服务端时保留画布和未保存代码；明确撤回读取权限时不展示旧缓存。
@@ -221,7 +231,6 @@ export function ArtifactRouteView({
   }
   const openHandoff = (label: string, scope?: HandoffScope) =>
     setHandoffTarget({ label, reference: getHandoffReference(detail, scope) })
-  const cloudHub = isCloudHub()
   const canTalkToAgent = !cloudHub && !shareAccess
   const agent =
     canTalkToAgent && agentPanel?.artifactId === detail.artifact.publicId ? agentPanel : null
@@ -337,7 +346,7 @@ export function ArtifactRouteView({
       {handoffTarget?.reference.artifactId === detail.artifact.publicId ? (
         <ArtifactHandoffDialog target={handoffTarget} onClose={() => setHandoffTarget(null)} />
       ) : null}
-      {shareTarget?.artifact.publicId === detail.artifact.publicId ? (
+      {!shareAccess && shareTarget?.artifact.publicId === detail.artifact.publicId ? (
         <ArtifactShareDialog
           artifact={shareTarget.artifact}
           version={shareTarget.version}
@@ -345,7 +354,7 @@ export function ArtifactRouteView({
           onClose={() => setShareTarget(null)}
         />
       ) : null}
-      {transferTarget?.artifact.publicId === detail.artifact.publicId ? (
+      {!shareAccess && transferTarget?.artifact.publicId === detail.artifact.publicId ? (
         <ArtifactTransferDialog
           target={transferTarget}
           onCopy={(publicId) => void navigate({ to: '/a/$publicId', params: { publicId } })}

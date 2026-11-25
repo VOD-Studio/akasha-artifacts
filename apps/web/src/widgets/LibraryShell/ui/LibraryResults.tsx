@@ -11,7 +11,8 @@ import {
 import { Empty } from '@akasha/ui/empty'
 import { Skeleton } from '@akasha/ui/skeleton'
 import { Star } from 'lucide-react'
-import type { MouseEventHandler } from 'react'
+import type { MouseEvent } from 'react'
+import { hubArtifactPath } from '@/shared/config/hub-artifact'
 import { useMessages } from '@/shared/i18n'
 import { artifactTypeLabel, formatRelativeTime } from '@/shared/lib/format'
 import { messages } from '../messages'
@@ -31,7 +32,7 @@ interface LibraryResultsProps {
   cloudHub: boolean
   onCreate?: () => void
   onResetFilters: () => void
-  onOpenArtifact: (publicId: string) => void
+  onOpenArtifact: (publicId: string, destination?: 'hub') => void
 }
 
 /** 普通点击留在工作台路由内，制品链接也可在新标签页打开。 */
@@ -86,6 +87,7 @@ export function LibraryResults({
             projectName={projects.get(artifact.projectId)?.name}
             favorite={favorites?.has(artifact.publicId) === true}
             cards={cards}
+            cloudHub={cloudHub}
             onOpenArtifact={onOpenArtifact}
           />
         </li>
@@ -133,7 +135,8 @@ interface LibraryEntryProps {
   projectName?: string
   favorite: boolean
   cards: boolean
-  onOpenArtifact: (publicId: string) => void
+  cloudHub: boolean
+  onOpenArtifact: LibraryResultsProps['onOpenArtifact']
 }
 
 function LibraryEntry({
@@ -141,14 +144,15 @@ function LibraryEntry({
   projectName,
   favorite,
   cards,
+  cloudHub,
   onOpenArtifact,
 }: LibraryEntryProps) {
   const { t, locale } = useMessages(messages)
-  const openArtifact: MouseEventHandler<HTMLAnchorElement> = (event) => {
+  const openArtifact = (event: MouseEvent<HTMLAnchorElement>, destination?: 'hub') => {
     if (event.defaultPrevented || event.button !== 0) return
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
     event.preventDefault()
-    onOpenArtifact(artifact.publicId)
+    onOpenArtifact(artifact.publicId, destination)
   }
   const href = `/a/${encodeURIComponent(artifact.publicId)}`
   const type = artifactTypeLabel(artifact.type, locale)
@@ -159,6 +163,17 @@ function LibraryEntry({
       <time dateTime={artifact.updatedAt}>
         <bdi>{formatRelativeTime(artifact.updatedAt, undefined, locale)}</bdi>
       </time>
+      {cloudHub && (
+        <Button asChild size="sm" variant="ghost">
+          <a
+            href={hubArtifactPath(artifact.publicId)}
+            aria-label={t('在 Hub 打开：{title}', { title: artifact.title })}
+            onClick={(event) => openArtifact(event, 'hub')}
+          >
+            {t('在 Hub 打开')}
+          </a>
+        </Button>
+      )}
     </>
   )
   if (cards) {
