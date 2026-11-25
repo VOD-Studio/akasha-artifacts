@@ -280,6 +280,27 @@ describe('@akasha/protocol MCP, HTTP, Realtime, and Bridge', () => {
     ).toBe(false)
   })
 
+  it('只有一次性 PNG 导出可以放大到 2×，总览捕获仍限固有尺寸以内', () => {
+    const capture = {
+      type: 'capture.png',
+      v: PROTOCOL_VERSION,
+      nonce: 'export',
+      version: 2,
+      width: 720,
+      height: 520,
+      scale: 2,
+    }
+    expect(ShellToSandboxMessageSchema.safeParse(capture).success).toBe(true)
+    expect(ShellToSandboxMessageSchema.safeParse({ ...capture, scale: 3 }).success).toBe(false)
+    expect(
+      ShellToSandboxMessageSchema.safeParse({ ...capture, requestId: 'preview' }).success,
+    ).toBe(false)
+    expect(
+      ShellToSandboxMessageSchema.safeParse({ ...capture, requestId: 'preview', scale: 0.25 })
+        .success,
+    ).toBe(true)
+  })
+
   it('保留总览控制、独立选区消息和单板参数预览', () => {
     const envelope = { v: PROTOCOL_VERSION, nonce: 'board-frame' }
     const messages = [
