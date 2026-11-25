@@ -15,15 +15,18 @@ export function asBoolean(v: unknown): boolean | undefined {
   return typeof v === 'boolean' ? v : undefined
 }
 
+/** 忽略非有限数值，不把数值字符串转成数字。 */
 export function asNumber(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? v : undefined
 }
 
+/** 非数组返回 `undefined`；数组中仅保留字符串，顺序不变。 */
 export function asStringArray(v: unknown): string[] | undefined {
   if (!Array.isArray(v)) return undefined
   return v.filter((item): item is string => typeof item === 'string')
 }
 
+/** 语法错误或顶层不是对象时返回模板诊断，不让异常越过解析边界。 */
 export function parseJsonObject(source: string): KitParseResult<Record<string, unknown>> {
   try {
     const parsed = JSON.parse(source) as unknown
@@ -38,6 +41,7 @@ export function parseJsonObject(source: string): KitParseResult<Record<string, u
   }
 }
 
+/** 每次重复出现同一标识都生成一条诊断；首次出现不报错。 */
 export function checkUniqueIds(
   items: readonly { id: string }[],
   label: string,

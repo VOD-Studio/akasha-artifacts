@@ -5,6 +5,7 @@ import { preparePrototypeMedia } from '../../prototype/media'
 import type { RendererProps } from '../registry'
 import { sanitizeMarkup } from '../sanitize'
 
+/** 总览冻结预览位图后才通知已就绪；打印和播放保留原资源，不走总览缩略图。 */
 export function HtmlRenderer({
   source,
   boardId,
