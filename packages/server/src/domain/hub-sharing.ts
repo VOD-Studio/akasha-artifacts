@@ -1,9 +1,4 @@
-import type {
-  ArtifactShareEntry,
-  HubGrantSummary,
-  HubSharingOverride,
-  HubSharingPolicy,
-} from '@akasha/protocol'
+import type { HubGrantSummary, HubSharingOverride, HubSharingPolicy } from '@akasha/protocol'
 
 /** 服务器保存的授权；制品撤下后旧代数永不生效。 */
 export interface HubGrant extends Omit<HubGrantSummary, 'accepted'> {
@@ -15,8 +10,6 @@ export interface HubGrant extends Omit<HubGrantSummary, 'accepted'> {
   subjectId: string | null
   /** 成员与邮箱邀请首次成功接受后锁定；组织、组和外部链接不占用。 */
   acceptedUserId: string | null
-  /** 外部链接可固定快照或画板；身份授权始终指向制品。 */
-  entry: ArtifactShareEntry
 }
 
 /** 存储只保存经认证加密的供应商凭据与带密钥的邮箱索引，不能从表中直接使用 OAuth 凭据。 */

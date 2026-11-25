@@ -1,8 +1,9 @@
-import type {
-  Artifact,
-  HubAdminSharingPolicy,
-  HubArtifactSharing,
-  HubInviteInput,
+import {
+  type Artifact,
+  canGrantShareRole,
+  type HubAdminSharingPolicy,
+  type HubArtifactSharing,
+  type HubInviteInput,
 } from '@akasha/protocol'
 import { DomainError, NotFoundError } from '../../domain/errors.js'
 import {
@@ -61,6 +62,7 @@ export function createHubSharing(deps: HubSharingDependencies): HubSharing {
         .map((grant) => ({
           id: grant.id,
           target: grant.target,
+          entry: grant.entry,
           role: grant.role,
           expiresAt: grant.expiresAt,
           accepted: grant.acceptedUserId !== null,
@@ -128,10 +130,13 @@ export function createHubSharing(deps: HubSharingDependencies): HubSharing {
     ])
     if (!isCurrentGrant(grant, artifact.publicId, generation, Date.parse(clock.now())))
       throw new NotFoundError('未找到请求的资源')
+    return grant
   }
 
   const changeRole = async (artifact: Artifact, id: string, role: HubGrant['role']) => {
-    await requireGrant(artifact, id)
+    const grant = await requireGrant(artifact, id)
+    if (!canGrantShareRole(grant.entry, role))
+      throw new DomainError('BAD_REQUEST', '固定版本或画板的链接不能授予编辑权限')
     if (!(await repository.changeRole(artifact.publicId, id, role)))
       throw new NotFoundError('未找到请求的资源')
     await notifySharingChanged(realtime, artifact)

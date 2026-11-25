@@ -49,10 +49,18 @@ const resetSharing = () => {
     organization: 'akasha-labs',
     policy: { externalLinks: true, externalEmail: false },
     grants: [
-      { id: 'grant-link', target: { kind: 'link' }, role: 'comment', expiresAt, accepted: false },
+      {
+        id: 'grant-link',
+        target: { kind: 'link' },
+        entry: { kind: 'artifact' },
+        role: 'comment',
+        expiresAt,
+        accepted: false,
+      },
       {
         id: 'grant-member',
         target: { kind: 'member', login: 'octocat' },
+        entry: { kind: 'artifact' },
         role: 'edit',
         expiresAt,
         accepted: true,
@@ -60,6 +68,7 @@ const resetSharing = () => {
       {
         id: 'grant-email',
         target: { kind: 'email', email: 'alice@example.com' },
+        entry: { kind: 'artifact' },
         role: 'view',
         expiresAt,
         accepted: false,
@@ -86,7 +95,14 @@ const handleFetch = async (input: RequestInfo | URL, init?: RequestInit): Promis
       restricted: true,
       grants: [
         ...sharing.grants,
-        { id, target: body.target, role: body.role, expiresAt, accepted: false },
+        {
+          id,
+          target: body.target,
+          entry: { kind: 'artifact' },
+          role: body.role,
+          expiresAt,
+          accepted: false,
+        },
       ],
     }
     return Response.json({ id, url: inviteUrl(id), expiresAt }, { status: 201 })
@@ -226,6 +242,37 @@ it('降权与撤回：角色走 PATCH，撤回需确认并走 DELETE', async () 
     )
   })
   await waitFor(() => expect(screen.queryByText('普通链接')).toBeNull())
+})
+
+it.each([
+  { kind: 'version', version: 1 },
+  { kind: 'play', version: 1, pageId: '', boardId: 'main' },
+] as const)('固定 $kind 链接可切换查看和批注，不提供编辑', async (entry) => {
+  sharing.grants = sharing.grants.map((grant) =>
+    grant.target.kind === 'link' ? { ...grant, entry } : grant,
+  )
+  vi.spyOn(window, 'fetch').mockImplementation(handleFetch)
+  renderDialog()
+  const role = await screen.findByRole('combobox', { name: '普通链接 的权限' })
+  fireEvent.click(role)
+  expect(screen.queryByRole('option', { name: '可编辑最新版本' })).toBeNull()
+  expect(screen.getByRole('option', { name: '可批注' })).toBeTruthy()
+  fireEvent.click(screen.getByRole('option', { name: '仅查看' }))
+  await waitFor(() => expect(role.textContent).toContain('仅查看'))
+})
+
+it('全作品普通链接可改为编辑最新版本', async () => {
+  const request = vi.spyOn(window, 'fetch').mockImplementation(handleFetch)
+  renderDialog()
+  const role = await screen.findByRole('combobox', { name: '普通链接 的权限' })
+  fireEvent.click(role)
+  fireEvent.click(screen.getByRole('option', { name: '可编辑最新版本' }))
+  await waitFor(() => {
+    expect(request).toHaveBeenCalledWith(
+      grantPath('grant-link'),
+      expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ role: 'edit' }) }),
+    )
+  })
 })
 
 it('行内复制既有邀请地址；普通链接行不提供复制', async () => {

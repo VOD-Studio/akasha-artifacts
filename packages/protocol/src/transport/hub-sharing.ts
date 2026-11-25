@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { ArtifactShareRoleSchema } from './http.js'
+import { type ArtifactShareInput, ArtifactShareRoleSchema } from './http.js'
 
 /** 点名成员绑定 GitHub 数字 ID；组是已配置组织中的 GitHub team slug。 */
 export const HubInviteTargetSchema = z.discriminatedUnion('kind', [
@@ -52,7 +52,9 @@ export type HubSharingOverride = z.infer<typeof HubSharingOverrideSchema>
 export interface HubGrantSummary {
   id: string
   target: HubInviteTarget | { kind: 'link' }
-  role: z.infer<typeof ArtifactShareRoleSchema>
+  /** 定向邀请跟随头版本；普通链接也可固定到某个版本或其中的画板。 */
+  entry: ArtifactShareInput['entry']
+  role: ArtifactShareInput['role']
   expiresAt: string
   /** 只对点名和邮箱邀请表示已由正确的账户接受。 */
   accepted: boolean

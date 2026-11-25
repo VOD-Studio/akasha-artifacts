@@ -1,4 +1,4 @@
-import type { HubGrantSummary } from '@akasha/protocol'
+import { canGrantShareRole, type HubGrantSummary } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Empty } from '@akasha/ui/empty'
 import { Input } from '@akasha/ui/input'
@@ -132,7 +132,9 @@ export function HubShareGrants({
                     <SelectContent>
                       <SelectItem value="view">{t('仅查看')}</SelectItem>
                       <SelectItem value="comment">{t('可批注')}</SelectItem>
-                      <SelectItem value="edit">{t('可编辑最新版本')}</SelectItem>
+                      {canGrantShareRole(grant.entry, 'edit') && (
+                        <SelectItem value="edit">{t('可编辑最新版本')}</SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                   {grant.target.kind !== 'link' ? (
