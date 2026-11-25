@@ -3,7 +3,7 @@ import { createCanvasDocument } from '../src/entities/artifact'
 import {
   type CanvasExportSelection,
   resolveSelectedExportBoards,
-} from '../src/widgets/ArtifactWorkspace/canvas-export-selection'
+} from '../src/features/export-design/lib/canvas-export-selection'
 
 const version = { artifactId: 'booking', version: 4 }
 const document = createCanvasDocument(

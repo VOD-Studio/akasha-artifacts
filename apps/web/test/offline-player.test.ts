@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { expect, it, onTestFinished } from 'vitest'
-import { offlinePage } from '../src/features/export-design/offline-preview'
+import { offlinePage } from '../src/features/export-design/offline/offline-preview'
 
 it('仅当前隔离帧能沿自身声明的流程跳转；已离开画板的消息失效', () => {
   const boards = ['a', 'b', 'c'].map((id) => ({ id, title: id, width: 320, height: 240 }))

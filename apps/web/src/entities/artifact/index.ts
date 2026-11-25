@@ -29,6 +29,7 @@ export {
   useRevertArtifactMutation,
   useSetArtifactFavoriteMutation,
 } from './api/queries'
+export { type CanvasBounds, layoutBoards } from './lib/canvas-layout'
 export {
   type CanvasBoard,
   type CanvasDocument,

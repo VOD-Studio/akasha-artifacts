@@ -1,6 +1,6 @@
 import { PDFDocument } from 'pdf-lib'
 import { expect, it } from 'vitest'
-import { composeDesignPdf } from '../src/features/export-design/design-pdf'
+import { composeDesignPdf } from '../src/features/export-design/lib/design-pdf'
 
 const png = new Blob(
   [

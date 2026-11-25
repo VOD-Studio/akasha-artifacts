@@ -2,7 +2,7 @@
 import type { CanvasLayerStyles } from '@akasha/protocol'
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, expect, it } from 'vitest'
-import { BoardLayerStyles } from '../src/widgets/ArtifactWorkspace/BoardLayerStyles'
+import { BoardLayerStyles } from '../src/widgets/ArtifactWorkspace/inspector/BoardLayerStyles'
 
 afterEach(cleanup)
 

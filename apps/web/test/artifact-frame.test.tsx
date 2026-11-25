@@ -2,8 +2,8 @@
 import { PROTOCOL_VERSION, type VersionSummary } from '@akasha/protocol'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
-import { ArtifactFrame } from '../src/widgets/ArtifactWorkspace/ArtifactFrame'
-import { createBoardTweakPreviewStore } from '../src/widgets/ArtifactWorkspace/board-tweak-previews'
+import { createBoardTweakPreviewStore } from '../src/widgets/ArtifactWorkspace/model/board-tweak-previews'
+import { ArtifactFrame } from '../src/widgets/ArtifactWorkspace/ui/ArtifactFrame'
 
 const version: VersionSummary = {
   artifactId: 'CanvasFramePublicId00001',

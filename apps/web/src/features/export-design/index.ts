@@ -1,2 +1,2 @@
-export { composeDesignPdf } from './design-pdf'
-export { composeOfflineDesign } from './offline-design'
+export type { CanvasExportSelection } from './lib/canvas-export-selection'
+export { ArtifactExportDialog, type DesignExportTarget } from './ui/ArtifactExportDialog'
