@@ -101,6 +101,20 @@ describe('@akasha/kit 模板注册表、解析器与静态校验', () => {
     }
   })
 
+  it('画板模板导入打印设置并拒绝固定版式夹带纸型', () => {
+    const template = getKitTemplate('artboard')
+    const fields = {
+      printLayout: { mode: 'flow', paper: 'letter' },
+      layoutGuides: [{ axis: 'y', position: 0 }],
+    }
+    const source = JSON.stringify({ boards: [{ title: '表单', ...fields }] })
+    expect(template?.validate(source)).toEqual([])
+    expect(template?.parse(source)).toMatchObject({ ok: true, data: { boards: [fields] } })
+    expect(template?.validate(source.replace('"flow"', '"fixed"'))).toMatchObject([
+      { severity: 'error', code: 'INVALID_KIT_SOURCE' },
+    ])
+  })
+
   it('document 同时支持 JSON 结构化块文档与 HTML 双格式并拦截重复块 ID', () => {
     const htmlParsed = parseDocument('<article><h1 id="h1">标题</h1></article>')
     expect(htmlParsed.ok).toBe(true)

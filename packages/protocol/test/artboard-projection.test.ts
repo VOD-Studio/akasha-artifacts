@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { projectArtboard } from '../src/index.js'
+import { getArtboardPaperSize, parseArtboardValue, projectArtboard } from '../src/index.js'
 
 const appearance = { background: '#f0f0f0', cornerRadius: 18 }
 const tweaks = [
@@ -46,6 +46,34 @@ it('布局、单板读取和旧稿链接使用相同标识，不在索引传输�
   expect(board).not.toHaveProperty('appearance')
   expect(board).not.toHaveProperty('tweaks')
   expect(JSON.stringify(index)).not.toMatch(/保留原内容|已完成/)
+})
+
+it('打印纸张保留实际物理尺寸，只有位图分配才取整', () => {
+  const a4 = getArtboardPaperSize('a4')
+  expect((a4.width * 25.4) / 96).toBeCloseTo(210, 10)
+  expect((a4.height * 25.4) / 96).toBeCloseTo(297, 10)
+  expect(getArtboardPaperSize('letter')).toEqual({ width: 816, height: 1056 })
+})
+
+it.each([
+  { printLayout: null },
+  { printLayout: { mode: 'fixed', paper: 'letter' } },
+  { printLayout: { mode: 'flow', width: 210, height: 297 } },
+  { printLayout: { mode: 'flow', paper: 'a3' } },
+  { printLayout: { mode: 'fixed' }, viewport: { width: 0, height: 800 } },
+  {
+    layoutGuides: [
+      { axis: 'x', position: 0 },
+      { axis: 'x', position: 0 },
+    ],
+  },
+  { layoutGuides: [{ axis: 'z', position: 1 }] },
+  { layoutGuides: [{ axis: 'y', position: -1 }] },
+  { layoutGuides: [{ axis: 'x', position: Number.NaN }] },
+  { layoutGuides: [{ axis: 'y', position: 8193 }] },
+  { layoutGuides: Array.from({ length: 65 }, (_, position) => ({ axis: 'x', position })) },
+])('拒绝有误的打印声明：%j', (fields) => {
+  expect(parseArtboardValue({ boards: [{ title: '申请表', ...fields }] }).ok).toBe(false)
 })
 
 it('独立的播放声明随索引传输，不把缺省当作关闭', () => {
