@@ -28,7 +28,7 @@ const document = createCanvasDocument(
 )
 
 function selection(boardIds: readonly string[]): CanvasExportSelection {
-  return { ...version, pageId: 'design', boardIds }
+  return { ...version, pageId: 'design', columns: 2, boardIds }
 }
 
 it('按整页快照的纵横坐标导出，共用板参与排序，同坐标保留页面定义顺序', () => {

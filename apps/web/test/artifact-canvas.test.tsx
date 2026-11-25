@@ -788,8 +788,8 @@ it('旧制品没有显式 ID 时，重排后仍选中原标题的画板', () => 
   )
 })
 
-it.each(['本机固定版', '仅查看分享'] as const)(
-  '%s 从作品和板头导出时保留 Shift 非连续选区，且不把单板当作选区',
+it.each(['本机固定版', '仅查看分享', '可写头版'] as const)(
+  '%s 从作品和板头导出时按当前画布排列非连续选区，不把单板当作选区',
   async (scope) => {
     stubResizeObserver()
     vi.stubGlobal('matchMedia', () => ({
@@ -800,23 +800,26 @@ it.each(['本机固定版', '仅查看分享'] as const)(
     const fixed = detailFor(
       1,
       JSON.stringify({
+        columns: 2,
         boards: ['甲板', '乙板', '丙板'].map((title, index) => ({
           id: `board-${index}`,
           title,
           viewport: { width: 320, height: 200 },
-          position: { x: index * 400, y: 0 },
+          position: index === 0 ? { x: 0, y: 450 } : undefined,
           html: `<h1>${title}</h1>`,
         })),
       }),
     )
     const shared = scope === '仅查看分享'
+    const live = scope === '可写头版'
     const endpoint = `/api/v1/artifacts/${artifact.publicId}`
     const request = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const { pathname } = new URL(String(input), window.location.origin)
       if (pathname === endpoint) {
         return Response.json({
           ...fixed,
-          artifact: { ...artifact, headVersion: 2 },
+          state: { ...fixed.state, snapshot: { props: { columns: 1 } } },
+          artifact: { ...artifact, headVersion: live ? 1 : 2 },
           access: shared
             ? { role: 'view', version: 1, expiresAt: new Date(Date.now() + 60_000).toISOString() }
             : undefined,
@@ -832,7 +835,9 @@ it.each(['本机固定版', '仅查看分享'] as const)(
     })
     const router = createAppRouter(
       createMemoryHistory({
-        initialEntries: [`/a/${artifact.publicId}/v/1${shared ? '?shared=1' : ''}`],
+        initialEntries: [
+          `/a/${artifact.publicId}${live ? '' : '/v/1'}${shared ? '?shared=1' : ''}`,
+        ],
       }),
     )
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -866,10 +871,9 @@ it.each(['本机固定版', '仅查看分享'] as const)(
       fireEvent.click(range)
       fireEvent.click(await screen.findByRole('option', { name: '选中画板（2 张）' }))
       const order = within(await screen.findByRole('list', { name: '选区 PDF 页序' }))
-      expect(order.getAllByRole('listitem').map((item) => item.textContent)).toEqual([
-        '甲板',
-        '丙板',
-      ])
+      expect(order.getAllByRole('listitem').map((item) => item.textContent)).toEqual(
+        live ? ['甲板', '丙板'] : ['丙板', '甲板'],
+      )
       fireEvent.click(screen.getByRole('button', { name: '取消' }))
       if (!boardEntry) {
         await waitFor(() =>
@@ -877,9 +881,12 @@ it.each(['本机固定版', '仅查看分享'] as const)(
         )
       }
     }
-    expect(
-      request.mock.calls.every(([, options]) => !options?.method || options.method === 'GET'),
-    ).toBe(true)
+    const writes = request.mock.calls.flatMap(([url, options]) =>
+      options?.method && options.method !== 'GET' ? [`${options.method} ${url}`] : [],
+    )
+    expect([...new Set(writes)]).toEqual(
+      live ? [`POST /api/v1/projects/${artifact.projectId}/selection`] : [],
+    )
   },
 )
 

@@ -273,9 +273,9 @@ export function ArtifactCanvas({
     exportSelectionRef,
     () => () =>
       pageId !== undefined && activeSelection.size > 0
-        ? { artifactId, version, pageId, boardIds: [...activeSelection] }
+        ? { artifactId, version, pageId, columns: document.columns, boardIds: [...activeSelection] }
         : undefined,
-    [activeSelection, artifactId, pageId, version],
+    [activeSelection, artifactId, document.columns, pageId, version],
   )
   const selectedBoards = useMemo(
     () => (page?.boards ?? []).filter((board) => activeSelection.has(board.id)),

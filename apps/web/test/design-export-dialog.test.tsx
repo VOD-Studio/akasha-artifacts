@@ -73,6 +73,7 @@ const artboard = { ...artifact, type: 'artboard' as const }
 const pinned = {
   ...version,
   source: JSON.stringify({
+    columns: 2,
     pages: [{ id: 'flow', title: '预订' }],
     boards: [
       {
@@ -93,7 +94,6 @@ const pinned = {
         id: 'start',
         title: '首页',
         pageId: 'flow',
-        position: { x: 0, y: 20 },
         viewport: { width: 720, height: 520 },
       },
     ],
@@ -249,7 +249,8 @@ it('选区 PDF 只下载完整的定版选板，分页与画布位置一致', as
     artifactId: artifact.publicId,
     version: 2,
     pageId: 'flow',
-    boardIds: ['finish', 'start'],
+    columns: 1,
+    boardIds: ['start', 'finish'],
   }
   render(
     <ArtifactExportDialog
@@ -266,16 +267,16 @@ it('选区 PDF 只下载完整的定版选板，分页与画布位置一致', as
   fireEvent.click(screen.getByRole('button', { name: '导出' }))
   await waitFor(() => expect(names).toEqual(['受保护的设计-v2-选区.pdf']))
   expect(rasterize.mock.calls.map(([board]) => board.id)).toEqual([
-    'start',
     'finish',
     'start',
     'finish',
+    'start',
   ])
   const file = blobs[0]
   if (!file) throw new Error('没有收到 PDF 下载')
   const pdf = await PDFDocument.load(await file.arrayBuffer())
   expect(pdf.getPages().map((page) => page.getSize())).toEqual([
-    { width: 540, height: 390 },
     { width: 300, height: 210 },
+    { width: 540, height: 390 },
   ])
 })

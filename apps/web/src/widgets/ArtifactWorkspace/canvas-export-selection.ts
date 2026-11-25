@@ -7,6 +7,8 @@ export interface CanvasExportSelection {
   artifactId: string
   version: number
   pageId: string
+  /** 打开面板时画布实际使用的列数；只用于确定自动排列画板的页序。 */
+  columns: number
   boardIds: readonly string[]
 }
 
@@ -34,7 +36,7 @@ export function resolveSelectedExportBoards(
   let bounds: Map<string, CanvasBounds> | undefined
   const positionOf = (board: LoadedCanvasBoard) => {
     if (board.position) return board.position
-    bounds ??= layoutBoards(page.boards, document.columns).bounds
+    bounds ??= layoutBoards(page.boards, selection.columns).bounds
     const position = bounds.get(board.id)
     if (!position) throw new Error('无法确定所选画板在页面中的位置')
     return position
