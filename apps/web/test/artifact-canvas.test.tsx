@@ -255,6 +255,12 @@ it('在同一画布页面比较独立视口的宽屏和手机画板', () => {
   expect(screen.getByTitle('确认手机字号')).toBeTruthy()
 })
 
+function openPageMenu(title: string) {
+  const trigger = screen.getByRole('button', { name: `更多页面操作：${title}` })
+  fireEvent.keyDown(trigger, { key: 'ArrowDown' })
+  return within(screen.getByRole('menu'))
+}
+
 it('跨页查找、热更新和刷新都保留仍在的选板与倍率', () => {
   const opened = showWorkspace()
   const title = screen.getByRole('button', { name: '手机首页' })
@@ -836,10 +842,13 @@ it('固定版本定位到指定页面，复制的定位链接不携带分享授�
 
     fireEvent.click(screen.getByRole('button', { name: '页面与画板' }))
     expect(screen.queryByRole('button', { name: '新建页面' })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: '复制页面链接' }))
+    const menu = openPageMenu('预约流程')
+    expect(menu.queryByRole('menuitem', { name: '重命名页面' })).toBeNull()
+    expect(menu.queryByRole('menuitem', { name: '删除页面' })).toBeNull()
+    fireEvent.click(menu.getByRole('menuitem', { name: '复制页面链接' }))
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith(
-        `${window.location.origin}/a/${artifact.publicId}/v/1#page=status`,
+        `${window.location.origin}/a/${artifact.publicId}/v/1#page=reserve`,
       ),
     )
 
@@ -1018,7 +1027,7 @@ it('沿用旧页定位链接完成重命名，确认删除时只移除该页直�
   const editor = showEditableWorkspace(initial, address)
   expect(screen.getByTitle('画板内容：要移除的画板')).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: '页面与画板' }))
-  fireEvent.click(screen.getByRole('button', { name: '重命名页面' }))
+  fireEvent.click(openPageMenu('旧预约').getByRole('menuitem', { name: '重命名页面' }))
   fireEvent.change(screen.getByRole('textbox', { name: '页面名称' }), {
     target: { value: '新预约' },
   })
@@ -1029,7 +1038,7 @@ it('沿用旧页定位链接完成重命名，确认删除时只移除该页直�
   expect(screen.getByTitle('画板内容：要移除的画板')).toBeTruthy()
   expect(screen.queryByRole('alert')).toBeNull()
 
-  fireEvent.click(screen.getByRole('button', { name: '删除页面' }))
+  fireEvent.click(openPageMenu('新预约').getByRole('menuitem', { name: '删除页面' }))
   expect(screen.getByText(/1 张直属画板/)).toBeTruthy()
   expect(screen.getByTitle('画板内容：要移除的画板')).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: '删除' }))
@@ -1037,6 +1046,49 @@ it('沿用旧页定位链接完成重命名，确认删除时只移除该页直�
   expect(screen.getByTitle('画板内容：共享画板')).toBeTruthy()
   expect(screen.queryByTitle('画板内容：要移除的画板')).toBeNull()
   expect(JSON.parse(editor.current.version.source)).toMatchObject({ flows: [] })
+})
+
+it('页面分组显示未过滤的总数，管理另一页不改变当前选板和倍率', async () => {
+  const source = { ...design, pages: [{ id: 'draft', title: '草案' }, ...design.pages] }
+  const editor = showEditableWorkspace(detailFor(1, JSON.stringify(source)), 'page=reserve')
+  fireEvent.click(screen.getByRole('button', { name: '手机首页' }))
+  fireEvent.click(screen.getByRole('button', { name: '放大' }))
+  const zoom = screen.getByLabelText('画布缩放比例').textContent
+  fireEvent.click(screen.getByRole('button', { name: '页面与画板' }))
+  const search = screen.getByRole('searchbox', { name: '搜索页面或画板' })
+  fireEvent.change(search, { target: { value: '手机' } })
+  const group = within(screen.getByRole('group', { name: '预约流程' }))
+  expect(group.getByText('2 张画板')).toBeTruthy()
+  expect(group.queryByRole('button', { name: '宽屏首页' })).toBeNull()
+  expect(group.getByRole('button', { name: '手机首页', pressed: true })).toBeTruthy()
+  fireEvent.change(search, { target: { value: '' } })
+
+  fireEvent.click(openPageMenu('状态').getByRole('menuitem', { name: '删除页面' }))
+  const dialog = within(screen.getByRole('dialog', { name: '删除页面' }))
+  expect(dialog.getByText(/删除「状态」及其 1 张直属画板/)).toBeTruthy()
+  fireEvent.click(dialog.getByRole('button', { name: '删除' }))
+  await waitFor(() => expect(editor.current.version.version).toBe(2))
+  expect(screen.queryByRole('group', { name: '状态' })).toBeNull()
+  await waitFor(() => expect(document.activeElement).toBe(search))
+  fireEvent.keyDown(search, { key: 'Escape' })
+  const canvas = within(screen.getByRole('region', { name: '画布' }))
+  expect(canvas.getByRole('button', { name: '手机首页', pressed: true })).toBeTruthy()
+  expect(screen.getByLabelText('画布缩放比例').textContent).toBe(zoom)
+})
+
+it('仅查看时能从页面菜单逐层用 Escape 退出，焦点回到打开它的按钮', async () => {
+  showWorkspace({ ...detailFor(), access: { role: 'view', expiresAt: '2099-01-01T00:00:00Z' } })
+  const navigator = screen.getByRole('button', { name: '页面与画板' })
+  fireEvent.click(navigator)
+  expect(screen.queryByRole('button', { name: '新建页面' })).toBeNull()
+  const menu = openPageMenu('状态')
+  expect(menu.queryByRole('menuitem', { name: '重命名页面' })).toBeNull()
+  expect(menu.queryByRole('menuitem', { name: '删除页面' })).toBeNull()
+  fireEvent.keyDown(menu.getByRole('menuitem', { name: '复制页面链接' }), { key: 'Escape' })
+  const more = screen.getByRole('button', { name: '更多页面操作：状态' })
+  await waitFor(() => expect(document.activeElement).toBe(more))
+  fireEvent.keyDown(more, { key: 'Escape' })
+  await waitFor(() => expect(document.activeElement).toBe(navigator))
 })
 
 it('画板表单打开后收到新版本时，保留未保存布局而不提交到新版本', () => {

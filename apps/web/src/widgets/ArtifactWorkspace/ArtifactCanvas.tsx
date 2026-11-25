@@ -20,8 +20,8 @@ import {
   CanvasBoardEditNotice,
   CanvasBoardQuickActions,
 } from './CanvasBoardActions'
-import { CanvasToolbar, PageNavigator } from './CanvasControls'
-import type { CanvasPageEditing } from './CanvasPageActions'
+import { CanvasToolbar } from './CanvasControls'
+import type { CanvasPageEditing } from './CanvasPageDialog'
 import { CanvasPlaybackMenu } from './CanvasPlaybackMenu'
 import {
   changeLayoutSelection,
@@ -45,6 +45,7 @@ import {
   MAX_ANIMATED_BOARDS,
   planViewport,
 } from './canvas-viewport'
+import { PageNavigator } from './PageNavigator'
 import { useBoardGesture } from './useBoardGesture'
 import { useBoardPresentation } from './useBoardPresentation'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
