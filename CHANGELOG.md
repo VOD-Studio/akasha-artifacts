@@ -1,5 +1,62 @@
 # Changelog
 
+## [0.5.0](https://github.com/VOD-Studio/akasha-artifacts/compare/v0.4.2...v0.5.0) (2026-11-25)
+
+
+### 新增
+
+* **core:** 按固定版本读取画板布局和正文 ([0efaae7](https://github.com/VOD-Studio/akasha-artifacts/commit/0efaae7f798189a892cadcfe64860d2de1a3a811))
+* **export:** 保留固定画板的外观与默认参数 ([4b65559](https://github.com/VOD-Studio/akasha-artifacts/commit/4b65559a1b1a8e9a91e01745f7239d3f0d65f050))
+* **protocol:** 允许定版画板请求双倍 PNG ([7801be6](https://github.com/VOD-Studio/akasha-artifacts/commit/7801be697bdb17b2f7a07e89c4941e781734a16a))
+* **protocol:** 定义画板外观与预览参数 ([350d72d](https://github.com/VOD-Studio/akasha-artifacts/commit/350d72dcdf409e0b449bd48a9ddeb65fce4b3376))
+* **protocol:** 拆分画板布局索引与正文 ([9e709a8](https://github.com/VOD-Studio/akasha-artifacts/commit/9e709a82f10243641bbd4cc4fcc33351b5b2bd38))
+* **renderer:** 调度画板预览的动画与快照 ([e5b1dc5](https://github.com/VOD-Studio/akasha-artifacts/commit/e5b1dc538b9d1794f13c9762dd3096bd1a961b53))
+* **sandbox:** 仅在试玩中手动播放内嵌媒体 ([004d96b](https://github.com/VOD-Studio/akasha-artifacts/commit/004d96b7fd63a48a299e9529f3cf7f285d6bd02a)), closes [#106](https://github.com/VOD-Studio/akasha-artifacts/issues/106)
+* **sandbox:** 独立渲染单板外观和参数 ([24aeeb2](https://github.com/VOD-Studio/akasha-artifacts/commit/24aeeb2fc2ca91a87c770a586d76930d3f8938ee))
+* **sandbox:** 读取选中图层的样式来源 ([9dd29ae](https://github.com/VOD-Studio/akasha-artifacts/commit/9dd29ae2538fda353ae4a82a6c27062efff55e76))
+* **web:** 区分画板展开与交互播放 ([c7b3b89](https://github.com/VOD-Studio/akasha-artifacts/commit/c7b3b89583af4b9c928c91b67a88926fbb12bddf)), closes [#106](https://github.com/VOD-Studio/akasha-artifacts/issues/106)
+* **web:** 合并画板动效与原型播放 ([33029da](https://github.com/VOD-Studio/akasha-artifacts/commit/33029dab226494b3a419a11f580e9aece050c2de))
+* **web:** 合并画板检查器与参数预览 ([cc25d24](https://github.com/VOD-Studio/akasha-artifacts/commit/cc25d242f5a9e2c495cd94056f77eccec76e3405))
+* **web:** 在图层检查器区分本层与继承样式 ([#141](https://github.com/VOD-Studio/akasha-artifacts/issues/141)) ([dea6822](https://github.com/VOD-Studio/akasha-artifacts/commit/dea682268cabf7dec7d223cb3f6127526af8fe03))
+* **web:** 在图层源码面板区分本层与继承声明 ([27e83ba](https://github.com/VOD-Studio/akasha-artifacts/commit/27e83ba658b355aa8b60b1f66cd6870e02f04377))
+* **web:** 按选区检查画板并预览参数 ([a0febe7](https://github.com/VOD-Studio/akasha-artifacts/commit/a0febe761e2549d44d993223ffaf12ed4c2b72fd)), closes [#103](https://github.com/VOD-Studio/akasha-artifacts/issues/103)
+* **web:** 支持画板选区 PDF 和双倍 PNG 导出 ([dd9229c](https://github.com/VOD-Studio/akasha-artifacts/commit/dd9229cb1d6744b47b7b9e94d09595310d91d6bb))
+* **web:** 支持画板选区 PDF 和双倍 PNG 导出 ([e120c13](https://github.com/VOD-Studio/akasha-artifacts/commit/e120c1308c87b55750d8f917e41a35dec2245fb7))
+
+
+### 修复
+
+* **canvas:** 保留历史画板标识和旧批注归属 ([2b59508](https://github.com/VOD-Studio/akasha-artifacts/commit/2b59508df38ca77c1aaf0ae623f6ce85ba7542c5))
+* **canvas:** 基准正文读取失败时保留布局输入 ([2e242ca](https://github.com/VOD-Studio/akasha-artifacts/commit/2e242ca5858f56953a94781bc3ababa5a1fe7898))
+* **canvas:** 检查器和画布共用定版画板资源 ([6f62af0](https://github.com/VOD-Studio/akasha-artifacts/commit/6f62af06f2b2a110953da2b82d3c8cb317823cca))
+* **sandbox:** 保留原生弹出层的旧稿试玩入口 ([f25f84e](https://github.com/VOD-Studio/akasha-artifacts/commit/f25f84e09eabcbc43ea81d10f6e744129c075aab)), closes [#106](https://github.com/VOD-Studio/akasha-artifacts/issues/106)
+* **sandbox:** 在实际绘制前响应预览取消 ([a79d5b3](https://github.com/VOD-Studio/akasha-artifacts/commit/a79d5b31f264a95cf38bbc96b16f65b4a67fc801))
+* **ui:** 关闭抽屉时立即停用交互 ([c3484c0](https://github.com/VOD-Studio/akasha-artifacts/commit/c3484c0b9dfafc45c37617af9687a93508f5bc50))
+* **web:** 保留删除页面后的键盘焦点 ([19f7661](https://github.com/VOD-Studio/akasha-artifacts/commit/19f7661391c9956e24e0bab7c87479ab85e1fa39))
+* **web:** 切版读取完成前不暴露旧版编辑器 ([44e5d67](https://github.com/VOD-Studio/akasha-artifacts/commit/44e5d670fd7b54b64c3e761833c1324937bd51ce))
+* **web:** 区分页面导航与画板选区 ([7715756](https://github.com/VOD-Studio/akasha-artifacts/commit/7715756df70327fa8db2939f15dac9712036e906))
+* **web:** 区分页面导航与画板选区 ([#143](https://github.com/VOD-Studio/akasha-artifacts/issues/143)) ([169686d](https://github.com/VOD-Studio/akasha-artifacts/commit/169686d0750c719a703093f3a529fe5ec47c81fe))
+* **web:** 将绘制和批注归回对应的画布工具 ([b13d739](https://github.com/VOD-Studio/akasha-artifacts/commit/b13d739fe0d4c56b641d71015e1261937ae3c0e6))
+* **web:** 按打开导出面板时的画布排列生成 PDF ([5077743](https://github.com/VOD-Studio/akasha-artifacts/commit/5077743660ca330e920ca900993e6bee93a41829))
+* **web:** 用选择工具直接定位画板图层 ([2107512](https://github.com/VOD-Studio/akasha-artifacts/commit/21075121857ef56f76810fa7d9200b68843d6837))
+* **web:** 统一作品工作台的交互与实现 ([#134](https://github.com/VOD-Studio/akasha-artifacts/issues/134)) ([22c74f1](https://github.com/VOD-Studio/akasha-artifacts/commit/22c74f12285b3c278676561fbba74ae4a72bb701)), closes [#133](https://github.com/VOD-Studio/akasha-artifacts/issues/133)
+* **web:** 统一品牌徽标与加载动效 ([c684180](https://github.com/VOD-Studio/akasha-artifacts/commit/c684180326f2787621780423d516f60de1b8828c))
+* **web:** 让普通滚动平移画布 ([522cde9](https://github.com/VOD-Studio/akasha-artifacts/commit/522cde929796e750c0d081fffb09bf2e1fcbf089))
+
+
+### 性能优化
+
+* **canvas:** 平移时不重复遍历关闭的导航 ([f229624](https://github.com/VOD-Studio/akasha-artifacts/commit/f2296247ed5c817a080b04fdaf9fbf194937d8fe))
+* **web:** 合并多画板视域加载 ([ce735d2](https://github.com/VOD-Studio/akasha-artifacts/commit/ce735d2fa90db0b3981f720444f2a68808d88be2))
+* **web:** 按视域规划画板预览预算 ([5395ee6](https://github.com/VOD-Studio/akasha-artifacts/commit/5395ee63f1055c6978dddc1342268dedb9c1a771))
+* **web:** 让工作区优先加载可见画板 ([564f88b](https://github.com/VOD-Studio/akasha-artifacts/commit/564f88b32f8d7fc33f62705b4d2b0eda77614562))
+* **web:** 限制画板请求与预览缓存 ([7bee1cc](https://github.com/VOD-Studio/akasha-artifacts/commit/7bee1cc8e279384e84607f8a4e3eeb3453aa7c43))
+
+
+### 重构
+
+* **web:** 移除已无消费方的完整详情缓存 ([68687a7](https://github.com/VOD-Studio/akasha-artifacts/commit/68687a7f5a6e468e4b721129dea5e9b10df2dd42))
+
 ## [0.4.2](https://github.com/VOD-Studio/akasha-artifacts/compare/v0.4.1...v0.4.2) (2026-11-24)
 
 
