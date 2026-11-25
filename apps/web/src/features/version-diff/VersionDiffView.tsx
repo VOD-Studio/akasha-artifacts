@@ -4,6 +4,7 @@ import { Empty } from '@akasha/ui/empty'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { useArtifactSourceQuery } from '@/entities/artifact'
+import { AkashaMark } from '@/shared/brand'
 import { computeLineDiff, type DiffLine } from '@/shared/lib/diff'
 
 export interface VersionDiffViewProps {
@@ -162,8 +163,9 @@ function QueriedVersionDiff({
       before={beforeSource}
       after={afterSource}
       status={
-        <p role="status" className="p-8 text-center text-ink-muted">
-          正在读取对比版本…
+        <p role="status" className="flex items-center justify-center gap-2 p-8 text-ink-muted">
+          <AkashaMark size={18} loading className="text-ink" />
+          <span>正在读取对比版本…</span>
         </p>
       }
     />

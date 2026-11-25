@@ -1,6 +1,7 @@
 import { Button } from '@akasha/ui/button'
 import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { type CanvasBoard, type LoadedCanvasBoard, loadCanvasBoard } from '@/entities/artifact'
+import { AkashaMark } from '@/shared/brand'
 import type { BoardResources } from './board-resources'
 
 interface BoardResourceViewProps {
@@ -110,10 +111,11 @@ function BoardDetail({ board, resources, showThumbnail, render }: BoardDetailPro
   return (
     <div
       aria-busy="true"
-      className="absolute inset-0 grid place-items-center text-sm text-ink-muted"
+      className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-ink-muted"
     >
       {showThumbnail && <BoardThumbnail title={board.title} id={board.id} resources={resources} />}
-      正在读取画板…
+      <AkashaMark size={24} loading className="relative text-ink" />
+      <span className="relative">正在读取画板…</span>
     </div>
   )
 }

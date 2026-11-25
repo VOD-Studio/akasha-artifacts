@@ -1,18 +1,18 @@
 import { Alert } from '@akasha/ui/alert'
 import { Button } from '@akasha/ui/button'
-import { Spinner } from '@akasha/ui/indicator'
 import { HubAccountButton } from '@/features/hub'
 import { ApiError } from '@/shared/api/error'
+import { AkashaMark } from '@/shared/brand'
 
 /** 解析本机直连与读取作品共用同一个等待状态。 */
 export function OpeningArtifact() {
   return (
     <div
-      className="flex h-dvh items-center justify-center gap-2 bg-canvas text-sm text-ink-muted"
+      className="flex h-dvh flex-col items-center justify-center gap-3 bg-canvas text-sm text-ink-muted"
       role="status"
     >
-      <Spinner size={16} />
-      正在打开…
+      <AkashaMark size={28} loading className="text-ink" />
+      <span>正在打开…</span>
     </div>
   )
 }

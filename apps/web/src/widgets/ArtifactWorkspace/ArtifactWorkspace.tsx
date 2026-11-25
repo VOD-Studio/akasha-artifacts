@@ -30,6 +30,7 @@ import { SplitCodeEditor } from '@/features/code-editor'
 import { ArtifactReviewPanel, selectActiveRound } from '@/features/review'
 import { VersionDiffView } from '@/features/version-diff'
 import { useVisualEdit, VisualEditPanel } from '@/features/visual-edit'
+import { AkashaMark } from '@/shared/brand'
 import { ArtifactCanvas, type InspectorReveal } from './ArtifactCanvas'
 import { ArtifactFrame, type BoardFramePurpose, type FrameConnection } from './ArtifactFrame'
 import { BoardInspector, type BoardInspectorHandoff } from './BoardInspector'
@@ -679,8 +680,9 @@ export function ArtifactWorkspace({
 function SourceStatus({ error, retry }: { error: Error | null; retry: () => void }) {
   if (!error)
     return (
-      <p className="p-3 text-sm text-ink-muted" role="status">
-        正在读取源码…
+      <p className="flex items-center gap-2 p-3 text-sm text-ink-muted" role="status">
+        <AkashaMark size={16} loading className="text-ink" />
+        <span>正在读取源码…</span>
       </p>
     )
   return (

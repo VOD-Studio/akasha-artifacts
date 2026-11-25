@@ -9,6 +9,7 @@ import { useProjectsQuery } from '@/entities/project'
 import { useWorkspaceStore } from '@/entities/workspace'
 import { DaemonStatusPill } from '@/features/daemon-control'
 import { HubAccountButton, useHubSession } from '@/features/hub'
+import { AkashaMark } from '@/shared/brand'
 import { isCloudHub } from '@/shared/config/runtime'
 import { CreateDesignDialog } from './CreateDesignDialog'
 import { LibraryMenu } from './LibraryMenu'
@@ -110,7 +111,10 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
   return (
     <div className="flex h-dvh flex-col bg-canvas text-ink">
       <header className="flex min-h-13 shrink-0 items-center justify-between gap-2 border-b border-border bg-surface px-4 sm:px-6">
-        <span className="font-semibold tracking-tight">Akasha</span>
+        <span className="inline-flex items-center gap-2 font-semibold tracking-tight">
+          <AkashaMark size={20} />
+          <span>Akasha</span>
+        </span>
         <div className="flex items-center gap-1">
           {cloudHub ? <HubAccountButton /> : <DaemonStatusPill />}
           {canManage && <LibraryMenu projects={projects ?? []} onOpenWithdrawn={openWithdrawn} />}

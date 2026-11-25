@@ -279,3 +279,102 @@ body,
 .artifact-canvas-nav-item[aria-pressed="true"] {
   background: var(--muted);
 }
+
+.akasha-mark {
+  display: inline-block;
+  flex: none;
+  vertical-align: middle;
+}
+
+.akasha-mark-ghost {
+  opacity: 0.14;
+}
+
+.akasha-mark[data-loading="true"] .akasha-mark-left {
+  animation: akasha-mark-up 1.9s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+.akasha-mark[data-loading="true"] .akasha-mark-spine {
+  animation: akasha-mark-down 1.9s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+.akasha-mark[data-loading="true"] .akasha-mark-wing {
+  animation: akasha-mark-right 1.9s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+@keyframes akasha-mark-up {
+  0%,
+  14% {
+    clip-path: inset(0 0 0 0);
+  }
+  38%,
+  54% {
+    clip-path: inset(0 0 100% 0);
+  }
+  54.1% {
+    clip-path: inset(100% 0 0 0);
+  }
+  82%,
+  100% {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes akasha-mark-down {
+  0%,
+  18% {
+    clip-path: inset(0 0 0 0);
+  }
+  42%,
+  58% {
+    clip-path: inset(100% 0 0 0);
+  }
+  58.1% {
+    clip-path: inset(0 0 100% 0);
+  }
+  86%,
+  100% {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes akasha-mark-right {
+  0%,
+  24% {
+    clip-path: inset(0 0 0 0);
+  }
+  48%,
+  64% {
+    clip-path: inset(0 0 0 100%);
+  }
+  64.1% {
+    clip-path: inset(0 100% 0 0);
+  }
+  92%,
+  100% {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .akasha-mark[data-loading="true"] .akasha-mark-ghost {
+    opacity: 0;
+  }
+
+  .akasha-mark[data-loading="true"] .akasha-mark-left,
+  .akasha-mark[data-loading="true"] .akasha-mark-spine,
+  .akasha-mark[data-loading="true"] .akasha-mark-wing {
+    clip-path: none;
+    animation: akasha-mark-breathe 2.4s ease-in-out infinite;
+  }
+
+  @keyframes akasha-mark-breathe {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.42;
+    }
+  }
+}

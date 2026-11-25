@@ -11,6 +11,7 @@ import { useArtifactManagementQuery } from '@/entities/artifact'
 import { useWorkspaceStore, type WorkspaceViewMode } from '@/entities/workspace'
 import { HubAccountButton } from '@/features/hub'
 import { VersionTimeline } from '@/features/version-timeline'
+import { AkashaMark } from '@/shared/brand'
 import { ArtifactTitleMenu } from './ArtifactTitleMenu'
 import { WorkspacePanelButtons } from './WorkspacePanelButtons'
 
@@ -120,6 +121,7 @@ export function TopBar({
             title={agentActivity.summary}
             className="hidden items-center gap-1.5 text-xs text-ink-muted sm:flex"
           >
+            <AkashaMark size={14} loading className="text-ink" />
             Agent 正在修改
           </span>
         ) : null}
