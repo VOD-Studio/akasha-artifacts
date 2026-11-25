@@ -2,11 +2,11 @@ import type { WithdrawnArtifact } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Modal } from '@akasha/ui/dialog'
 import { Empty } from '@akasha/ui/empty'
-import { Spinner } from '@akasha/ui/indicator'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { artifactKeys, fetchWithdrawnArtifacts, restoreArtifact } from '@/entities/artifact'
+import { AkashaMark } from '@/shared/brand'
 
 interface WithdrawnArtifactsDialogProps {
   onOpenArtifact: (publicId: string) => void
@@ -67,7 +67,7 @@ export function WithdrawnArtifactsDialog({
     >
       {list.isPending && (
         <p role="status" className="flex items-center gap-2 text-sm text-ink-muted">
-          <Spinner size={16} />
+          <AkashaMark size={16} loading className="text-ink" />
           加载中…
         </p>
       )}
