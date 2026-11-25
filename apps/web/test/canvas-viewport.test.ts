@@ -1,7 +1,10 @@
 import { expect, it } from 'vitest'
-import type { CanvasBoard } from '../src/entities/artifact'
-import { type CanvasBounds, DEFAULT_CAMERA } from '../src/widgets/ArtifactWorkspace/canvas-camera'
-import { indexViewportBoards, planViewport } from '../src/widgets/ArtifactWorkspace/canvas-viewport'
+import type { CanvasBoard, CanvasBounds } from '@/entities/artifact'
+import { DEFAULT_CAMERA } from '../src/widgets/ArtifactWorkspace/lib/canvas-camera'
+import {
+  indexViewportBoards,
+  planViewport,
+} from '../src/widgets/ArtifactWorkspace/lib/canvas-viewport'
 
 const viewport = { width: 1440, height: 900 }
 const board = (id: string): CanvasBoard => ({

@@ -1,6 +1,6 @@
 import type { ArtboardContent } from '@akasha/protocol'
 import { expect, it, vi } from 'vitest'
-import { BoardResources } from '../src/widgets/ArtifactWorkspace/board-resources'
+import { BoardResources } from '../src/widgets/ArtifactWorkspace/model/board-resources'
 
 function fixture() {
   const requests: Array<{

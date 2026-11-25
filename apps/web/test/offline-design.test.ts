@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { gzipSync, strFromU8, strToU8, unzipSync } from 'fflate'
 import { expect, it, onTestFinished, vi } from 'vitest'
-import { composeOfflineDesign } from '../src/features/export-design'
+import { composeOfflineDesign } from '../src/features/export-design/offline/offline-design'
 import { setLocale } from '../src/shared/i18n'
 
 function acceptPreflight() {

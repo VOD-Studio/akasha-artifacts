@@ -6,10 +6,10 @@ import { afterEach, expect, it, vi } from 'vitest'
 import type { CanvasBoard, CanvasPage } from '../src/entities/artifact'
 import { ApiError } from '../src/shared/api/error'
 import { LanguageMenu, setLocale } from '../src/shared/i18n'
-import { BoardPresentation } from '../src/widgets/ArtifactWorkspace/BoardPresentation'
-import { BoardResourceView } from '../src/widgets/ArtifactWorkspace/BoardResourceView'
-import { BoardResources } from '../src/widgets/ArtifactWorkspace/board-resources'
-import { PageNavigator } from '../src/widgets/ArtifactWorkspace/PageNavigator'
+import { BoardResources } from '../src/widgets/ArtifactWorkspace/model/board-resources'
+import { PageNavigator } from '../src/widgets/ArtifactWorkspace/navigation/PageNavigator'
+import { BoardPresentation } from '../src/widgets/ArtifactWorkspace/ui/BoardPresentation'
+import { BoardResourceView } from '../src/widgets/ArtifactWorkspace/ui/BoardResourceView'
 
 const first: CanvasBoard = {
   id: 'a',

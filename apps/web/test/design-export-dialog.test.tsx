@@ -9,9 +9,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { strFromU8, unzipSync } from 'fflate'
 import { PDFDocument } from 'pdf-lib'
 import { afterEach, expect, it, onTestFinished, vi } from 'vitest'
+import { ArtifactExportDialog } from '../src/features/export-design'
 import * as capture from '../src/shared/bridge/capture-png'
 import { setLocale } from '../src/shared/i18n'
-import { ArtifactExportDialog } from '../src/widgets/ArtifactWorkspace'
 
 const now = '2026-11-22T10:00:00.000Z'
 const artifact: Artifact = {

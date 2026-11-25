@@ -13,21 +13,23 @@ import { readAnnotationDraft, useArtifactFeedbackQuery } from '@/entities/feedba
 import { useSelectionStore } from '@/entities/selection'
 import { useWorkspaceStore } from '@/entities/workspace'
 import { AgentConversationPane, type ConversationTarget } from '@/features/agent-conversation'
-import { useLiveSync } from '@/features/live-sync'
-import { isResourceUnavailable } from '@/shared/api/error'
-import { useLocalArtifactRedirect } from '@/shared/config/local-artifact'
-import { isCloudHub, resolveSandboxOrigin } from '@/shared/config/runtime'
 import {
-  ArtifactExportDialog,
   ArtifactHandoffDialog,
   type ArtifactHandoffTarget,
   ArtifactShareDialog,
   ArtifactTransferDialog,
   type ArtifactTransferTarget,
-  ArtifactWorkspace,
+} from '@/features/artifact-delivery'
+import {
+  ArtifactExportDialog,
   type CanvasExportSelection,
   type DesignExportTarget,
-} from '@/widgets/ArtifactWorkspace'
+} from '@/features/export-design'
+import { useLiveSync } from '@/features/live-sync'
+import { isResourceUnavailable } from '@/shared/api/error'
+import { useLocalArtifactRedirect } from '@/shared/config/local-artifact'
+import { isCloudHub, resolveSandboxOrigin } from '@/shared/config/runtime'
+import { ArtifactWorkspace } from '@/widgets/ArtifactWorkspace'
 import { TopBar } from '@/widgets/TopBar'
 import { OpeningArtifact, UnavailableArtifact } from './ArtifactRouteStatus'
 

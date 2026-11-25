@@ -4,8 +4,8 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { CanvasDocument } from '../src/entities/artifact'
 import { setLocale } from '../src/shared/i18n'
-import { ArtifactCanvas } from '../src/widgets/ArtifactWorkspace/ArtifactCanvas'
-import type { CanvasBoardEditing } from '../src/widgets/ArtifactWorkspace/useCanvasBoardEditing'
+import type { CanvasBoardEditing } from '../src/widgets/ArtifactWorkspace/hooks/useCanvasBoardEditing'
+import { ArtifactCanvas } from '../src/widgets/ArtifactWorkspace/ui/ArtifactCanvas'
 
 const version: VersionSummary = {
   artifactId: 'CanvasExamplePublicId1',

@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { setLocale } from '../src/shared/i18n'
-import { BoardTweakApplyDialog } from '../src/widgets/ArtifactWorkspace/BoardTweakApplyDialog'
+import { BoardTweakApplyDialog } from '../src/widgets/ArtifactWorkspace/inspector/BoardTweakApplyDialog'
 
 const now = '2026-11-25T10:00:00.000Z'
 const artifact: Artifact = {

@@ -601,6 +601,8 @@ apps/web/src/
 - `shared/api` 只放 HTTP 传输、协议错误和连接基础设施。业务端点和 Query 归各自切片的 `api/`；跨实体的写入或刷新由评审、编辑等上层用例协调。
 - 服务端数据由 TanStack Query 管理，WebSocket 事件直接写入查询缓存；编辑器的本地状态（工具模式、当前选中元素、草稿选择、撤销栈）由 Zustand 管理。
 - `entities/selection` 是指认、批注、Hook 注入和直改共同依赖的核心模型，不属于其中任何一个 feature。
+- `ArtifactWorkspace` 组合画布、工具栏、页面导航与检查器。导出弹窗和文件生成由 `features/export-design` 提供；分享链接、作品转移与编码交接由 `features/artifact-delivery` 提供。路由直接组合这些入口，不让工作台代为导出。
+- 画布显示与选区导出共用画板固有位置和自动排列规则，由 `entities/artifact` 提供。相机、快捷键和检查器仍属工作台，文件导出不依赖工作台的视图状态或实现目录。
 
 ---
 

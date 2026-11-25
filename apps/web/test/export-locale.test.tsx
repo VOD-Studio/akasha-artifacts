@@ -5,8 +5,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { useState } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { artifactKeys } from '../src/entities/artifact'
+import { ArtifactExportDialog } from '../src/features/export-design'
 import { setLocale } from '../src/shared/i18n'
-import { ArtifactExportDialog } from '../src/widgets/ArtifactWorkspace'
 import { ArtifactTitleMenu } from '../src/widgets/TopBar/ArtifactTitleMenu'
 
 const createdAt = '2026-11-22T10:00:00.000Z'
