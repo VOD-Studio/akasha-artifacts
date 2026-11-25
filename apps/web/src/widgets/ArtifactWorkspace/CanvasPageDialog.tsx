@@ -39,7 +39,7 @@ interface CanvasPageDialogProps {
   currentPageId?: string
   pages: readonly CanvasPage[]
   onNavigate: (page: CanvasPage) => void
-  onClose: () => void
+  onClose: (saved?: PageActionRequest['kind']) => void
   restoreFocus: () => void
 }
 
@@ -101,7 +101,7 @@ export function CanvasPageDialog({
       )
       void queryClient.invalidateQueries({ queryKey: artifactKeys.all })
       onVersionSaved?.(saved.version)
-      onClose()
+      onClose(edit.kind)
       if (edit.kind === 'create') {
         onNavigate({ id: edit.id, title: edit.title, boards: [] })
       } else if (edit.kind === 'delete' && edit.id === currentPageId) {
@@ -161,7 +161,7 @@ export function CanvasPageDialog({
           </form>
         </DialogBody>
         <DialogFooter>
-          <Button ref={cancelRef} variant="ghost" disabled={saving} onClick={onClose}>
+          <Button ref={cancelRef} variant="ghost" disabled={saving} onClick={() => onClose()}>
             取消
           </Button>
           <Button

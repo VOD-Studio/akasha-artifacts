@@ -146,6 +146,11 @@ export function PageNavigator({
     actionOrigin.current = trigger
     setRequest({ kind, page: target, baseVersion: pageEditing.version.version })
   }
+  const closeDialog = (saved?: PageActionRequest['kind']) => {
+    // 保存响应可能早于列表刷新；不把焦点还给即将消失的菜单按钮。
+    if (saved === 'delete' || (saved === 'rename' && query.trim())) actionOrigin.current = null
+    setRequest(null)
+  }
   const restoreFocus = () => {
     const origin = actionOrigin.current
     const target = origin?.isConnected ? origin : (searchRef.current ?? triggerRef.current)
@@ -259,7 +264,7 @@ export function PageNavigator({
             currentPageId={page?.id}
             pages={pages}
             onNavigate={navigate}
-            onClose={() => setRequest(null)}
+            onClose={closeDialog}
             restoreFocus={restoreFocus}
           />
         )}

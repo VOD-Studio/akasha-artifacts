@@ -915,7 +915,11 @@ it('手动重读遇到暂时故障仍保留画布，失去读取权限时撤下�
   expect(screen.queryByTitle('画板内容：宽屏首页')).toBeNull()
 })
 
-function showEditableWorkspace(initial: ArtifactDetailResponse, address?: string) {
+function showEditableWorkspace(
+  initial: ArtifactDetailResponse,
+  address?: string,
+  refreshDetails?: Promise<void>,
+) {
   const view = showWorkspace(initial)
   const editable = (detail: ArtifactDetailResponse) => (
     <ArtifactWorkspace
@@ -923,9 +927,10 @@ function showEditableWorkspace(initial: ArtifactDetailResponse, address?: string
       versions={[detail.version]}
       sandboxOrigin="http://127.0.0.1:24331"
       address={address}
-      onVersionSaved={(version) =>
+      onVersionSaved={async (version) => {
+        if (refreshDetails) await refreshDetails
         view.update(editable(detailFor(version.version, version.source)))
-      }
+      }}
     />
   )
   let submittedVersion: number | undefined
@@ -1050,7 +1055,12 @@ it('沿用旧页定位链接完成重命名，确认删除时只移除该页直�
 
 it('页面分组显示未过滤的总数，管理另一页不改变当前选板和倍率', async () => {
   const source = { ...design, pages: [{ id: 'draft', title: '草案' }, ...design.pages] }
-  const editor = showEditableWorkspace(detailFor(1, JSON.stringify(source)), 'page=reserve')
+  const refresh = Promise.withResolvers<void>()
+  const editor = showEditableWorkspace(
+    detailFor(1, JSON.stringify(source)),
+    'page=reserve',
+    refresh.promise,
+  )
   fireEvent.click(screen.getByRole('button', { name: '手机首页' }))
   fireEvent.click(screen.getByRole('button', { name: '放大' }))
   const zoom = screen.getByLabelText('画布缩放比例').textContent
@@ -1068,8 +1078,11 @@ it('页面分组显示未过滤的总数，管理另一页不改变当前选板�
   expect(dialog.getByText(/删除「状态」及其 1 张直属画板/)).toBeTruthy()
   fireEvent.click(dialog.getByRole('button', { name: '删除' }))
   await waitFor(() => expect(editor.current.version.version).toBe(2))
-  expect(screen.queryByRole('group', { name: '状态' })).toBeNull()
+  expect(screen.getByRole('group', { name: '状态' })).toBeTruthy()
   await waitFor(() => expect(document.activeElement).toBe(search))
+  await act(async () => refresh.resolve())
+  expect(screen.queryByRole('group', { name: '状态' })).toBeNull()
+  expect(document.activeElement).toBe(search)
   fireEvent.keyDown(search, { key: 'Escape' })
   const canvas = within(screen.getByRole('region', { name: '画布' }))
   expect(canvas.getByRole('button', { name: '手机首页', pressed: true })).toBeTruthy()
