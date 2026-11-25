@@ -1191,6 +1191,33 @@ it('英文打印草稿不覆盖新版：重新载入后显示该板的新纸型�
   }
 })
 
+it('英文用户调整旧稿的打印版式时，说明要修正的视口，不提交损坏快照', async () => {
+  stubResizeObserver()
+  setLocale('en')
+  try {
+    const editor = showEditableWorkspace(
+      detailFor(
+        1,
+        JSON.stringify({
+          boards: [{ id: 'old', title: 'Legacy board', viewport: { width: 0, height: 800 } }],
+        }),
+      ),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Legacy board' }))
+    act(() => useWorkspaceStore.getState().setInspectorTab('inspect'))
+    fireEvent.click(screen.getByText('Print and guides'))
+    const form = within(screen.getByRole('form', { name: 'Print and guides' }))
+    fireEvent.click(form.getByRole('radio', { name: 'Flow' }))
+    fireEvent.click(form.getByRole('button', { name: 'Save print settings' }))
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Correct the artboard viewport width and height first',
+    )
+    expect(editor.submittedVersion).toBeUndefined()
+  } finally {
+    act(() => setLocale('zh-CN'))
+  }
+})
+
 it.each(['固定版本', '只读分享'] as const)(
   '%s 能查看已有打印设置，不能保存或删除辅助线',
   (entry) => {

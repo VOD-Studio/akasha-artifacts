@@ -77,6 +77,50 @@ it('纸宽排版待字体和图像就绪后只冻结一次，普通行完整换�
   }
 })
 
+it('流式打印保留百分比高度滚动区里的末段，但不打开作者有意设置的遮罩', async () => {
+  const root = document.createElement('article')
+  root.innerHTML = `<div style="height:100px;overflow-y:auto"><div style="height:100%"></div><p>滚动正文末段</p></div>
+    <div style="height:100px;overflow-y:hidden"><p>遮罩外内容</p></div>`
+  const [scroller, mask] = root.children
+  if (!(scroller instanceof HTMLElement) || !(mask instanceof HTMLElement))
+    throw new Error('缺少滚动区或遮罩')
+  document.body.append(root)
+  onTestFinished(() => root.remove())
+  browserProperty(document, 'fonts', { ready: Promise.resolve() })
+  browserProperty(Range.prototype, 'getClientRects', () => [])
+  for (const node of [scroller, mask]) {
+    browserProperty(node, 'clientHeight', 100)
+    browserProperty(node, 'offsetHeight', 100)
+    browserProperty(node, 'scrollHeight', 120)
+  }
+  // JSDOM 没有排版；在交给快照引擎的边界，按 CSS 的百分比高度和纵向裁剪计算可见正文。
+  const visibleTails = () =>
+    [scroller, mask].flatMap((node) => {
+      const style = getComputedStyle(node)
+      const height = Number.parseFloat(style.height)
+      const childHeight = Number.isFinite(height) ? height : 100
+      const tailEnd = childHeight + 20
+      const clipEnd = Number.isFinite(height)
+        ? height
+        : Math.max(120, Number.parseFloat(style.minHeight) || 0)
+      return style.overflowY === 'visible' || tailEnd <= clipEnd ? [node.textContent?.trim()] : []
+    })
+  let frozen: (string | undefined)[] = []
+  vi.mocked(toSvg).mockImplementation(async () => {
+    frozen = visibleTails()
+    return 'data:image/svg+xml;charset=utf-8,%3Csvg%2F%3E'
+  })
+  browserProperty(HTMLImageElement.prototype, 'decode', () => Promise.resolve())
+  browserProperty(HTMLCanvasElement.prototype, 'getContext', () => ({ drawImage: () => {} }))
+  browserProperty(HTMLCanvasElement.prototype, 'toBlob', (done: BlobCallback) =>
+    done(new Blob(['page'], { type: 'image/png' })),
+  )
+  const session = createPrintSession('a4')
+  onTestFinished(session.close)
+  await session.read(root, 0)
+  expect(frozen).toEqual(['滚动正文末段'])
+})
+
 it('准备资源时取消不生成任何快照或纸张', async () => {
   const fonts = Promise.withResolvers<void>()
   browserProperty(document, 'fonts', { ready: fonts.promise })

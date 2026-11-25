@@ -57,11 +57,20 @@ function expandScrollports(root: HTMLElement) {
   for (let i = nodes.length - 1; i >= 0; i--) {
     const node = nodes[i]
     if (!(node instanceof HTMLElement) || node.scrollHeight <= node.clientHeight) continue
-    const overflow = getComputedStyle(node).overflowY
-    if (overflow !== 'scroll' && overflow !== 'auto') continue
+    const style = getComputedStyle(node)
+    if (style.overflowY !== 'scroll' && style.overflowY !== 'auto') continue
     const expanded = node.scrollHeight + node.offsetHeight - node.clientHeight
     node.style.setProperty('max-height', 'none', 'important')
-    node.style.setProperty('height', `${expanded}px`, 'important')
+    // 不把旧 scrollHeight 变成确定高度：100% 子块会再次撑满它，把末段挤回裁剪区。
+    node.style.setProperty('height', 'auto', 'important')
+    node.style.setProperty('min-height', `${expanded}px`, 'important')
+    // 横向 auto/scroll 会把纵向 visible 重新计算为 auto；仅保留静态打印所需的横向裁剪。
+    node.style.setProperty(
+      'overflow-x',
+      style.overflowX === 'visible' ? 'visible' : 'clip',
+      'important',
+    )
+    node.style.setProperty('overflow-y', 'visible', 'important')
     node.style.setProperty('box-sizing', 'border-box', 'important')
     node.style.setProperty('flex-shrink', '0', 'important')
   }
