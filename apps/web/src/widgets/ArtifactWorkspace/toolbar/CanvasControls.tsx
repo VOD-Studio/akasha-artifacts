@@ -66,8 +66,7 @@ export function CanvasToolbar({
   onFitPage,
   onFitSelection,
   visualEditActive,
-  onAddBoard,
-  canAddBoard,
+  artboardTool,
   onComment,
   history,
   arrangementMenu,
@@ -84,8 +83,7 @@ export function CanvasToolbar({
   onFitPage: (() => void) | undefined
   onFitSelection: (() => void) | undefined
   visualEditActive: boolean | undefined
-  onAddBoard?: () => void
-  canAddBoard?: boolean
+  artboardTool?: { active: boolean; disabled: boolean; toggle: () => void }
   onComment: () => void
   history?: Pick<CanvasBoardEditing, 'undo' | 'redo'>
   arrangementMenu?: ReactNode
@@ -115,7 +113,8 @@ export function CanvasToolbar({
     } else if (key === 'v') action = () => onChangeTool(false)
     else if (key === 'h') action = () => onChangeTool(true)
     else if (key === 'c') action = onComment
-    else if (key === 'f' && canAddBoard) action = onAddBoard
+    else if ((key === 'a' || key === 'f') && artboardTool && !artboardTool.disabled)
+      action = artboardTool.toggle
     else if (designTools && !designTools.disabled) {
       const tool = toolsByKey.get(key)
       if (tool) action = () => designTools.change(tool)
@@ -132,7 +131,7 @@ export function CanvasToolbar({
     return () => window.removeEventListener('keydown', handleKey)
   }, [])
   const [shapesOpen, setShapesOpen] = useState(false)
-  const selectActive = !hand && !designTools?.value && !visualEditActive
+  const selectActive = !hand && !designTools?.value && !artboardTool?.active && !visualEditActive
   const shape = designTools?.value?.kind
   const shapeActive = shape === 'rectangle' || shape === 'ellipse'
   const selectShape = (tool: DrawingTool) => {
@@ -282,16 +281,17 @@ export function CanvasToolbar({
           <Hand size={15} />
         </Button>
         {designTools && <DrawingButton tools={designTools} tool={DRAWING_TOOLS.text} />}
-        {onAddBoard ? (
+        {artboardTool ? (
           <Button
-            variant="ghost"
+            variant={artboardTool.active ? 'secondary' : 'ghost'}
             size="sm"
             iconOnly
             aria-label={t('添加画板')}
-            title={`${t('添加画板')} (F)`}
-            aria-keyshortcuts="F"
-            disabled={!canAddBoard}
-            onClick={onAddBoard}
+            title={`${t('添加画板')} (A)`}
+            aria-keyshortcuts="A"
+            aria-pressed={artboardTool.active}
+            disabled={artboardTool.disabled}
+            onClick={artboardTool.toggle}
           >
             <Frame size={15} />
           </Button>

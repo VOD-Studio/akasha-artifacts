@@ -25,6 +25,7 @@ import { useBoardGesture } from '../hooks/useBoardGesture'
 import { useBoardPresentation } from '../hooks/useBoardPresentation'
 import type { CanvasBoardEditing } from '../hooks/useCanvasBoardEditing'
 import { useCanvasCameraInput } from '../hooks/useCanvasCameraInput'
+import { useCanvasMarquee } from '../hooks/useCanvasMarquee'
 import { useCanvasShortcuts } from '../hooks/useCanvasShortcuts'
 import { useCanvasView } from '../hooks/useCanvasView'
 import type { CanvasTextTools } from '../hooks/useInlineCanvasText'
@@ -50,6 +51,7 @@ import { BoardPresentation } from './BoardPresentation'
 import { type CanvasBoardInput, CanvasBoardSurface } from './CanvasBoardSurface'
 import { CanvasBoardTile } from './CanvasBoardTile'
 import { CanvasFlowLines } from './CanvasFlowLines'
+import { CanvasArtboardPlacer, CanvasBlankDrawingOverlay } from './CanvasPlacementOverlay'
 
 /** 显式选板要求适配；元素指认与图层选择只在画板不可见时移动相机。 */
 export type InspectorReveal = CanvasLocation & { fit?: true }
@@ -83,6 +85,8 @@ interface ArtifactCanvasProps {
   exportVersion: VersionSummary
   exportSelectionRef?: Ref<() => CanvasExportSelection | undefined>
   renderBoard: (board: CanvasBoard, purpose: BoardFramePurpose, detailed: boolean) => ReactNode
+  /** 渲染画板边界之外的原生图层溢出，允许点击选中所属图层。 */
+  renderBoardOverflow?: (board: CanvasBoard, scale: number, interactive: boolean) => ReactNode
   /** 从最新的可见范围提交优先队列，不把占位板或遗留选区当成加载需求。 */
   onDemandChange: (ids: readonly string[], idle: boolean) => void
   canPlay: (board: CanvasBoard) => boolean
@@ -115,6 +119,7 @@ export function ArtifactCanvas({
   exportVersion,
   exportSelectionRef,
   renderBoard,
+  renderBoardOverflow,
   onDemandChange,
   canPlay,
   canAnimate,
@@ -126,8 +131,11 @@ export function ArtifactCanvas({
   const [keyboardBoard, setKeyboardBoard] = useState<string | null>(null)
   const [navigatorOpen, setNavigatorOpen] = useState(false)
   const [copyStatus, setCopyStatus] = useState('')
+  const [blankNotice, setBlankNotice] = useState('')
   const [hiddenGuideBoards, setHiddenGuideBoards] = useState<ReadonlySet<string>>(() => new Set())
   const [drawingTool, setDrawingTool] = useState<DrawingTool | null>(null)
+  const [artboardPlacing, setArtboardPlacing] = useState(false)
+  const [drawingDragging, setDrawingDragging] = useState(false)
   const presentation = useBoardPresentation(document, visible)
   const showOverview = visible && !presentation.focused && !presentation.playing
   const motion = useOverviewPlayback()
@@ -148,6 +156,7 @@ export function ArtifactCanvas({
     hand,
     setHand,
     selectBoard,
+    selectBoards,
     updateCamera,
     clearAddress,
     navigate: navigateView,
@@ -203,6 +212,9 @@ export function ArtifactCanvas({
   const navigate = (target: CanvasPage, boardId?: string | null) => {
     navigateView(target, boardId)
     setDrawingTool(null)
+    setArtboardPlacing(false)
+    setDrawingDragging(false)
+    setBlankNotice('')
     setNavigatorOpen(false)
     setCopyStatus('')
   }
@@ -253,9 +265,15 @@ export function ArtifactCanvas({
     navigatorOpen,
     closePresentation: activePresentation ? closePresentation : undefined,
     historyEditing,
-    cancelGesture: boardGesture.cancel,
+    cancelGesture: () => {
+      boardGesture.cancel()
+      marquee.cancel()
+    },
     clearSelection: () => {
       setDrawingTool(null)
+      setArtboardPlacing(false)
+      setDrawingDragging(false)
+      setBlankNotice('')
       setHand(false)
       onClearElement()
       visualEdit?.cancel()
@@ -263,6 +281,26 @@ export function ArtifactCanvas({
     },
   })
   const handActive = hand || space
+  const marquee = useCanvasMarquee({
+    enabled: Boolean(
+      showOverview &&
+        !handActive &&
+        !modifier &&
+        !drawingTool &&
+        !artboardPlacing &&
+        !visualEdit?.isPicking &&
+        !invalidAddress &&
+        page &&
+        !standalone,
+    ),
+    boards: page?.boards ?? [],
+    bounds: layout.bounds,
+    camera,
+    onCommit: (ids, additive) => {
+      onClearElement()
+      selectBoards(ids, additive)
+    },
+  })
   const { dragging, wheelActive, wasPinching, startPointer, movePointer, endPointer } =
     useCanvasCameraInput({
       viewportRef,
@@ -271,7 +309,9 @@ export function ArtifactCanvas({
       invalidAddress,
       pageId,
       handActive,
-      wheelLocked: Boolean(drawingTool || boardGesture.preview?.phase === 'dragging'),
+      wheelLocked: Boolean(
+        drawingDragging || boardGesture.preview?.phase === 'dragging' || marquee.active,
+      ),
       updateCamera,
     })
   const recent = useRef<{ index: typeof viewportIndex; ids: ReadonlySet<string> } | null>(null)
@@ -325,18 +365,31 @@ export function ArtifactCanvas({
   }, [plan.boards, showOverview])
   const boundsFor = (id: string) => moved?.get(id) ?? layout.bounds.get(id)
   const canDragBoards =
-    boardEditing?.available && !handActive && !modifier && !drawingTool && !visualEdit?.isPicking
+    boardEditing?.available &&
+    !handActive &&
+    !modifier &&
+    !drawingTool &&
+    !artboardPlacing &&
+    !visualEdit?.isPicking
 
   const setCanvasTool = (next: boolean) => {
     boardGesture.cancel()
+    marquee.cancel()
     setDrawingTool(null)
+    setArtboardPlacing(false)
+    setDrawingDragging(false)
+    setBlankNotice('')
     setHand(next)
     visualEdit?.cancel()
   }
 
   const pauseCanvasTools = () => {
     boardGesture.cancel()
+    marquee.cancel()
     setDrawingTool(null)
+    setArtboardPlacing(false)
+    setDrawingDragging(false)
+    setBlankNotice('')
     setNavigatorOpen(false)
     resetModifiers()
     visualEdit?.cancel()
@@ -386,7 +439,14 @@ export function ArtifactCanvas({
     }
   }
   const clickBackground = (event: MouseEvent<HTMLElement>) => {
-    if (event.target !== event.currentTarget || handActive || wasPinching.current || drawingTool)
+    if (marquee.consumeBackgroundClick()) return
+    if (
+      event.target !== event.currentTarget ||
+      handActive ||
+      wasPinching.current ||
+      drawingTool ||
+      artboardPlacing
+    )
       return
     onClearElement()
     selectBoard(null)
@@ -412,6 +472,14 @@ export function ArtifactCanvas({
             onStatus={setCopyStatus}
           />
           {historyEditing ? <CanvasBoardEditNotice editing={historyEditing} /> : null}
+          {blankNotice ? (
+            <p
+              role="status"
+              className="mt-1 max-w-xs rounded-md border border-border bg-surface px-3 py-2 text-xs text-ink shadow-sm"
+            >
+              {blankNotice}
+            </p>
+          ) : null}
         </div>
         {/* biome-ignore lint/a11y/useKeyWithClickEvents: 键盘用 Escape 清空同一选区；点击这里只处理空白。 */}
         <section
@@ -422,13 +490,58 @@ export function ArtifactCanvas({
           className="artifact-canvas"
           data-hand={handActive}
           data-dragging={dragging}
-          onPointerDown={startPointer}
-          onPointerMove={movePointer}
-          onPointerUp={endPointer}
-          onPointerCancel={endPointer}
-          onLostPointerCapture={endPointer}
+          onPointerDown={(event) => {
+            if (marquee.onPointerDown(event)) return
+            startPointer(event)
+          }}
+          onPointerMove={(event) => {
+            if (marquee.onPointerMove(event)) return
+            movePointer(event)
+          }}
+          onPointerUp={(event) => {
+            if (marquee.onPointerUp(event)) return
+            endPointer(event)
+          }}
+          onPointerCancel={(event) => {
+            marquee.cancel()
+            endPointer(event)
+          }}
+          onLostPointerCapture={(event) => {
+            marquee.cancel()
+            endPointer(event)
+          }}
           onClick={clickBackground}
         >
+          {showOverview &&
+          !invalidAddress &&
+          page &&
+          drawingTool &&
+          boardEditing?.available &&
+          !standalone ? (
+            <CanvasBlankDrawingOverlay
+              key={drawingTool.kind}
+              tool={drawingTool}
+              camera={camera}
+              boards={page.boards}
+              bounds={layout.bounds}
+              version={boardEditing.version}
+              onDraggingChange={setDrawingDragging}
+              onUnowned={() => {
+                setBlankNotice(t('空白画布区域不保存游离图层，请落入画板或跨越画板边界。'))
+                setDrawingTool(null)
+              }}
+              onCreate={(targetBoard, layer, base, anchor) => {
+                setBlankNotice('')
+                selectBoard(targetBoard.id)
+                setDrawingTool(null)
+                if (layer.kind === 'text' || layer.kind === 'note') {
+                  textTools?.place(targetBoard, layer, base, anchor)
+                } else {
+                  boardEditing.change({ kind: 'layerCreate', boardId: targetBoard.id, layer }, base)
+                }
+              }}
+            />
+          ) : null}
           {invalidAddress && (
             <div dir={dir} className="artifact-canvas-message">
               <p role="alert">{t(addressedPage ? '链接中的画板不存在' : '链接中的页面不存在')}</p>
@@ -464,6 +577,8 @@ export function ArtifactCanvas({
                   detailed &&
                   board === standalone &&
                   (!isPrototype(board) || Boolean(visualEdit?.isPicking))
+                const tileSelected =
+                  activeSelection.has(board.id) || marquee.previewIds.has(board.id)
                 return (
                   <CanvasBoardTile
                     key={board.id}
@@ -471,7 +586,7 @@ export function ArtifactCanvas({
                     page={page}
                     bounds={bounds}
                     camera={camera}
-                    isSelected={activeSelection.has(board.id)}
+                    isSelected={tileSelected}
                     primary={selected === board.id}
                     canDrag={Boolean(canDragBoards)}
                     gesture={boardGesture}
@@ -482,6 +597,13 @@ export function ArtifactCanvas({
                       onClearElement()
                       navigate(page, id)
                     }}
+                    overflow={
+                      renderBoardOverflow?.(
+                        board,
+                        camera.scale,
+                        !handActive && !drawingTool && !artboardPlacing && !visualEdit?.isPicking,
+                      ) ?? null
+                    }
                     actions={
                       <>
                         {board === standalone && visualEdit && (
@@ -492,6 +614,7 @@ export function ArtifactCanvas({
                             onClick={() => {
                               setHand(false)
                               setDrawingTool(null)
+                              setArtboardPlacing(false)
                               visualEdit.toggle()
                             }}
                           >
@@ -530,7 +653,12 @@ export function ArtifactCanvas({
                       selectBoard={selectBoard}
                       onClearElement={onClearElement}
                       onSelectPoint={detailed ? onSelectPoint : undefined}
-                      onDrawingEnd={() => setDrawingTool(null)}
+                      onDrawingEnd={() => {
+                        setDrawingTool(null)
+                        setDrawingDragging(false)
+                        setBlankNotice('')
+                      }}
+                      onDraggingChange={setDrawingDragging}
                     >
                       {renderBoard(
                         board,
@@ -552,6 +680,47 @@ export function ArtifactCanvas({
               {t('此页面没有画板')}
             </p>
           )}
+          {marquee.box ? (
+            <div
+              data-testid="canvas-marquee"
+              aria-hidden="true"
+              className="artifact-canvas-marquee"
+              style={{
+                left: marquee.box.x,
+                top: marquee.box.y,
+                width: marquee.box.width,
+                height: marquee.box.height,
+              }}
+            />
+          ) : null}
+          {artboardPlacing && boardEditing && page && !invalidAddress ? (
+            <CanvasArtboardPlacer
+              camera={camera}
+              version={boardEditing.version}
+              size={size}
+              onDraggingChange={setDrawingDragging}
+              onCancel={() => setArtboardPlacing(false)}
+              onPlace={(bounds, base) => {
+                setArtboardPlacing(false)
+                setBlankNotice('')
+                const id = crypto.randomUUID()
+                void boardEditing
+                  .change(
+                    {
+                      kind: 'create',
+                      id,
+                      title: t('画板 {index}', { index: page.boards.length + 1 }),
+                      pageId: page.id,
+                      bounds,
+                    },
+                    base,
+                  )
+                  .then((ok) => {
+                    if (ok) selectBoard(id)
+                  })
+              }}
+            />
+          ) : null}
         </section>
         <CanvasToolbar
           camera={camera}
@@ -584,19 +753,22 @@ export function ArtifactCanvas({
                 }
               : undefined
           }
-          onAddBoard={
+          artboardTool={
             boardEditing && page && !invalidAddress
-              ? () => {
-                  boardEditing.change({
-                    kind: 'create',
-                    id: crypto.randomUUID(),
-                    title: t('画板 {index}', { index: page.boards.length + 1 }),
-                    pageId: page.id,
-                  })
+              ? {
+                  active: artboardPlacing,
+                  disabled: !boardEditing.available,
+                  toggle: () => {
+                    if (artboardPlacing) {
+                      setArtboardPlacing(false)
+                    } else {
+                      setCanvasTool(false)
+                      setArtboardPlacing(true)
+                    }
+                  },
                 }
               : undefined
           }
-          canAddBoard={boardEditing?.available}
           onComment={onComment}
           history={historyEditing}
           arrangementMenu={

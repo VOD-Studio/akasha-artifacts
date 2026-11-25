@@ -1,6 +1,7 @@
 import {
   type AnnotationThread,
   type ArtifactWorkspaceDetail,
+  DESIGN_LAYER_BLOCK_PREFIX,
   type ElementRef,
   type Feedback,
   isAnnotationKind,
@@ -43,6 +44,7 @@ import { BoardResources } from './model/board-resources'
 import { createBoardTweakPreviewStore } from './model/board-tweak-previews'
 import { ArtifactCanvas, type InspectorReveal } from './ui/ArtifactCanvas'
 import { ArtifactFrame, type BoardFramePurpose, type FrameConnection } from './ui/ArtifactFrame'
+import { BoardOverflowLayers } from './ui/BoardOverflowLayers'
 import { BoardResourceView, readLoadedBoard, useBoardResource } from './ui/BoardResourceView'
 import { InlineCanvasText } from './ui/InlineCanvasText'
 
@@ -547,6 +549,31 @@ export function ArtifactWorkspace({
     ],
   )
 
+  const selectOverflowLayer = useCallback(
+    (boardId: string, layerId: string) => {
+      const page = savedCanvas.pages.find((entry) => entry.boards.some((b) => b.id === boardId))
+      if (page) revealBoard({ pageId: page.id, boardId })
+      handleHighlightElement({
+        boardId,
+        blockId: `${DESIGN_LAYER_BLOCK_PREFIX}${layerId}`,
+      })
+    },
+    [handleHighlightElement, revealBoard, savedCanvas.pages],
+  )
+  const renderBoardOverflow = useCallback(
+    (board: CanvasBoard, scale: number, interactive: boolean) =>
+      board.scoped ? (
+        <BoardOverflowEntry
+          board={board}
+          resources={resources}
+          scale={scale}
+          interactive={interactive}
+          onSelectLayer={selectOverflowLayer}
+        />
+      ) : null,
+    [resources, selectOverflowLayer],
+  )
+
   const openCodeEditor = () => {
     setInspectorTab(null)
     useWorkspaceStore.getState().setViewMode('edit')
@@ -617,6 +644,7 @@ export function ArtifactWorkspace({
                 : undefined
             }
             renderBoard={renderBoard}
+            renderBoardOverflow={renderBoardOverflow}
             onDemandChange={onDemandChange}
             canPlay={canPlay}
             canAnimate={canAnimate}
@@ -712,6 +740,32 @@ export function ArtifactWorkspace({
         />
       ) : null}
     </div>
+  )
+}
+
+function BoardOverflowEntry({
+  board,
+  resources,
+  scale,
+  interactive,
+  onSelectLayer,
+}: {
+  board: CanvasBoard
+  resources: BoardResources
+  scale: number
+  interactive: boolean
+  onSelectLayer: (boardId: string, layerId: string) => void
+}) {
+  const { loadedBoard } = useBoardResource(board, resources)
+  const resolved = loadedBoard ?? board
+  return (
+    <BoardOverflowLayers
+      board={resolved}
+      layers={resolved.designLayers}
+      scale={scale}
+      interactive={interactive}
+      onSelectLayer={onSelectLayer}
+    />
   )
 }
 

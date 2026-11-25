@@ -75,7 +75,39 @@ export function CanvasArrangeMenu({ selected, bounds, editing }: ArrangeMenuProp
             </Button>
           ))}
         </div>
-        <div className="flex gap-1 border-t border-border pt-2">
+        <div className="flex flex-wrap gap-1 border-t border-border pt-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={!canAlign}
+            onClick={() => {
+              editing.change({
+                kind: 'boardFlip',
+                ids: selected.map((board) => board.id),
+                bounds,
+                axis: 'horizontal',
+              })
+              setOpen(false)
+            }}
+          >
+            {t('水平翻转')}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={!canAlign}
+            onClick={() => {
+              editing.change({
+                kind: 'boardFlip',
+                ids: selected.map((board) => board.id),
+                bounds,
+                axis: 'vertical',
+              })
+              setOpen(false)
+            }}
+          >
+            {t('垂直翻转')}
+          </Button>
           <Button
             variant="ghost"
             size="sm"

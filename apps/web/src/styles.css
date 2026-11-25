@@ -288,6 +288,55 @@ body,
   z-index: 2;
 }
 
+.artifact-canvas-marquee {
+  position: absolute;
+  z-index: 3;
+  border: 1px solid var(--primary);
+  background: color-mix(in oklab, var(--primary) 14%, transparent);
+  pointer-events: none;
+}
+
+.artifact-canvas-placement {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  cursor: crosshair;
+  touch-action: none;
+  border: 0;
+  background: transparent;
+}
+
+.artifact-canvas-layer-focus {
+  position: absolute;
+  z-index: 3;
+  border: 2px solid var(--primary);
+  border-radius: 3px;
+  background: transparent;
+  pointer-events: none;
+}
+
+.artifact-canvas-layer-focus:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.artifact-canvas-selection-toolbar {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 6px;
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 12%);
+}
+
 .artifact-canvas-board-title:focus-visible,
 .artifact-canvas-nav-item:focus-visible {
   outline: 2px solid var(--ring);

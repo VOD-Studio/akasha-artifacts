@@ -26,6 +26,7 @@ interface CanvasBoardSurfaceProps {
   selectBoard: (id: string, additive?: boolean) => void
   onSelectPoint?: (boardId: string, point: Point) => void
   onDrawingEnd: () => void
+  onDraggingChange?: (dragging: boolean) => void
   children: ReactNode
 }
 
@@ -41,6 +42,7 @@ export function CanvasBoardSurface({
   selectBoard,
   onSelectPoint,
   onDrawingEnd,
+  onDraggingChange,
   children,
 }: CanvasBoardSurfaceProps) {
   const { t } = useMessages(canvasToolsMessages)
@@ -63,37 +65,51 @@ export function CanvasBoardSurface({
     textTools.pick(board, point, { x: event.clientX, y: event.clientY })
   }
   return (
-    <div
-      className="artifact-canvas-board-clip"
-      style={board.cornerRadius ? { borderRadius: board.cornerRadius * scale } : undefined}
-    >
+    <>
       <div
-        style={{
-          width: board.width,
-          height: board.height,
-          transform: `scale(${scale})`,
-        }}
-        className="artifact-canvas-board-frame"
+        className="artifact-canvas-board-clip"
+        style={board.cornerRadius ? { borderRadius: board.cornerRadius * scale } : undefined}
       >
-        {children}
-        {board.layoutGuides?.length && showGuides ? (
-          <BoardLayoutGuides
-            width={board.width}
-            height={board.height}
-            guides={board.layoutGuides}
+        <div
+          style={{
+            width: board.width,
+            height: board.height,
+            transform: `scale(${scale})`,
+          }}
+          className="artifact-canvas-board-frame"
+        >
+          {children}
+          {board.layoutGuides?.length && showGuides ? (
+            <BoardLayoutGuides
+              width={board.width}
+              height={board.height}
+              guides={board.layoutGuides}
+            />
+          ) : null}
+        </div>
+        {/* 抓手与组合键缩放由外层捕获，不依赖跨域 iframe 冒泡。 */}
+        {input === 'gesture' && (
+          <div aria-hidden="true" data-gesture className="artifact-canvas-board-hit" />
+        )}
+        {input === 'select' && (
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label={t('选择画板：{title}', { title: board.title })}
+            className="artifact-canvas-board-hit"
+            onClick={activateContent}
+            onDoubleClick={editText}
           />
-        ) : null}
+        )}
       </div>
-      {/* 抓手与组合键缩放由外层捕获，不依赖跨域 iframe 冒泡。 */}
-      {input === 'gesture' && (
-        <div aria-hidden="true" data-gesture className="artifact-canvas-board-hit" />
-      )}
+      {/* 绘制层与裁切盒平级，使跨板边界的图形与节点路径预览不被板边裁掉。 */}
       {typeof input === 'object' && (
         <BoardDrawingSurface
           key={input.tool.kind}
           board={board}
           tool={input.tool}
           version={input.editing.version}
+          onDraggingChange={onDraggingChange}
           onCreate={(layer, base, anchor) => {
             selectBoard(board.id)
             onDrawingEnd()
@@ -105,17 +121,7 @@ export function CanvasBoardSurface({
           }}
         />
       )}
-      {input === 'select' && (
-        <button
-          type="button"
-          tabIndex={-1}
-          aria-label={t('选择画板：{title}', { title: board.title })}
-          className="artifact-canvas-board-hit"
-          onClick={activateContent}
-          onDoubleClick={editText}
-        />
-      )}
-    </div>
+    </>
   )
 }
 

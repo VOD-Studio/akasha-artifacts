@@ -291,6 +291,34 @@ export function useCanvasView({
     })
   }
 
+  const selectBoards = (boardIds: readonly string[], additive = false) => {
+    if (!page || invalidAddress) return
+    if (boardIds.length || requestedBoard !== null) clearAddress()
+    pendingFocus.current = null
+    const id = page.id
+    const valid = new Set(page.boards.map((board) => board.id))
+    const picked = boardIds.filter((entry) => valid.has(entry))
+    setView((prev) => {
+      const current = pageViewFor(prev, id)
+      const merged = new Set(additive ? layoutSelectionIds(page.boards, current) : [])
+      for (const entry of picked) merged.add(entry)
+      const ordered = page.boards.filter((board) => merged.has(board.id)).map((board) => board.id)
+      const primary =
+        current.selected && merged.has(current.selected) ? current.selected : (ordered[0] ?? null)
+      const camera =
+        current.camera?.fit === 'board' ? { ...current.camera, fit: null } : current.camera
+      return {
+        ...prev,
+        pageId: id,
+        address: !ordered.length && requestedBoard === null ? (prev.address ?? '') : '',
+        pages: {
+          ...prev.pages,
+          [id]: { camera, selected: primary, selectedIds: ordered.length ? ordered : undefined },
+        },
+      }
+    })
+  }
+
   const updateCamera = (transform: (camera: Camera) => Camera) => {
     if (!page || invalidAddress) return
     const id = page.id
@@ -320,6 +348,7 @@ export function useCanvasView({
     hand,
     setHand,
     selectBoard,
+    selectBoards,
     updateCamera,
     clearAddress,
     navigate,
