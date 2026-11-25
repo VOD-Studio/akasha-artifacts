@@ -1,6 +1,8 @@
 import type { CanvasLayer } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { useEffect, useMemo, useRef } from 'react'
+import { useMessages } from '@/shared/i18n'
+import { panelMessages } from './messages'
 
 interface LayerTreeProps {
   layers: readonly CanvasLayer[]
@@ -20,6 +22,7 @@ interface LayerNodeProps extends Omit<LayerTreeProps, 'layers'> {
 
 /** 图层树只展开 DOM 真正的父子关系，选择用按钮的原生键盘语义。 */
 export function LayerTree({ layers, selectedId, selectedIds, onSelect }: LayerTreeProps) {
+  const { t } = useMessages(panelMessages)
   const tree = useRef<HTMLUListElement>(null)
   useEffect(() => {
     if (!selectedId) return
@@ -50,7 +53,7 @@ export function LayerTree({ layers, selectedId, selectedIds, onSelect }: LayerTr
   const opened = new Set<string>()
   for (let cursor = selectedId; cursor; cursor = parents.get(cursor)) opened.add(cursor)
   return (
-    <ul ref={tree} aria-label="画板图层" className="space-y-0.5 pl-2">
+    <ul ref={tree} aria-label={t('画板图层')} className="space-y-0.5 ps-2">
       {groups.get('')?.map((layer) => (
         <LayerNode
           key={layer.id}
@@ -67,6 +70,7 @@ export function LayerTree({ layers, selectedId, selectedIds, onSelect }: LayerTr
 }
 
 function LayerNode({ layer, groups, opened, selectedId, selectedIds, onSelect }: LayerNodeProps) {
+  const { t } = useMessages(panelMessages)
   const label = layer.label || `<${layer.tag}>`
   const selected = selectedId === layer.id || Boolean(selectedIds?.has(layer.id))
   const children = groups.get(layer.id)
@@ -79,7 +83,7 @@ function LayerNode({ layer, groups, opened, selectedId, selectedIds, onSelect }:
       className="w-full min-w-0 justify-start"
       onClick={(event) => onSelect(layer, event.shiftKey)}
     >
-      <span className="truncate">{label}</span>
+      <bdi className="truncate">{label}</bdi>
     </Button>
   )
   return (
@@ -87,9 +91,9 @@ function LayerNode({ layer, groups, opened, selectedId, selectedIds, onSelect }:
       {children?.length ? (
         <details open={!layer.parentId || opened.has(layer.id) || undefined}>
           <summary className="cursor-pointer truncate rounded px-2 py-1 text-xs text-ink-muted">
-            {label} · {children.length} 个子图层
+            {t('{label} · {count} 个子图层', { label, count: children.length })}
           </summary>
-          <div className="ml-2 border-l border-border pl-2">
+          <div className="ml-2 border-s border-border ps-2">
             {button}
             <ul>
               {children.map((child) => (

@@ -43,7 +43,7 @@ it('只重试失败的板，回到已读区域时复用正文，退出版本时�
   requests[0]?.fail(new Error('暂时失败'))
   requests[1]?.fulfill()
   await Promise.resolve()
-  expect(resources.get('a')).toMatchObject({ type: 'error', message: '暂时失败' })
+  expect(resources.get('a')).toMatchObject({ type: 'error', cause: new Error('暂时失败') })
   resources.setDemand([], false)
   resources.setDemand(['b', 'a'], false)
   resources.retry('a')

@@ -146,7 +146,7 @@ it('收到受理响应前关闭并重开，继续跟踪同一个会话且不重�
       <LibraryShell onOpenArtifact={vi.fn()} />
     </QueryClientProvider>,
   )
-  fireEvent.click(screen.getByRole('button', { name: '新建设计' }))
+  fireEvent.click(await screen.findByRole('button', { name: '新建设计' }))
   await screen.findByRole('combobox', { name: '项目' })
   await choose('项目', '预约项目')
   await choose('发布 Agent', '本机 Codex')

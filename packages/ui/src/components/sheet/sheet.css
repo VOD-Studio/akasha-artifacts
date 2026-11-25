@@ -26,11 +26,11 @@
   }
 
   .v-sheet[data-side="right"] {
-    inset-inline-end: 12px;
+    right: 12px;
   }
 
   .v-sheet[data-side="left"] {
-    inset-inline-start: 12px;
+    left: 12px;
   }
 
   .v-sheet--sm {

@@ -11,8 +11,10 @@ import { SearchInput } from '@akasha/ui/input'
 import { ChevronDown, LayoutGrid, List, Star } from 'lucide-react'
 import { type ReactNode, useEffect, useRef } from 'react'
 import { useWorkspaceStore } from '@/entities/workspace'
-import { ARTIFACT_TYPE_LABELS } from '@/shared/lib/format'
+import { useMessages } from '@/shared/i18n'
+import { artifactTypeLabel } from '@/shared/lib/format'
 import { useLibraryView } from './library-view'
+import { messages } from './messages'
 
 interface FilterMenuProps {
   label: string
@@ -22,8 +24,9 @@ interface FilterMenuProps {
 }
 
 function FilterMenu({ label, summary, value, children }: FilterMenuProps) {
+  const { dir } = useMessages(messages)
   return (
-    <DropdownMenu>
+    <DropdownMenu dir={dir}>
       <DropdownMenuTrigger asChild>
         <Button
           size="sm"
@@ -51,6 +54,7 @@ interface LibraryToolbarProps {
 
 /** 库页只提供一个搜索输入框，键盘快捷键与点按共用其当前查询。 */
 export function LibraryToolbar({ projects, types, favoritesAvailable }: LibraryToolbarProps) {
+  const { t, locale } = useMessages(messages)
   const searchRef = useRef<HTMLInputElement>(null)
   const search = useLibraryView((state) => state.search)
   const type = useLibraryView((state) => state.type)
@@ -77,12 +81,13 @@ export function LibraryToolbar({ projects, types, favoritesAvailable }: LibraryT
   }, [])
 
   return (
-    <section aria-label="搜索与筛选" className="flex flex-wrap items-center gap-2">
+    <section aria-label={t('搜索与筛选')} className="flex flex-wrap items-center gap-2">
       <div className="min-w-0 flex-1 basis-52">
         <SearchInput
           ref={searchRef}
-          aria-label="搜索作品"
-          placeholder="搜索作品"
+          aria-label={t('搜索作品')}
+          placeholder={t('搜索作品')}
+          clearLabel={t('清除搜索')}
           controlSize="sm"
           shortcut={['mod', 'K']}
           value={search}
@@ -90,29 +95,29 @@ export function LibraryToolbar({ projects, types, favoritesAvailable }: LibraryT
         />
       </div>
       <FilterMenu
-        label="筛选项目"
-        summary={currentProject?.name ?? '全部项目'}
+        label={t('筛选项目')}
+        summary={currentProject?.name ?? t('全部项目')}
         value={currentProjectId ?? ''}
       >
         <DropdownMenuRadioItem value="" onSelect={() => setProject(null)}>
-          全部项目
+          {t('全部项目')}
         </DropdownMenuRadioItem>
         {projects.map((item) => (
           <DropdownMenuRadioItem key={item.id} value={item.id} onSelect={() => setProject(item.id)}>
-            {item.name}
+            <bdi>{item.name}</bdi>
           </DropdownMenuRadioItem>
         ))}
       </FilterMenu>
       <FilterMenu
-        label="筛选类型"
-        summary={type === 'all' ? '全部类型' : ARTIFACT_TYPE_LABELS[type]}
+        label={t('筛选类型')}
+        summary={type === 'all' ? t('全部类型') : artifactTypeLabel(type, locale)}
         value={type}
       >
         <DropdownMenuRadioItem
           value="all"
           onSelect={() => useLibraryView.setState({ type: 'all' })}
         >
-          全部类型
+          {t('全部类型')}
         </DropdownMenuRadioItem>
         {types.map((item) => (
           <DropdownMenuRadioItem
@@ -120,26 +125,26 @@ export function LibraryToolbar({ projects, types, favoritesAvailable }: LibraryT
             value={item}
             onSelect={() => useLibraryView.setState({ type: item })}
           >
-            {ARTIFACT_TYPE_LABELS[item]}
+            {artifactTypeLabel(item, locale)}
           </DropdownMenuRadioItem>
         ))}
       </FilterMenu>
       <FilterMenu
-        label="排序方式"
-        summary={order === 'recent' ? '最近更新' : '按标题'}
+        label={t('排序方式')}
+        summary={order === 'recent' ? t('最近更新') : t('按标题')}
         value={order}
       >
         <DropdownMenuRadioItem
           value="recent"
           onSelect={() => useLibraryView.setState({ order: 'recent' })}
         >
-          最近更新
+          {t('最近更新')}
         </DropdownMenuRadioItem>
         <DropdownMenuRadioItem
           value="title"
           onSelect={() => useLibraryView.setState({ order: 'title' })}
         >
-          按标题
+          {t('按标题')}
         </DropdownMenuRadioItem>
       </FilterMenu>
       {favoritesAvailable ? (
@@ -150,11 +155,11 @@ export function LibraryToolbar({ projects, types, favoritesAvailable }: LibraryT
           leftIcon={<Star size={14} />}
           onClick={() => useLibraryView.setState({ favoritesOnly: !favoritesOnly })}
         >
-          仅收藏
+          {t('仅收藏')}
         </Button>
       ) : null}
       <fieldset className="ms-auto flex items-center gap-1">
-        <legend className="sr-only">显示方式</legend>
+        <legend className="sr-only">{t('显示方式')}</legend>
         <Button
           size="sm"
           variant={layout === 'cards' ? 'secondary' : 'ghost'}
@@ -162,7 +167,7 @@ export function LibraryToolbar({ projects, types, favoritesAvailable }: LibraryT
           leftIcon={<LayoutGrid size={14} />}
           onClick={() => useLibraryView.setState({ layout: 'cards' })}
         >
-          卡片
+          {t('卡片')}
         </Button>
         <Button
           size="sm"
@@ -171,7 +176,7 @@ export function LibraryToolbar({ projects, types, favoritesAvailable }: LibraryT
           leftIcon={<List size={14} />}
           onClick={() => useLibraryView.setState({ layout: 'list' })}
         >
-          列表
+          {t('列表')}
         </Button>
       </fieldset>
     </section>

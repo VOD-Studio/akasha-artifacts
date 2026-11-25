@@ -1,5 +1,7 @@
 import { ApiError } from '@/shared/api/error'
 import { requestJson } from '@/shared/api/request'
+import { getMessages } from '@/shared/i18n'
+import { messages } from '../messages'
 
 interface HubSession {
   /** 未登录时为 `null`；已登录也可能不是当前 Hub 的成员。 */
@@ -11,7 +13,8 @@ export async function fetchHubSession(): Promise<HubSession> {
   try {
     return await requestJson('/api/v1/auth/session', undefined, 'workbench')
   } catch (error) {
-    if (error instanceof ApiError) throw new Error('无法读取登录状态', { cause: error })
+    if (error instanceof ApiError)
+      throw new Error(getMessages(messages).t('无法读取登录状态'), { cause: error })
     throw error
   }
 }
@@ -21,7 +24,8 @@ export async function endHubSession(): Promise<void> {
   try {
     await requestJson('/api/v1/auth/logout', { method: 'POST' }, 'workbench')
   } catch (error) {
-    if (error instanceof ApiError) throw new Error('退出失败', { cause: error })
+    if (error instanceof ApiError)
+      throw new Error(getMessages(messages).t('退出失败'), { cause: error })
     throw error
   }
 }

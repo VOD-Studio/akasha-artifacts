@@ -2,11 +2,12 @@
 import { projectArtboard } from '@akasha/protocol'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { HubAccountButton } from '@/features/hub'
 import { type ArtifactDetailResponse, artifactKeys } from '../src/entities/artifact'
 import { createAppRouter } from '../src/routes/router'
+import { setLocale } from '../src/shared/i18n'
 
 const publicId = 'WorkBenchCanvasExample'
 const projectId = 'workbench-project'
@@ -44,6 +45,7 @@ function openWorkspace(
   canManage = true,
   detailFailure?: number,
   sourceFailure?: number,
+  startAt = `/a/${publicId}${hub ? '?shared=1' : ''}`,
 ) {
   vi.stubGlobal('__AKASHA_CONFIG__', { hub, sandboxOrigin: 'http://127.0.0.1:24331' })
   vi.stubGlobal('matchMedia', () => ({
@@ -51,6 +53,14 @@ function openWorkspace(
     addEventListener() {},
     removeEventListener() {},
   }))
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1440)
   vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(900)
@@ -96,21 +106,115 @@ function openWorkspace(
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   })
   client.setQueryData(artifactKeys.management(publicId), { canManage })
-  const router = createAppRouter(
-    createMemoryHistory({ initialEntries: [`/a/${publicId}${hub ? '?shared=1' : ''}`] }),
-  )
+  const router = createAppRouter(createMemoryHistory({ initialEntries: [startAt] }))
   render(
     <QueryClientProvider client={client}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   )
+  return {
+    router,
+    denyAccess: () => {
+      failDetailWith = 403
+    },
+  }
 }
 
 afterEach(() => {
   cleanup()
+  setLocale('zh-CN')
   sessionStorage.clear()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+})
+
+const journeys = [
+  ['zh-CN', '简体中文', '批注', '批注与评审', '关闭', '导出画板：确认订单', '导出范围'],
+  [
+    'en',
+    'English',
+    'Comments',
+    'Comments and review',
+    'Close',
+    'Export artboard: 确认订单',
+    'Export scope',
+  ],
+  [
+    'de',
+    'Deutsch',
+    'Kommentare',
+    'Kommentare und Review',
+    'Schließen',
+    'Zeichenfläche exportieren: 确认订单',
+    'Exportumfang',
+  ],
+  [
+    'ar',
+    'العربية',
+    'تعليقات',
+    'التعليقات والمراجعة',
+    'إغلاق',
+    'تصدير لوحة الرسم: 确认订单',
+    'نطاق التصدير',
+  ],
+] as const
+
+it.each(journeys)(
+  '%s 从作品库选板、审阅并导出同一份作者画稿',
+  async (locale, name, comments, panelTitle, close, exportAction, scope) => {
+    const { router } = openWorkspace(false, true, undefined, undefined, '/')
+    const link = await screen.findByRole('link', { name: title })
+    const language = screen.getByRole('button', { name: '界面语言' })
+    fireEvent.keyDown(language, { key: 'ArrowDown' })
+    fireEvent.click(await screen.findByRole('menuitemradio', { name }))
+    await waitFor(() => expect(document.documentElement.lang).toBe(locale))
+    expect(document.documentElement.dir).toBe(locale === 'ar' ? 'rtl' : 'ltr')
+    expect(screen.getByRole('link', { name: title })).toBe(link)
+    fireEvent.click(link)
+    const board = await screen.findByRole('button', { name: '确认订单' })
+    fireEvent.click(board)
+    const address = router.state.location.href
+    const comment = within(screen.getByRole('banner')).getByRole('button', { name: comments })
+    fireEvent.click(comment)
+    const panel = await screen.findByRole('dialog', { name: panelTitle })
+    expect(panel.getAttribute('aria-modal')).toBe('false')
+    expect(panel.getAttribute('data-side')).toBe(locale === 'ar' ? 'left' : 'right')
+    fireEvent.click(within(panel).getByRole('button', { name: close }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: panelTitle })).toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: exportAction }))
+    const range = await screen.findByRole('combobox', { name: scope })
+    await waitFor(() => expect(range.textContent).toContain('确认订单'))
+    expect(router.state.location.href).toBe(address)
+    expect(board.getAttribute('aria-pressed')).toBe('true')
+  },
+)
+
+it('普通断线保留画布，实时服务拒绝订阅后重新查权并撤下缓存画面', async () => {
+  const sockets: { onclose?: (event: CloseEvent) => void }[] = []
+  vi.stubGlobal(
+    'WebSocket',
+    class {
+      onclose?: (event: CloseEvent) => void
+      constructor() {
+        sockets.push(this)
+      }
+      close() {}
+    },
+  )
+  const { denyAccess } = openWorkspace(true, false)
+  const board = await screen.findByRole('button', { name: '确认订单' })
+  const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+  fireEvent(window, new Event('offline'))
+  await screen.findByText('离线')
+  expect(screen.getByRole('button', { name: '确认订单' })).toBe(board)
+  online.mockReturnValue(true)
+  fireEvent(window, new Event('online'))
+  await waitFor(() => expect(screen.queryByText('离线')).toBeNull())
+  denyAccess()
+  await act(async () => sockets.at(-1)?.onclose?.(new CloseEvent('close', { code: 4403 })))
+  await screen.findByText('没有查看权限')
+  expect(screen.queryByRole('button', { name: '确认订单' })).toBeNull()
+  expect(screen.queryByRole('button', { name: '重试' })).toBeNull()
 })
 
 it('切换会话不重建画板，保留选区、倍率、草稿并归还焦点', async () => {

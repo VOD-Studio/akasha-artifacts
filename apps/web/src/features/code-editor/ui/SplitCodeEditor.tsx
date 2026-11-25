@@ -13,8 +13,12 @@ import { Code2, RotateCcw, Save } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { fetchArtifactDetail, parseVersionConflictDetails } from '@/entities/artifact'
+import { getRequestErrorMessage } from '@/shared/api/error'
+import { useMessages } from '@/shared/i18n'
 import { useSaveHumanVersionMutation } from '../api/save-human-version'
+import { messages } from '../messages'
 import { ConflictResolutionBanner, type EditorConflictState } from './ConflictResolutionBanner'
+import { editorLanguage, updateEditorLanguage } from './editor-language'
 
 export interface SplitCodeEditorProps {
   artifact: Artifact
@@ -65,6 +69,9 @@ export function SplitCodeEditor({
   onVersionSaved,
   onVersionAdopted,
 }: SplitCodeEditorProps) {
+  const { t, locale } = useMessages(messages)
+  const editorLabel = t('代码编辑区')
+  const languageRef = useRef({ locale, label: editorLabel })
   const hostRef = useRef<HTMLElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const saveMutation = useSaveHumanVersionMutation(artifact.publicId, notifyAgent)
@@ -212,9 +219,9 @@ export function SplitCodeEditor({
           onLivePreviewChange?.(res.version.source === version.source ? null : res.version.source)
         }
         toast.success(
-          editedWhileSaving
-            ? `已保存为 v${res.version.version}，还有未保存的改动`
-            : `已保存为 v${res.version.version}`,
+          t(editedWhileSaving ? '已保存为 {version}，还有未保存的改动' : '已保存为 {version}', {
+            version: `v${res.version.version}`,
+          }),
         )
         onVersionSaved?.(res.version)
       } catch (err) {
@@ -231,7 +238,7 @@ export function SplitCodeEditor({
             localSource: draftSourceRef.current,
           })
         } else {
-          toast.error(err instanceof Error ? err.message : '保存失败')
+          toast.error(getRequestErrorMessage(err, t('保存失败')))
         }
       } finally {
         savingRef.current = false
@@ -247,6 +254,7 @@ export function SplitCodeEditor({
       onVersionSaved,
       replaceEditorDoc,
       saveMutation,
+      t,
       version.source,
     ],
   )
@@ -277,6 +285,7 @@ export function SplitCodeEditor({
       doc: draftSourceRef.current,
       extensions: [
         basicSetup,
+        editorLanguage(languageRef.current.locale, languageRef.current.label),
         languageExtensionFor(artifact.type, draftSourceRef.current),
         saveKeymap,
         EditorView.theme({
@@ -309,6 +318,12 @@ export function SplitCodeEditor({
     }
   }, [artifact.publicId, artifact.type])
 
+  useEffect(() => {
+    if (languageRef.current.locale === locale && languageRef.current.label === editorLabel) return
+    languageRef.current = { locale, label: editorLabel }
+    if (viewRef.current) updateEditorLanguage(viewRef.current, locale, editorLabel)
+  }, [locale, editorLabel])
+
   const handleDiscard = () => {
     setDraftSource(baseSource)
     setConflict(null)
@@ -324,7 +339,7 @@ export function SplitCodeEditor({
         const fresh = await fetchArtifactDetail(artifact.publicId)
         target = fresh.version
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : '无法打开最新版本')
+        toast.error(getRequestErrorMessage(err, t('无法打开最新版本')))
         return
       }
     }
@@ -336,20 +351,22 @@ export function SplitCodeEditor({
     // 立即将最新源码同步到相邻预览，并通知外层路由从历史版本切换回 HEAD
     onLivePreviewChange?.(target.source === version.source ? null : target.source)
     onVersionAdopted?.(target)
-    toast.success(`已打开最新版本 v${target.version}`)
+    toast.success(t('已打开最新版本 {version}', { version: `v${target.version}` }))
   }
 
   return (
     <div
       data-testid="l3-code-editor"
-      className="flex h-full min-h-0 flex-col border-r border-border bg-surface"
+      className="flex h-full min-h-0 flex-col border-e border-border bg-surface"
     >
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-surface-subtle px-3 py-2">
         <div className="flex items-center gap-2 text-xs">
           <Code2 size={14} className="text-ink-muted" />
-          <span className="font-semibold text-ink">代码编辑</span>
-          <Badge tone="neutral">v{baseVersion}</Badge>
-          {isDirty && <Badge tone="warning">未保存</Badge>}
+          <span className="font-semibold text-ink">{t('代码编辑')}</span>
+          <Badge tone="neutral">
+            <bdi dir="ltr">v{baseVersion}</bdi>
+          </Badge>
+          {isDirty && <Badge tone="warning">{t('未保存')}</Badge>}
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -361,7 +378,7 @@ export function SplitCodeEditor({
               disabled={saving}
               onClick={handleDiscard}
             >
-              放弃草稿
+              {t('放弃草稿')}
             </Button>
           ) : null}
           <Button
@@ -371,10 +388,10 @@ export function SplitCodeEditor({
             disabled={!isDirty}
             loading={saving}
             onClick={() => void performSave()}
-            title="保存为新版本"
+            title={t('保存为新版本')}
           >
-            保存
-            <span className="ml-1 opacity-80">
+            {t('保存')}
+            <span dir="ltr" className="ms-1 opacity-80">
               <Kbd size="sm" keys={['mod', 'S']} />
             </span>
           </Button>
@@ -391,7 +408,12 @@ export function SplitCodeEditor({
         />
       ) : null}
 
-      <section ref={hostRef} className="min-h-0 flex-1 overflow-hidden" aria-label="代码编辑区" />
+      <section
+        dir="ltr"
+        ref={hostRef}
+        className="min-h-0 flex-1 overflow-hidden"
+        aria-label={t('代码编辑区')}
+      />
     </div>
   )
 }

@@ -32,6 +32,7 @@ import {
   PickerPanel,
 } from '../../lib/picker-panel'
 import { type ListboxItem, type UseListboxResult, useListbox } from '../../lib/use-listbox'
+import { useUiLocale } from '../../locale'
 import { iconProps } from '../icons'
 import { Spinner } from '../indicator'
 import { type InputVariantProps, inputVariants } from '../input/styles'
@@ -535,6 +536,7 @@ export function SelectTrigger({
   ...props
 }: SelectTriggerProps) {
   const context = useSelectContext('SelectTrigger')
+  const { labels } = useUiLocale()
   const ariaInvalid = ariaInvalidProp ?? context.field['aria-invalid']
   const describedBy =
     [describedByProp, context.field['aria-describedby']].filter(Boolean).join(' ') || undefined
@@ -651,12 +653,9 @@ export function SelectTrigger({
   const named =
     props['aria-label'] !== undefined || shared['aria-labelledby'] !== undefined || shared.id
   const fallbackLabelledBy = named ? undefined : `${context.listboxId}-placeholder`
-  const summary =
-    chips.length === 0
-      ? null
-      : chips.length <= 2
-        ? `已选 ${chips.map(labelOf).join('、')}`
-        : `已选 ${chips.slice(0, 2).map(labelOf).join('、')} 等 ${chips.length} 项`
+  const summary = chips.length
+    ? labels.selected(chips.slice(0, 2).map(labelOf), chips.length)
+    : null
 
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: 外壳空白处的点击只是展开钮的放大热区，键盘走展开钮
@@ -688,7 +687,7 @@ export function SelectTrigger({
               type="button"
               tabIndex={-1}
               className="v-select-chip__remove"
-              aria-label={`移除 ${labelOf(value)}`}
+              aria-label={labels.remove(labelOf(value))}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => context.remove(value)}
             >
@@ -731,7 +730,7 @@ export function SelectTrigger({
         <button
           type="button"
           className="v-input-control__action v-input-control__action--clear"
-          aria-label="清除全部"
+          aria-label={labels.clearAll}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => {
             context.clear()
@@ -768,11 +767,12 @@ export function SelectContent({
   className,
   container,
   collisionBoundary,
-  empty = '无选项',
+  empty,
   loading: loadingProp,
   children,
 }: SelectContentProps) {
   const context = useSelectContext('SelectContent')
+  const { labels } = useUiLocale()
   const { open, panelPresent, listbox } = context
   const loading = loadingProp ?? context.loading
   const [fragment, setFragment] = useState<DocumentFragment | null>(null)
@@ -828,10 +828,10 @@ export function SelectContent({
           {hasItems ? null : loading ? (
             <PickerEmpty role="status">
               <Spinner size={16} aria-hidden="true" />
-              加载中…
+              {labels.loading}
             </PickerEmpty>
           ) : (
-            <PickerEmpty>{empty}</PickerEmpty>
+            <PickerEmpty>{empty ?? labels.noOptions}</PickerEmpty>
           )}
         </PickerPanel>
       ) : null}

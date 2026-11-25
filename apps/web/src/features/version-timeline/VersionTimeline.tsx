@@ -12,7 +12,10 @@ import {
 import { ChevronDown, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRevertArtifactMutation } from '@/entities/artifact'
+import { getRequestErrorMessage } from '@/shared/api/error'
+import { useMessages } from '@/shared/i18n'
 import { formatRelativeTime } from '@/shared/lib/format'
+import { messages } from './messages'
 
 export interface VersionTimelineProps {
   publicId: string
@@ -36,6 +39,7 @@ export function VersionTimeline({
   canRevert = true,
   onSelectVersion,
 }: VersionTimelineProps) {
+  const { t, locale, dir } = useMessages(messages)
   const revertMutation = useRevertArtifactMutation(publicId)
   const isHistorical = activeVersion < headVersion
   const ordered = [...versions].sort((a, b) => b.version - a.version)
@@ -48,28 +52,32 @@ export function VersionTimeline({
         targetVersion: activeVersion,
         baseVersion: headVersion,
       })
-      toast.success(`已将 v${activeVersion} 恢复为 v${res.version.version}`)
+      toast.success(
+        t('已将 {from} 恢复为 {to}', { from: `v${activeVersion}`, to: `v${res.version.version}` }),
+      )
       onSelectVersion(undefined)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '恢复版本失败')
+      toast.error(getRequestErrorMessage(err, t('恢复版本失败')))
     }
   }
 
   return (
-    <DropdownMenu>
+    <DropdownMenu dir={dir}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
           size="sm"
-          aria-label={`版本历史，当前 v${activeVersion}`}
-          title={isHistorical ? `历史版本 v${activeVersion}` : '版本历史'}
+          aria-label={t('版本历史，当前 {version}', { version: `v${activeVersion}` })}
+          title={
+            isHistorical ? t('历史版本 {version}', { version: `v${activeVersion}` }) : t('版本历史')
+          }
           rightIcon={<ChevronDown size={12} />}
         >
-          v{activeVersion}
+          <bdi dir="ltr">v{activeVersion}</bdi>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-72">
-        <DropdownMenuLabel>版本历史</DropdownMenuLabel>
+        <DropdownMenuLabel>{t('版本历史')}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {ordered.map((v) => {
           const isHead = v.version === headVersion
@@ -82,12 +90,17 @@ export function VersionTimeline({
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <span className="font-mono text-xs font-semibold">v{v.version}</span>
-                  {isHead ? <Badge tone="ok">最新</Badge> : null}
-                  {isCurrent && !isHead ? <Badge tone="accent">当前</Badge> : null}
+                  <bdi dir="ltr" className="font-mono text-xs font-semibold">
+                    v{v.version}
+                  </bdi>
+                  {isHead ? <Badge tone="ok">{t('最新')}</Badge> : null}
+                  {isCurrent && !isHead ? <Badge tone="accent">{t('当前')}</Badge> : null}
                 </div>
                 <div className="truncate text-[11px] text-ink-muted">
-                  {v.author} · {formatRelativeTime(v.createdAt)}
+                  <bdi>{v.author}</bdi> ·{' '}
+                  <time dateTime={v.createdAt}>
+                    {formatRelativeTime(v.createdAt, undefined, locale)}
+                  </time>
                 </div>
               </div>
             </DropdownMenuItem>
@@ -96,7 +109,7 @@ export function VersionTimeline({
         {isHistorical && <DropdownMenuSeparator />}
         {showLatestLink && (
           <DropdownMenuItem onSelect={() => onSelectVersion(undefined)}>
-            查看最新版本
+            {t('查看最新版本')}
           </DropdownMenuItem>
         )}
         {showRevert && (
@@ -104,7 +117,8 @@ export function VersionTimeline({
             disabled={revertMutation.isPending}
             onSelect={() => void handleRevert()}
           >
-            <RotateCcw size={14} />将 v{activeVersion} 恢复为新版本
+            <RotateCcw size={14} />
+            {t('将 {version} 恢复为新版本', { version: `v${activeVersion}` })}
           </DropdownMenuItem>
         )}
       </DropdownMenuContent>

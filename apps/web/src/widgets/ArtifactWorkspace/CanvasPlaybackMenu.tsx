@@ -11,6 +11,8 @@ import {
 import { Focus, Pause, Play } from 'lucide-react'
 import { Fragment, useRef } from 'react'
 import type { CanvasBoard } from '@/entities/artifact'
+import { useMessages } from '@/shared/i18n'
+import { navigationMessages } from './board-navigation-messages'
 
 interface CanvasPlaybackMenuProps {
   boards: readonly CanvasBoard[]
@@ -24,9 +26,9 @@ interface CanvasPlaybackMenuProps {
 }
 
 const GROUPS = [
-  { key: 'static', label: '静态画板', action: '展开画板', Icon: Focus },
-  { key: 'animation', label: '动画画板', action: '展开画板', Icon: Focus },
-  { key: 'prototype', label: '可交互原型', action: '播放原型', Icon: Play },
+  { key: 'static', label: '静态画板', action: '展开画板：{title}', Icon: Focus },
+  { key: 'animation', label: '动画画板', action: '展开画板：{title}', Icon: Focus },
+  { key: 'prototype', label: '可交互原型', action: '播放原型：{title}', Icon: Play },
 ] as const
 
 type PlaybackGroup = (typeof GROUPS)[number]['key']
@@ -44,6 +46,7 @@ function PlaybackMenuItems({
   onTogglePause,
   onSelectBoard,
 }: PlaybackMenuItemsProps) {
+  const { t } = useMessages(navigationMessages)
   const groups: Record<PlaybackGroup, CanvasBoard[]> = { static: [], animation: [], prototype: [] }
   let hasAnimation = false
   for (const board of boards) {
@@ -60,19 +63,19 @@ function PlaybackMenuItems({
       {hasAnimation && (
         <DropdownMenuItem onSelect={onTogglePause}>
           {paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}
-          {paused ? '恢复画板动画' : '暂停画板动画'}
+          {t(paused ? '恢复画板动画' : '暂停画板动画')}
         </DropdownMenuItem>
       )}
       {GROUPS.filter(({ key }) => groups[key].length > 0).map(
         ({ key, label, action, Icon }, index) => (
           <Fragment key={key}>
             {(hasAnimation || index > 0) && <DropdownMenuSeparator />}
-            <DropdownMenuGroup aria-label={label}>
-              <DropdownMenuLabel aria-hidden="true">{label}</DropdownMenuLabel>
+            <DropdownMenuGroup aria-label={t(label)}>
+              <DropdownMenuLabel aria-hidden="true">{t(label)}</DropdownMenuLabel>
               {groups[key].map((board) => (
                 <DropdownMenuItem
                   key={board.id}
-                  aria-label={`${action}：${board.title}`}
+                  aria-label={t(action, { title: board.title })}
                   title={board.title}
                   onSelect={() => onSelectBoard(board.id, key)}
                 >
@@ -92,6 +95,7 @@ function PlaybackMenuItems({
 
 /** 当前页的画板可从菜单直达，不改变总览中的选中画板。 */
 export function CanvasPlaybackMenu({ onOpen, onPlay, ...options }: CanvasPlaybackMenuProps) {
+  const { t, dir } = useMessages(navigationMessages)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const enteringPresentation = useRef(false)
 
@@ -110,10 +114,10 @@ export function CanvasPlaybackMenu({ onOpen, onPlay, ...options }: CanvasPlaybac
   }
 
   return (
-    <DropdownMenu modal={false}>
+    <DropdownMenu dir={dir} modal={false}>
       <DropdownMenuTrigger asChild>
         <Button ref={triggerRef} variant="outline" size="sm" leftIcon={<Play size={15} />}>
-          播放
+          {t('播放')}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" onCloseAutoFocus={restoreFocus}>

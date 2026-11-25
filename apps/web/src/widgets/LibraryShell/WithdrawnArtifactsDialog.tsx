@@ -1,4 +1,3 @@
-import type { WithdrawnArtifact } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Modal } from '@akasha/ui/dialog'
 import { Empty } from '@akasha/ui/empty'
@@ -6,7 +5,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { artifactKeys, fetchWithdrawnArtifacts, restoreArtifact } from '@/entities/artifact'
+import { ApiError, getRequestErrorMessage } from '@/shared/api/error'
 import { AkashaMark } from '@/shared/brand'
+import { useMessages } from '@/shared/i18n'
+import { messages } from './messages'
 
 interface WithdrawnArtifactsDialogProps {
   onOpenArtifact: (publicId: string) => void
@@ -18,8 +20,9 @@ export function WithdrawnArtifactsDialog({
   onOpenArtifact,
   onClose,
 }: WithdrawnArtifactsDialogProps) {
+  const { t, date } = useMessages(messages)
   const query = useQueryClient()
-  const [selected, setSelected] = useState<WithdrawnArtifact | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const list = useQuery({
     queryKey: artifactKeys.withdrawn,
     queryFn: fetchWithdrawnArtifacts,
@@ -30,18 +33,28 @@ export function WithdrawnArtifactsDialog({
     onSuccess: ({ artifact }) => {
       void query.invalidateQueries({ queryKey: artifactKeys.all })
       void query.invalidateQueries({ queryKey: artifactKeys.favorites })
-      toast.success('已恢复')
+      toast.success(t('已恢复'))
       onOpenArtifact(artifact.publicId)
       onClose()
     },
+    onError: (error) => {
+      if (error instanceof ApiError && [401, 403, 404].includes(error.status)) {
+        void query.invalidateQueries({ queryKey: artifactKeys.withdrawn })
+      }
+    },
   })
-  const items = selected ? undefined : list.data?.items
+  const blocked =
+    restore.error instanceof ApiError && [401, 403, 404].includes(restore.error.status)
+  const selected = list.isSuccess
+    ? list.data.items.find((item) => item.artifact.publicId === selectedId)
+    : undefined
+  const items = !selected && list.isSuccess ? list.data.items : undefined
   const cancelRestore = () => {
     restore.reset()
-    setSelected(null)
+    setSelectedId(null)
   }
   const restoreSelected = () => {
-    if (selected) restore.mutate(selected.artifact.publicId)
+    if (selected && !blocked) restore.mutate(selected.artifact.publicId)
   }
 
   return (
@@ -50,17 +63,19 @@ export function WithdrawnArtifactsDialog({
       onOpenChange={(open) => {
         if (!open && !restore.isPending) onClose()
       }}
-      title={selected ? `恢复「${selected.artifact.title}」？` : '已撤下'}
-      description={selected ? '旧分享链接不会恢复。' : undefined}
+      title={selected ? t('恢复「{title}」？', { title: selected.artifact.title }) : t('已撤下')}
+      description={selected ? t('旧分享链接不会恢复。') : undefined}
       footer={
         selected ? (
           <>
             <Button variant="ghost" disabled={restore.isPending} onClick={cancelRestore}>
-              返回
+              {t('返回')}
             </Button>
-            <Button loading={restore.isPending} onClick={restoreSelected}>
-              恢复
-            </Button>
+            {!blocked && (
+              <Button loading={restore.isPending} onClick={restoreSelected}>
+                {t('恢复')}
+              </Button>
+            )}
           </>
         ) : undefined
       }
@@ -68,15 +83,15 @@ export function WithdrawnArtifactsDialog({
       {list.isPending && (
         <p role="status" className="flex items-center gap-2 text-sm text-ink-muted">
           <AkashaMark size={16} loading className="text-ink" />
-          加载中…
+          {t('加载中…')}
         </p>
       )}
       {list.error || restore.error ? (
         <p role="alert" className="text-sm text-error">
-          {(list.error ?? restore.error)?.message}
+          {getRequestErrorMessage(list.error ?? restore.error)}
         </p>
       ) : null}
-      {items?.length === 0 && <Empty variant="plain" title="没有已撤下的作品" />}
+      {items?.length === 0 && <Empty variant="plain" title={t('没有已撤下的作品')} />}
       {items && items.length > 0 && (
         <ul className="max-h-72 divide-y divide-border overflow-y-auto">
           {items.map((item) => (
@@ -89,11 +104,17 @@ export function WithdrawnArtifactsDialog({
                   {item.artifact.title}
                 </p>
                 <time dateTime={item.withdrawnAt} className="text-xs text-ink-muted">
-                  {new Date(item.withdrawnAt).toLocaleString()}
+                  <bdi>
+                    {date(new Date(item.withdrawnAt), { dateStyle: 'medium', timeStyle: 'short' })}
+                  </bdi>
                 </time>
               </div>
-              <Button variant="outline" size="sm" onClick={() => setSelected(item)}>
-                恢复
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedId(item.artifact.publicId)}
+              >
+                {t('恢复')}
               </Button>
             </li>
           ))}

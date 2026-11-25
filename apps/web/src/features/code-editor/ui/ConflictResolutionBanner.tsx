@@ -2,7 +2,9 @@ import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
 import { AlertTriangle, Check, RefreshCw } from 'lucide-react'
 import { useMemo } from 'react'
+import { useMessages } from '@/shared/i18n'
 import { computeLineDiff } from '@/shared/lib/diff'
+import { messages } from '../messages'
 
 export interface EditorConflictState {
   reason: 'http_409' | 'remote_updated'
@@ -36,6 +38,7 @@ export function ConflictResolutionBanner({
   onSaveMerged,
   onDismiss,
 }: ConflictResolutionBannerProps) {
+  const { t, locale } = useMessages(messages)
   const { serverDiff, remoteSource, localSource } = conflict
   const computedLines = useMemo(() => {
     if (serverDiff || remoteSource === undefined) return []
@@ -43,7 +46,9 @@ export function ConflictResolutionBanner({
   }, [serverDiff, remoteSource, localSource])
 
   const authorSummary =
-    conflict.authors.length > 0 ? conflict.authors.join('、') : '其他协作者或 Agent'
+    conflict.authors.length > 0
+      ? new Intl.ListFormat(locale).format(conflict.authors)
+      : t('其他协作者或 Agent')
 
   return (
     <div
@@ -54,11 +59,16 @@ export function ConflictResolutionBanner({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <AlertTriangle size={14} className="shrink-0 text-amber-700" />
-          <span className="font-semibold">有更新的版本</span>
+          <span className="font-semibold">{t('有更新的版本')}</span>
           <Badge tone="warning">
-            草稿基于 v{conflict.baseVersion}，最新 v{conflict.headVersion}
+            {t('草稿基于 {base}，最新 {head}', {
+              base: `v${conflict.baseVersion}`,
+              head: `v${conflict.headVersion}`,
+            })}
           </Badge>
-          <span className="text-[11px] text-amber-800">更新者：{authorSummary}</span>
+          <span className="text-[11px] text-amber-800">
+            {t('更新者：{authors}', { authors: authorSummary })}
+          </span>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
@@ -69,7 +79,7 @@ export function ConflictResolutionBanner({
             disabled={saving}
             onClick={onAdoptLatest}
           >
-            放弃草稿并打开最新
+            {t('放弃草稿并打开最新')}
           </Button>
           <Button
             variant="primary"
@@ -78,19 +88,20 @@ export function ConflictResolutionBanner({
             loading={saving}
             onClick={onSaveMerged}
           >
-            将草稿保存为新版本
+            {t('将草稿保存为新版本')}
           </Button>
           {onDismiss ? (
             <Button variant="ghost" size="sm" onClick={onDismiss}>
-              稍后处理
+              {t('稍后处理')}
             </Button>
           ) : null}
         </div>
       </div>
-      <p className="mt-1 text-amber-800">保存草稿不会合并最新版本的改动。</p>
+      <p className="mt-1 text-amber-800">{t('保存草稿不会合并最新版本的改动。')}</p>
 
       {serverDiff && (
         <pre
+          dir="ltr"
           data-testid="conflict-server-diff"
           className="mt-2 max-h-36 overflow-auto rounded-lg border border-amber-200 bg-white/90 p-2 font-mono text-[11px] leading-5 text-slate-800"
         >
@@ -103,10 +114,11 @@ export function ConflictResolutionBanner({
           className="mt-2 max-h-36 overflow-auto rounded-lg border border-amber-200 bg-white/90 p-2 font-mono text-[11px] leading-5"
         >
           <div className="mb-1 text-[10px] font-sans text-slate-500">
-            − 最新 v{conflict.headVersion} / + 你的草稿
+            {t('− 最新 {version} / + 你的草稿', { version: `v${conflict.headVersion}` })}
           </div>
           {computedLines.slice(0, 40).map((line) => (
             <div
+              dir="ltr"
               key={`${line.kind}-${line.oldLine ?? 'n'}-${line.newLine ?? 'n'}`}
               className={
                 line.kind === 'added'

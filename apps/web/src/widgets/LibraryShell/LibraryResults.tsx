@@ -12,8 +12,10 @@ import { Empty } from '@akasha/ui/empty'
 import { Skeleton } from '@akasha/ui/skeleton'
 import { Star } from 'lucide-react'
 import type { MouseEventHandler } from 'react'
-import { ARTIFACT_TYPE_LABELS, formatRelativeTime } from '@/shared/lib/format'
+import { useMessages } from '@/shared/i18n'
+import { artifactTypeLabel, formatRelativeTime } from '@/shared/lib/format'
 import { LibraryArtwork } from './LibraryArtwork'
+import { messages } from './messages'
 
 const CARD_GRID = 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3'
 const CARD_SURFACE = 'rounded-xl border border-border bg-surface'
@@ -27,6 +29,7 @@ interface LibraryResultsProps {
   /** 未筛选的库内存在制品时，空结果可以通过清除筛选恢复。 */
   hasArtifacts: boolean
   cloudHub: boolean
+  onCreate?: () => void
   onResetFilters: () => void
   onOpenArtifact: (publicId: string) => void
 }
@@ -39,25 +42,23 @@ export function LibraryResults({
   cards,
   hasArtifacts,
   cloudHub,
+  onCreate,
   onResetFilters,
   onOpenArtifact,
 }: LibraryResultsProps) {
+  const { t } = useMessages(messages)
   if (!hasArtifacts) {
-    if (cloudHub) return <Empty variant="plain" title="没有可访问的作品" />
+    if (cloudHub) return <Empty variant="plain" title={t('没有可访问的作品')} />
     return (
       <Empty
         variant="plain"
-        title="还没有作品"
+        title={t('还没有作品')}
         action={
-          <Button asChild size="sm" variant="ghost">
-            <a
-              href="https://github.com/VOD-Studio/akasha-artifacts/blob/main/README.zh-CN.md#1-接入你的编程-agentmcp-与-hooks--m1m2"
-              target="_blank"
-              rel="noreferrer"
-            >
-              接入 Agent
-            </a>
-          </Button>
+          onCreate && (
+            <Button size="sm" onClick={onCreate}>
+              {t('新建设计')}
+            </Button>
+          )
         }
       />
     )
@@ -66,10 +67,10 @@ export function LibraryResults({
     return (
       <Empty
         variant="plain"
-        title="未找到作品"
+        title={t('未找到作品')}
         action={
           <Button size="sm" variant="outline" onClick={onResetFilters}>
-            清除筛选
+            {t('清除筛选')}
           </Button>
         }
       />
@@ -97,7 +98,7 @@ export function LibraryResults({
 export function LibraryLoading({ cards }: { cards: boolean }) {
   if (!cards) {
     return (
-      <div className="divide-y divide-border">
+      <div className="divide-y divide-border" aria-hidden="true">
         {LOADING_ITEMS.map((item) => (
           <div key={item} className="px-2 py-3">
             <Skeleton className="h-5 w-2/5" />
@@ -107,15 +108,19 @@ export function LibraryLoading({ cards }: { cards: boolean }) {
     )
   }
   return (
-    <div className={CARD_GRID}>
+    <div className={CARD_GRID} aria-hidden="true">
       {LOADING_ITEMS.map((item) => (
         <CardFrame key={item} className={CARD_SURFACE}>
           <CardFrameImage>
             <Skeleton className="size-full" />
           </CardFrameImage>
           <CardFrameBody>
-            <Skeleton className="h-4 w-1/3" />
-            <Skeleton className="h-6 w-3/5" />
+            <CardFrameTitle>
+              <Skeleton className="h-lh w-3/5" />
+            </CardFrameTitle>
+            <CardFrameMeta>
+              <Skeleton className="h-lh w-1/3" />
+            </CardFrameMeta>
           </CardFrameBody>
         </CardFrame>
       ))}
@@ -138,6 +143,7 @@ function LibraryEntry({
   cards,
   onOpenArtifact,
 }: LibraryEntryProps) {
+  const { t, locale } = useMessages(messages)
   const openArtifact: MouseEventHandler<HTMLAnchorElement> = (event) => {
     if (event.defaultPrevented || event.button !== 0) return
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
@@ -145,12 +151,14 @@ function LibraryEntry({
     onOpenArtifact(artifact.publicId)
   }
   const href = `/a/${encodeURIComponent(artifact.publicId)}`
-  const type = ARTIFACT_TYPE_LABELS[artifact.type]
+  const type = artifactTypeLabel(artifact.type, locale)
   const metadata = (
     <>
-      {favorite && <Star size={12} aria-label="已收藏" />}
-      <bdi className="min-w-0 wrap-break-word">{projectName ?? '其他项目'}</bdi>
-      <time dateTime={artifact.updatedAt}>{formatRelativeTime(artifact.updatedAt)}</time>
+      {favorite && <Star size={12} aria-label={t('已收藏')} />}
+      <bdi className="min-w-0 wrap-break-word">{projectName ?? t('其他项目')}</bdi>
+      <time dateTime={artifact.updatedAt}>
+        <bdi>{formatRelativeTime(artifact.updatedAt, undefined, locale)}</bdi>
+      </time>
     </>
   )
   if (cards) {

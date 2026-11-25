@@ -5,16 +5,18 @@ import { Field } from '@akasha/ui/field'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
 import { Textarea } from '@akasha/ui/textarea'
 import { type UseQueryResult, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { type ChangeEventHandler, useId, useState } from 'react'
+import { type ChangeEventHandler, useEffect, useId, useState } from 'react'
 import { artifactKeys } from '@/entities/artifact'
 import {
   AgentTurnList,
-  fetchAgentConnections,
   fetchAgentDesignSession,
   startAgentDesign,
   useAgentDraft,
 } from '@/features/agent-conversation'
-import { ApiError } from '@/shared/api/error'
+import { ApiError, getRequestErrorMessage } from '@/shared/api/error'
+import { useMessages } from '@/shared/i18n'
+import { messages } from './messages'
+import { useDesignConnections } from './useDesignConnections'
 
 interface DesignAttempt {
   /** 实际受理之后才有的本机会话。 */
@@ -55,6 +57,7 @@ interface CreateDesignProps {
   open: boolean
   onClose: () => void
   onOpenArtifact: (publicId: string) => void
+  onResumableChange?: (resumable: boolean) => void
 }
 
 function getConnectionNotice(
@@ -62,10 +65,11 @@ function getConnectionNotice(
   hasProjects: boolean,
   project: Project | undefined,
   connection: AgentConnection | undefined,
-): { text: string; command?: string } | null {
+): { text: keyof typeof messages; command?: string } | null {
   if (error instanceof ApiError && error.status === 401) {
     return { text: '登录本机作品库', command: 'akasha open' }
   }
+  if (error instanceof ApiError && error.status === 403) return { text: '无权新建设计' }
   if (status === 'error') return { text: '无法读取 Agent 连接' }
   if (status === 'pending') return null
   if (!project && hasProjects) return null
@@ -77,24 +81,25 @@ function getConnectionNotice(
 }
 
 /** 只有同一受理会话的真实 v1 发布记录才允许打开制品；未发布时保留用户需求。 */
-export function CreateDesignDialog({ projects, open, onClose, onOpenArtifact }: CreateDesignProps) {
+export function CreateDesignDialog({
+  projects,
+  open,
+  onClose,
+  onOpenArtifact,
+  onResumableChange,
+}: CreateDesignProps) {
+  const { t } = useMessages(messages)
   const formId = useId()
   const cache = useQueryClient()
   const [attempt, setAttempt] = useState(readAttempt)
   const [projectId, setProjectId] = useState(attempt?.projectId ?? '')
   const [agent, setAgent] = useState<'codex' | ''>(attempt ? 'codex' : '')
   const [message, setMessage] = useAgentDraft('new-design')
-  const connections = useQuery({
-    queryKey: ['agent-connections'],
-    queryFn: ({ signal }) => fetchAgentConnections(signal),
-    enabled: open,
-    retry: false,
-    refetchInterval: 4000,
-  })
+  const connections = useDesignConnections(open)
   const sessionQuery = useQuery({
     queryKey: ['agent-design-session', attempt?.id],
     queryFn: ({ signal }) => {
-      if (!attempt) throw new Error('没有已受理的设计会话')
+      if (!attempt) throw new Error(t('没有已受理的设计会话'))
       return fetchAgentDesignSession(attempt.id, signal)
     },
     enabled: open && Boolean(attempt),
@@ -117,9 +122,14 @@ export function CreateDesignDialog({ projects, open, onClose, onOpenArtifact }: 
     },
   })
   const project = projects.find((entry) => entry.id === projectId)
-  const connection = connections.data?.connections.find((entry) => entry.projectId === projectId)
+  const connection = connections.isSuccess
+    ? connections.data.connections.find((entry) => entry.projectId === projectId)
+    : undefined
+  const accessDenied =
+    connections.error instanceof ApiError && [401, 403].includes(connections.error.status)
   const denied =
-    sessionQuery.error instanceof ApiError && [401, 403, 404].includes(sessionQuery.error.status)
+    accessDenied ||
+    (sessionQuery.error instanceof ApiError && [401, 403, 404].includes(sessionQuery.error.status))
   const missing = sessionQuery.error instanceof ApiError && sessionQuery.error.status === 404
   const session = denied ? undefined : sessionQuery.data
   const turn = session?.turns[0]
@@ -129,10 +139,13 @@ export function CreateDesignDialog({ projects, open, onClose, onOpenArtifact }: 
       ? session?.artifactId
       : undefined
   const locked = Boolean(attempt) || send.isPending
+  useEffect(() => {
+    onResumableChange?.(locked)
+  }, [locked, onResumableChange])
   const canSend =
     !locked &&
     !!project &&
-    !connections.isError &&
+    connections.isSuccess &&
     agent === 'codex' &&
     connection?.availability === 'ready' &&
     !!message.trim()
@@ -170,26 +183,26 @@ export function CreateDesignDialog({ projects, open, onClose, onOpenArtifact }: 
       onOpenChange={(visible) => {
         if (!visible) onClose()
       }}
-      title="新建设计"
+      title={t('新建设计')}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            关闭
+            {t('关闭')}
           </Button>
-          {published && <Button onClick={openPublished}>打开设计</Button>}
+          {published && <Button onClick={openPublished}>{t('打开设计')}</Button>}
           {canReturnToBrief && (
             <Button variant="outline" onClick={clearAttempt}>
-              返回编辑
+              {t('返回编辑')}
             </Button>
           )}
-          {!published && !canReturnToBrief && (
+          {!accessDenied && !published && !canReturnToBrief && (
             <Button
               type="submit"
               form={formId}
               disabled={!canSend && !send.isPending}
               loading={send.isPending}
             >
-              发送
+              {t('发送')}
             </Button>
           )}
         </>
@@ -204,12 +217,12 @@ export function CreateDesignDialog({ projects, open, onClose, onOpenArtifact }: 
         }}
       >
         <div className="grid gap-2 sm:grid-cols-2">
-          <Field label="项目">
+          <Field label={t('项目')}>
             <Select value={projectId} disabled={locked} onValueChange={selectProject}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="选择项目" />
+                <SelectValue placeholder={t('选择项目')} />
               </SelectTrigger>
-              <SelectContent empty="无项目">
+              <SelectContent empty={t('无项目')}>
                 {projects.map((entry) => (
                   <SelectItem key={entry.id} value={entry.id}>
                     {entry.name}
@@ -218,7 +231,7 @@ export function CreateDesignDialog({ projects, open, onClose, onOpenArtifact }: 
               </SelectContent>
             </Select>
           </Field>
-          <Field label="发布 Agent">
+          <Field label={t('发布 Agent')}>
             <Select
               value={agent}
               disabled={locked || connection?.availability !== 'ready'}
@@ -226,45 +239,58 @@ export function CreateDesignDialog({ projects, open, onClose, onOpenArtifact }: 
               onValueChange={selectAgent}
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="选择 Agent" />
+                <SelectValue placeholder={t('选择 Agent')} />
               </SelectTrigger>
               <SelectContent>
-                {(connection || attempt) && <SelectItem value="codex">本机 Codex</SelectItem>}
+                {(connection || attempt) && (
+                  <SelectItem value="codex">{t('本机 Codex')}</SelectItem>
+                )}
               </SelectContent>
             </Select>
           </Field>
         </div>
         {notice && (
           <p className="text-xs leading-5 text-ink-muted" role="status">
-            {notice.text}
-            {notice.command && <code className="block select-all text-ink">{notice.command}</code>}
+            {t(notice.text)}
+            {notice.command && (
+              <code dir="ltr" className="block select-all text-ink">
+                {notice.command}
+              </code>
+            )}
           </p>
         )}
-        <Field label="设计需求">
+        <Field label={t('设计需求')}>
           <Textarea
             rows={4}
             maxLength={8000}
             value={message}
+            dir="auto"
             disabled={send.isPending}
             onChange={editBrief}
           />
         </Field>
-        {send.error && <p role="alert">提交失败：{send.error.message}</p>}
-        {sessionQuery.isError ? (
+        {send.error && (
+          <p role="alert">
+            {t('提交失败：{reason}', { reason: getRequestErrorMessage(send.error) })}
+          </p>
+        )}
+        {!accessDenied && sessionQuery.isError ? (
           <div role="alert" className="flex flex-wrap items-center gap-2">
-            <span>{missing ? '会话已失效' : '无法读取会话'}</span>
+            <span>{missing ? t('会话已失效') : t('无法读取会话')}</span>
             {missing ? (
               <Button variant="outline" size="sm" onClick={clearAttempt}>
-                返回编辑
+                {t('返回编辑')}
               </Button>
             ) : (
               <Button variant="ghost" size="sm" onClick={() => void sessionQuery.refetch()}>
-                重试
+                {t('重试')}
               </Button>
             )}
           </div>
         ) : null}
-        {attempt && !session && !sessionQuery.isError ? <p role="status">正在读取会话…</p> : null}
+        {attempt && !accessDenied && sessionQuery.isPending ? (
+          <p role="status">{t('正在读取会话…')}</p>
+        ) : null}
         {turn ? (
           <div className="max-h-56 space-y-2 overflow-y-auto border-t border-border pt-2">
             <AgentTurnList turns={session?.turns ?? []} />

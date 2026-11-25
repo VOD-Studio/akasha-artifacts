@@ -19,6 +19,9 @@ import {
   hasVersionSource,
   publishHumanVersion,
 } from '@/entities/artifact'
+import { useMessages } from '@/shared/i18n'
+import { useBoardEditError } from './board-edit-error-messages'
+import { navigationMessages } from './board-navigation-messages'
 import { type CanvasPageEdit, editCanvasPages } from './canvas-page-source'
 
 /** 可保存页面的头版本快照。 */
@@ -59,12 +62,14 @@ export function CanvasPageDialog({
   onClose,
   restoreFocus,
 }: CanvasPageDialogProps) {
+  const { t } = useMessages(navigationMessages)
   const queryClient = useQueryClient()
   const formId = useId()
   const cancelRef = useRef<HTMLButtonElement>(null)
   const [name, setName] = useState(request.kind === 'rename' ? request.page.title : '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const errorText = useBoardEditError(error)
   const { artifact, version, onVersionSaved } = editing
   const title = name.trim()
   const canSave =
@@ -127,7 +132,9 @@ export function CanvasPageDialog({
     event.preventDefault()
     restoreFocus()
   }
-  const action = { create: '新建页面', rename: '重命名页面', delete: '删除页面' }[request.kind]
+  const action = ({ create: '新建页面', rename: '重命名页面', delete: '删除页面' } as const)[
+    request.kind
+  ]
 
   return (
     <Dialog open onOpenChange={changeOpen}>
@@ -139,17 +146,19 @@ export function CanvasPageDialog({
         onCloseAutoFocus={returnDialogFocus}
       >
         <DialogHeader>
-          <DialogTitle>{action}</DialogTitle>
+          <DialogTitle>{t(action)}</DialogTitle>
         </DialogHeader>
         <DialogBody>
           <form id={formId} onSubmit={save}>
             {request.kind === 'delete' ? (
               <p className="break-words text-sm text-ink">
-                删除「{request.page.title}」及其 {request.page.ownedBoardCount}{' '}
-                张直属画板？共享画板和旧版本不变。
+                {t('删除「{title}」及其 {count} 张直属画板？共享画板和旧版本不变。', {
+                  title: request.page.title,
+                  count: request.page.ownedBoardCount ?? 0,
+                })}
               </p>
             ) : (
-              <Field label="页面名称" error={error}>
+              <Field label={t('页面名称')} error={errorText}>
                 <Input
                   value={name}
                   readOnly={saving}
@@ -157,12 +166,12 @@ export function CanvasPageDialog({
                 />
               </Field>
             )}
-            {request.kind === 'delete' && error ? <p role="alert">{error}</p> : null}
+            {request.kind === 'delete' && error ? <p role="alert">{errorText}</p> : null}
           </form>
         </DialogBody>
         <DialogFooter>
           <Button ref={cancelRef} variant="ghost" disabled={saving} onClick={() => onClose()}>
-            取消
+            {t('取消')}
           </Button>
           <Button
             type="submit"
@@ -171,7 +180,7 @@ export function CanvasPageDialog({
             disabled={!canSave}
             loading={saving}
           >
-            {request.kind === 'delete' ? '删除' : '保存'}
+            {t(request.kind === 'delete' ? '删除' : '保存')}
           </Button>
         </DialogFooter>
       </DialogContent>

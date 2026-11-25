@@ -9,6 +9,8 @@ import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@akasha
 import { useEffect, useRef, useState } from 'react'
 import { selectionForVersion, useSelectionStore } from '@/entities/selection'
 import { useWorkspaceStore } from '@/entities/workspace'
+import { useMessages } from '@/shared/i18n'
+import { panelMessages } from '../messages'
 import { AnnotationComposer } from './AnnotationComposer'
 import { InspectorFeedbackCard } from './InspectorFeedbackCard'
 import { ReviewActionsBar } from './ReviewActionsBar'
@@ -44,6 +46,7 @@ function InspectorContent({
   threads,
   onFocusThread,
 }: ArtifactReviewPanelProps) {
+  const { t } = useMessages(panelMessages)
   const selectedElement = useSelectionStore((s) =>
     selectionForVersion(s, artifactId, activeVersion),
   )
@@ -88,7 +91,7 @@ function InspectorContent({
   return (
     <>
       <SheetHeader>
-        <SheetTitle>批注与评审</SheetTitle>
+        <SheetTitle>{t('批注与评审')}</SheetTitle>
       </SheetHeader>
       <SheetBody>
         <div className="space-y-3">
@@ -103,44 +106,47 @@ function InspectorContent({
             />
           ) : null}
 
-          {notifyAgent ? (
+          {(canComment && notifyAgent) || activeRound?.groups.length ? (
             <ReviewActionsBar
               artifactId={artifactId}
               projectId={projectId}
               version={activeVersion}
               activeRound={activeRound}
+              readOnly={!canComment || !notifyAgent}
             />
           ) : null}
 
           <div className="space-y-2 pt-1">
-            <div className="text-[11px] font-medium text-ink-muted">反馈（{ordered.length}）</div>
+            <div className="text-[11px] font-medium text-ink-muted">
+              {t('反馈（{count}）', { count: ordered.length })}
+            </div>
             <div className="flex flex-wrap gap-2">
               {pageFeedbackIds && (
                 <Select value={scope} onValueChange={changeScope}>
-                  <SelectTrigger aria-label="批注范围" controlSize="sm">
+                  <SelectTrigger aria-label={t('批注范围')} controlSize="sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">全部页面</SelectItem>
-                    <SelectItem value="page">当前页面</SelectItem>
+                    <SelectItem value="all">{t('全部页面')}</SelectItem>
+                    <SelectItem value="page">{t('当前页面')}</SelectItem>
                   </SelectContent>
                 </Select>
               )}
               <Select value={resolution} onValueChange={changeResolution}>
-                <SelectTrigger aria-label="解决状态" controlSize="sm">
+                <SelectTrigger aria-label={t('解决状态')} controlSize="sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">全部状态</SelectItem>
-                  <SelectItem value="open">未解决</SelectItem>
-                  <SelectItem value="resolved">已解决</SelectItem>
+                  <SelectItem value="all">{t('全部状态')}</SelectItem>
+                  <SelectItem value="open">{t('未解决')}</SelectItem>
+                  <SelectItem value="resolved">{t('已解决')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             {ordered.length === 0 && (
               <p className="py-2 text-xs text-ink-muted">
-                {feedbacks.length ? '没有符合条件的反馈' : '暂无反馈'}
+                {feedbacks.length ? t('没有符合条件的反馈') : t('暂无反馈')}
               </p>
             )}
             {ordered.map((feedback) => (
@@ -159,7 +165,7 @@ function InspectorContent({
           </div>
         </div>
       </SheetBody>
-      {notifyAgent && activeRound && (
+      {canComment && notifyAgent && activeRound && (
         <RoundSubmitBar
           artifactId={artifactId}
           projectId={projectId}
@@ -173,12 +179,14 @@ function InspectorContent({
 
 /** 批注与评审的非模态抽屉；开合不改变画布尺寸，线程定位由工作区处理。 */
 export function ArtifactReviewPanel(props: ArtifactReviewPanelProps) {
+  const { dir } = useMessages(panelMessages)
   const open = useWorkspaceStore((s) => s.inspectorTab === 'review')
   const setTab = useWorkspaceStore((s) => s.setInspectorTab)
 
   return (
     <Sheet modal={false} open={open} onOpenChange={(next) => setTab(next ? 'review' : null)}>
       <SheetContent
+        side={dir === 'rtl' ? 'left' : 'right'}
         id="artifact-inspector"
         size="sm"
         aria-describedby={undefined}

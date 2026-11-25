@@ -30,7 +30,9 @@ import { SplitCodeEditor } from '@/features/code-editor'
 import { ArtifactReviewPanel, selectActiveRound } from '@/features/review'
 import { VersionDiffView } from '@/features/version-diff'
 import { useVisualEdit, VisualEditPanel } from '@/features/visual-edit'
+import { getRequestErrorMessage } from '@/shared/api/error'
 import { AkashaMark } from '@/shared/brand'
+import { type Messages, useMessages } from '@/shared/i18n'
 import { ArtifactCanvas, type InspectorReveal } from './ArtifactCanvas'
 import { ArtifactFrame, type BoardFramePurpose, type FrameConnection } from './ArtifactFrame'
 import { BoardInspector, type BoardInspectorHandoff } from './BoardInspector'
@@ -45,6 +47,16 @@ import { useCanvasBoardEditing } from './useCanvasBoardEditing'
 import { useInlineCanvasText } from './useInlineCanvasText'
 
 const EMPTY_FEEDBACKS: readonly Feedback[] = []
+
+const sourceMessages = {
+  '正在读取源码…': ['Quellcode wird geladen…', 'جارٍ تحميل الشفرة المصدرية…', 'Loading source…'],
+  '源码读取失败：{error}': [
+    'Quellcode konnte nicht geladen werden: {error}',
+    'تعذّر تحميل الشفرة المصدرية: {error}',
+    'Could not load source: {error}',
+  ],
+  重试: ['Erneut versuchen', 'إعادة المحاولة', 'Retry'],
+} as const satisfies Messages
 
 /** 画布工作区的输入。 */
 export interface ArtifactWorkspaceProps {
@@ -627,7 +639,10 @@ export function ArtifactWorkspace({
           {viewMode === 'source' ? (
             <div className="h-full w-full overflow-auto bg-surface p-4">
               {fullVersion ? (
-                <pre className="rounded-xl border border-border bg-surface-subtle p-4 font-mono text-xs leading-6 text-ink">
+                <pre
+                  dir="ltr"
+                  className="rounded-xl border border-border bg-surface-subtle p-4 font-mono text-xs leading-6 text-ink"
+                >
                   <code>{fullVersion.source}</code>
                 </pre>
               ) : (
@@ -656,7 +671,7 @@ export function ArtifactWorkspace({
         onTabChange={setInspectorPage}
         {...inspected}
         onRequestBoard={onRequestBoard}
-        onRetryBoard={onRetryBoard}
+        onRetryBoard={inspected.canRetryBoard ? onRetryBoard : undefined}
         version={version}
         stateSnapshot={state.snapshot}
         document={savedCanvas}
@@ -694,18 +709,19 @@ export function ArtifactWorkspace({
 }
 
 function SourceStatus({ error, retry }: { error: Error | null; retry: () => void }) {
+  const { t } = useMessages(sourceMessages)
   if (!error)
     return (
       <p className="flex items-center gap-2 p-3 text-sm text-ink-muted" role="status">
         <AkashaMark size={16} loading className="text-ink" />
-        <span>正在读取源码…</span>
+        <span>{t('正在读取源码…')}</span>
       </p>
     )
   return (
     <div className="space-y-2 p-3 text-sm" role="alert">
-      <p>源码读取失败：{error.message}</p>
+      <p>{t('源码读取失败：{error}', { error: getRequestErrorMessage(error) })}</p>
       <Button onClick={retry} size="sm" variant="outline">
-        重试
+        {t('重试')}
       </Button>
     </div>
   )

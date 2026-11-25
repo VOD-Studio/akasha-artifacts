@@ -22,6 +22,12 @@
     },
     "./styles.css": "./src/styles.css",
     "./tokens.css": "./src/tokens.css",
+    "./locale": {
+      "@akasha/source": "./src/locale.tsx",
+      "types": "./dist/locale.d.ts",
+      "import": "./src/locale.tsx",
+      "default": "./src/locale.tsx"
+    },
     "./alert": {
       "@akasha/source": "./src/components/alert/index.ts",
       "types": "./dist/components/alert/index.d.ts",

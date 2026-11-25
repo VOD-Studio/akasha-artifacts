@@ -1,3 +1,4 @@
+import { UiLocaleProvider } from '@akasha/ui/locale'
 import { Toaster } from '@akasha/ui/sonner'
 import {
   createBrowserHistory,
@@ -15,19 +16,34 @@ import { useWorkspaceStore } from '@/entities/workspace'
 import { ArtifactCommandPalette } from '@/features/command-palette'
 import { useLiveSync } from '@/features/live-sync'
 import { isCloudHub } from '@/shared/config/runtime'
+import { useMessages } from '@/shared/i18n'
 import { LibraryShell } from '@/widgets/LibraryShell'
 import { ArtifactRouteView } from './ArtifactRouteView'
+import { ConnectionNotice } from './ConnectionNotice'
+import { routeMessages } from './messages'
 
 function RootLayout() {
+  const { locale, dir, t } = useMessages(routeMessages)
+  useLayoutEffect(() => {
+    document.documentElement.lang = locale
+    document.documentElement.dir = dir
+  }, [locale, dir])
   const navigate = useNavigate()
   const isLibrary = useLocation({ select: (location) => location.pathname === '/' })
   const openArtifact = (to: string) => void navigate({ to })
   return (
-    <>
+    <UiLocaleProvider locale={locale}>
       <Outlet />
       {!isLibrary && <ArtifactCommandPalette onNavigate={openArtifact} />}
-      <Toaster position="bottom-right" />
-    </>
+      <ConnectionNotice />
+      <Toaster
+        dir={dir}
+        position={dir === 'rtl' ? 'bottom-left' : 'bottom-right'}
+        containerAriaLabel={t('通知')}
+        customAriaLabel={`${t('通知')} (⌥T)`}
+        toastOptions={{ closeButtonAriaLabel: t('关闭') }}
+      />
+    </UiLocaleProvider>
   )
 }
 

@@ -4,6 +4,9 @@ import { Modal } from '@akasha/ui/dialog'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { artifactKeys, withdrawArtifact } from '@/entities/artifact'
+import { getRequestErrorMessage } from '@/shared/api/error'
+import { useMessages } from '@/shared/i18n'
+import { messages } from './messages'
 
 interface ArtifactWithdrawalDialogProps {
   artifact: Artifact
@@ -17,13 +20,14 @@ export function ArtifactWithdrawalDialog({
   onClose,
   onWithdrawn,
 }: ArtifactWithdrawalDialogProps) {
+  const { t } = useMessages(messages)
   const query = useQueryClient()
   const mutation = useMutation({
     mutationFn: () => withdrawArtifact(artifact.publicId),
     onSuccess: () => {
       void query.invalidateQueries({ queryKey: artifactKeys.all })
       void query.invalidateQueries({ queryKey: artifactKeys.favorites })
-      toast.success('已撤下')
+      toast.success(t('已撤下'))
       onWithdrawn()
       onClose()
     },
@@ -36,22 +40,22 @@ export function ArtifactWithdrawalDialog({
     <Modal
       open
       onOpenChange={changeOpen}
-      title={`撤下「${artifact.title}」？`}
-      description="可在作品库恢复。旧分享链接永久失效。"
+      title={t('撤下「{title}」？', { title: artifact.title })}
+      description={t('可在作品库恢复。旧分享链接永久失效。')}
       footer={
         <>
           <Button variant="ghost" disabled={mutation.isPending} onClick={onClose}>
-            取消
+            {t('取消')}
           </Button>
           <Button variant="destructive" loading={mutation.isPending} onClick={withdraw}>
-            撤下
+            {t('撤下')}
           </Button>
         </>
       }
     >
       {mutation.error ? (
         <p role="alert" className="mt-2 text-sm text-error">
-          {mutation.error.message}
+          {getRequestErrorMessage(mutation.error)}
         </p>
       ) : null}
     </Modal>

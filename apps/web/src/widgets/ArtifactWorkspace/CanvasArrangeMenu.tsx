@@ -3,8 +3,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@akasha/ui/popover'
 import { Group } from 'lucide-react'
 import { useState } from 'react'
 import type { CanvasBoard } from '@/entities/artifact'
+import { useMessages } from '@/shared/i18n'
 import { ALIGNMENTS, alignItems } from './canvas-arrangement'
 import type { CanvasBounds } from './canvas-camera'
+import { canvasToolsMessages } from './canvas-tools-messages'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
 
 interface ArrangeMenuProps {
@@ -15,6 +17,7 @@ interface ArrangeMenuProps {
 
 /** 排列仅作用于当前页面选中的画板，编辑通过同一版本写入通道。 */
 export function CanvasArrangeMenu({ selected, bounds, editing }: ArrangeMenuProps) {
+  const { t } = useMessages(canvasToolsMessages)
   const [open, setOpen] = useState(false)
   const canAlign = editing.available && selected.length > 1
   const group = selected[0]?.layoutGroup
@@ -48,15 +51,17 @@ export function CanvasArrangeMenu({ selected, bounds, editing }: ArrangeMenuProp
           variant="ghost"
           size="sm"
           iconOnly
-          aria-label="排列画板"
-          title="排列画板（Shift 多选）"
+          aria-label={t('排列画板')}
+          title={t('排列画板（Shift 多选）')}
         >
           <Group size={15} />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-60 space-y-2" aria-label="排列画板">
+      <PopoverContent className="w-60 space-y-2" aria-label={t('排列画板')}>
         <p className="text-xs text-ink-muted">
-          {selected.length > 1 ? `已选 ${selected.length} 张画板` : '按住 Shift 多选画板标题。'}
+          {selected.length > 1
+            ? t('已选 {count} 张画板', { count: selected.length })
+            : t('按住 Shift 多选画板标题。')}
         </p>
         <div className="grid grid-cols-2 gap-1">
           {ALIGNMENTS.map(({ id, label }) => (
@@ -67,7 +72,7 @@ export function CanvasArrangeMenu({ selected, bounds, editing }: ArrangeMenuProp
               disabled={!canAlign}
               onClick={() => arrange(id)}
             >
-              {label}
+              {t(label)}
             </Button>
           ))}
         </div>
@@ -78,7 +83,7 @@ export function CanvasArrangeMenu({ selected, bounds, editing }: ArrangeMenuProp
             disabled={!canGroup}
             onClick={() => groupBoards(crypto.randomUUID())}
           >
-            分组画板
+            {t('分组画板')}
           </Button>
           <Button
             variant="ghost"
@@ -86,7 +91,7 @@ export function CanvasArrangeMenu({ selected, bounds, editing }: ArrangeMenuProp
             disabled={!canUngroup}
             onClick={() => groupBoards(null)}
           >
-            取消分组
+            {t('取消分组')}
           </Button>
         </div>
       </PopoverContent>

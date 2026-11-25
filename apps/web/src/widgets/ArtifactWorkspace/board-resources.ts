@@ -1,4 +1,5 @@
 import type { ArtboardContent } from '@akasha/protocol'
+import { isResourceUnavailable } from '@/shared/api/error'
 
 const REQUEST_LIMIT = 4
 const SAVED_CONTENT_LIMIT = 40
@@ -12,7 +13,7 @@ type Capture = (signal: AbortSignal) => Promise<Blob>
 
 type Entry =
   | { type: 'ready'; data: ArtboardContent; bytes: number }
-  | { type: 'error'; message: string; bytes: 0 }
+  | { type: 'error'; cause: unknown; bytes: 0 }
 
 interface Thumbnail {
   url: string
@@ -124,7 +125,8 @@ export class BoardResources {
   }
 
   retry(id: string) {
-    if (this.entries.get(id)?.type !== 'error' || !this.wantsRead(id)) return
+    const entry = this.entries.get(id)
+    if (entry?.type !== 'error' || isResourceUnavailable(entry.cause) || !this.wantsRead(id)) return
     this.entries.delete(id)
     this.publish()
     this.pump()
@@ -170,11 +172,7 @@ export class BoardResources {
       entry = { type: 'ready', data, bytes: contentSize(data) }
     } catch (error) {
       if (controller.signal.aborted) return
-      entry = {
-        type: 'error',
-        message: error instanceof Error ? error.message : '无法读取画板',
-        bytes: 0,
-      }
+      entry = { type: 'error', cause: error, bytes: 0 }
     }
     if (this.loading.get(id) !== controller) return
     this.loading.delete(id)

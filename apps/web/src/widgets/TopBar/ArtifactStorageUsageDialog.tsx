@@ -2,6 +2,9 @@ import { Button } from '@akasha/ui/button'
 import { Modal } from '@akasha/ui/dialog'
 import { Skeleton } from '@akasha/ui/skeleton'
 import { useArtifactStorageUsageQuery } from '@/entities/artifact'
+import { getRequestErrorMessage } from '@/shared/api/error'
+import { useMessages } from '@/shared/i18n'
+import { messages } from './messages'
 
 interface ArtifactStorageUsageDialogProps {
   artifactId: string
@@ -9,17 +12,18 @@ interface ArtifactStorageUsageDialogProps {
   onClose: () => void
 }
 
-function asBytes(bytes: number): string {
-  return bytes < 1024 ? `${bytes} B` : `${Number((bytes / 1024).toFixed(1))} KiB`
-}
-
 /** 只展示该制品的共享与当前用户运行存储统计。 */
 export function ArtifactStorageUsageDialog({
   artifactId,
   onClose,
 }: ArtifactStorageUsageDialogProps) {
+  const { t, number } = useMessages(messages)
   const usage = useArtifactStorageUsageQuery(artifactId)
   const { data, error, isPending } = usage
+  const asBytes = (bytes: number) =>
+    bytes < 1024
+      ? `${number(bytes)} B`
+      : `${number(bytes / 1024, { maximumFractionDigits: 1 })} KiB`
   const limit = data && asBytes(data.limitPerScopeBytes)
   const changeOpen = (open: boolean) => {
     if (!open) onClose()
@@ -28,26 +32,26 @@ export function ArtifactStorageUsageDialog({
     <Modal
       open
       onOpenChange={changeOpen}
-      title="存储用量"
-      description="仅统计运行数据，不含源码与版本。"
-      footer={<Button onClick={onClose}>关闭</Button>}
+      title={t('存储用量')}
+      description={t('仅统计运行数据，不含源码与版本。')}
+      footer={<Button onClick={onClose}>{t('关闭')}</Button>}
     >
-      {isPending && <Skeleton className="h-10 w-full" aria-label="正在加载用量" />}
+      {isPending && <Skeleton className="h-10 w-full" aria-label={t('正在加载用量')} />}
       {error && (
         <p role="alert" className="text-sm text-error">
-          {error.message}
+          {getRequestErrorMessage(error)}
         </p>
       )}
       {data && (
         <dl className="grid grid-cols-[1fr_auto] gap-2 text-sm tabular-nums">
-          <dt>共享</dt>
-          <dd>
+          <dt>{t('共享')}</dt>
+          <dd dir="ltr">
             {asBytes(data.sharedBytes)} / {limit}
           </dd>
           {data.privateBytes !== null && (
             <>
-              <dt>个人</dt>
-              <dd>
+              <dt>{t('个人')}</dt>
+              <dd dir="ltr">
                 {asBytes(data.privateBytes)} / {limit}
               </dd>
             </>

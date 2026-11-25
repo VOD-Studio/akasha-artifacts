@@ -14,6 +14,9 @@ import { useId, useState } from 'react'
 import { toast } from 'sonner'
 import { artifactKeys, transferArtifact } from '@/entities/artifact'
 import { useProjectsQuery } from '@/entities/project'
+import { getRequestErrorMessage } from '@/shared/api/error'
+import { useMessages } from '@/shared/i18n'
+import { messages } from './delivery-messages'
 
 export interface ArtifactTransferTarget {
   artifact: Artifact
@@ -30,6 +33,7 @@ interface ArtifactTransferDialogProps {
 
 /** 只列出当前服务已授权的项目；同一个表单不会跨 Daemon 或 Hub 发送请求。 */
 export function ArtifactTransferDialog({ target, onCopy, onClose }: ArtifactTransferDialogProps) {
+  const { t } = useMessages(messages)
   const formId = useId()
   const { artifact, version, kind } = target
   const copy = kind === 'copy'
@@ -51,14 +55,15 @@ export function ArtifactTransferDialog({ target, onCopy, onClose }: ArtifactTran
     onSuccess: ({ artifact: transferred }) => {
       void query.invalidateQueries({ queryKey: artifactKeys.all })
       if (copy) {
-        toast.success('已复制')
+        toast.success(t('已复制'))
         onCopy(transferred.publicId)
       } else {
-        toast.success('已移动')
+        toast.success(t('已移动'))
       }
       onClose()
     },
   })
+  const error = mutation.error ?? projects.error
   const disabled = mutation.isPending || !selected || !payload.success
   return (
     <Modal
@@ -66,15 +71,15 @@ export function ArtifactTransferDialog({ target, onCopy, onClose }: ArtifactTran
       onOpenChange={(open) => {
         if (!open && !mutation.isPending) onClose()
       }}
-      title={copy ? `复制 v${version.version}` : '移动作品'}
+      title={copy ? t('复制 {version}', { version: `v${version.version}` }) : t('移动作品')}
       description={
         copy
-          ? '生成有独立链接和历史的私有作品，不继承评审、分享权限、Agent 会话或运行存储。'
-          : '保留原链接、版本、反馈和现有访问权。不会覆盖目标项目中的同名作品。'
+          ? t('生成有独立链接和历史的私有作品，不继承评审、分享权限、Agent 会话或运行存储。')
+          : t('保留原链接、版本、反馈和现有访问权。不会覆盖目标项目中的同名作品。')
       }
       footer={
         <Button type="submit" form={formId} disabled={disabled} loading={mutation.isPending}>
-          {copy ? '复制' : '移动'}
+          {copy ? t('复制') : t('移动')}
         </Button>
       }
     >
@@ -86,7 +91,7 @@ export function ArtifactTransferDialog({ target, onCopy, onClose }: ArtifactTran
           if (!disabled && payload.success) mutation.mutate(payload.data)
         }}
       >
-        <Field label="目标项目">
+        <Field label={t('目标项目')}>
           <Select
             disabled={mutation.isPending || projects.isPending || !choices.length}
             loading={projects.isPending}
@@ -94,12 +99,12 @@ export function ArtifactTransferDialog({ target, onCopy, onClose }: ArtifactTran
             onValueChange={setProjectId}
           >
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="选择项目" />
+              <SelectValue placeholder={t('选择项目')} />
             </SelectTrigger>
             <SelectContent>
               {choices.map((project) => (
                 <SelectItem key={project.id} value={project.id}>
-                  {project.name}
+                  <bdi>{project.name}</bdi>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -107,14 +112,15 @@ export function ArtifactTransferDialog({ target, onCopy, onClose }: ArtifactTran
         </Field>
         {copy && (
           <Field
-            label="新作品标识"
+            label={t('新作品标识')}
             error={
               selected && !payload.success
-                ? '标识只能包含字母、数字、连字符、下划线或斜线。'
+                ? t('标识只能包含字母、数字、连字符、下划线或斜线。')
                 : undefined
             }
           >
             <Input
+              dir="ltr"
               value={slug}
               onChange={(event) => setSlug(event.target.value)}
               disabled={mutation.isPending}
@@ -125,12 +131,12 @@ export function ArtifactTransferDialog({ target, onCopy, onClose }: ArtifactTran
         )}
         {!projects.isPending && !projects.isError && !choices.length ? (
           <p className="text-sm text-ink-muted">
-            此服务没有可用的目标项目。请先在目标项目目录接入 Akasha。
+            {t('此服务没有可用的目标项目。请先在目标项目目录接入 Akasha。')}
           </p>
         ) : null}
-        {mutation.error || projects.error ? (
+        {error ? (
           <p role="alert" className="text-sm text-error">
-            {(mutation.error ?? projects.error)?.message}
+            {getRequestErrorMessage(error)}
           </p>
         ) : null}
       </form>

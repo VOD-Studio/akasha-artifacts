@@ -1,3 +1,6 @@
+import { getMessages } from '@/shared/i18n'
+import { messages } from './messages'
+
 /** 一张已在独立沙盒成功渲染的画板。 */
 export interface DesignPdfPage {
   png: Blob
@@ -19,7 +22,7 @@ export async function composeDesignPdf(title: string, pages: AsyncIterable<Desig
     const page = pdf.addPage([width * pointsPerPixel, height * pointsPerPixel])
     page.drawImage(image, { x: 0, y: 0, width: page.getWidth(), height: page.getHeight() })
   }
-  if (!pdf.getPageCount()) throw new Error('指定版本没有可导出的画板')
+  if (!pdf.getPageCount()) throw new Error(getMessages(messages).t('指定版本没有可导出的画板'))
   const bytes = await pdf.save({ addDefaultPage: false })
   return new Blob(
     [new Uint8Array(bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength)],

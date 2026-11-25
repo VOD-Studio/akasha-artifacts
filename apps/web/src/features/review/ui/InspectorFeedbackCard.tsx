@@ -3,7 +3,9 @@ import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
 import { Target } from 'lucide-react'
 import type { Ref } from 'react'
+import { useMessages } from '@/shared/i18n'
 import { formatRelativeTime } from '@/shared/lib/format'
+import { panelMessages } from '../messages'
 import { AnnotationThreadActions } from './AnnotationThreadActions'
 
 interface InspectorFeedbackCardProps {
@@ -18,7 +20,7 @@ interface InspectorFeedbackCardProps {
 }
 
 function feedbackStatusBadge(fb: Feedback): {
-  label: string
+  label: keyof typeof panelMessages
   tone: 'warning' | 'accent' | 'ok' | 'neutral'
 } {
   if (fb.draft) return { label: '草稿', tone: 'warning' }
@@ -29,7 +31,7 @@ function feedbackStatusBadge(fb: Feedback): {
   return { label: '待处理', tone: 'neutral' }
 }
 
-function feedbackKindLabel(kind: Feedback['kind']): string {
+function feedbackKindLabel(kind: Feedback['kind']): keyof typeof panelMessages {
   switch (kind) {
     case 'approve':
       return '批准'
@@ -52,10 +54,17 @@ function feedbackKindLabel(kind: Feedback['kind']): string {
   }
 }
 
-function feedbackLocator(element: Feedback['element']): string | undefined {
+function feedbackLocator(
+  element: Feedback['element'],
+  t: ReturnType<typeof useMessages<typeof panelMessages>>['t'],
+): string | undefined {
   if (!element) return
   const { dataPoints, textPreview, blockId, loc, selector } = element
-  if (dataPoints) return `${dataPoints.chartTitle} · ${dataPoints.points.length} 个数据点`
+  if (dataPoints)
+    return t('{title} · {count} 个数据点', {
+      title: dataPoints.chartTitle,
+      count: dataPoints.points.length,
+    })
   if (textPreview) return textPreview
   if (blockId) return `#${blockId}`
   if (loc) return `@${loc}`
@@ -72,10 +81,11 @@ export function InspectorFeedbackCard({
   focusedCard,
   onFocusFeedback,
 }: InspectorFeedbackCardProps) {
+  const { t, locale, date } = useMessages(panelMessages)
   const statusMeta = feedbackStatusBadge(fb)
   const isOldVersion = fb.version !== activeVersion
   const points = fb.element?.dataPoints
-  const locator = feedbackLocator(fb.element)
+  const locator = feedbackLocator(fb.element, t)
   const boardId = fb.element?.boardId
 
   return (
@@ -89,23 +99,27 @@ export function InspectorFeedbackCard({
     >
       <div className="flex flex-wrap items-center justify-between gap-1.5">
         <div className="flex items-center gap-1.5">
-          <Badge tone={statusMeta.tone}>{statusMeta.label}</Badge>
-          {thread?.resolution && <Badge tone="ok">讨论已解决</Badge>}
+          <Badge tone={statusMeta.tone}>{t(statusMeta.label)}</Badge>
+          {thread?.resolution && <Badge tone="ok">{t('讨论已解决')}</Badge>}
           <span className="text-[11px] font-medium text-ink-muted">
-            {feedbackKindLabel(fb.kind)}
+            {t(feedbackKindLabel(fb.kind))}
           </span>
           {isOldVersion ? (
             <Badge tone="off" data-testid={`old-version-badge-${fb.id}`}>
-              针对 v{fb.version}
+              {t('针对 {version}', { version: `v${fb.version}` })}
             </Badge>
           ) : (
             <span className="text-[11px] text-ink-muted">v{fb.version}</span>
           )}
         </div>
         <span className="flex items-center gap-1.5 text-[10px] text-ink-muted">
-          <span>{fb.author}</span>
-          <time dateTime={fb.createdAt} title={new Date(fb.createdAt).toLocaleString()}>
-            {formatRelativeTime(fb.createdAt)}
+          <bdi>{fb.author}</bdi>
+          <time
+            dir="ltr"
+            dateTime={fb.createdAt}
+            title={date(fb.createdAt, { dateStyle: 'medium', timeStyle: 'short' })}
+          >
+            {formatRelativeTime(fb.createdAt, undefined, locale)}
           </time>
         </span>
       </div>
@@ -120,7 +134,8 @@ export function InspectorFeedbackCard({
           className="mt-1.5 inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] text-ink hover:underline"
           href={`/a/${encodeURIComponent(artifactId)}/v/${fb.version}${window.location.search}#thread=${encodeURIComponent(fb.id)}`}
         >
-          <Target size={10} />回 v{fb.version} 定位
+          <Target size={10} />
+          {t('回 {version} 定位', { version: `v${fb.version}` })}
         </a>
       )}
       {!isOldVersion && locator && (
@@ -131,7 +146,7 @@ export function InspectorFeedbackCard({
           className="mt-1.5 max-w-full font-mono"
           leftIcon={<Target size={10} />}
         >
-          <span className="sr-only">定位：</span>
+          <span className="sr-only">{t('定位：')}</span>
           <span className="truncate">
             {boardId ? `${boardId} · ` : ''}
             {locator}
@@ -140,7 +155,7 @@ export function InspectorFeedbackCard({
       )}
       {points && (
         <details className="mt-1 text-ink-muted">
-          <summary className="cursor-pointer">查看圈选数据</summary>
+          <summary className="cursor-pointer">{t('查看圈选数据')}</summary>
           <ul className="mt-1 space-y-1">
             {points.points.map((point) => (
               <li key={point.id}>
@@ -150,7 +165,10 @@ export function InspectorFeedbackCard({
           </ul>
         </details>
       )}
-      <p className="mt-1.5 whitespace-pre-wrap break-words text-xs leading-relaxed text-ink">
+      <p
+        dir="auto"
+        className="mt-1.5 whitespace-pre-wrap break-words text-xs leading-relaxed text-ink"
+      >
         {fb.body}
       </p>
       {isAnnotationKind(fb.kind) && (

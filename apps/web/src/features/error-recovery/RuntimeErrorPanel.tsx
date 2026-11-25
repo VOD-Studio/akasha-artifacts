@@ -5,6 +5,8 @@ import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { submitArtifactFeedback } from '@/entities/feedback'
 import { type SandboxErrorRecord, useWorkspaceStore } from '@/entities/workspace'
+import { useMessages } from '@/shared/i18n'
+import { recoveryMessages } from './messages'
 
 /** 错误面板里展示的一行源码；`isTarget` 标出出错的那一行。 */
 export interface SourceSnippetLine {
@@ -82,6 +84,7 @@ export function RuntimeErrorPanel({
   onDismiss,
   onSubmitFeedback = submitArtifactFeedback,
 }: RuntimeErrorPanelProps) {
+  const { t } = useMessages(recoveryMessages)
   const [submitting, setSubmitting] = useState(false)
   const [showStack, setShowStack] = useState(false)
 
@@ -109,11 +112,11 @@ export function RuntimeErrorPanel({
     try {
       const snippetText =
         snippet.length > 0
-          ? `\n\n出错源码片段：\n${snippet
+          ? `\n\n${t('出错源码片段：')}\n${snippet
               .map((l) => `${l.isTarget ? '>' : ' '} ${l.lineNo} | ${l.text}`)
               .join('\n')}`
           : ''
-      const stackText = error.stack ? `\n\n调用栈：\n${error.stack.slice(0, 1200)}` : ''
+      const stackText = error.stack ? `\n\n${t('调用栈：')}\n${error.stack.slice(0, 1200)}` : ''
       const body = `[${error.phase}] ${error.message}${attributedLoc ? ` (at ${attributedLoc})` : ''}${snippetText}${stackText}`
 
       await onSubmitFeedback(artifactId, {
@@ -127,7 +130,7 @@ export function RuntimeErrorPanel({
       })
       markErrorSent(fingerprint)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '发送失败')
+      toast.error(err instanceof Error ? err.message : t('发送失败'))
     } finally {
       setSubmitting(false)
     }
@@ -145,19 +148,25 @@ export function RuntimeErrorPanel({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-semibold">
-                {error.phase === 'compile' ? '无法加载预览' : '预览出错'}
+                {t(error.phase === 'compile' ? '无法加载预览' : '预览出错')}
               </span>
-              {attributedLoc ? <Badge tone="danger">源码 {attributedLoc}</Badge> : null}
-              <Badge tone="neutral">v{version}</Badge>
+              {attributedLoc ? (
+                <Badge tone="danger">{t('源码 {loc}', { loc: attributedLoc })}</Badge>
+              ) : null}
+              <Badge tone="neutral">
+                <bdi dir="ltr">v{version}</bdi>
+              </Badge>
             </div>
-            <p className="mt-1 break-words font-mono text-xs text-red-900">{error.message}</p>
+            <p dir="auto" className="mt-1 break-words font-mono text-xs text-red-900">
+              {error.message}
+            </p>
           </div>
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5">
           {alreadySent ? (
             <Badge tone="ok" icon={<Check size={12} />}>
-              已交给 Agent 修复
+              {t('已交给 Agent 修复')}
             </Badge>
           ) : (
             <Button
@@ -167,17 +176,26 @@ export function RuntimeErrorPanel({
               loading={submitting}
               onClick={() => void handleSendToAgent()}
             >
-              交给 Agent 修复
+              {t('交给 Agent 修复')}
             </Button>
           )}
-          <Button variant="ghost" size="sm" iconOnly aria-label="关闭错误面板" onClick={onDismiss}>
+          <Button
+            variant="ghost"
+            size="sm"
+            iconOnly
+            aria-label={t('关闭错误面板')}
+            onClick={onDismiss}
+          >
             <X size={14} aria-hidden />
           </Button>
         </div>
       </div>
 
       {snippet.length > 0 ? (
-        <div className="mt-2.5 overflow-x-auto rounded-lg border border-red-200/80 bg-white font-mono text-[11px] leading-5">
+        <div
+          dir="ltr"
+          className="mt-2.5 overflow-x-auto rounded-lg border border-red-200/80 bg-white font-mono text-[11px] leading-5"
+        >
           {snippet.map((line) => (
             <div
               key={line.lineNo}
@@ -205,12 +223,21 @@ export function RuntimeErrorPanel({
             size="sm"
             aria-expanded={showStack}
             onClick={() => setShowStack((v) => !v)}
-            leftIcon={showStack ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            leftIcon={
+              showStack ? (
+                <ChevronDown size={12} />
+              ) : (
+                <ChevronRight size={12} className="rtl:rotate-180" />
+              )
+            }
           >
-            {showStack ? '收起详情' : '查看详情'}
+            {t(showStack ? '收起详情' : '查看详情')}
           </Button>
           {showStack ? (
-            <pre className="mt-1 max-h-36 overflow-auto rounded-lg bg-red-950/95 p-2.5 font-mono text-[11px] text-red-100">
+            <pre
+              dir="ltr"
+              className="mt-1 max-h-36 overflow-auto rounded-lg bg-red-950/95 p-2.5 font-mono text-[11px] text-red-100"
+            >
               {error.stack}
             </pre>
           ) : null}

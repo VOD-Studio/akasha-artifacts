@@ -3,20 +3,24 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { clearAnnotationDrafts } from '@/entities/feedback'
 import { isCloudHub } from '@/shared/config/runtime'
+import { useMessages } from '@/shared/i18n'
 import { endHubSession, fetchHubSession } from './api/session'
+import { messages } from './messages'
 
 /** 供界面在服务端授权之外隐藏只对 Hub 成员有意义的入口。 */
 export function useHubSession() {
-  return useQuery({
+  const session = useQuery({
     queryKey: ['hub-session'],
     enabled: isCloudHub(),
     staleTime: 60_000,
     queryFn: fetchHubSession,
-  }).data?.user
+  })
+  return session.isSuccess ? session.data.user : undefined
 }
 
 /** Hub 独占的账户入口；退出成功后清除上一个身份在本标签页的草稿。 */
 export function HubAccountButton() {
+  const { t } = useMessages(messages)
   const user = useHubSession()
   const logout = useMutation({
     mutationFn: endHubSession,
@@ -28,11 +32,11 @@ export function HubAccountButton() {
       toast.error(error.message)
     },
   })
-  if (!isCloudHub()) return null
+  if (!isCloudHub() || user === undefined) return null
   if (user) {
     return (
       <Button variant="ghost" size="sm" loading={logout.isPending} onClick={() => logout.mutate()}>
-        退出 @{user.login}
+        {t('退出 @{login}', { login: user.login })}
       </Button>
     )
   }
@@ -42,7 +46,7 @@ export function HubAccountButton() {
         href={`/auth/login?next=${encodeURIComponent(window.location.pathname)}`}
         onClick={clearAnnotationDrafts}
       >
-        使用 GitHub 登录
+        {t('使用 GitHub 登录')}
       </a>
     </Button>
   )

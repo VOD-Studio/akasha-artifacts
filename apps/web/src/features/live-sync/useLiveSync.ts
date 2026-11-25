@@ -194,6 +194,10 @@ export function useLiveSync(options: UseLiveSyncOptions = {}): void {
       url: url.href,
       target: { artifactId, projectId },
       onStatusChange: (status) => setWsStatus(status),
+      onAccessDenied: () => {
+        if (artifactId)
+          void queryClient.invalidateQueries({ queryKey: artifactKeys.detailPrefix(artifactId) })
+      },
       onEvent: (event) => {
         applyRealtimeEventToCache(queryClient, event, {
           onStatePatched: (payload) => onStatePatchedRef.current?.(payload),

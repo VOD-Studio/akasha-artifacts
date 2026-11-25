@@ -2,7 +2,9 @@ import type { CanvasLayer } from '@akasha/protocol'
 import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
 import type { CanvasDocument, CanvasLocation } from '@/entities/artifact'
+import { useMessages } from '@/shared/i18n'
 import { LayerTree } from './LayerTree'
+import { panelMessages } from './messages'
 
 interface BoardInspectorTreeProps {
   document: CanvasDocument
@@ -28,12 +30,13 @@ export function BoardInspectorTree({
   onSelectLayer,
   onNavigate,
 }: BoardInspectorTreeProps) {
-  const noLayers = layers ? '此画板没有可检查的图层' : '正在加载图层…'
-  const layerStatus = layersAvailable ? noLayers : '未保存的预览无法查看图层。'
+  const { t } = useMessages(panelMessages)
+  const noLayers = layers ? t('此画板没有可检查的图层') : t('正在加载图层…')
+  const layerStatus = layersAvailable ? noLayers : t('未保存的预览无法查看图层。')
   return (
-    <section aria-label="页面、画板与图层" className="border-b border-border pb-3">
+    <section aria-label={t('页面、画板与图层')} className="border-b border-border pb-3">
       <div className="mb-2 flex items-center justify-between gap-2 text-sm font-medium">
-        <h2>页面、画板与图层</h2>
+        <h2>{t('页面、画板与图层')}</h2>
         <Badge tone="neutral">v{version}</Badge>
       </div>
       <div className="flex max-h-[min(20rem,42dvh)] flex-col gap-1 overflow-auto">
@@ -70,7 +73,9 @@ export function BoardInspectorTree({
                             <p className="px-2 py-1 text-xs text-ink-muted">{layerStatus}</p>
                           )}
                           {layers?.truncated && (
-                            <p className="px-2 py-1 text-xs text-ink-muted">仅显示前 240 个图层</p>
+                            <p className="px-2 py-1 text-xs text-ink-muted">
+                              {t('仅显示前 {count} 个图层', { count: 240 })}
+                            </p>
                           )}
                         </div>
                       )}
@@ -80,7 +85,7 @@ export function BoardInspectorTree({
               </ul>
             )}
             {page.boards.length === 0 && (
-              <p className="px-4 py-1 text-xs text-ink-muted">此页面没有画板</p>
+              <p className="px-4 py-1 text-xs text-ink-muted">{t('此页面没有画板')}</p>
             )}
           </details>
         ))}

@@ -1,16 +1,19 @@
 import type { DesignLayer, VersionSummary } from '@akasha/protocol'
-import { Circle, PenLine, Square, StickyNote, Type } from 'lucide-react'
+import { Circle, Pencil, PenTool, Square, StickyNote, Type } from 'lucide-react'
 import { type PointerEvent, useRef, useState } from 'react'
 import type { CanvasBoard } from '@/entities/artifact'
+import { useMessages } from '@/shared/i18n'
 import type { CanvasBounds, Point } from './canvas-camera'
+import { canvasToolsMessages } from './canvas-tools-messages'
 
 /** 每种绘制工具决定预览形状与写入版本的原生图层类型。 */
 export const DRAWING_TOOLS = {
-  text: { kind: 'text', label: '添加文本', icon: Type },
-  note: { kind: 'note', label: '添加便签', icon: StickyNote },
-  rectangle: { kind: 'rectangle', label: '绘制矩形', icon: Square },
-  ellipse: { kind: 'ellipse', label: '绘制椭圆', icon: Circle },
-  stroke: { kind: 'stroke', label: '画笔', icon: PenLine },
+  text: { kind: 'text', label: '添加文本', shortcut: 'T', icon: Type },
+  note: { kind: 'note', label: '添加便签', shortcut: 'N', icon: StickyNote },
+  rectangle: { kind: 'rectangle', label: '绘制矩形', shortcut: 'R', icon: Square },
+  ellipse: { kind: 'ellipse', label: '绘制椭圆', shortcut: 'O', icon: Circle },
+  stroke: { kind: 'stroke', label: '画笔', shortcut: 'B', icon: Pencil },
+  pen: { kind: 'pen', label: '钢笔', shortcut: 'P', icon: PenTool },
 } as const
 
 export type DrawingTool = (typeof DRAWING_TOOLS)[keyof typeof DRAWING_TOOLS]
@@ -66,14 +69,16 @@ interface SurfaceProps {
   onCreate(layer: DesignLayer, base: VersionSummary, anchor: Point): void
 }
 
-/** 只在松开指针后发布；绘制预览和相机都不进入源码。 */
+/** 铅笔在松开指针后提交；钢笔只在显式完成折线后提交。 */
 export function BoardDrawingSurface({ board, tool, version, onCreate }: SurfaceProps) {
+  const { t } = useMessages(canvasToolsMessages)
+  const path = useRef<{ points: Point[]; base: VersionSummary; anchor: Point } | null>(null)
   const gesture = useRef<Gesture | null>(null)
   const [preview, setPreview] = useState<CanvasBounds | string | null>(null)
   const { width, height } = board
 
   const commitShape = (start: Point, end: Point, base: VersionSummary, anchor: Point) => {
-    if (tool.kind === 'stroke') return
+    if (tool.kind === 'stroke' || tool.kind === 'pen') return
     const [presetWidth, presetHeight] = PRESET_SIZE[tool.kind]
     const moved = Math.hypot(end.x - start.x, end.y - start.y) >= 3
     const bounds = moved
@@ -92,8 +97,60 @@ export function BoardDrawingSurface({ board, tool, version, onCreate }: SurfaceP
     }
   }
 
+  const commitStroke = (points: Point[], base: VersionSummary, anchor: Point) => {
+    if (points.length < 2) return
+    const low = { ...points[0] }
+    const high = { ...points[0] }
+    for (const { x, y } of points) {
+      low.x = Math.min(low.x, x)
+      low.y = Math.min(low.y, y)
+      high.x = Math.max(high.x, x)
+      high.y = Math.max(high.y, y)
+    }
+    // 留出笔尖宽度，避免垂直或水平的线被自己的边界裁掉。
+    const bounds = boundsOf(
+      { x: Math.max(0, low.x - 2), y: Math.max(0, low.y - 2) },
+      { x: Math.min(width, high.x + 2), y: Math.min(height, high.y + 2) },
+    )
+    onCreate(
+      {
+        id: crypto.randomUUID(),
+        kind: 'stroke',
+        ...bounds,
+        points: points.map(({ x, y }) => [
+          (x - bounds.x) / bounds.width,
+          (y - bounds.y) / bounds.height,
+        ]),
+      },
+      base,
+      anchor,
+    )
+  }
+
+  const finishPath = () => {
+    const line = path.current
+    if (!line || line.points.length < 2) return
+    path.current = null
+    setPreview(null)
+    commitStroke(line.points, line.base, line.anchor)
+  }
+
+  const addNode = (point: Point, anchor: Point) => {
+    const line = path.current ?? { points: [], base: version, anchor }
+    if (!line.points.length) line.points.push(point)
+    else if (line.points.length < INK_LIMIT) sample(line.points, point, true)
+    line.anchor = anchor
+    path.current = line
+    setPreview(line.points.map(({ x, y }) => `${x},${y}`).join(' '))
+  }
+
+  let action = t(tool.label)
+  if (tool.kind === 'stroke') action = t('绘制笔迹')
+  if (tool.kind === 'pen') action = t('绘制折线')
+
   const cancel = () => {
     gesture.current = null
+    path.current = null
     setPreview(null)
   }
 
@@ -104,7 +161,8 @@ export function BoardDrawingSurface({ board, tool, version, onCreate }: SurfaceP
   return (
     <button
       type="button"
-      aria-label={`在${board.title}${tool.kind === 'stroke' ? '绘制笔迹' : tool.label}`}
+      aria-label={t('在{title}{action}', { title: board.title, action })}
+      title={tool.kind === 'pen' ? t('点击添加节点；双击或按 Enter 完成，Esc 取消') : undefined}
       className="artifact-canvas-board-hit z-2 cursor-crosshair touch-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
       onPointerDown={(event) => {
         if (event.button !== 0 || gesture.current) return
@@ -119,6 +177,11 @@ export function BoardDrawingSurface({ board, tool, version, onCreate }: SurfaceP
         })
         const start = toBoardPoint(event)
         event.stopPropagation()
+        if (tool.kind === 'pen') {
+          event.currentTarget.focus({ preventScroll: true })
+          addNode(start, { x: event.clientX, y: event.clientY })
+          return
+        }
         event.currentTarget.setPointerCapture?.(event.pointerId)
         gesture.current = {
           pointer: event.pointerId,
@@ -150,36 +213,19 @@ export function BoardDrawingSurface({ board, tool, version, onCreate }: SurfaceP
           return
         }
         sample(drawing.points, end, true)
-        if (drawing.points.length < 2) return
-        const low = { ...drawing.start }
-        const high = { ...drawing.start }
-        for (const { x, y } of drawing.points) {
-          low.x = Math.min(low.x, x)
-          low.y = Math.min(low.y, y)
-          high.x = Math.max(high.x, x)
-          high.y = Math.max(high.y, y)
-        }
-        // 留出笔尖宽度，避免垂直或水平的线被自己的边界裁掉。
-        const bounds = boundsOf(
-          { x: Math.max(0, low.x - 2), y: Math.max(0, low.y - 2) },
-          { x: Math.min(width, high.x + 2), y: Math.min(height, high.y + 2) },
-        )
-        onCreate(
-          {
-            id: crypto.randomUUID(),
-            kind: 'stroke',
-            ...bounds,
-            points: drawing.points.map(({ x, y }) => [
-              (x - bounds.x) / bounds.width,
-              (y - bounds.y) / bounds.height,
-            ]),
-          },
-          drawing.base,
-          anchor,
-        )
+        commitStroke(drawing.points, drawing.base, anchor)
       }}
       onPointerCancel={cancel}
-      onLostPointerCapture={cancel}
+      onLostPointerCapture={() => {
+        if (gesture.current) cancel()
+      }}
+      onKeyDown={(event) => {
+        if (tool.kind === 'pen' && event.key === 'Enter' && !event.nativeEvent.isComposing) {
+          event.preventDefault()
+          finishPath()
+        }
+      }}
+      onDoubleClick={tool.kind === 'pen' ? finishPath : undefined}
       onClick={(event) => {
         if (event.detail !== 0) return
         const start = { x: width / 2, y: height / 2 }
@@ -205,6 +251,14 @@ export function BoardDrawingSurface({ board, tool, version, onCreate }: SurfaceP
               strokeWidth={3}
               strokeLinecap="round"
               strokeLinejoin="round"
+            />
+          )}
+          {tool.kind === 'pen' && strokePreview && !strokePreview.includes(' ') && (
+            <circle
+              cx={strokePreview.split(',')[0]}
+              cy={strokePreview.split(',')[1]}
+              r={2}
+              fill="currentColor"
             />
           )}
           {shapePreview && tool.kind === 'ellipse' && (

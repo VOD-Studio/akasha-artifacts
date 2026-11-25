@@ -11,7 +11,10 @@ import { RotateCcw, SlidersHorizontal } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useArtifactSpecQuery, usePushArtifactStateMutation } from '@/entities/artifact'
+import { isAccessDenied } from '@/shared/api/error'
+import { useMessages } from '@/shared/i18n'
 import { applyJsonPatchClient } from '@/shared/lib/json-patch'
+import { panelMessages } from './messages'
 
 export interface PropsPanelField {
   key: string
@@ -118,6 +121,7 @@ function PropertyField({
   readOnly: boolean
   onChange: (value: string | boolean | number) => void
 }) {
+  const { number } = useMessages(panelMessages)
   const id = `ak-prop-${field.key}`
 
   if (field.type === 'boolean') {
@@ -164,7 +168,14 @@ function PropertyField({
   if (field.type === 'number') {
     const value = typeof rawValue === 'number' ? rawValue : Number(rawValue ?? field.min ?? 1)
     return (
-      <Field label={field.label} labelEnd={<span className="font-mono">{value}</span>}>
+      <Field
+        label={field.label}
+        labelEnd={
+          <span dir="ltr" className="font-mono">
+            {number(value)}
+          </span>
+        }
+      >
         <Slider
           id={id}
           min={field.min ?? 1}
@@ -207,7 +218,12 @@ export function PropsPanel({
   onPushPatch,
   onFallbackToL1,
 }: PropsPanelProps) {
+  const { t } = useMessages(panelMessages)
   const specQuery = useArtifactSpecQuery(artifactType, specOverride === undefined)
+  // 同一队列中已排队的参数写入也必须遵守刚返回的权限拒绝。
+  const deniedArtifact = useRef<string | null>(null)
+  const [denied, setDenied] = useState<string | null>(null)
+  const writable = !readOnly && denied !== artifactId
   const pushMutation = usePushArtifactStateMutation(artifactId)
   // 本地乐观草稿：避免文本输入或滑块拖动期间等待请求往返导致光标跳回
   const [optimisticValues, setOptimisticValues] = useState<Record<string, unknown>>({})
@@ -250,7 +266,7 @@ export function PropsPanel({
     optimisticKey?: string,
     optimisticVal?: unknown,
   ) => {
-    if (readOnly) return
+    if (!writable || deniedArtifact.current === artifactId) return
     if (optimisticKey !== undefined) {
       setOptimisticValues((prev) => ({ ...prev, [optimisticKey]: optimisticVal }))
     }
@@ -258,8 +274,9 @@ export function PropsPanel({
     pendingQueueRef.current = pendingQueueRef.current
       .catch(() => {})
       .then(async () => {
-        const patch = buildOps(latestSnapshotRef.current)
         try {
+          if (deniedArtifact.current === artifactId) return
+          const patch = buildOps(latestSnapshotRef.current)
           if (onPushPatch) {
             await onPushPatch(patch)
           } else {
@@ -267,14 +284,19 @@ export function PropsPanel({
           }
           latestSnapshotRef.current = applyJsonPatchClient(latestSnapshotRef.current, patch)
         } catch (err) {
-          if (optimisticKey !== undefined) {
+          if (isAccessDenied(err)) {
+            deniedArtifact.current = artifactId
+            setDenied(artifactId)
+            setOptimisticValues({})
+          } else if (optimisticKey !== undefined) {
             setOptimisticValues((prev) => {
               const next = { ...prev }
               delete next[optimisticKey]
               return next
             })
           }
-          toast.error(err instanceof Error ? err.message : '无法更新运行参数')
+          if (!isAccessDenied(err))
+            toast.error(err instanceof Error ? err.message : t('无法更新运行参数'))
         } finally {
           inFlightCountRef.current = Math.max(0, inFlightCountRef.current - 1)
         }
@@ -283,7 +305,7 @@ export function PropsPanel({
 
   if (specOverride === undefined && specQuery.isPending) {
     return (
-      <section aria-label="运行参数" aria-busy="true">
+      <section aria-label={t('运行参数')} aria-busy="true">
         <Skeleton className="h-24 w-full" />
       </section>
     )
@@ -297,12 +319,12 @@ export function PropsPanel({
       >
         <Empty
           variant="compact"
-          title={specQuery.isError ? '无法加载运行参数' : '没有可调整的参数'}
+          title={specQuery.isError ? t('无法加载运行参数') : t('没有可调整的参数')}
         />
         {onFallbackToL1 ? (
           <div className="flex justify-center">
             <Button variant="outline" size="sm" onClick={onFallbackToL1}>
-              打开批注
+              {t('打开批注')}
             </Button>
           </div>
         ) : null}
@@ -314,29 +336,29 @@ export function PropsPanel({
 
   return (
     <fieldset
-      disabled={readOnly}
+      disabled={!writable}
       data-testid="props-panel"
       className="min-w-0 space-y-3 rounded-xl border border-border bg-surface p-3"
     >
-      <legend className="sr-only">运行参数</legend>
+      <legend className="sr-only">{t('运行参数')}</legend>
+      {denied === artifactId && <p role="alert">{t('没有编辑权限')}</p>}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 text-xs font-semibold text-ink">
           <SlidersHorizontal size={13} aria-hidden />
-          <span aria-hidden>运行参数</span>
+          <span aria-hidden>{t('运行参数')}</span>
         </div>
-        {hasOverrides ? (
+        {writable && hasOverrides ? (
           <Button
             variant="ghost"
             size="sm"
             leftIcon={<RotateCcw size={11} />}
-            disabled={readOnly}
             loading={pushMutation.isPending}
             onClick={() => {
               setOptimisticValues({})
               enqueuePropUpdate(() => [{ op: 'add', path: '/props', value: {} }])
             }}
           >
-            重置
+            {t('重置')}
           </Button>
         ) : null}
       </div>
@@ -360,7 +382,7 @@ export function PropsPanel({
               key={field.key}
               field={field}
               rawValue={rawValue}
-              readOnly={readOnly}
+              readOnly={!writable}
               onChange={updateValue}
             />
           )

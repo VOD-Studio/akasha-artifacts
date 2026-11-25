@@ -11,8 +11,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { artifactKeys, parseVersionConflictDetails } from '@/entities/artifact'
 import { feedbackKeys } from '@/entities/feedback'
-import { ApiError } from '@/shared/api/error'
+import { ApiError, isAccessDenied } from '@/shared/api/error'
 import type { ShellOutgoingPayload } from '@/shared/bridge/host'
+import { useMessages } from '@/shared/i18n'
 import {
   fetchVisualEditTarget,
   fetchVisualUndo,
@@ -21,6 +22,7 @@ import {
   type VisualEditCommand,
   type VisualEditTarget,
 } from '../api/client'
+import { panelMessages } from '../messages'
 
 interface Options {
   artifact: Artifact
@@ -71,10 +73,12 @@ export interface VisualEditController {
  * 保存成功后写入查询缓存，并使制品与反馈的查询失效。不再可用或卸载时自动取消点选。
  */
 export function useVisualEdit(options: Options): VisualEditController {
+  const { t } = useMessages(panelMessages)
   const { artifact, version, enabled } = options
   const optionsRef = useRef(options)
   optionsRef.current = options
   const queryClient = useQueryClient()
+  const [deniedArtifact, setDeniedArtifact] = useState<string | null>(null)
   const [isPicking, setPicking] = useState(false)
   const pickingRef = useRef(false)
   const revision = useRef(0)
@@ -85,6 +89,7 @@ export function useVisualEdit(options: Options): VisualEditController {
     'source' in version && typeof version.source === 'string' ? version.source : undefined
   const available =
     enabled &&
+    deniedArtifact !== artifact.publicId &&
     versionSource !== undefined &&
     version.version === artifact.headVersion &&
     (artifact.type === 'react' || artifact.type === 'html')
@@ -140,10 +145,18 @@ export function useVisualEdit(options: Options): VisualEditController {
   }
 
   const requestFailure = (error: unknown, fallback: string) => {
+    if (isAccessDenied(error)) {
+      setDeniedArtifact(artifact.publicId)
+      toast.error(t('没有编辑权限'))
+      return
+    }
     const conflict = parseVersionConflictDetails(error)
     if (conflict) {
       toast.error(
-        `v${conflict.baseVersion} 已更新至 v${conflict.headVersion}。请在最新版本重新选择元素。`,
+        t('{base} 已更新至 {head}。请在最新版本重新选择元素。', {
+          base: `v${conflict.baseVersion}`,
+          head: `v${conflict.headVersion}`,
+        }),
       )
       void queryClient.invalidateQueries({ queryKey: artifactKeys.detailPrefix(artifact.publicId) })
       void queryClient.invalidateQueries({ queryKey: artifactKeys.versions(artifact.publicId) })
@@ -160,7 +173,7 @@ export function useVisualEdit(options: Options): VisualEditController {
     const { loc, element } = message
     const request = ++revision.current
     if (!loc) {
-      toast.info('此元素仅支持批注')
+      toast.info(t('此元素仅支持批注'))
       annotate(element)
       return
     }
@@ -173,13 +186,13 @@ export function useVisualEdit(options: Options): VisualEditController {
       if (request !== revision.current || optionsRef.current.version.version !== message.version)
         return
       if (!target) {
-        toast.info('此元素仅支持批注')
+        toast.info(t('此元素仅支持批注'))
         annotate(element)
       } else {
         setPicked({ baseVersion: message.version, loc, element, target })
       }
     } catch (error) {
-      if (request === revision.current) requestFailure(error, '无法读取元素')
+      if (request === revision.current) requestFailure(error, t('无法读取元素'))
     }
   }
 
@@ -214,7 +227,11 @@ export function useVisualEdit(options: Options): VisualEditController {
       void queryClient.invalidateQueries({ queryKey: artifactKeys.all })
       void queryClient.invalidateQueries({ queryKey: feedbackKeys.list(artifact.publicId) })
       optionsRef.current.onVersionSaved?.(saved.version)
-      toast.success(`已${'op' in command ? '保存' : '撤销'}，新版本为 v${saved.version.version}`)
+      toast.success(
+        t('op' in command ? '已保存，新版本为 {version}' : '已撤销，新版本为 {version}', {
+          version: `v${saved.version.version}`,
+        }),
+      )
     } catch (error) {
       if (sentPreview) optionsRef.current.send({ type: 'apply.rollback', version: version.version })
       if (
@@ -227,7 +244,7 @@ export function useVisualEdit(options: Options): VisualEditController {
         toast.info(error.message)
         annotate(active.element)
       } else {
-        requestFailure(error, 'op' in command ? '保存失败' : '撤销失败')
+        requestFailure(error, 'op' in command ? t('保存失败') : t('撤销失败'))
       }
     } finally {
       saving.current = false

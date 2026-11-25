@@ -4,17 +4,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { useArtifactsQuery } from '@/entities/artifact'
 import { useProjectsQuery } from '@/entities/project'
 import { useWorkspaceStore } from '@/entities/workspace'
-import { ARTIFACT_TYPE_LABELS } from '@/shared/lib/format'
+import { useMessages } from '@/shared/i18n'
+import { artifactTypeLabel } from '@/shared/lib/format'
+import { messages } from './messages'
 
 export interface ArtifactCommandPaletteProps {
   onNavigate: (to: string) => void
 }
-
-const GROUPS: CommandGroup[] = [
-  { id: 'artifacts', label: '作品' },
-  { id: 'projects', label: '项目' },
-  { id: 'actions', label: '操作' },
-]
 
 /**
  * ⌘K 跨项目命令面板：按标题、slug 或项目模糊搜索制品。
@@ -22,6 +18,15 @@ const GROUPS: CommandGroup[] = [
  * @remarks 回车在当前页打开，⌘回车在新标签打开。
  */
 export function ArtifactCommandPalette({ onNavigate }: ArtifactCommandPaletteProps) {
+  const { t, locale } = useMessages(messages)
+  const groups = useMemo<CommandGroup[]>(
+    () => [
+      { id: 'artifacts', label: t('作品') },
+      { id: 'projects', label: t('项目') },
+      { id: 'actions', label: t('操作') },
+    ],
+    [t],
+  )
   const open = useWorkspaceStore((s) => s.commandPaletteOpen)
   const setOpen = useWorkspaceStore((s) => s.setCommandPaletteOpen)
   const setSelectedProjectId = useWorkspaceStore((s) => s.setSelectedProjectId)
@@ -56,7 +61,7 @@ export function ArtifactCommandPalette({ onNavigate }: ArtifactCommandPalettePro
         group: 'artifacts',
         label: art.title,
         description: project?.name,
-        hint: ARTIFACT_TYPE_LABELS[art.type] ?? art.type,
+        hint: artifactTypeLabel(art.type, locale),
         icon: <FileCode2 size={15} />,
         keywords: [art.slug, art.publicId, art.type, project?.name ?? '', art.projectId],
         onSelect: ({ newTab }) => {
@@ -74,7 +79,8 @@ export function ArtifactCommandPalette({ onNavigate }: ArtifactCommandPalettePro
       group: 'projects',
       label: proj.name,
       description: proj.rootPath,
-      hint: proj.dormant ? '休眠' : undefined,
+      descriptionDir: 'ltr',
+      hint: proj.dormant ? t('休眠') : undefined,
       icon: <FolderGit2 size={15} />,
       keywords: [proj.id, proj.rootPath],
       onSelect: ({ newTab }) => {
@@ -91,7 +97,7 @@ export function ArtifactCommandPalette({ onNavigate }: ArtifactCommandPalettePro
       {
         id: 'action:home',
         group: 'actions',
-        label: '打开作品库',
+        label: t('打开作品库'),
         icon: <Home size={15} />,
         keywords: ['home', 'library', 'all', 'projects'],
         onSelect: ({ newTab }) => {
@@ -106,18 +112,33 @@ export function ArtifactCommandPalette({ onNavigate }: ArtifactCommandPalettePro
     ]
 
     return [...artifactItems, ...projectItems, ...actionItems]
-  }, [artifacts, projects, projectMap, onNavigate, setSelectedProjectId])
+  }, [artifacts, projects, projectMap, onNavigate, setSelectedProjectId, t, locale])
 
   return (
     <CommandList
       open={open}
       onOpenChange={setOpen}
       items={items}
-      groups={GROUPS}
+      groups={groups}
+      labels={{
+        title: t('命令面板'),
+        searching: t('正在搜索全文'),
+        results: t('结果'),
+        fullText: t('全文'),
+        empty: t('没有找到结果'),
+        tryFullText: t('试试在全文里搜索。'),
+        tryKeywords: t('试试其他关键词。'),
+        searchAll: t('在全文里搜索'),
+        select: t('选择'),
+        open: t('打开'),
+        newTab: t('新标签打开'),
+        searchWithin: (label) => t('在「{label}」里搜索', { label }),
+        count: (count) => t('{count} 项', { count }),
+      }}
       query={query}
       onQueryChange={setQuery}
       limit={8}
-      placeholder="搜索作品、项目或操作…"
+      placeholder={t('搜索作品、项目或操作…')}
     />
   )
 }

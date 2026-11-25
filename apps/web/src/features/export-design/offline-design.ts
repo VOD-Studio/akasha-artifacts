@@ -6,6 +6,8 @@ import type {
 } from '@akasha/protocol'
 import { tsxLanguage } from '@codemirror/lang-javascript'
 import { strToU8, zipSync } from 'fflate'
+import { getMessages } from '@/shared/i18n'
+import { messages } from './messages'
 import boot from './offline-boot.js?raw'
 import player from './offline-player.js?raw'
 
@@ -39,10 +41,14 @@ function embedded(url: string) {
 }
 
 function inspectStyles(css: string) {
-  if (/@import\b/i.test(css)) throw new Error('离线包不能加载 CSS @import，请内联样式和资源')
+  if (/@import\b/i.test(css))
+    throw new Error(getMessages(messages).t('离线包不能加载 CSS @import，请内联样式和资源'))
   for (const match of css.matchAll(/\burl\(\s*(['"]?)(.*?)\1\s*\)/gi)) {
     const url = match[2]?.trim() ?? ''
-    if (!embedded(url)) throw new Error(`不能离线打包样式资源：${url.slice(0, 180)}`)
+    if (!embedded(url))
+      throw new Error(
+        getMessages(messages).t('不能离线打包样式资源：{url}', { url: url.slice(0, 180) }),
+      )
   }
 }
 
@@ -53,18 +59,28 @@ function inspectHtml(source: string) {
   for (const element of content.content.querySelectorAll('*')) {
     for (const name of ['src', 'poster', 'background']) {
       const url = element.getAttribute(name)?.trim()
-      if (url && !embedded(url)) throw new Error(`不能离线打包资源：${url.slice(0, 180)}`)
+      if (url && !embedded(url))
+        throw new Error(
+          getMessages(messages).t('不能离线打包资源：{url}', { url: url.slice(0, 180) }),
+        )
     }
     if (element.hasAttribute('srcset'))
-      throw new Error('离线包不接受 srcset，请改用单个内嵌的 data: 图片')
+      throw new Error(getMessages(messages).t('离线包不接受 srcset，请改用单个内嵌的 data: 图片'))
     if (
       element.matches('script, iframe, object, embed, link, base') ||
       Array.from(element.attributes).some(({ name }) => name.startsWith('on'))
     )
-      throw new Error('HTML 离线包不支持外部嵌入或脚本；交互请使用表单、声明的流程或 React')
+      throw new Error(
+        getMessages(messages).t(
+          'HTML 离线包不支持外部嵌入或脚本；交互请使用表单、声明的流程或 React',
+        ),
+      )
     if (element.matches('image, use')) {
       const url = (element.getAttribute('href') ?? element.getAttribute('xlink:href'))?.trim()
-      if (url && !embedded(url)) throw new Error(`不能离线打包 SVG 资源：${url.slice(0, 180)}`)
+      if (url && !embedded(url))
+        throw new Error(
+          getMessages(messages).t('不能离线打包 SVG 资源：{url}', { url: url.slice(0, 180) }),
+        )
     }
     const css =
       element.getAttribute('style') ?? (element.matches('style') ? element.textContent : '')
@@ -80,7 +96,9 @@ function inspectReact(source: string) {
         name === 'MemberExpression' &&
         /^(?:window\.)?akasha\s*(?:\?\.|\.)\s*storage$/.test(source.slice(from, to))
       )
-        throw new Error('依赖运行存储的交互不能离线打包，请改用内置初始数据')
+        throw new Error(
+          getMessages(messages).t('依赖运行存储的交互不能离线打包，请改用内置初始数据'),
+        )
       if (name !== 'JSXAttribute') return
       const attribute = node.getChild('JSXIdentifier')
       const tag = node.parent?.getChild('JSXBuiltin')?.getChild('JSXIdentifier')
@@ -101,7 +119,9 @@ function inspectReact(source: string) {
       if (!literal) return
       const url = source.slice(literal.from + 1, literal.to - 1).trim()
       if (!url.includes('${') && !url.includes('\\') && !embedded(url))
-        throw new Error(`不能离线打包资源：${url.slice(0, 180)}`)
+        throw new Error(
+          getMessages(messages).t('不能离线打包资源：{url}', { url: url.slice(0, 180) }),
+        )
     },
   })
 }
@@ -148,7 +168,9 @@ function preflight(html: string, width: number, height: number, signal: AbortSig
       else resolve()
     }
     function abort() {
-      finish(signal.aborted ? signal.reason : new Error('画板无法离线打开'))
+      finish(
+        signal.aborted ? signal.reason : new Error(getMessages(messages).t('画板无法离线打开')),
+      )
     }
     function receive({ source, origin, data }: MessageEvent) {
       if (origin !== 'null' || source !== frame.contentWindow) return
@@ -164,7 +186,13 @@ function preflight(html: string, width: number, height: number, signal: AbortSig
 }
 
 function boardError(board: OfflineBoard, error: unknown) {
-  return new Error(`「${board.title}」：${error instanceof Error ? error.message : '无法离线渲染'}`)
+  const { t } = getMessages(messages)
+  return new Error(
+    t('「{title}」：{error}', {
+      title: board.title,
+      error: error instanceof Error ? error.message : t('无法离线渲染'),
+    }),
+  )
 }
 
 /** 以离线同款隔离环境逐张预检；任何画板失败时都不产出部分交付物。 */
@@ -172,7 +200,7 @@ export async function composeOfflineDesign(
   design: OfflineDesign,
   singleBoard: boolean,
   signal: AbortSignal,
-  onProgress: (message: string) => void,
+  onProgress: (current: number, total: number, title: string) => void,
 ): Promise<Blob> {
   for (const board of design.boards) {
     signal.throwIfAborted()
@@ -185,12 +213,14 @@ export async function composeOfflineDesign(
   const response = await fetch('/assets/akasha-offline.bundle.txt', { signal, credentials: 'omit' })
   const runtime = response.ok ? await response.text() : ''
   if (!/^H4sI[A-Za-z0-9+/]+={0,2}$/.test(runtime))
-    throw new Error('缺少离线运行资产，请检查实例是否完整构建（make build）')
+    throw new Error(
+      getMessages(messages).t('缺少离线运行资产，请检查实例是否完整构建（make build）'),
+    )
   const frames = frameParts(runtime)
   const boards = design.boards.map((board) => ({ ...board, version: design.version }))
   for (const [index, board] of boards.entries()) {
     signal.throwIfAborted()
-    onProgress(`正在预检 ${index + 1}/${boards.length}：${board.title}`)
+    onProgress(index + 1, boards.length, board.title)
     try {
       await preflight(
         frames.frameStart + inertJson(board) + frames.frameEnd,
