@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  AgentDesignInputSchema,
+  AgentMessageInputSchema,
+  ApplyRequestedTweaksInputSchema,
   ArtifactAwaitFeedbackInputSchema,
   ArtifactPublishInputSchema,
   ArtifactSchema,
@@ -28,6 +31,21 @@ import {
 
 const NOW = '2026-11-22T09:00:00.000Z'
 const PUB_ID = 'Akasha0123456789abcde'
+
+it('参数申请只随续接消息发送；工具不接受模型重选基准或目标', () => {
+  const message = '采用当前调整'
+  const target = { artifactId: PUB_ID, projectId: 'design', version: 4, boardId: 'phone' }
+  const tweakApplication = { boardId: 'phone', targetIds: ['tablet'], values: { duration: 2 } }
+  const input = { message, target, tweakApplication }
+  expect(AgentMessageInputSchema.parse(input)).toEqual(input)
+  expect(
+    AgentDesignInputSchema.safeParse({ message, projectId: 'design', tweakApplication }).success,
+  ).toBe(false)
+  expect(ApplyRequestedTweaksInputSchema.safeParse({}).success).toBe(true)
+  expect(
+    ApplyRequestedTweaksInputSchema.safeParse({ baseVersion: 5, tweakApplication }).success,
+  ).toBe(false)
+})
 
 describe('@akasha/protocol primitives & domain', () => {
   it('validates Author, PublicId, and Slug with positive and negative cases', () => {

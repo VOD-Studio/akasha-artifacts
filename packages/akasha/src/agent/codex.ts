@@ -56,6 +56,9 @@ async function runCodex(akashaEntrypoint: string, request: AgentRunnerLaunch) {
     '--ignore-user-config',
     '--skip-git-repo-check',
   ]
+  const tools = request.requestedTweaksOnly
+    ? ['artifact_read_handoff', 'artifact_apply_requested_tweaks']
+    : scopedTools
   const config = [
     'approval_policy="never"',
     'sandbox_mode="read-only"',
@@ -63,8 +66,8 @@ async function runCodex(akashaEntrypoint: string, request: AgentRunnerLaunch) {
     `mcp_servers.akasha.command=${JSON.stringify(process.execPath)}`,
     `mcp_servers.akasha.args=${JSON.stringify([akashaEntrypoint, 'mcp', '--agent-turn'])}`,
     `mcp_servers.akasha.env_vars=${JSON.stringify(scopedEnv)}`,
-    `mcp_servers.akasha.enabled_tools=${JSON.stringify(scopedTools)}`,
-    ...scopedTools.map((tool) => `mcp_servers.akasha.tools.${tool}.approval_mode="approve"`),
+    `mcp_servers.akasha.enabled_tools=${JSON.stringify(tools)}`,
+    ...tools.map((tool) => `mcp_servers.akasha.tools.${tool}.approval_mode="approve"`),
   ]
   for (const entry of config) args.push('-c', entry)
   if (threadId) args.push(threadId)
@@ -95,7 +98,7 @@ async function runCodex(akashaEntrypoint: string, request: AgentRunnerLaunch) {
   let reply = ''
   let complete = false
   let failed = false
-  function consume(line: string) {
+  const consume = (line: string) => {
     const event = readEvent(line)
     switch (event?.type) {
       case 'thread.started':

@@ -1,4 +1,5 @@
 import {
+  ApplyRequestedTweaksInputSchema,
   ArtifactAckFeedbackInputSchema,
   ArtifactAwaitFeedbackInputSchema,
   ArtifactCheckInputSchema,
@@ -174,7 +175,23 @@ export function createAkashaMcpServer(options: AkashaMcpServerOptions): McpServe
     },
   )
 
-  if (options.scopedAgentTurn) return server
+  if (options.scopedAgentTurn) {
+    server.registerTool(
+      'artifact_apply_requested_tweaks',
+      {
+        description: '仅应用本轮网页已确认的画板参数。只有成功回执才算发布；失败不重试。',
+        inputSchema: ApplyRequestedTweaksInputSchema,
+      },
+      async () => {
+        try {
+          return okText(await client.applyRequestedTweaks())
+        } catch (err) {
+          return errText(err instanceof AkashaApiError ? err.message : err)
+        }
+      },
+    )
+    return server
+  }
 
   server.registerTool(
     'artifact_push_state',

@@ -12,6 +12,8 @@ export interface AgentRunnerLaunch {
   baseUrl: string
   /** 作为 CLI 发布的默认项目，不允许工具自己换项目。 */
   projectId: string
+  /** 该轮只允许执行网页已确认的参数应用，不提供通用写工具。 */
+  requestedTweaksOnly: boolean
   /** 断开授权、关闭服务或执行超时会中止进程。 */
   signal: AbortSignal
   /** 只从可信的 CLI 事件来建立或确认线程绑定。 */

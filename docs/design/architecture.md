@@ -285,6 +285,8 @@ sequenceDiagram
 
 **按需写作规范原则**：常驻工具描述只保留极简路由（何时用哪类 Artifact、增量优先、先 `check` 后分享）；当 Agent 创建新类型的第一个 Artifact 或调用 `artifact_spec` 时，才返回该类型的完整块集合、props schema 与示例，显著降低常规会话的 token 占用。
 
+本机绑定的会话另有 `artifact_apply_requested_tweaks`：只有作者从可写头版本确认了参数和目标画板的轮次才可执行。范围和基准在受理时冻结；工具不能另选作品或画板，成功后只生成一个版本，同一轮不能改用通用更新扩大范围。普通 MCP 客户端和 Hub 不提供此工具。
+
 ### 5.2 HTTP 与 WebSocket
 
 - REST 前缀 `/api/v1`，资源包括 `projects`、`artifacts`（同时支持 `publicId` 与 `project + slug` 寻址）、`artifacts/:id/versions`、`artifacts/:id/state`、`artifacts/:id/rounds`、`artifacts/:id/feedback`、`artifacts/:id/edits`、`artifacts/:id/storage`、`artifacts/:id/check`、`daemon/status`、`daemon/logs`。

@@ -1,6 +1,7 @@
 import {
   AgentDesignInputSchema,
   AgentMessageInputSchema,
+  ApplyRequestedTweaksInputSchema,
   ArtifactCheckInputSchema,
   ArtifactPublishInputSchema,
   ArtifactTypeSchema,
@@ -84,9 +85,14 @@ export function mountLocalAgentRoutes(
     return c.json(await sessions.forArtifact(artifactId(c.req.param('id'))), 200, privateHeaders)
   })
   app.post(SESSION, async (c) => {
-    const { message, target } = await readBody(c.req.raw, AgentMessageInputSchema)
+    const { message, target, tweakApplication } = await readBody(c.req.raw, AgentMessageInputSchema)
     return c.json(
-      await sessions.continueArtifact(artifactId(c.req.param('id')), message, target),
+      await sessions.continueArtifact(
+        artifactId(c.req.param('id')),
+        message,
+        target,
+        tweakApplication,
+      ),
       202,
       privateHeaders,
     )
@@ -107,6 +113,10 @@ export function mountLocalAgentRoutes(
   app.post(`${TOOLS}/artifacts/check`, async (c) => {
     const { type, source } = await readBody(c.req.raw, ArtifactCheckInputSchema)
     return c.json(checks.check({ type, source }), 200, privateHeaders)
+  })
+  app.post(`${TOOLS}/apply-requested-tweaks`, async (c) => {
+    await readBody(c.req.raw, ApplyRequestedTweaksInputSchema)
+    return c.json(await sessions.applyRequestedTweaks(bearer(c.req.raw)), 200, privateHeaders)
   })
   app.post(`${TOOLS}/artifacts`, async (c) => {
     const input = await readBody(c.req.raw, ArtifactPublishInputSchema)

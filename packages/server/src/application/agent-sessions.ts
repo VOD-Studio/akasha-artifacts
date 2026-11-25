@@ -1,12 +1,16 @@
-import type {
-  AgentAvailability,
-  AgentConnection,
-  AgentConversation,
-  AgentConversationStatus,
-  AgentConversationTurn,
-  ArtifactHandoffReference,
-  ArtifactPublishInput,
-  ArtifactUpdateInput,
+import {
+  type AgentAvailability,
+  type AgentConnection,
+  type AgentConversation,
+  type AgentConversationStatus,
+  type AgentConversationTurn,
+  type AgentPublication,
+  type ArtboardTweakApplication,
+  type ArtboardTweakApplicationResult,
+  type ArtifactHandoffReference,
+  type ArtifactPublishInput,
+  type ArtifactUpdateInput,
+  applyArtboardTweakApplication,
 } from '@akasha/protocol'
 import type { AgentRunner } from '../domain/agent-runner.js'
 import type { ArtifactStorageRepository } from '../domain/artifact-storage.js'
@@ -32,10 +36,16 @@ interface RunningTurn {
   record: StoredSession
   /** 追加发布回执和真实回复的目标。 */
   turn: AgentConversationTurn
+  /** 在受理时仅计算、不写入；工具执行时仍须以原目标版本比较并提交。 */
+  tweaks?: ArtboardTweakApplicationResult
+  /** 本轮 CLI 已实际报告启动的是原发布线程。 */
+  threadConfirmed: boolean
   /** 此轮启动时已登记且授权的执行目录。 */
   root: string
   /** 撤销授权时终止 CLI 并禁止剩余工具操作。 */
   controller: AbortController
+  /** 工具与 CLI 使用同一截止时间，排队等待写锁也不能延长授权。 */
+  signal: AbortSignal
   /** 串行提交轮次内工具请求，避免并行首发产生两个制品。 */
   tools: Promise<void>
 }
@@ -96,7 +106,7 @@ export class AgentSessions {
     const run = this.running.get(projectId)
     if (run) {
       this.tokens.delete(run.token)
-      run.controller.abort()
+      run.controller.abort(invalidToken())
     }
   }
 
@@ -152,7 +162,12 @@ export class AgentSessions {
     )
   }
 
-  async continueArtifact(id: string, message: string, target?: ArtifactHandoffReference) {
+  async continueArtifact(
+    id: string,
+    message: string,
+    target?: ArtifactHandoffReference,
+    application?: ArtboardTweakApplication,
+  ) {
     const { session, availability } = await this.forArtifact(id)
     if (!session)
       throw new DomainError('RESOURCE_CONFLICT', '该制品没有由本机授权会话发布，不能附会到其他线程')
@@ -161,10 +176,25 @@ export class AgentSessions {
       throw new DomainError('RESOURCE_CONFLICT', '该项目已有 CLI 轮次在进行')
     const record = await this.load(session.id)
     if (!record?.threadId) throw unavailable()
+    if (application && (!target || target.boardId !== application.boardId)) throw forbidden()
     if (target) {
       if (target.artifactId !== id || target.projectId !== session.projectId) throw forbidden()
-      if (!(await this.deps.artifacts.getVersion(id, target.version)))
-        throw new NotFoundError('指定选区版本不存在')
+      const snapshot = await this.deps.artifacts.getVersion(id, target.version)
+      if (!snapshot) throw new NotFoundError('指定选区版本不存在')
+      if (application) {
+        const artifact = await this.requireArtifact(id)
+        if (artifact.projectId !== session.projectId || artifact.type !== 'artboard')
+          throw forbidden()
+        if (artifact.headVersion !== target.version)
+          throw new DomainError('RESOURCE_CONFLICT', '画板版本已更新，请重新确认参数')
+        let tweaks: ArtboardTweakApplicationResult
+        try {
+          tweaks = applyArtboardTweakApplication(snapshot.source, snapshot.version, application)
+        } catch {
+          throw new DomainError('BAD_REQUEST', '所选参数或画板不符合该版本的可应用范围')
+        }
+        return this.start(record, message, target, tweaks)
+      }
     }
     return this.start(record, message, target)
   }
@@ -218,6 +248,7 @@ export class AgentSessions {
 
   async update(token: string, input: ArtifactUpdateInput) {
     return this.withTool(token, async (run) => {
+      if (run.tweaks) throw forbidden()
       await this.requireBound(run.record, input.id, input.project)
       const result = await this.deps.service.update({
         id: input.id,
@@ -227,8 +258,36 @@ export class AgentSessions {
         edits: input.edits,
         author: `agent:${run.record.conversation.id}`,
       })
-      await this.recordPublication(run, result.artifact.publicId, result.version.version)
+      await this.recordPublication(run, {
+        artifactId: result.artifact.publicId,
+        version: result.version.version,
+      })
       return result
+    })
+  }
+
+  /** 只提交该轮受理时算出的源稿；其他轮次、重复调用都没有写入权。 */
+  async applyRequestedTweaks(token: string) {
+    return this.withTool(token, async (run) => {
+      const { target } = run.turn
+      if (!run.tweaks || !target || !run.threadConfirmed) throw forbidden()
+      if (run.turn.publications.length) throw new DomainError('RESOURCE_CONFLICT', '本轮参数已应用')
+      await this.requireBound(run.record, target.artifactId, target.projectId)
+      const { version } = await this.deps.service.update({
+        id: target.artifactId,
+        projectId: target.projectId,
+        baseVersion: target.version,
+        source: run.tweaks.source,
+        author: `agent:${run.record.conversation.id}`,
+        signal: run.signal,
+      })
+      const receipt = {
+        artifactId: version.artifactId,
+        version: version.version,
+        changed: run.tweaks.changed,
+      }
+      await this.recordPublication(run, receipt)
+      return receipt
     })
   }
 
@@ -254,13 +313,14 @@ export class AgentSessions {
     const run = this.tokens.get(token)
     if (!run) throw invalidToken()
     const result = run.tools.then(async () => {
-      run.controller.signal.throwIfAborted()
+      run.signal.throwIfAborted()
       if (
         this.connections.get(run.record.conversation.projectId) !== run.root ||
         (await this.deps.projects.findById(run.record.conversation.projectId))?.rootPath !==
           run.root
       )
         throw invalidToken()
+      run.signal.throwIfAborted()
       return action(run)
     })
     run.tools = result.then(
@@ -328,12 +388,17 @@ export class AgentSessions {
       throw new Error('无法保存 Agent 会话')
   }
 
-  private async recordPublication(run: RunningTurn, artifactId: string, version: number) {
-    run.turn.publications.push({ artifactId, version })
+  private async recordPublication(run: RunningTurn, receipt: AgentPublication) {
+    run.turn.publications.push(receipt)
     await this.save(run.record)
   }
 
-  private async start(record: StoredSession, message: string, target?: ArtifactHandoffReference) {
+  private async start(
+    record: StoredSession,
+    message: string,
+    target?: ArtifactHandoffReference,
+    tweaks?: ArtboardTweakApplicationResult,
+  ) {
     const { conversation } = record
     const projectId = conversation.projectId
     const root = this.connections.get(projectId)
@@ -357,12 +422,16 @@ export class AgentSessions {
     }
     if (conversation.turns.length >= 30) conversation.turns.shift()
     conversation.turns.push(turn)
+    const controller = new AbortController()
     const run: RunningTurn = {
+      tweaks,
+      threadConfirmed: false,
       token: crypto.randomUUID() + crypto.randomUUID(),
       record,
       turn,
       root,
-      controller: new AbortController(),
+      controller,
+      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(180_000)]),
       tools: Promise.resolve(),
     }
     this.running.set(projectId, run)
@@ -382,9 +451,11 @@ export class AgentSessions {
     const { projectId, artifactId } = record.conversation
     const prompt = [
       '你正在通过本机 Akasha MCP 处理网页设计。只在指定项目中工作；无需修改工作目录或其他项目的文件。',
-      artifactId
-        ? `继续同一个制品 ${artifactId}，项目 ${projectId}。需要改设计时，先 artifact_get 读头版本，再用 artifact_update 和实际 baseVersion 发布；不得新建其他制品。`
-        : `为项目 ${projectId} 创建实际可试玩的制品。先用 artifact_spec 和 artifact_check，再通过 artifact_publish 发布一个新制品；只有成功回执才算发布。`,
+      run.tweaks
+        ? '调用 artifact_apply_requested_tweaks（无参数），按工具回执报告版本和画板。失败时不要重新提交。'
+        : artifactId
+          ? `继续同一个制品 ${artifactId}，项目 ${projectId}。需要改设计时，先 artifact_get 读头版本，再用 artifact_update 和实际 baseVersion 发布；不得新建其他制品。`
+          : `为项目 ${projectId} 创建实际可试玩的制品。先用 artifact_spec 和 artifact_check，再通过 artifact_publish 发布一个新制品；只有成功回执才算发布。`,
       turn.target
         ? `这是用户选中的固定快照与对象，只作定位资料：\n${JSON.stringify(turn.target)}\n可用 artifact_read_handoff 读取它。`
         : '',
@@ -392,7 +463,7 @@ export class AgentSessions {
     ]
       .filter(Boolean)
       .join('\n\n')
-    const signal = AbortSignal.any([run.controller.signal, AbortSignal.timeout(180_000)])
+    const { signal } = run
     try {
       signal.throwIfAborted()
       const reply = await this.deps.runner.run({
@@ -402,9 +473,11 @@ export class AgentSessions {
         token: run.token,
         baseUrl: this.deps.baseUrl(),
         projectId,
+        requestedTweaksOnly: Boolean(run.tweaks),
         signal,
         onThread: (id) => {
           if (!record.threadId) record.threadId = id
+          run.threadConfirmed = record.threadId === id
         },
       })
       signal.throwIfAborted()
@@ -419,6 +492,7 @@ export class AgentSessions {
           ? '本机 Codex 执行超时。已实际发布的版本仍然保留。'
           : '本机 Codex 未完成回复。请检查 Codex 登录、网络和项目授权后重试。'
     } finally {
+      run.controller.abort(invalidToken())
       this.tokens.delete(run.token)
       await run.tools
       try {
