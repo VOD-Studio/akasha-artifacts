@@ -1,34 +1,20 @@
-import type {
-  ArtboardAppearance,
-  ArtboardTweakValues,
-  ArtifactType,
-  DesignLayer,
-} from '@akasha/protocol'
+import { resolveArtboardTweaks } from '@akasha/protocol'
 import { tsxLanguage } from '@codemirror/lang-javascript'
 import { strToU8, zipSync } from 'fflate'
-import { getMessages } from '@/shared/i18n'
+import type { LoadedCanvasBoard } from '@/entities/artifact'
+import { getMessages, type Locale } from '@/shared/i18n'
 import { messages } from './messages'
 import boot from './offline-boot.js?raw'
 import player from './offline-player.js?raw'
+import { offlinePage } from './offline-preview'
 
-interface OfflineBoard {
-  id: string
-  title: string
-  legacyId?: string
-  boardId?: string
-  type: ArtifactType
-  width: number
-  height: number
-  source: string
-  designLayers?: readonly DesignLayer[]
-  boardAppearance?: ArtboardAppearance
-  boardTweaks?: ArtboardTweakValues
-}
+type OfflineOutput = 'design-html' | 'design-zip' | 'board-zip'
 
 interface OfflineDesign {
   title: string
   version: number
-  boards: readonly OfflineBoard[]
+  pages: readonly { id: string; title: string; boardIds: readonly string[] }[]
+  boards: readonly LoadedCanvasBoard[]
   flows: readonly { from: string; to: string; label?: string }[]
 }
 
@@ -126,12 +112,23 @@ function inspectReact(source: string) {
   })
 }
 
-function inspectBoard(board: OfflineBoard) {
+function inspectBoard(board: LoadedCanvasBoard) {
   if (board.type === 'html' || board.type === 'svg') inspectHtml(board.source)
   if (board.type === 'react') inspectReact(board.source)
 }
 
-function frameParts(runtime: string) {
+function frameParts(runtime: string, locale: Locale) {
+  const { t } = getMessages(messages, locale)
+  const text = inertJson({
+    lang: locale,
+    failed: t('无法打开离线预览'),
+    decode: t('有图片无法离线加载'),
+    missing: t('离线画板数据缺失'),
+    unsupported: t('此作品无法离线打开'),
+    resource: t('不能离线载入资源：{location}'),
+    startup: t('离线运行器启动失败'),
+    unpack: t('浏览器无法解压离线运行器'),
+  })
   const nonce = crypto.randomUUID()
   const policy = [
     "default-src 'none'",
@@ -144,8 +141,8 @@ function frameParts(runtime: string) {
     "form-action 'none'",
   ].join('; ')
   return {
-    frameStart: `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${policy}"></head><body><div id="root"></div><script type="application/json" id="akasha-offline-board">`,
-    frameEnd: `</script><script type="text/plain" id="akasha-offline-runtime">${runtime}</script><script nonce="${nonce}">${boot}</script></body></html>`,
+    frameStart: `<!doctype html><html dir="ltr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${policy}"></head><body><div id="root"></div><script type="application/json" id="akasha-offline-board">`,
+    frameEnd: `</script><script type="text/plain" id="akasha-offline-runtime">${runtime}</script><script nonce="${nonce}">const offlineText=${text};\n${boot}</script></body></html>`,
   }
 }
 
@@ -185,11 +182,19 @@ function preflight(html: string, width: number, height: number, signal: AbortSig
   })
 }
 
-function boardError(board: OfflineBoard, error: unknown) {
+function boardError(
+  board: LoadedCanvasBoard,
+  design: OfflineDesign,
+  output: OfflineOutput,
+  error: unknown,
+) {
   const { t } = getMessages(messages)
+  const page =
+    output === 'design-zip' && design.pages.find((page) => page.boardIds.includes(board.id))
+  const title = page && page.id ? `${page.title} / ${board.title}` : board.title
   return new Error(
     t('「{title}」：{error}', {
-      title: board.title,
+      title,
       error: error instanceof Error ? error.message : t('无法离线渲染'),
     }),
   )
@@ -198,16 +203,21 @@ function boardError(board: OfflineBoard, error: unknown) {
 /** 以离线同款隔离环境逐张预检；任何画板失败时都不产出部分交付物。 */
 export async function composeOfflineDesign(
   design: OfflineDesign,
-  singleBoard: boolean,
+  output: OfflineOutput,
   signal: AbortSignal,
   onProgress: (current: number, total: number, title: string) => void,
 ): Promise<Blob> {
+  const { t, locale } = getMessages(messages)
+  signal.throwIfAborted()
+  if (!design.boards.length) throw new Error(t('指定版本没有可导出的画板'))
+  if (output === 'board-zip' && design.boards.length !== 1)
+    throw new Error(t('单板 ZIP 只能包含一张画板'))
   for (const board of design.boards) {
     signal.throwIfAborted()
     try {
       inspectBoard(board)
     } catch (error) {
-      throw boardError(board, error)
+      throw boardError(board, design, output, error)
     }
   }
   const response = await fetch('/assets/akasha-offline.bundle.txt', { signal, credentials: 'omit' })
@@ -216,8 +226,22 @@ export async function composeOfflineDesign(
     throw new Error(
       getMessages(messages).t('缺少离线运行资产，请检查实例是否完整构建（make build）'),
     )
-  const frames = frameParts(runtime)
-  const boards = design.boards.map((board) => ({ ...board, version: design.version }))
+  const frames = frameParts(runtime, locale)
+  // 只交付固定快照的渲染输入。调用方即使带上工作区状态，也不会被序列化。
+  const boards = design.boards.map((board) => ({
+    id: board.id,
+    title: board.title,
+    legacyId: board.legacyBlockId,
+    boardId: board.scoped ? board.id : undefined,
+    type: board.type,
+    width: board.width,
+    height: board.height,
+    source: board.source,
+    version: design.version,
+    designLayers: board.designLayers,
+    boardAppearance: board.appearance,
+    boardTweaks: board.tweaks?.length ? resolveArtboardTweaks(board.tweaks) : undefined,
+  }))
   for (const [index, board] of boards.entries()) {
     signal.throwIfAborted()
     onProgress(index + 1, boards.length, board.title)
@@ -230,32 +254,31 @@ export async function composeOfflineDesign(
       )
     } catch (error) {
       signal.throwIfAborted()
-      throw boardError(board, error)
+      throw boardError(design.boards[index], design, output, error)
     }
   }
+  signal.throwIfAborted()
   const ids = new Set(boards.map(({ id }) => id))
   const data = inertJson({
     title: design.title,
     version: design.version,
+    pages:
+      output === 'board-zip'
+        ? []
+        : design.pages.map(({ id, title, boardIds }) => ({ id, title, boardIds })),
     boards,
-    flows: design.flows.filter(({ from, to }) => ids.has(from) && ids.has(to)),
-    ...frames,
+    flows: design.flows
+      .filter(({ from, to }) => ids.has(from) && ids.has(to))
+      .map(({ from, to, label }) => ({ from, to, label })),
   })
-  const html = offlinePage(data)
-  if (!singleBoard) return new Blob([html], { type: 'text/html;charset=utf-8' })
-  return new Blob([zipSync({ 'index.html': strToU8(html) })], { type: 'application/zip' })
-}
-
-function offlinePage(data: string) {
-  return `<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>离线预览</title><style>
-body{margin:0;font:15px system-ui,sans-serif;color:#171717;background:#f5f5f5}
-header{position:sticky;top:0;background:white;padding:.75rem 1rem;border-bottom:1px solid #d4d4d4;display:flex;align-items:center;gap:.65rem;flex-wrap:wrap}
-h1{font-size:1rem;margin:0}select,button{font:inherit}nav{display:flex;gap:.4rem;flex-wrap:wrap}
-main{padding:1rem;display:grid;justify-items:center}iframe{box-sizing:border-box;max-width:100%;border:1px solid #d4d4d4;background:white}
-#status:empty{display:none}</style></head><body>
-<header><h1></h1><span>离线预览</span><label>画板 <select></select></label><nav aria-label="跳转画板"></nav><span id="status" role="status"></span></header>
-<main><iframe title="画板" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe></main>
-<script type="application/json" id="akasha-offline-data">${data}</script><script>${player}</script></body></html>`
+  // 经典脚本可随 index.html 从 file:// 读取，不依赖 ES 模块、相对 fetch 或本地服务。
+  const framesScript = `const offlineFrames = ${inertJson(frames)};`
+  const html = offlinePage(data, output === 'design-zip' ? undefined : framesScript, locale)
+  if (output === 'design-html') return new Blob([html], { type: 'text/html;charset=utf-8' })
+  const files: Record<string, Uint8Array> = { 'index.html': strToU8(html) }
+  if (output === 'design-zip') {
+    files['assets/runtime.js'] = strToU8(framesScript)
+    files['assets/player.js'] = strToU8(player)
+  }
+  return new Blob([zipSync(files)], { type: 'application/zip' })
 }

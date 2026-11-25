@@ -1,4 +1,4 @@
-import { type Artifact, resolveArtboardTweaks, type VersionSummary } from '@akasha/protocol'
+import type { Artifact, VersionSummary } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Modal } from '@akasha/ui/dialog'
 import { Field, FieldSet } from '@akasha/ui/field'
@@ -149,7 +149,9 @@ function ExportDialog({
   const boardId = scope.startsWith('board:') ? scope.slice('board:'.length) : undefined
   const isSelection = scope === 'selection'
   const [pngScale, setPngScale] = useState<1 | 2>(1)
-  const [format, setFormat] = useState<'png' | 'pdf' | 'html'>(target.boardId ? 'png' : 'pdf')
+  const [format, setFormat] = useState<'png' | 'pdf' | 'board-zip' | 'design-html' | 'design-zip'>(
+    target.boardId ? 'png' : 'pdf',
+  )
   const [failure, setFailure] = useState<{ cause: unknown }>()
   const error = failure && getRequestErrorMessage(failure.cause, t('导出失败'))
   const [progress, setProgress] = useState<
@@ -157,7 +159,7 @@ function ExportDialog({
   >()
   const job = useRef<AbortController | null>(null)
   const busy = Boolean(progress)
-  const extension = format === 'html' && boardId ? 'zip' : format
+  const offline = format === 'design-html' || format === 'design-zip' || format === 'board-zip'
   const board = boardId ? initialBoards?.get(boardId)?.board : undefined
   const selectionPreview = useMemo(() => {
     if (!isSelection || !preview || !selection) return
@@ -181,7 +183,12 @@ function ExportDialog({
   }
 
   const selectFormat = (value: string) => {
-    if (value !== 'png' && value !== 'pdf' && value !== 'html') return
+    if (
+      value !== 'pdf' &&
+      !(boardId && (value === 'png' || value === 'board-zip')) &&
+      !(scope === 'design' && (value === 'design-html' || value === 'design-zip'))
+    )
+      return
     setFormat(value)
     setFailure(undefined)
   }
@@ -228,33 +235,29 @@ function ExportDialog({
         boards = Array.from(snapshot.boards.values(), ({ board }) => board)
       }
       if (!boards.length) throw new Error(t('指定版本没有可导出的画板'))
-      if (format === 'html') {
+      if (offline) {
         const { composeOfflineDesign } = await import('@/features/export-design')
         const output = await composeOfflineDesign(
           {
             title: result.version.title,
             version: result.version.version,
-            boards: boards.map((board) => ({
-              id: board.id,
-              title: board.title,
-              legacyId: board.legacyBlockId,
-              boardId: board.scoped ? board.id : undefined,
-              width: board.width,
-              height: board.height,
-              type: board.type,
-              source: board.source,
-              designLayers: board.designLayers,
-              boardAppearance: board.appearance,
-              boardTweaks: board.tweaks?.length ? resolveArtboardTweaks(board.tweaks) : undefined,
-            })),
+            pages: selected
+              ? []
+              : snapshot.document.pages.map(({ id, title, boards }) => ({
+                  id,
+                  title,
+                  boardIds: boards.map((board) => board.id),
+                })),
+            boards,
             flows: snapshot.document.flows,
           },
-          Boolean(selected),
+          format,
           signal,
           (current, total, title) => setProgress({ phase: 'preflight', current, total, title }),
         )
         signal.throwIfAborted()
         const suffix = selected ? `-${filePart(selected.title)}` : ''
+        const extension = format === 'design-html' ? 'html' : 'zip'
         downloadFile(
           output,
           `${filePart(result.version.title)}-v${version.version}${suffix}.${extension}`,
@@ -376,7 +379,9 @@ function ExportDialog({
             >
               {boardId && <Radio value="png" label="PNG" />}
               <Radio value="pdf" label="PDF" />
-              {!isSelection && <Radio value="html" label={boardId ? 'HTML ZIP' : t('离线 HTML')} />}
+              {boardId && <Radio value="board-zip" label="HTML ZIP" />}
+              {scope === 'design' && <Radio value="design-html" label={t('离线 HTML')} />}
+              {scope === 'design' && <Radio value="design-zip" label={t('离线 ZIP')} />}
             </RadioGroup>
           </FieldSet>
         )}
@@ -421,11 +426,11 @@ function ExportDialog({
             {t('正在读取导出版本…')}
           </p>
         )}
-        {format === 'html' && (
+        {offline && (
           <p className="text-ink-muted">
-            {boardId
-              ? t('解压后打开 index.html，离线预览所选画板。')
-              : t('打开 HTML 即可离线预览，支持已定义的跨画板跳转。')}
+            {format === 'board-zip' && t('解压后打开 index.html，离线预览所选画板。')}
+            {format === 'design-html' && t('打开 HTML 即可离线预览，支持已定义的跨画板跳转。')}
+            {format === 'design-zip' && t('解压整个 ZIP 后打开 index.html，离线浏览各页和画板。')}{' '}
             {t('不包含运行存储；依赖外部资源的画板无法离线打包。')}
           </p>
         )}
