@@ -31,6 +31,14 @@ const LOG_LEVEL_STYLES = {
   info: 'text-ink-muted',
 }
 
+const DOT_STYLES = {
+  ok: 'bg-success shadow-[0_0_0_3px_color-mix(in_oklab,var(--success)_20%,transparent)]',
+  warning: 'bg-warning shadow-[0_0_0_3px_color-mix(in_oklab,var(--warning)_22%,transparent)]',
+  danger:
+    'bg-destructive shadow-[0_0_0_3px_color-mix(in_oklab,var(--destructive)_20%,transparent)]',
+  neutral: 'bg-muted-foreground/60',
+} as const
+
 function serviceIndicator(error: Error | null, pending: boolean, reconnecting: boolean) {
   if (pending) return { label: '正在连接本地服务…', tone: 'neutral' } as const
   if (error instanceof ApiError) return { label: '无法读取本地服务状态', tone: 'warning' } as const
@@ -90,10 +98,12 @@ export function DaemonStatusPill() {
       }}
     >
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" leftIcon={<Activity size={14} />}>
-          <Badge tone={indicator.tone} className="border-0 bg-transparent p-0">
-            {t(indicator.label)}
-          </Badge>
+        <Button variant="ghost" size="sm" className="gap-2 text-ink-muted hover:text-ink">
+          <span
+            aria-hidden="true"
+            className={`size-1.5 shrink-0 rounded-full ${DOT_STYLES[indicator.tone]}`}
+          />
+          <span className="sr-only sm:not-sr-only">{t(indicator.label)}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent

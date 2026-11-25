@@ -12,17 +12,138 @@
 
 /* 放在根节点，让挂到 body 的菜单和对话框与工作区共用配色。 */
 :root {
-  --neutral-11: light-dark(#5f5f5f, #b8b8b8);
-  --neutral-12: light-dark(#202020, #ededed);
-  --material-page: light-dark(#f7f7f7, #171717);
-  --material-sheet: light-dark(#fff, #222);
-  --material-sunk: light-dark(#ededed, #303030);
-  --material-rule: light-dark(#dedede, #3d3d3d);
-  --material-rule2: light-dark(#b5b5b5, #626262);
-  --material-accent: light-dark(#434343, #d0d0d0);
+  --neutral-11: light-dark(#6c6861, #9e9a92);
+  --neutral-12: light-dark(#1c1b19, #f2f0ec);
+  --material-page: light-dark(#f5f4f0, #141413);
+  --material-sheet: light-dark(#ffffff, #1e1d1b);
+  --material-sunk: light-dark(#eceae4, #272623);
+  --material-rule: light-dark(rgb(28 25 23 / 0.09), rgb(250 248 245 / 0.1));
+  --material-rule2: light-dark(rgb(28 25 23 / 0.19), rgb(250 248 245 / 0.22));
+  --material-accent: light-dark(#3b3833, #d6d2c9);
   --material-deco: var(--material-accent);
   --decoration-foreground: var(--background);
-  --scrollbar-thumb: light-dark(#999, #777);
+  --scrollbar-thumb: light-dark(rgb(28 25 23 / 0.2), rgb(250 248 245 / 0.2));
+  --library-glass-shadow: inset 0 1px 0 rgb(255 255 255 / 0.55), 0 8px 24px -14px rgb(0 0 0 / 0.09);
+}
+
+.dark {
+  --library-glass-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 10px 28px -14px rgb(0 0 0 / 0.5);
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* 作品库滚动区：铺满视口，顶部交由粘性磨砂顶栏承接，避免默认顶部渐隐遮住玻璃透色。 */
+.library-scroll {
+  --v-scroll-area-padding: 0px;
+}
+
+.library-scroll > .v-scroll-area__fade[data-edge="top"] {
+  display: none;
+}
+
+/* 作品库顶栏：静止时与暖纸画布融为一体；滚动后吸顶并呈现磨砂玻璃层次，高度恒定不抖动。 */
+.library-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  border-block-end: 1px solid transparent;
+  background-color: transparent;
+  box-shadow: none;
+  transition:
+    background-color 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 200ms ease-out,
+    box-shadow 200ms ease-out,
+    backdrop-filter 200ms ease-out;
+}
+
+.library-header[data-scrolled="true"] {
+  border-block-end-color: var(--border);
+  background-color: color-mix(in oklab, var(--background) 68%, transparent);
+  box-shadow: var(--library-glass-shadow);
+  backdrop-filter: blur(20px) saturate(1.75);
+  -webkit-backdrop-filter: blur(20px) saturate(1.75);
+}
+
+/* 作品库无封面占位：克制的微点阵纸面底纹，不喧宾夺主。 */
+.library-artwork-fallback {
+  background-color: var(--muted);
+  background-image: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--foreground) 11%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 14px 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .library-header,
+  .theme-toggle-core,
+  .theme-toggle-cutout,
+  .theme-toggle-rays {
+    transition: none;
+  }
+}
+
+/* 亮暗主题切换：6 道斜向光幕百叶切页，仅在主题切换期间接管根视图过渡。 */
+html[data-theme-transition]::view-transition-old(root),
+html[data-theme-transition]::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+  transform-origin: center center;
+}
+
+html[data-theme-transition]::view-transition-old(root) {
+  z-index: 1;
+}
+
+html[data-theme-transition]::view-transition-new(root) {
+  z-index: 2;
+}
+
+/* 主题切换日蚀图标：太阳核与日蚀遮罩平滑变形。 */
+.theme-toggle-icon {
+  overflow: visible;
+}
+
+.theme-toggle-core,
+.theme-toggle-rays {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.theme-toggle-core {
+  transform: scale(1);
+  transition: transform 380ms cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+.theme-toggle-cutout {
+  transform: translate(0, 0);
+  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.theme-toggle-rays {
+  opacity: 0;
+  transform: scale(0.45) rotate(36deg);
+  transition:
+    transform 360ms cubic-bezier(0.34, 1.4, 0.64, 1),
+    opacity 200ms ease-out;
+}
+
+.theme-toggle-icon[data-sun="true"] .theme-toggle-core {
+  transform: scale(0.68);
+}
+
+.theme-toggle-icon[data-sun="true"] .theme-toggle-cutout {
+  transform: translate(9px, -9px);
+}
+
+.theme-toggle-icon[data-sun="true"] .theme-toggle-rays {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
 }
 
 @media (prefers-contrast: more) {

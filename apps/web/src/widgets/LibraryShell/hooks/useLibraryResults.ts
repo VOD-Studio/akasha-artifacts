@@ -81,6 +81,7 @@ export function useLibraryResults(locale: Locale) {
   return {
     projects,
     projectMap,
+    allArtifacts: artifacts ?? [],
     hasArtifacts: Boolean(artifacts?.length),
     visible,
     presentTypes,
