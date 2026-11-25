@@ -28,4 +28,5 @@
 
 - base 是 `main`，默认不设 assignees、reviewers、labels。
 - `main` 启用「main 保护」ruleset：只能通过 PR 合并，且必须通过「CI 通过」状态检查，评审意见全部 resolve 后才可合并。
-- 发版 PR、机器人 PR、只做一件事的 PR 优先使用 **Squash** 合并（PR 标题需符合 Conventional Commits，由 `pr-title.yml` 自动校验）。
+- 普通 PR 使用 **Create a merge commit**，包括只有一笔提交或由机器人创建的依赖更新。只有 release-please 的版本发布 PR（如 `chore(main): release 0.5.0`）使用 **Squash and merge**。两种 PR 的标题都须通过 `pr-title.yml` 的 Conventional Commits 检查。
+- 连续交付多个事项时，逐项提交、开 PR。合并前核对评审和讨论线程：修复有效问题并回报验证结果；不采纳的说明原因。确认该 PR 已合入 `main` 后，再从更新后的 `main` 开始下一项。
