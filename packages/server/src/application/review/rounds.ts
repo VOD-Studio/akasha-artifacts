@@ -1,6 +1,8 @@
-import type { ReviewGroup, ReviewRound, Verdict } from '@akasha/protocol'
+import type { Artifact, ReviewGroup, ReviewRound, Verdict } from '@akasha/protocol'
 import { NotFoundError } from '../../domain/errors.js'
+import { shouldDispatchToBoundAgent } from '../../domain/feedback/index.js'
 import type {
+  AnnotationAgentDispatcher,
   Clock,
   FeedbackRepository,
   IdGenerator,
@@ -18,10 +20,11 @@ import type { ArtifactReference, ResolveArtifact } from '../artifacts/queries.js
 
 interface ReviewRoundPorts {
   rounds: RoundRepository
-  feedbacks: Pick<FeedbackRepository, 'promoteRoundDrafts'>
+  feedbacks: Pick<FeedbackRepository, 'listForReview' | 'promoteRoundDrafts'>
   clock: Clock
   ids: Pick<IdGenerator, 'id'>
   realtime: RealtimePublisher
+  annotationAgent?: AnnotationAgentDispatcher
 }
 
 export interface OpenRoundInput extends ArtifactReference {
@@ -102,6 +105,9 @@ export class ReviewRounds {
       },
       { projectId: artifact.projectId },
     )
+    if (input.submitRound) {
+      await this.dispatchRoundAnnotations(artifact, next.id)
+    }
     return next
   }
 
@@ -123,7 +129,19 @@ export class ReviewRounds {
       },
       { projectId: artifact.projectId },
     )
+    await this.dispatchRoundAnnotations(artifact, submitted.id)
     return submitted
+  }
+
+  private async dispatchRoundAnnotations(artifact: Artifact, roundId: string): Promise<void> {
+    if (!this.deps.annotationAgent) return
+    const items = await this.deps.feedbacks.listForReview(artifact.publicId, false)
+    const targets = items
+      .filter((item) => item.roundId === roundId && shouldDispatchToBoundAgent(item))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+    for (const feedback of targets) {
+      await this.deps.annotationAgent.dispatchFeedback(artifact, feedback)
+    }
   }
 
   async withdrawRound(input: RoundReference): Promise<ReviewRound> {

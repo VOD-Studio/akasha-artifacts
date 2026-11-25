@@ -10,8 +10,13 @@ import type {
 } from '@akasha/protocol'
 import { isAnnotationKind } from '@akasha/protocol'
 import { NotFoundError } from '../../domain/errors.js'
-import { isDraftFeedback, shouldNotifyImmediately } from '../../domain/feedback/index.js'
+import {
+  isDraftFeedback,
+  shouldDispatchToBoundAgent,
+  shouldNotifyImmediately,
+} from '../../domain/feedback/index.js'
 import type {
+  AnnotationAgentDispatcher,
   ArtifactRepository,
   Clock,
   FeedbackRepository,
@@ -29,6 +34,7 @@ interface FeedbackPorts {
   clock: Clock
   ids: Pick<IdGenerator, 'id'>
   realtime: RealtimePublisher
+  annotationAgent?: AnnotationAgentDispatcher
 }
 
 export interface SubmitFeedbackInput {
@@ -104,6 +110,9 @@ export class ReviewFeedback {
         { projectId: artifact.projectId },
       )
     }
+    if (shouldDispatchToBoundAgent(feedback)) {
+      await this.deps.annotationAgent?.dispatchFeedback(artifact, feedback)
+    }
     return feedback
   }
 
@@ -116,6 +125,7 @@ export class ReviewFeedback {
       feedbacks.listForReview(artifact.publicId, input.includeDrafts),
       feedbacks.annotations.list(artifact.publicId, input.includeDrafts),
     ])
+    await this.deps.annotationAgent?.reconcileDeliveries(artifact, threads)
     return { items: await this.workspace.resolveLegacyFeedback(artifact, items), threads }
   }
 

@@ -1,4 +1,5 @@
 import type {
+  AnnotationAgentDelivery,
   AnnotationReply,
   AnnotationResolution,
   AnnotationThread,
@@ -119,6 +120,20 @@ export interface AnnotationRepository {
   reply(feedbackId: string, reply: AnnotationReply): Promise<void>
   /** 重复解决保留首条解决记录；传 `null` 重新打开。 */
   setResolution(feedbackId: string, resolution: AnnotationResolution | null): Promise<void>
+  /** 仅首次声明该批注的已绑定 Agent 投递记录；返回 false 表示已投递过，防止重复发送。 */
+  claimAgentDelivery(feedbackId: string, delivery: AnnotationAgentDelivery): Promise<boolean>
+  /** 更新已绑定 Agent 投递的执行状态、真实回复与发布版本。 */
+  setAgentDelivery(feedbackId: string, delivery: AnnotationAgentDelivery): Promise<void>
+  /** 读取单条批注的已绑定 Agent 投递记录。 */
+  getAgentDelivery(feedbackId: string): Promise<AnnotationAgentDelivery | undefined>
+}
+
+/** 将明确面向 Agent 的批注闭环投递到本机已绑定会话，并按需修复重启中断状态。 */
+export interface AnnotationAgentDispatcher {
+  /** 只在制品绑定了本机 Agent 会话时接管；未绑定或已投递过时直接返回。 */
+  dispatchFeedback(artifact: Artifact, feedback: Feedback): Promise<void>
+  /** 读审阅列表时将已无活动任务的残留 queued/running 标记为失败，不自动重发。 */
+  reconcileDeliveries(artifact: Artifact, threads: Record<string, AnnotationThread>): Promise<void>
 }
 
 /** 反馈队列的仓储端口；游标即「可投递顺序号」。 */
