@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ArtboardTweakApplicationSchema } from './artboard-tweak-application.js'
 import { ArtifactHandoffReferenceSchema } from './mcp.js'
 import { PublicIdSchema } from './primitives.js'
 
@@ -8,13 +9,18 @@ export const AgentMessageInputSchema = z
     message: z.string().trim().min(1).max(8000),
     /** 可选的、发送时已保存的固定快照与选区。 */
     target: ArtifactHandoffReferenceSchema.optional(),
+    /** 仅允许该轮提交指定快照上的这组参数。 */
+    tweakApplication: ArtboardTweakApplicationSchema.optional(),
   })
   .strict()
 
-export const AgentDesignInputSchema = AgentMessageInputSchema.omit({ target: true }).extend({
+export const AgentDesignInputSchema = AgentMessageInputSchema.pick({ message: true }).extend({
   /** 本机显式授权 Codex 接收设计任务的项目。 */
   projectId: z.string().min(1).max(1024),
 })
+
+/** 工具没有可由模型填写的目标、版本或参数，全部由该轮网页授权决定。 */
+export const ApplyRequestedTweaksInputSchema = z.strictObject({})
 
 export const AgentAvailabilitySchema = z.enum(['unbound', 'offline', 'busy', 'ready'])
 export type AgentAvailability = z.infer<typeof AgentAvailabilitySchema>
@@ -24,6 +30,11 @@ export const AgentPublicationSchema = z.object({
   artifactId: PublicIdSchema,
   /** 本会话提交成功的固定版本。 */
   version: z.number().int().positive(),
+  /** 仅参数应用回执携带；记录该固定版本中默认值实际改变的画板。 */
+  changed: z
+    .array(z.object({ id: z.string(), title: z.string() }))
+    .min(1)
+    .optional(),
 })
 export type AgentPublication = z.infer<typeof AgentPublicationSchema>
 

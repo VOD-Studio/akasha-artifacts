@@ -1,7 +1,7 @@
 import { startNodeServer } from '@akasha/server'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AkashaHttpClient } from '../src/client.js'
 import { createAkashaMcpServer } from '../src/server.js'
 
@@ -24,6 +24,49 @@ function extractText(result: unknown): string {
 }
 
 describe('@akasha/mcp stdio tools integration', () => {
+  it('限轮次工具只发送空参数；拒绝改写目标，也不以新凭据重试', async () => {
+    const name = 'artifact_apply_requested_tweaks'
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      Response.json({ error: { code: 'UNAUTHORIZED', message: '轮次已结束' } }, { status: 401 }),
+    )
+    const resolveConnection = vi.fn(async () => ({ baseUrl: 'http://localhost:8001' }))
+    const server = createAkashaMcpServer({
+      baseUrl: 'http://localhost:8000',
+      scopedAgentTurn: true,
+      token: 'this-turn',
+      fetchImpl,
+      resolveConnection,
+    })
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'test-client', version: '1' })
+    await server.connect(serverTransport)
+    await client.connect(clientTransport)
+    closers.push(
+      () => client.close(),
+      () => server.close(),
+    )
+    expect(
+      (await client.listTools()).tools.find((tool) => tool.name === name)?.inputSchema,
+    ).toMatchObject({ properties: {}, additionalProperties: false })
+    expect((await client.callTool({ name, arguments: { targetIds: ['other'] } })).isError).toBe(
+      true,
+    )
+    expect(fetchImpl).not.toHaveBeenCalled()
+    const denied = await client.callTool({ name, arguments: {} })
+    expect(denied.isError).toBe(true)
+    expect(extractText(denied)).toContain('轮次已结束')
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://localhost:8000/api/v1/agent/tool/apply-requested-tweaks',
+      {
+        method: 'POST',
+        headers: { authorization: 'Bearer this-turn', 'content-type': 'application/json' },
+        body: '{}',
+      },
+    )
+    expect(resolveConnection).not.toHaveBeenCalled()
+  })
+
   it('supports spec, check, publish, incremental update, 409 conflict guidance, state push, feedback receipt/ack, await, and verdict sync', async () => {
     const srv = await startNodeServer({ dbPath: ':memory:', port: 0 })
     closers.push(srv.close)

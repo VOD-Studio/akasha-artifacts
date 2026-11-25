@@ -533,6 +533,69 @@ it('从独立检查器选择其他页面的画板并查看固定版本的真实�
   expect(within(otherVersion).queryByTitle('画板内容：预约完成')).toBeNull()
 })
 
+const tweakSource = JSON.stringify({
+  boards: [
+    {
+      id: 'cover',
+      title: '封面',
+      html: '<h1>封面</h1>',
+      tweaks: [{ id: 'speed', label: '速度', type: 'number', min: 0, max: 9, default: 3 }],
+    },
+  ],
+})
+
+it('参数确认绑定打开时的版本；协作者发布新版后不能把旧预览写回', async () => {
+  stubResizeObserver()
+  const request = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json({}))
+  const view = showWorkspace(detailFor(1, tweakSource))
+  fireEvent.click(screen.getByRole('button', { name: '封面' }))
+  act(() => useWorkspaceStore.getState().setInspectorTab('inspect'))
+  const panel = within(screen.getByRole('dialog', { name: '检查器' }))
+  fireEvent.keyDown(panel.getByRole('tab', { name: '画板参数' }), { key: 'Enter' })
+  fireEvent.change(panel.getByRole('spinbutton', { name: '速度' }), { target: { value: '5' } })
+  fireEvent.click(panel.getByRole('button', { name: '应用参数…' }))
+  expect(await screen.findByRole('button', { name: '发布新版本' })).toBeTruthy()
+
+  view.update(workspace(detailFor(2, tweakSource)))
+  await waitFor(() => expect(screen.queryByRole('button', { name: '发布新版本' })).toBeNull())
+  expect(
+    request.mock.calls.some(
+      ([url, options]) => options?.method === 'POST' && String(url).startsWith('/api/v1/artifacts'),
+    ),
+  ).toBe(false)
+})
+
+it.each(['分享编辑访客', '固定头版本'] as const)(
+  '%s 可以预览和重置参数，但不能应用到版本',
+  (entry) => {
+    stubResizeObserver()
+    const detail = detailFor(1, tweakSource)
+    const view = showWorkspace(detail)
+    view.update(
+      <ArtifactWorkspace
+        detail={
+          entry === '分享编辑访客'
+            ? { ...detail, access: { role: 'edit', expiresAt: '2099-01-01T00:00:00Z' } }
+            : detail
+        }
+        versions={[detail.version]}
+        fixedVersion={entry === '固定头版本' ? 1 : undefined}
+        sandboxOrigin="http://127.0.0.1:24331"
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '封面' }))
+    act(() => useWorkspaceStore.getState().setInspectorTab('inspect'))
+    const inspector = within(screen.getByRole('dialog', { name: '检查器' }))
+    fireEvent.keyDown(inspector.getByRole('tab', { name: '画板参数' }), { key: 'Enter' })
+    const speed = inspector.getByRole('spinbutton', { name: '速度' })
+    fireEvent.change(speed, { target: { value: '7' } })
+    expect(speed).toHaveProperty('value', '7')
+    expect(inspector.queryByRole('button', { name: '应用参数…' })).toBeNull()
+    fireEvent.click(inspector.getByRole('button', { name: '重置本板' }))
+    expect(speed).toHaveProperty('value', '3')
+  },
+)
+
 it('仅查看的分享链接允许读画板源码，不暴露保存或整稿编辑入口', () => {
   stubResizeObserver()
   const request = vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({}))

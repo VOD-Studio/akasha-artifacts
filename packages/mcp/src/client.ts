@@ -1,4 +1,5 @@
 import {
+  type AgentPublication,
   type Artifact,
   type ArtifactAckFeedbackOutput,
   type ArtifactAwaitFeedbackOutput,
@@ -100,7 +101,7 @@ export class AkashaHttpClient {
     this.defaultProject = options.defaultProject
     this.defaultAuthor = options.defaultAuthor ?? 'agent:mcp'
     this.fetchFn = options.fetchImpl ?? fetch
-    this.resolveConnection = options.resolveConnection
+    this.resolveConnection = options.scopedAgentTurn ? undefined : options.resolveConnection
     this.scopedAgentTurn = options.scopedAgentTurn ?? false
   }
 
@@ -172,6 +173,12 @@ export class AkashaHttpClient {
       throw new AkashaApiError(res.status, 'HTTP_ERROR', text || `HTTP ${res.status}`)
     }
     return json as T
+  }
+
+  /** 仅限本机轮次通道，凭据不能刷新，也不能以新的基准重发。 */
+  async applyRequestedTweaks() {
+    if (!this.scopedAgentTurn) throw new Error('未绑定本机 CLI 轮次')
+    return this.request<AgentPublication>('POST', '/api/v1/apply-requested-tweaks', {})
   }
 
   /** 制品页面地址：`<baseUrl>/a/<publicId>`。 */

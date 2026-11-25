@@ -70,7 +70,7 @@ export const ArtboardTweaksSchema = z
       if (ids.has(field.id))
         ctx.addIssue({ code: 'custom', path: [index, 'id'], message: '画板参数标识不能重复' })
       ids.add(field.id)
-      if (field.type === 'number' && !acceptsValue(field, field.default))
+      if (field.type === 'number' && !acceptsArtboardTweakValue(field, field.default))
         ctx.addIssue({ code: 'custom', path: [index, 'default'], message: '数值默认值须在范围内' })
       if (field.type !== 'enum') continue
       const options = new Set(field.options.map(({ value }) => value))
@@ -89,7 +89,11 @@ export type ArtboardTweakValues = z.infer<typeof ArtboardTweakValuesSchema>
 
 type Value = ArtboardTweakValues[string]
 
-function acceptsValue(field: ArtboardTweak, value: Value | undefined): value is Value {
+/** 按画板自身声明校验值，不回退到默认值。 */
+export function acceptsArtboardTweakValue(
+  field: ArtboardTweak,
+  value: Value | undefined,
+): value is Value {
   switch (field.type) {
     case 'number':
       return typeof value === 'number' && value >= field.min && value <= field.max
@@ -111,7 +115,7 @@ export function resolveArtboardTweaks(
   for (const field of tweaks) {
     const override =
       overrides && Object.hasOwn(overrides, field.id) ? overrides[field.id] : undefined
-    values[field.id] = acceptsValue(field, override) ? override : field.default
+    values[field.id] = acceptsArtboardTweakValue(field, override) ? override : field.default
   }
   return values
 }

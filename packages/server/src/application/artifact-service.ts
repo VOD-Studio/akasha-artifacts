@@ -399,6 +399,8 @@ export class ArtifactService {
       baseVersion: number
       title?: string
       author: Author
+      /** 等待制品写锁期间撤销的轮次，不得开始写入新版本。 */
+      signal?: AbortSignal
     } & ({ edits: readonly TextEdit[] } | { source: string }),
   ): Promise<{ artifact: Artifact; version: Readonly<Version> }> {
     const resolved = await this.resolveArtifact(input.id, input.projectId)
@@ -432,6 +434,7 @@ export class ArtifactService {
         headVersion: nextNumber,
         updatedAt: now,
       }
+      input.signal?.throwIfAborted()
       await this.deps.artifacts.appendVersion(version, updated.type)
       await this.deps.artifacts.saveArtifact(updated)
       await this.deps.realtime.publish(

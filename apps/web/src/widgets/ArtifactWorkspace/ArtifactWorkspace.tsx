@@ -81,6 +81,8 @@ export interface ArtifactWorkspaceProps {
   onHandoff?: BoardInspectorHandoff
   /** 从已保存且带版本的对象定位进入同一个发布会话。 */
   onAskAgent?: BoardInspectorHandoff
+  /** 参数请求受理后查看原绑定会话；分享访客和 Hub 不提供本机入口。 */
+  onOpenAgentConversation?: () => void
   /** 登记把状态补丁转发给各画板沙盒的函数；传 `null` 表示注销。 */
   onRegisterStateForwarder?: (forwarder: ((seq: number, ops: JsonPatchOp[]) => void) | null) => void
   onVersionSaved?: (version: Version) => void
@@ -108,6 +110,7 @@ export function ArtifactWorkspace({
   exportSelectionRef,
   onHandoff,
   onAskAgent,
+  onOpenAgentConversation,
   onRegisterStateForwarder,
   onVersionSaved,
   onVersionAdopted,
@@ -689,6 +692,8 @@ export function ArtifactWorkspace({
         layersAvailable={canvas === savedCanvas}
         onHandoff={canvas === savedCanvas ? onHandoff : undefined}
         onAskAgent={canvas === savedCanvas ? onAskAgent : undefined}
+        onOpenAgentConversation={onOpenAgentConversation}
+        canPublishTweaks={!access && canEditBoards}
         onSelectLayer={inspection.onSelect}
         onNavigate={(location) => {
           inspection.clearPoint()
