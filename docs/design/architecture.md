@@ -574,6 +574,10 @@ akasha-artifacts/
 
 依赖方向：`protocol` 不依赖任何包。`server` 依赖 `protocol` 和 `jsx-source`；`mcp`、`hooks` 依赖 `protocol`；`apps/web` 依赖 `protocol` 和 `ui`；`apps/sandbox` 依赖 `protocol`、`jsx-source` 和 `kit`；`akasha` 负责组装所有包。不允许反向依赖。
 
+每个目录先按它负责的功能命名，再按需要区分视图、状态或持久化。`packages/kit` 的模板各自维护解析与校验，`packages/protocol` 的画板模型与 HTTP、WebSocket、MCP、iframe 消息契约分开；`packages/ui` 的一个控件及其样式可以留在一起。不要给每个文件单独建目录，也不要用同一套前端目录名组织服务端。
+
+判断是否该拆文件，看两段代码是否有独立的调用者、变更原因或需要单独保护的不变量，而不是规定行数上限。入口负责装配，不能靠新增 `impl`、`part1` 或无业务含义的 `utils` 把原来的耦合搬走。测试跟随使用场景；拆分聚合测试时保留每个原用例和断言，真正共用的装配才提取为夹具。
+
 ### 12.2 服务端分层
 
 ```

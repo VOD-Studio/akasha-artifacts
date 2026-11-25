@@ -7,7 +7,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { artifactKeys } from '../src/entities/artifact'
 import { ArtifactExportDialog } from '../src/features/export-design'
 import { setLocale } from '../src/shared/i18n'
-import { ArtifactTitleMenu } from '../src/widgets/TopBar/ArtifactTitleMenu'
+import { ArtifactTitleMenu } from '../src/widgets/TopBar/ui/ArtifactTitleMenu'
 
 const createdAt = '2026-11-22T10:00:00.000Z'
 const artifact: Artifact = {

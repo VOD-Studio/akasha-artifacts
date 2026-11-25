@@ -2,7 +2,6 @@ import type { VersionSummary } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import {
   type MouseEvent,
-  type PointerEvent,
   type ReactNode,
   type Ref,
   useEffect,
@@ -13,43 +12,27 @@ import {
   useRef,
   useState,
 } from 'react'
-import {
-  type CanvasBoard,
-  type CanvasBounds,
-  type CanvasDocument,
-  type CanvasLocation,
-  type CanvasPage,
-  layoutBoards,
+import type {
+  CanvasBoard,
+  CanvasBounds,
+  CanvasDocument,
+  CanvasLocation,
+  CanvasPage,
 } from '@/entities/artifact'
 import type { CanvasExportSelection } from '@/features/export-design'
 import { useMessages } from '@/shared/i18n'
 import { useBoardGesture } from '../hooks/useBoardGesture'
 import { useBoardPresentation } from '../hooks/useBoardPresentation'
 import type { CanvasBoardEditing } from '../hooks/useCanvasBoardEditing'
+import { useCanvasCameraInput } from '../hooks/useCanvasCameraInput'
+import { useCanvasShortcuts } from '../hooks/useCanvasShortcuts'
+import { useCanvasView } from '../hooks/useCanvasView'
 import type { CanvasTextTools } from '../hooks/useInlineCanvasText'
 import { useOverviewPlayback } from '../hooks/useOverviewPlayback'
 import { useViewportSize } from '../hooks/useViewportSize'
-import {
-  changeLayoutSelection,
-  fitSelection,
-  groupMembers,
-  type LayoutSelection,
-  layoutSelectionIds,
-} from '../lib/canvas-arrangement'
-import {
-  type Camera,
-  DEFAULT_CAMERA,
-  fitCamera,
-  type Point,
-  zoomCamera,
-} from '../lib/canvas-camera'
-import { acceptsCanvasShortcut } from '../lib/canvas-keyboard'
-import {
-  DETAIL_SCALE,
-  indexViewportBoards,
-  MAX_ANIMATED_BOARDS,
-  planViewport,
-} from '../lib/canvas-viewport'
+import { fitSelection } from '../lib/canvas-arrangement'
+import { fitCamera, type Point, zoomCamera } from '../lib/canvas-camera'
+import { indexViewportBoards, MAX_ANIMATED_BOARDS, planViewport } from '../lib/canvas-viewport'
 import type { CanvasPageEditing } from '../navigation/CanvasPageDialog'
 import { CanvasPlaybackMenu } from '../navigation/CanvasPlaybackMenu'
 import { PageNavigator } from '../navigation/PageNavigator'
@@ -62,9 +45,11 @@ import {
 import { CanvasToolbar } from '../toolbar/CanvasControls'
 import { canvasToolsMessages } from '../toolbar/canvas-tools-messages'
 import type { BoardFramePurpose } from './ArtifactFrame'
-import { BoardDrawingSurface, type DrawingTool } from './BoardDrawingSurface'
-import { BoardLayoutGuides } from './BoardLayoutGuides'
+import type { DrawingTool } from './BoardDrawingSurface'
 import { BoardPresentation } from './BoardPresentation'
+import { type CanvasBoardInput, CanvasBoardSurface } from './CanvasBoardSurface'
+import { CanvasBoardTile } from './CanvasBoardTile'
+import { CanvasFlowLines } from './CanvasFlowLines'
 
 /** 显式选板要求适配；元素指认与图层选择只在画板不可见时移动相机。 */
 export type InspectorReveal = CanvasLocation & { fit?: true }
@@ -106,77 +91,7 @@ interface ArtifactCanvasProps {
   visualEdit?: { isPicking: boolean; toggle: () => void; cancel: () => void }
 }
 
-// 单个页面的视图状态：选中的画板与相机
-interface PageView extends LayoutSelection {
-  /** 该页面的相机；为 `null` 时用默认相机。 */
-  camera: Camera | null
-}
-
-// 持久化到本地存储的画布视图
-interface CanvasView {
-  pageId: string | null
-  address?: string
-  /** 是否处于抓手平移工具。 */
-  hand?: boolean
-  /** 各页面的视图状态，键为页面 id。 */
-  pages: Record<string, PageView>
-}
-
-const DEFAULT_PAGE: PageView = { selected: null, camera: null }
 const NO_MOTION: ReadonlySet<string> = new Set()
-const KEYBOARD_CONTROL =
-  'input, textarea, select, button, a[href], [contenteditable]:not([contenteditable="false"]), [role="button"]'
-
-function readView(storageKey: string): CanvasView {
-  try {
-    const raw = sessionStorage.getItem(storageKey)
-    const saved: CanvasView | null = raw ? JSON.parse(raw) : null
-    if (saved?.pages) return saved
-  } catch {
-    // 存储不可用时仍可在当前会话内操作画布。
-  }
-  return { pageId: null, pages: {} }
-}
-
-function pageViewFor(view: CanvasView, id: string): PageView {
-  return Object.hasOwn(view.pages, id) ? (view.pages[id] ?? DEFAULT_PAGE) : DEFAULT_PAGE
-}
-
-function saveView(storageKey: string, view: CanvasView) {
-  try {
-    sessionStorage.setItem(storageKey, JSON.stringify(view))
-  } catch {
-    // 隐私设置或配额不影响画布本身。
-  }
-}
-
-function selectedBoardFor(
-  boards: readonly CanvasBoard[] | undefined,
-  selected: string | null,
-  selectedIds: readonly string[] | undefined,
-) {
-  if (selected && boards?.some((board) => board.id === selected)) return selected
-  return selectedIds?.length
-    ? (boards?.find((board) => selectedIds.includes(board.id))?.id ?? null)
-    : null
-}
-
-function settledCamera(
-  current: Camera | null,
-  board: CanvasBounds | undefined,
-  page: CanvasBounds,
-  first: CanvasBounds | undefined,
-  viewport: { width: number; height: number },
-  measurable: boolean,
-) {
-  if (!measurable) return current
-  // 新打开的重稿从第一块实稿起步；工具栏仍可一键退至整页鸟瞰。
-  if (board) return fitCamera(board, viewport, 'board')
-  if (current) return current
-  const overview = fitCamera(page, viewport, 'page')
-  return first && overview.scale < DETAIL_SCALE ? fitCamera(first, viewport, 'board') : overview
-}
-
 const isPrototype = (board: CanvasBoard) => board.type === 'html' || board.type === 'react'
 
 export function ArtifactCanvas({
@@ -207,78 +122,47 @@ export function ArtifactCanvas({
 }: ArtifactCanvasProps) {
   const { t, dir } = useMessages(canvasToolsMessages)
   const viewportRef = useRef<HTMLElement>(null)
-  const pendingFocus = useRef<{ pageId: string; boardId: string } | null>(null)
   const pendingKeyboardFocus = useRef<string | null>(null)
   const [keyboardBoard, setKeyboardBoard] = useState<string | null>(null)
-  const wheelIdle = useRef<number | undefined>(undefined)
-  const [wheelActive, setWheelActive] = useState(false)
-  const pointers = useRef(new Map<number, Point>())
-  const wasPinching = useRef(false)
-  const [view, setView] = useState(() => readView(storageKey))
-  const latestView = useRef(view)
-  latestView.current = view
-  const [dismissedAddress, setDismissedAddress] = useState('')
   const [navigatorOpen, setNavigatorOpen] = useState(false)
   const [copyStatus, setCopyStatus] = useState('')
   const [hiddenGuideBoards, setHiddenGuideBoards] = useState<ReadonlySet<string>>(() => new Set())
   const [drawingTool, setDrawingTool] = useState<DrawingTool | null>(null)
-  const hand = view.hand ?? false
-  const setHand = (next: boolean) =>
-    setView((prev) => ((prev.hand ?? false) === next ? prev : { ...prev, hand: next }))
-  const [space, setSpace] = useState(false)
-  const [modifier, setModifier] = useState(false)
-  const [dragging, setDragging] = useState(false)
   const presentation = useBoardPresentation(document, visible)
   const showOverview = visible && !presentation.focused && !presentation.playing
   const motion = useOverviewPlayback()
   const size = useViewportSize(viewportRef, showOverview)
   const measurable = showOverview && size.width > 0 && size.height > 0
 
-  const params = useMemo(() => new URLSearchParams(address.replace(/^#/, '')), [address])
-  const explicit = address !== dismissedAddress && (params.has('page') || params.has('board'))
-  const requestedPage = params.get('page')
-  const requestedBoard = params.get('board')
-  const firstPage = document.pages[0]
-  const overview = document.pages.find((entry) => entry.id === '') ?? firstPage
-  const storedPage = document.pages.find((entry) => entry.id === view.pageId)
-  const addressedPage = document.pages.find((entry) => entry.id === requestedPage)
-  const addressedBoard = useMemo(
-    () =>
-      requestedBoard === null
-        ? undefined
-        : addressedPage?.boards.find((board) => board.id === requestedBoard),
-    [addressedPage, requestedBoard],
-  )
-  const focusedShareEntry = useRef('')
-  const focusShareEntry = useEffectEvent((link: string, pageId: string, boardId: string) => {
-    if (focusedShareEntry.current === link) return
-    focusedShareEntry.current = link
-    // 定位后仍由使用者点「播放」，预览内容不会因打开链接进入交互模式。
-    presentation.openFocus({ pageId, boardId }, null)
+  const {
+    page,
+    pageId,
+    overview,
+    addressedPage,
+    invalidAddress,
+    selected,
+    activeSelection,
+    firstBoard,
+    layout,
+    camera,
+    hand,
+    setHand,
+    selectBoard,
+    updateCamera,
+    clearAddress,
+    navigate: navigateView,
+  } = useCanvasView({
+    document,
+    address,
+    storageKey,
+    measurable,
+    size,
+    onClearAddress,
+    onAddressChange: () => setCopyStatus(''),
+    onShareFocus: (pageId, boardId) => presentation.openFocus({ pageId, boardId }, null),
   })
-  useEffect(() => {
-    if (explicit && params.get('play') === '1' && addressedPage && addressedBoard) {
-      focusShareEntry(address, addressedPage.id, addressedBoard.id)
-    }
-  }, [explicit, params, address, addressedPage, addressedBoard])
-  const invalidAddress =
-    explicit && (!addressedPage || (requestedBoard !== null && !addressedBoard))
-  const page = explicit ? addressedPage : (storedPage ?? firstPage)
-  const pageId = page?.id
-  const pageView = page ? pageViewFor(view, page.id) : DEFAULT_PAGE
-  const explicitSelection = invalidAddress ? undefined : pageView.selectedIds
-  const selected = useMemo(
-    () =>
-      invalidAddress ? null : selectedBoardFor(page?.boards, pageView.selected, explicitSelection),
-    [invalidAddress, page?.boards, pageView.selected, explicitSelection],
-  )
   const showBoards = !invalidAddress && page && page.boards.length > 0
-  const firstBoard = page?.boards[0]
   const standalone = firstBoard && !firstBoard.scoped ? firstBoard : undefined
-  const activeSelection = useMemo(
-    () => layoutSelectionIds(page?.boards ?? [], { selected, selectedIds: explicitSelection }),
-    [page, selected, explicitSelection],
-  )
   const { artifactId, version } = exportVersion
   useImperativeHandle(
     exportSelectionRef,
@@ -301,28 +185,10 @@ export function ArtifactCanvas({
       return next
     })
   }
-  const camera = pageView.camera ?? DEFAULT_CAMERA
-  const layout = useMemo(
-    () => layoutBoards(page?.boards ?? [], document.columns),
-    [page?.boards, document.columns],
-  )
-  const firstBounds = firstBoard && layout.bounds.get(firstBoard.id)
   const viewportIndex = useMemo(
     () => indexViewportBoards(page?.boards ?? [], layout.bounds),
     [page?.boards, layout.bounds],
   )
-  const flows = useMemo(() => {
-    if (!document.showFlows) return []
-    const unique = new Map<string, CanvasDocument['flows'][number]>()
-    for (const flow of document.flows) {
-      if (flow.from === flow.to || !layout.bounds.has(flow.from) || !layout.bounds.has(flow.to)) {
-        continue
-      }
-      unique.set(JSON.stringify([flow.from, flow.to, flow.label]), flow)
-    }
-    return Array.from(unique)
-  }, [document.flows, document.showFlows, layout.bounds])
-  const handActive = hand || space
 
   const inspectedFocus = presentation.focused ? presentation.focus : null
   useEffect(() => {
@@ -334,114 +200,11 @@ export function ArtifactCanvas({
     )
   }, [inspectedFocus, invalidAddress, onLocationChange, pageId, selected])
 
-  useEffect(() => {
-    setDismissedAddress((dismissed) => (dismissed === address ? dismissed : ''))
-    setCopyStatus('')
-  }, [address])
-
-  useEffect(() => {
-    const persist = () => saveView(storageKey, latestView.current)
-    window.addEventListener('pagehide', persist)
-    return () => {
-      window.removeEventListener('pagehide', persist)
-      persist()
-    }
-  }, [storageKey])
-  useEffect(() => {
-    const timer = window.setTimeout(() => saveView(storageKey, view), 140)
-    return () => window.clearTimeout(timer)
-  }, [storageKey, view])
-
-  // 显式链接只定位一次；初次进入页面也等视口可测量后再保存相机。
-  const activeAddress = explicit && !invalidAddress ? address : ''
-  const addressedBoardId = activeAddress ? addressedBoard?.id : undefined
-  useLayoutEffect(() => {
-    if (pageId === undefined || invalidAddress) {
-      if (view.address) setView((prev) => ({ ...prev, address: '' }))
-      return
-    }
-    const pendingAddress = Boolean(activeAddress && view.address !== activeAddress)
-    const focusedBoard =
-      pendingFocus.current?.pageId === pageId ? pendingFocus.current.boardId : undefined
-    const targetBoard = pendingAddress ? addressedBoardId : focusedBoard
-    const boardBounds = targetBoard === undefined ? undefined : layout.bounds.get(targetBoard)
-    const applied =
-      pendingAddress && boardBounds && !measurable ? (view.address ?? '') : activeAddress
-    if (measurable) pendingFocus.current = null
-    if (
-      !pendingAddress &&
-      !boardBounds &&
-      (!measurable || pageView.camera) &&
-      view.address === applied
-    )
-      return
-    setView((prev) => {
-      const current = pageViewFor(prev, pageId)
-      const next = {
-        selected: pendingAddress ? (addressedBoardId ?? current.selected) : current.selected,
-        camera: settledCamera(
-          current.camera,
-          boardBounds,
-          layout.page,
-          firstBounds,
-          size,
-          measurable,
-        ),
-      }
-      if (
-        prev.pageId === pageId &&
-        (prev.address ?? '') === (applied ?? '') &&
-        current.selected === next.selected &&
-        current.camera === next.camera
-      ) {
-        return prev
-      }
-      return { ...prev, pageId, address: applied, pages: { ...prev.pages, [pageId]: next } }
-    })
-  }, [
-    activeAddress,
-    addressedBoardId,
-    invalidAddress,
-    firstBounds,
-    layout,
-    measurable,
-    pageId,
-    pageView.camera,
-    size,
-    view.address,
-  ])
-
-  const clearAddress = () => {
-    if (!explicit) return
-    setDismissedAddress(address)
-    onClearAddress?.()
-  }
-
   const navigate = (target: CanvasPage, boardId?: string | null) => {
-    clearAddress()
+    navigateView(target, boardId)
     setDrawingTool(null)
     setNavigatorOpen(false)
     setCopyStatus('')
-    pendingFocus.current = boardId && !measurable ? { pageId: target.id, boardId } : null
-    setView((prev) => {
-      const current = pageViewFor(prev, target.id)
-      const bounds = boardId
-        ? layoutBoards(target.boards, document.columns).bounds.get(boardId)
-        : undefined
-      return {
-        ...prev,
-        address: '',
-        pageId: target.id,
-        pages: {
-          ...prev.pages,
-          [target.id]: {
-            selected: boardId === undefined ? current.selected : boardId,
-            selectedIds: boardId === undefined ? current.selectedIds : undefined,
-            camera: bounds && measurable ? fitCamera(bounds, size, 'board') : current.camera,
-          },
-        },
-      }
-    })
   }
 
   const revealFromInspector = useEffectEvent((target: InspectorReveal) => {
@@ -472,46 +235,45 @@ export function ArtifactCanvas({
     revealFromInspector(reveal)
   }, [onRevealHandled, reveal, visible])
 
-  const selectBoard = (boardId: string | null, additive = false) => {
-    if (!page || invalidAddress) return
-    if (boardId !== null || requestedBoard !== null) clearAddress()
-    pendingFocus.current = null
-    const id = page.id
-    setView((prev) => {
-      const current = pageViewFor(prev, id)
-      const selection = changeLayoutSelection(page.boards, current, boardId, additive)
-      const camera =
-        current.camera?.fit === 'board' && (selection.selected !== current.selected || additive)
-          ? { ...current.camera, fit: null }
-          : current.camera
-      return {
-        ...prev,
-        pageId: id,
-        address: boardId === null && requestedBoard === null ? (prev.address ?? '') : '',
-        pages: { ...prev.pages, [id]: { camera, ...selection } },
-      }
-    })
-  }
-
-  const updateCamera = (transform: (camera: Camera) => Camera) => {
-    if (!page || invalidAddress) return
-    const id = page.id
-    setView((prev) => {
-      const current = pageViewFor(prev, id)
-      const next = transform(current.camera ?? DEFAULT_CAMERA)
-      if (next === (current.camera ?? DEFAULT_CAMERA)) return prev
-      return {
-        ...prev,
-        pageId: id,
-        pages: { ...prev.pages, [id]: { ...current, camera: next } },
-      }
-    })
-  }
-  const boardGesture = useBoardGesture(boardEditing, (boardId) => {
-    if (!activeSelection.has(boardId)) selectBoard(boardId)
-    updateCamera((current) => (current.fit ? { ...current, fit: null } : current))
-  })
+  const boardGesture = useBoardGesture(
+    boardEditing,
+    { page, bounds: layout.bounds, selection: activeSelection, scale: camera.scale },
+    (boardId) => {
+      if (!activeSelection.has(boardId)) selectBoard(boardId)
+      updateCamera((current) => (current.fit ? { ...current, fit: null } : current))
+    },
+  )
   const moved = boardGesture.preview?.pageId === pageId ? boardGesture.preview?.bounds : undefined
+  const focused = presentation.focused
+  const activePresentation = presentation.playing ?? focused
+  const closePresentation = presentation.playing ? presentation.closePlay : presentation.closeFocus
+  const { space, modifier, resetModifiers } = useCanvasShortcuts({
+    visible,
+    viewportRef,
+    navigatorOpen,
+    closePresentation: activePresentation ? closePresentation : undefined,
+    historyEditing,
+    cancelGesture: boardGesture.cancel,
+    clearSelection: () => {
+      setDrawingTool(null)
+      setHand(false)
+      onClearElement()
+      visualEdit?.cancel()
+      selectBoard(null)
+    },
+  })
+  const handActive = hand || space
+  const { dragging, wheelActive, wasPinching, startPointer, movePointer, endPointer } =
+    useCanvasCameraInput({
+      viewportRef,
+      showOverview,
+      size,
+      invalidAddress,
+      pageId,
+      handActive,
+      wheelLocked: Boolean(drawingTool || boardGesture.preview?.phase === 'dragging'),
+      updateCamera,
+    })
   const recent = useRef<{ index: typeof viewportIndex; ids: ReadonlySet<string> } | null>(null)
   const plan = useMemo(
     () =>
@@ -539,8 +301,6 @@ export function ArtifactCanvas({
     }
     return ids
   }, [showOverview, motion.allowsAnimation, plan.detail, viewportIndex, canAnimate])
-  const focused = presentation.focused
-  const activePresentation = presentation.playing ?? focused
   const demand = useMemo(() => {
     if (!visible || invalidAddress) return []
     if (activePresentation)
@@ -563,174 +323,9 @@ export function ArtifactCanvas({
       break
     }
   }, [plan.boards, showOverview])
-  useEffect(() => () => window.clearTimeout(wheelIdle.current), [])
   const boundsFor = (id: string) => moved?.get(id) ?? layout.bounds.get(id)
   const canDragBoards =
     boardEditing?.available && !handActive && !modifier && !drawingTool && !visualEdit?.isPicking
-
-  const keyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (event.defaultPrevented || event.isComposing || navigatorOpen) return
-    if (presentation.playing || presentation.focused) {
-      if (event.key === 'Escape' && !event.isComposing) {
-        event.preventDefault()
-        if (presentation.playing) presentation.closePlay()
-        else presentation.closeFocus()
-      }
-      return
-    }
-    if (!acceptsCanvasShortcut(event, viewportRef.current?.parentElement)) return
-    const target = event.target instanceof Element ? event.target : null
-    const editing = target?.closest(KEYBOARD_CONTROL)
-    if (
-      historyEditing &&
-      (event.ctrlKey || event.metaKey) &&
-      !event.altKey &&
-      event.key.toLowerCase() === 'z'
-    ) {
-      const action = event.shiftKey ? historyEditing.redo : historyEditing.undo
-      if (action) {
-        boardGesture.cancel()
-        event.preventDefault()
-        action()
-      }
-      return
-    }
-    if (event.code === 'Space' && !editing && !event.altKey && !event.ctrlKey && !event.metaKey) {
-      event.preventDefault()
-      setSpace(true)
-    }
-    if (event.key === 'Control' || event.key === 'Meta') setModifier(true)
-    if (event.key !== 'Escape') return
-    boardGesture.cancel()
-    setDrawingTool(null)
-    setHand(false)
-    setSpace(false)
-    onClearElement()
-    visualEdit?.cancel()
-    selectBoard(null)
-  })
-
-  useEffect(() => {
-    if (!visible) return
-    const keyUp = (event: KeyboardEvent) => {
-      if (event.code === 'Space') setSpace(false)
-      if (event.key === 'Control' || event.key === 'Meta')
-        setModifier(event.ctrlKey || event.metaKey)
-    }
-    const blur = () => {
-      setSpace(false)
-      setModifier(false)
-    }
-    window.addEventListener('keydown', keyDown)
-    window.addEventListener('keyup', keyUp)
-    window.addEventListener('blur', blur)
-    return () => {
-      window.removeEventListener('keydown', keyDown)
-      window.removeEventListener('keyup', keyUp)
-      window.removeEventListener('blur', blur)
-    }
-  }, [visible])
-
-  const wheel = useEffectEvent((event: WheelEvent) => {
-    const viewport = viewportRef.current
-    if (!viewport || !(event.deltaX || event.deltaY) || pageId === undefined || invalidAddress)
-      return
-    event.preventDefault()
-    // 绘制工具用按下时的坐标映射；退出该工具前不让滚轮改变相机。
-    if (drawingTool || boardGesture.preview?.phase === 'dragging') return
-    setWheelActive(true)
-    window.clearTimeout(wheelIdle.current)
-    wheelIdle.current = window.setTimeout(() => setWheelActive(false), 180)
-    const multiplier = event.deltaMode === 1 ? 16 : 1
-    const x = event.deltaX * (event.deltaMode === 2 ? size.width : multiplier)
-    const y = event.deltaY * (event.deltaMode === 2 ? size.height : multiplier)
-    if (event.ctrlKey || event.metaKey) {
-      if (!y) return
-      const rect = viewport.getBoundingClientRect()
-      const anchor = { x: event.clientX - rect.left, y: event.clientY - rect.top }
-      updateCamera((current) => zoomCamera(current, Math.exp(-y * 0.002), anchor))
-      return
-    }
-    const horizontal = event.shiftKey && !x
-    updateCamera((current) => ({
-      ...current,
-      x: current.x - (horizontal ? y : x),
-      y: current.y - (horizontal ? 0 : y),
-      fit: null,
-    }))
-  })
-
-  useEffect(() => {
-    const viewport = viewportRef.current
-    if (!showOverview || !viewport) return
-    viewport.addEventListener('wheel', wheel, { passive: false })
-    return () => viewport.removeEventListener('wheel', wheel)
-  }, [showOverview])
-
-  const startPointer = (event: PointerEvent<HTMLElement>) => {
-    // Portal 内容沿 React 树冒泡，但不属于画布的 DOM 手势区域。
-    const target = event.target as Element
-    if (event.button !== 0 || !event.currentTarget.contains(target)) return
-    if (!pointers.current.size) wasPinching.current = false
-    if (target.closest('.artifact-canvas-board-action')) return
-    if (
-      !handActive &&
-      (event.pointerType !== 'touch' || target.closest('.artifact-canvas-board-header'))
-    ) {
-      return
-    }
-    if (invalidAddress || pointers.current.size >= 2) return
-    const local = event.currentTarget.getBoundingClientRect()
-    pointers.current.set(event.pointerId, {
-      x: event.clientX - local.left,
-      y: event.clientY - local.top,
-    })
-    if (pointers.current.size === 2) wasPinching.current = true
-    const capture = handActive ? event.currentTarget : target
-    capture.setPointerCapture?.(event.pointerId)
-    if (handActive) {
-      event.currentTarget.focus({ preventScroll: true })
-      event.preventDefault()
-      setDragging(true)
-    }
-  }
-
-  const movePointer = (event: PointerEvent<HTMLElement>) => {
-    const previous = pointers.current.get(event.pointerId)
-    if (!previous) return
-    const local = event.currentTarget.getBoundingClientRect()
-    const next = { x: event.clientX - local.left, y: event.clientY - local.top }
-    pointers.current.set(event.pointerId, next)
-    let other: Point | undefined
-    if (pointers.current.size === 2) {
-      for (const [id, point] of pointers.current) {
-        if (id !== event.pointerId) {
-          other = point
-          break
-        }
-      }
-    }
-    if (other) {
-      const distance = Math.hypot(previous.x - other.x, previous.y - other.y)
-      if (!distance) return
-      const anchor = { x: (previous.x + other.x) / 2, y: (previous.y + other.y) / 2 }
-      const center = { x: (next.x + other.x) / 2, y: (next.y + other.y) / 2 }
-      const factor = Math.hypot(next.x - other.x, next.y - other.y) / distance
-      updateCamera((current) => zoomCamera(current, factor, anchor, center))
-    } else if (handActive) {
-      updateCamera((current) => ({
-        ...current,
-        x: current.x + next.x - previous.x,
-        y: current.y + next.y - previous.y,
-        fit: null,
-      }))
-    }
-  }
-
-  const endPointer = (event: PointerEvent<HTMLElement>) => {
-    pointers.current.delete(event.pointerId)
-    if (!pointers.current.size) setDragging(false)
-  }
 
   const setCanvasTool = (next: boolean) => {
     boardGesture.cancel()
@@ -743,8 +338,7 @@ export function ArtifactCanvas({
     boardGesture.cancel()
     setDrawingTool(null)
     setNavigatorOpen(false)
-    setSpace(false)
-    setModifier(false)
+    resetModifiers()
     visualEdit?.cancel()
   }
 
@@ -764,31 +358,32 @@ export function ArtifactCanvas({
     if (play) presentation.openPlay(target, trigger)
     else presentation.openFocus(target, trigger)
   }
+  const inputFor = (board: CanvasBoard, interactive: boolean): CanvasBoardInput => {
+    if (handActive || modifier) return 'gesture'
+    if (showOverview && board.scoped && boardEditing?.available && drawingTool) {
+      return { tool: drawingTool, editing: boardEditing }
+    }
+    return interactive ? 'interactive' : 'select'
+  }
   const activateTitle = (boardId: string, event: MouseEvent<HTMLButtonElement>) => {
     if (boardGesture.consumesClick(event) || (handActive && event.detail !== 0)) return
     onClearElement()
     selectBoard(boardId, event.shiftKey)
   }
-  const activateContent = (
-    board: CanvasBoard,
-    event: MouseEvent<HTMLButtonElement>,
-    detailed: boolean,
-  ) => {
-    if (wasPinching.current && event.detail !== 0) return
-    if (event.detail === 2) return
-    onClearElement()
-    selectBoard(board.id, event.shiftKey)
-    if (event.detail !== 1 || event.shiftKey || !detailed || !onSelectPoint) return
-    const point = pointInBoard(board, event)
-    if (point) onSelectPoint(board.id, point)
-  }
-  const editText = (board: CanvasBoard, event: MouseEvent<HTMLButtonElement>) => {
-    if (!textTools || wasPinching.current || !isPrototype(board)) return
-    const point = pointInBoard(board, event)
-    if (!point) return
-    event.preventDefault()
-    selectBoard(board.id)
-    textTools.pick(board, point, { x: event.clientX, y: event.clientY })
+  const focusTitle = (boardId: string, element: HTMLButtonElement, bounds: CanvasBounds) => {
+    setKeyboardBoard(boardId)
+    if (!measurable || !element.matches(':focus-visible')) return
+    const viewport = viewportRef.current?.getBoundingClientRect()
+    const title = element.getBoundingClientRect()
+    if (
+      viewport &&
+      (title.right < viewport.left ||
+        title.left > viewport.right ||
+        title.bottom < viewport.top ||
+        title.top > viewport.bottom)
+    ) {
+      updateCamera(() => fitCamera(bounds, size, null))
+    }
   }
   const clickBackground = (event: MouseEvent<HTMLElement>) => {
     if (event.target !== event.currentTarget || handActive || wasPinching.current || drawingTool)
@@ -852,47 +447,15 @@ export function ArtifactCanvas({
           )}
           {showBoards && (
             <>
-              {flows.length ? (
-                <svg
-                  aria-hidden="true"
-                  className="artifact-canvas-flows"
-                  data-hand-drawn={document.handDrawnFlows}
-                >
-                  {flows.map(([key, { from, to, label }]) => {
-                    const start = boundsFor(from)
-                    const end = boundsFor(to)
-                    if (!start || !end) return null
-                    const sameRow = start.y === end.y
-                    const forward = sameRow ? start.x < end.x : start.y < end.y
-                    const x1 =
-                      camera.x +
-                      (start.x + start.width * (sameRow ? Number(forward) : 0.5)) * camera.scale
-                    const x2 =
-                      camera.x +
-                      (end.x + end.width * (sameRow ? Number(!forward) : 0.5)) * camera.scale
-                    const y1 =
-                      camera.y +
-                      (start.y + start.height * (sameRow ? 0.5 : Number(forward))) * camera.scale
-                    const y2 =
-                      camera.y +
-                      (end.y + end.height * (sameRow ? 0.5 : Number(!forward))) * camera.scale
-                    return (
-                      <g key={key}>
-                        <line x1={x1} y1={y1} x2={x2} y2={y2} />
-                        {label ? (
-                          <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 6}>
-                            {label}
-                          </text>
-                        ) : null}
-                      </g>
-                    )
-                  })}
-                </svg>
-              ) : null}
+              <CanvasFlowLines
+                document={document}
+                bounds={layout.bounds}
+                moved={moved}
+                camera={camera}
+              />
               {(standalone ? [standalone] : plan.boards).map((board) => {
                 const bounds = boundsFor(board.id)
                 if (!bounds) return null
-                const isSelected = activeSelection.has(board.id)
                 const detailed =
                   (showOverview && plan.runtime.has(board.id)) ||
                   (board === standalone && !activePresentation)
@@ -901,231 +464,85 @@ export function ArtifactCanvas({
                   detailed &&
                   board === standalone &&
                   (!isPrototype(board) || Boolean(visualEdit?.isPicking))
-                const target = { pageId: page.id, boardId: board.id }
-                const captureGesture = handActive || modifier
-                const drawing =
-                  !captureGesture && showOverview && board.scoped && boardEditing?.available
-                    ? drawingTool
-                    : null
                 return (
-                  <div
+                  <CanvasBoardTile
                     key={board.id}
-                    className="artifact-canvas-board"
-                    data-selected={isSelected}
-                    style={{
-                      left: camera.x + bounds.x * camera.scale,
-                      top: camera.y + bounds.y * camera.scale,
-                      width: bounds.width * camera.scale,
-                      height: bounds.height * camera.scale,
+                    board={board}
+                    page={page}
+                    bounds={bounds}
+                    camera={camera}
+                    isSelected={activeSelection.has(board.id)}
+                    primary={selected === board.id}
+                    canDrag={Boolean(canDragBoards)}
+                    gesture={boardGesture}
+                    onSelectTitle={activateTitle}
+                    onFocusTitle={focusTitle}
+                    onNavigate={(id) => {
+                      pendingKeyboardFocus.current = id
+                      onClearElement()
+                      navigate(page, id)
                     }}
-                  >
-                    <div dir={dir} className="artifact-canvas-board-header">
-                      {/* 标题、命中区与尺寸柄的指针边界由画布布局决定。 */}
-                      <button
-                        type="button"
-                        className="artifact-canvas-board-title"
-                        aria-pressed={isSelected}
-                        data-board-id={board.id}
-                        title={board.subtitle ?? board.title}
-                        data-movable={canDragBoards ? true : undefined}
-                        {...boardGesture.events}
-                        onPointerDown={(event) => {
-                          if (!canDragBoards || event.shiftKey) return
-                          const ids = isSelected
-                            ? activeSelection
-                            : groupMembers(page.boards, board.id)
-                          const initial = new Map([[board.id, bounds]])
-                          for (const id of ids) {
-                            const included = layout.bounds.get(id)
-                            if (included) initial.set(id, included)
-                          }
-                          boardGesture.begin(event, {
-                            pageId: page.id,
-                            boardId: board.id,
-                            initial,
-                            mode: 'move',
-                            scale: camera.scale,
-                          })
-                        }}
-                        onFocus={(event) => {
-                          setKeyboardBoard(board.id)
-                          if (!measurable || !event.currentTarget.matches(':focus-visible')) return
-                          const viewport = viewportRef.current?.getBoundingClientRect()
-                          const title = event.currentTarget.getBoundingClientRect()
-                          if (
-                            viewport &&
-                            (title.right < viewport.left ||
-                              title.left > viewport.right ||
-                              title.bottom < viewport.top ||
-                              title.top > viewport.bottom)
-                          ) {
-                            updateCamera(() => fitCamera(bounds, size, null))
-                          }
-                        }}
-                        onKeyDown={(event) => {
-                          const { key } = event
-                          if (
-                            ![
-                              'ArrowLeft',
-                              'ArrowRight',
-                              'ArrowUp',
-                              'ArrowDown',
-                              'Home',
-                              'End',
-                            ].includes(key)
-                          )
-                            return
-                          event.preventDefault()
-                          const index = page.boards.indexOf(board)
-                          const offset = key === 'ArrowLeft' || key === 'ArrowUp' ? -1 : 1
-                          let next: CanvasBoard | undefined = page.boards[index + offset]
-                          if (key === 'Home') next = page.boards[0]
-                          if (key === 'End') next = page.boards.at(-1)
-                          if (next && next.id !== board.id) {
-                            pendingKeyboardFocus.current = next.id
-                            onClearElement()
-                            navigate(page, next.id)
-                          }
-                        }}
-                        onClick={(event) => activateTitle(board.id, event)}
-                      >
-                        {board.title}
-                        {board.recommended ? (
-                          <span className="ms-2 text-[10px] opacity-75">{t('推荐')}</span>
-                        ) : null}
-                      </button>
-                      {board === standalone && visualEdit && (
-                        <Button
-                          variant={visualEdit.isPicking ? 'secondary' : 'ghost'}
-                          size="sm"
-                          aria-pressed={visualEdit.isPicking}
-                          onClick={() => {
-                            setHand(false)
-                            setDrawingTool(null)
-                            visualEdit.toggle()
-                          }}
-                        >
-                          {t('编辑元素')}
-                        </Button>
-                      )}
-                      <CanvasBoardQuickActions
-                        title={board.title}
-                        onExpand={(event) => {
-                          pauseCanvasTools()
-                          presentation.openFocus(target, event.currentTarget)
-                        }}
-                        onPlay={
-                          isPrototype(board) && canPlay(board)
-                            ? (event) => {
-                                pauseCanvasTools()
-                                presentation.openPlay(target, event.currentTarget)
-                              }
-                            : undefined
-                        }
-                        onExport={onExportBoard ? () => onExportBoard(board.id) : undefined}
-                      />
-                      {boardEditing ? (
-                        <CanvasBoardActions
-                          board={board}
-                          bounds={bounds}
-                          version={boardEditing.version}
-                          disabled={!boardEditing.available}
-                          onChange={boardEditing.change}
-                        />
-                      ) : null}
-                    </div>
-                    <div
-                      className="artifact-canvas-board-clip"
-                      style={
-                        board.cornerRadius
-                          ? { borderRadius: board.cornerRadius * camera.scale }
-                          : undefined
-                      }
-                    >
-                      <div
-                        style={{
-                          width: board.width,
-                          height: board.height,
-                          transform: `scale(${camera.scale})`,
-                        }}
-                        className="artifact-canvas-board-frame"
-                      >
-                        {renderBoard(
-                          board,
-                          {
-                            type: 'overview',
-                            interactive,
-                            animate: !board.scoped || animatedIds.has(board.id),
-                          },
-                          detailed,
+                    actions={
+                      <>
+                        {board === standalone && visualEdit && (
+                          <Button
+                            variant={visualEdit.isPicking ? 'secondary' : 'ghost'}
+                            size="sm"
+                            aria-pressed={visualEdit.isPicking}
+                            onClick={() => {
+                              setHand(false)
+                              setDrawingTool(null)
+                              visualEdit.toggle()
+                            }}
+                          >
+                            {t('编辑元素')}
+                          </Button>
                         )}
-                        {board.layoutGuides?.length && !hiddenGuideBoards.has(board.id) ? (
-                          <BoardLayoutGuides
-                            width={board.width}
-                            height={board.height}
-                            guides={board.layoutGuides}
+                        <CanvasBoardQuickActions
+                          title={board.title}
+                          onExpand={(event) => openFromMenu(board.id, event.currentTarget, false)}
+                          onPlay={
+                            isPrototype(board) && canPlay(board)
+                              ? (event) => openFromMenu(board.id, event.currentTarget, true)
+                              : undefined
+                          }
+                          onExport={onExportBoard ? () => onExportBoard(board.id) : undefined}
+                        />
+                        {boardEditing ? (
+                          <CanvasBoardActions
+                            board={board}
+                            bounds={bounds}
+                            version={boardEditing.version}
+                            disabled={!boardEditing.available}
+                            onChange={boardEditing.change}
                           />
                         ) : null}
-                      </div>
-                      {/* 抓手与组合键缩放由外层捕获，不依赖跨域 iframe 冒泡。 */}
-                      {captureGesture && (
-                        <div
-                          aria-hidden="true"
-                          data-gesture
-                          className="artifact-canvas-board-hit"
-                        />
+                      </>
+                    }
+                  >
+                    <CanvasBoardSurface
+                      board={board}
+                      scale={camera.scale}
+                      showGuides={!hiddenGuideBoards.has(board.id)}
+                      input={inputFor(board, interactive)}
+                      textTools={textTools}
+                      wasPinching={wasPinching}
+                      selectBoard={selectBoard}
+                      onClearElement={onClearElement}
+                      onSelectPoint={detailed ? onSelectPoint : undefined}
+                      onDrawingEnd={() => setDrawingTool(null)}
+                    >
+                      {renderBoard(
+                        board,
+                        {
+                          type: 'overview',
+                          interactive,
+                          animate: !board.scoped || animatedIds.has(board.id),
+                        },
+                        detailed,
                       )}
-                      {drawing && boardEditing && (
-                        <BoardDrawingSurface
-                          key={drawing.kind}
-                          board={board}
-                          tool={drawing}
-                          version={boardEditing.version}
-                          onCreate={(layer, base, anchor) => {
-                            selectBoard(board.id)
-                            setDrawingTool(null)
-                            if (layer.kind === 'text' || layer.kind === 'note') {
-                              textTools?.place(board, layer, base, anchor)
-                            } else {
-                              boardEditing.change(
-                                { kind: 'layerCreate', boardId: board.id, layer },
-                                base,
-                              )
-                            }
-                          }}
-                        />
-                      )}
-                      {!captureGesture && !drawing && !interactive && (
-                        <button
-                          type="button"
-                          tabIndex={-1}
-                          aria-label={t('选择画板：{title}', { title: board.title })}
-                          className="artifact-canvas-board-hit"
-                          onClick={(event) => activateContent(board, event, detailed)}
-                          onDoubleClick={(event) => editText(board, event)}
-                        />
-                      )}
-                    </div>
-                    {selected === board.id && canDragBoards ? (
-                      <button
-                        type="button"
-                        className="artifact-canvas-board-resize"
-                        tabIndex={-1}
-                        aria-label={t('拖动调整尺寸：{title}', { title: board.title })}
-                        title={t('拖动调整尺寸；键盘请使用设置画板')}
-                        {...boardGesture.events}
-                        onPointerDown={(event) =>
-                          boardGesture.begin(event, {
-                            pageId: page.id,
-                            boardId: board.id,
-                            initial: new Map([[board.id, bounds]]),
-                            mode: 'resize',
-                            scale: camera.scale,
-                          })
-                        }
-                      />
-                    ) : null}
-                  </div>
+                    </CanvasBoardSurface>
+                  </CanvasBoardTile>
                 )
               })}
             </>
@@ -1243,13 +660,4 @@ export function ArtifactCanvas({
       ) : null}
     </>
   )
-}
-
-function pointInBoard(board: CanvasBoard, event: MouseEvent<HTMLButtonElement>): Point | null {
-  const rect = event.currentTarget.getBoundingClientRect()
-  if (!rect.width || !rect.height) return null
-  return {
-    x: Math.max(0, ((event.clientX - rect.left) * board.width) / rect.width),
-    y: Math.max(0, ((event.clientY - rect.top) * board.height) / rect.height),
-  }
 }

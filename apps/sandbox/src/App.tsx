@@ -10,21 +10,22 @@ import {
 } from '@akasha/protocol'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { SandboxBridgeClient } from './bridge/client'
-import { captureSandboxPng } from './capture-png'
-import { createPrintSession, type PrintSession } from './capture-print'
+import { captureSandboxPng } from './capture/png'
+import { createPrintSession, type PrintSession } from './capture/print'
 import { SandboxInspector } from './inspector/index'
 import { readCanvasLayers } from './inspector/layers'
+import { SandboxVisualInspector } from './inspector/visual-edit'
 import {
   hasOverviewMotion,
   loopOverviewMotion,
   type OverviewMotion,
   pauseOverviewMotion,
-} from './overview-motion'
-import { bindPrototype, hasPlayableControls } from './prototype'
-import { artboardStyle } from './renderers/artboard-style'
+} from './overview/motion'
+import { bindPrototype, hasPlayableControls } from './prototype/binding'
 import { registerBuiltinRenderers } from './renderers/builtins'
-import { DesignLayerScene } from './renderers/DesignLayerScene'
 import { getRenderer } from './renderers/registry'
+import { artboardStyle } from './renderers/templates/artboard-style'
+import { DesignLayerScene } from './renderers/templates/DesignLayerScene'
 import {
   defaultPreservedStateManager,
   PreservedStateContext,
@@ -35,7 +36,6 @@ import {
   type ArtifactStateStore,
   defaultArtifactStateStore,
 } from './state/store'
-import { SandboxVisualInspector } from './visual-edit'
 
 registerBuiltinRenderers()
 

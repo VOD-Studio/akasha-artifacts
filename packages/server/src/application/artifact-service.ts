@@ -1,37 +1,4 @@
-import { applyVisualEdit, inspectVisualTarget, VisualEditError } from '@akasha/jsx-source/edit'
-import type {
-  AnnotationReply,
-  AnnotationThread,
-  Artifact,
-  ArtifactIdentifier,
-  ArtifactTransferInput,
-  ArtifactType,
-  ArtifactWorkspaceDetail,
-  Author,
-  EditOp,
-  ElementRef,
-  Feedback,
-  FeedbackKind,
-  JsonPatchOp,
-  Project,
-  PublicId,
-  ReviewGroup,
-  ReviewRound,
-  Slug,
-  StateStreamSnapshot,
-  TextEdit,
-  Verdict,
-  Version,
-  Visibility,
-} from '@akasha/protocol'
-import { isAnnotationKind, PublicIdSchema, stabilizeArtboardSource } from '@akasha/protocol'
-import {
-  applyTextEdits,
-  assertBaseVersion,
-  createImmutableVersion,
-} from '../domain/artifact/index.js'
-import { DomainError, InvalidReceiptError, NotFoundError } from '../domain/errors.js'
-import { isDraftFeedback, shouldNotifyImmediately } from '../domain/feedback/index.js'
+import type { ArtifactIdentifier, ArtifactTransferInput, Author, PublicId } from '@akasha/protocol'
 import type {
   ArtifactRepository,
   Clock,
@@ -43,17 +10,44 @@ import type {
   RoundRepository,
   StateRepository,
 } from '../domain/ports.js'
+import type { ArtifactWorkspaceRead } from './artifact-workspace-read.js'
+import { ArtifactLifecycle, type RenameArtifactInput } from './artifacts/lifecycle.js'
+import { ArtifactQueries, type ArtifactVersionQuery } from './artifacts/queries.js'
 import {
-  applyGroupDecision,
-  closeActiveRounds,
-  createReviewRound,
-  submitReviewRound,
-  withdrawReviewRound,
-} from '../domain/round/index.js'
-import { applyJsonPatch, replayStateStream } from '../domain/state/index.js'
-import { visualBoardSource } from './artboard-visual-source.js'
-import { ArtifactWorkspaceRead } from './artifact-workspace-read.js'
-import { KeyedAsyncLock } from './keyed-lock.js'
+  ArtifactStateStream,
+  type PushStateInput,
+  type StateQuery,
+} from './artifacts/state-stream.js'
+import {
+  ArtifactVersions,
+  type PublishArtifactInput,
+  type RevertArtifactInput,
+  type UpdateArtifactInput,
+} from './artifacts/versions.js'
+import {
+  ArtifactVisualEdit,
+  type VisualEditBase,
+  type VisualEditCommand,
+} from './artifacts/visual-edit.js'
+import { ArtifactWriteLocks } from './artifacts/write-locks.js'
+import { type RegisterProjectInput, registerProject } from './projects.js'
+import {
+  type DiscussionActionInput,
+  ReviewFeedback,
+  type ReviewFeedbackQuery,
+  type SubmitFeedbackInput,
+} from './review/feedback.js'
+import {
+  type AckFeedbackInput,
+  FeedbackDelivery,
+  type PullFeedbackInput,
+} from './review/feedback-delivery.js'
+import {
+  type OpenRoundInput,
+  type RecordDecisionInput,
+  ReviewRounds,
+  type RoundReference,
+} from './review/rounds.js'
 
 /** 用例依赖的端口集合，全部经构造参数注入。 */
 export interface ArtifactServiceDeps {
@@ -68,34 +62,6 @@ export interface ArtifactServiceDeps {
   ids: IdGenerator
 }
 
-const DEFAULT_PROJECT_ID = 'default'
-const VISUAL_EDIT_LABEL = '可视化直改：'
-const VISUAL_EDIT_FEEDBACK_PREFIX = 'visualedit'
-const VISUAL_UNDO_LABEL = '撤销可视化直改 v'
-const VISUAL_EDIT_KIND_LABEL = {
-  text: '修改文字',
-  className: '调整 Tailwind 类名',
-  attr: '修改属性',
-  move: '调整兄弟元素顺序',
-  remove: '删除元素',
-} satisfies Record<EditOp['kind'], string>
-
-interface VisualEditBase {
-  id: ArtifactIdentifier
-  projectId?: string
-  baseVersion: number
-}
-
-type VisualEditCommand = { op: EditOp; boardId?: string } | { undoVersion: number }
-
-interface DiscussionActionInput {
-  id: ArtifactIdentifier
-  projectId?: string
-  feedbackId: string
-  includeDrafts: boolean
-  author: Author
-}
-
 /**
  * 制品用例编排：发布、增量更新、回退、状态流、评审轮次与反馈队列。
  *
@@ -103,27 +69,33 @@ interface DiscussionActionInput {
  * 不同制品互不阻塞。
  */
 export class ArtifactService {
-  // 分别串行化同一 Artifact 的版本写入与状态流补丁，避免并发读-检-写竞态
-  private readonly writeLocks = new KeyedAsyncLock()
-  private readonly stateLocks = new KeyedAsyncLock()
-
   readonly workspace: ArtifactWorkspaceRead
+  private readonly writeLocks = new ArtifactWriteLocks()
+  private readonly queries: ArtifactQueries
+  private readonly versions: ArtifactVersions
+  private readonly lifecycle: ArtifactLifecycle
+  private readonly visual: ArtifactVisualEdit
+  private readonly state: ArtifactStateStream
+  private readonly rounds: ReviewRounds
+  private readonly feedback: ReviewFeedback
+  private readonly delivery: FeedbackDelivery
 
   constructor(private readonly deps: ArtifactServiceDeps) {
-    this.workspace = new ArtifactWorkspaceRead(deps.artifacts)
+    this.queries = new ArtifactQueries(deps)
+    this.workspace = this.queries.workspace
+    const resolve = this.queries.resolveArtifact.bind(this.queries)
+    this.versions = new ArtifactVersions(deps, resolve, this.writeLocks)
+    this.lifecycle = new ArtifactLifecycle(deps, resolve, this.writeLocks, this.versions)
+    this.feedback = new ReviewFeedback(deps, resolve, this.workspace)
+    this.visual = new ArtifactVisualEdit(deps, resolve, this.writeLocks, this.feedback)
+    this.state = new ArtifactStateStream(deps, resolve)
+    this.rounds = new ReviewRounds(deps, resolve)
+    this.delivery = new FeedbackDelivery(deps, resolve)
   }
 
   /** 登记项目；同一 `rootPath` 重复登记时沿用既有 `id`。 */
-  async registerProject(input: { id?: string; rootPath: string; name: string }): Promise<Project> {
-    const existing = await this.deps.projects.findByRootPath(input.rootPath)
-    const now = this.deps.clock.now()
-    const project: Project = {
-      id: existing?.id ?? input.id ?? this.deps.ids.id('proj'),
-      rootPath: input.rootPath,
-      name: input.name.trim() || input.rootPath,
-      lastActiveAt: now,
-    }
-    return this.deps.projects.upsert(project)
+  registerProject(input: RegisterProjectInput) {
+    return registerProject(this.deps, input)
   }
 
   /**
@@ -133,7 +105,7 @@ export class ArtifactService {
    * 避免并发回写过期的 `headVersion`。
    */
   withArtifactLock<T>(publicId: PublicId, fn: () => Promise<T>): Promise<T> {
-    return this.writeLocks.run(`artifact:${publicId}`, fn)
+    return this.writeLocks.forArtifact(publicId, fn)
   }
 
   /**
@@ -141,32 +113,8 @@ export class ArtifactService {
    *
    * @throws {NotFoundError} 解析不到，或未指定项目时同名 slug 命中多个制品。
    */
-  async resolveArtifact(identifier: ArtifactIdentifier, projectId?: string): Promise<Artifact> {
-    if (PublicIdSchema.safeParse(identifier).success) {
-      const byPublic = await this.deps.artifacts.findByPublicId(identifier)
-      if (byPublic) return byPublic
-      // 撤下的 publicId 仍是保留标识，不能把旧书签重新解释为另一份制品的 slug。
-      if (await this.deps.artifacts.lifecycle.findWithdrawn(identifier)) {
-        throw new NotFoundError('未找到活动制品')
-      }
-    }
-    const targetProject = projectId ?? DEFAULT_PROJECT_ID
-    const bySlug = await this.deps.artifacts.findBySlug(targetProject, identifier)
-    if (bySlug) return bySlug
-
-    // 未显式指定项目时，兼容跨项目按旧 slug 解析（仅当唯一命中时放行）
-    if (!projectId) {
-      const all = await this.deps.artifacts.listByProject()
-      const matches = all.filter((a) => a.slug === identifier)
-      if (matches.length === 1 && matches[0]) {
-        return matches[0]
-      }
-    }
-
-    throw new NotFoundError(`未找到 Artifact "${identifier}"`, {
-      identifier,
-      projectId: targetProject,
-    })
+  resolveArtifact(identifier: ArtifactIdentifier, projectId?: string) {
+    return this.queries.resolveArtifact(identifier, projectId)
   }
 
   /**
@@ -177,212 +125,8 @@ export class ArtifactService {
    * @throws {DomainError} 制品已存在而未传 `baseVersion`；错误码为 `BAD_REQUEST`。
    * @throws {VersionConflictError} `baseVersion` 落后于头版本。
    */
-  async publish(input: {
-    projectId?: string
-    slug: Slug
-    title: string
-    type: ArtifactType
-    source: string
-    baseVersion?: number
-    visibility?: Visibility
-    author: Author
-    // 仅用于本机 `.artifact-id` 对账和 CLI 首发预留，不向 HTTP/MCP 公开。
-    preferredPublicId?: PublicId
-    // 复制不允许对命中的制品写入新版本。
-    createOnly?: true
-  }): Promise<{ artifact: Artifact; version: Readonly<Version> }> {
-    const projectId = input.projectId ?? DEFAULT_PROJECT_ID
-    const slugLockKey = `slug:${projectId}::${input.slug}`
-
-    return this.writeLocks.run(slugLockKey, async () => {
-      const existing = await this.deps.artifacts.findBySlug(projectId, input.slug)
-      if (existing && input.createOnly) {
-        throw new DomainError('RESOURCE_CONFLICT', '目标项目已存在同名制品，原有内容未更改')
-      }
-      const now = this.deps.clock.now()
-
-      if (!existing) {
-        let publicId: PublicId
-        if (input.preferredPublicId && PublicIdSchema.safeParse(input.preferredPublicId).success) {
-          const taken = await this.deps.artifacts.findByPublicId(input.preferredPublicId)
-          if (taken && input.createOnly)
-            throw new DomainError('RESOURCE_CONFLICT', '指定的发布地址已被占用，未发布制品')
-          if (
-            !taken &&
-            (await this.deps.artifacts.lifecycle.findWithdrawn(input.preferredPublicId))
-          ) {
-            throw new DomainError('RESOURCE_CONFLICT', '制品已撤下，恢复前不能重新发布')
-          }
-          publicId = taken ? this.deps.ids.publicId() : input.preferredPublicId
-        } else {
-          publicId = this.deps.ids.publicId()
-        }
-        const version = createImmutableVersion({
-          artifactId: publicId,
-          version: 1,
-          parentVersion: null,
-          author: input.author,
-          title: input.title.trim() || input.slug,
-          source: input.source,
-          createdAt: now,
-        })
-        const artifact: Artifact = {
-          publicId,
-          slug: input.slug,
-          projectId,
-          title: version.title,
-          type: input.type,
-          visibility: input.visibility ?? 'private',
-          headVersion: 1,
-          createdAt: now,
-          updatedAt: now,
-        }
-        await this.deps.artifacts.saveArtifact(artifact)
-        await this.deps.artifacts.appendVersion(version, artifact.type)
-        await this.deps.states.saveSnapshot({
-          artifactId: publicId,
-          seq: 0,
-          snapshot: {},
-          updatedAt: now,
-        })
-        await this.deps.realtime.publish(
-          {
-            type: 'version.created',
-            artifactId: publicId,
-            version,
-          },
-          { projectId },
-        )
-        return { artifact, version }
-      }
-
-      // 与按 publicId 寻址的 update/revert 共享同一把 Artifact 锁
-      return this.writeLocks.run(`artifact:${existing.publicId}`, async () => {
-        const fresh = await this.deps.artifacts.findByPublicId(existing.publicId)
-        if (!fresh) {
-          throw new NotFoundError(`未找到 Artifact "${existing.publicId}"`)
-        }
-        if (fresh.projectId !== projectId || fresh.slug !== input.slug) {
-          throw new DomainError('RESOURCE_CONFLICT', '制品归属已改变，请按目标项目重新定位')
-        }
-        const versions = await this.deps.artifacts.getVersions(fresh.publicId)
-        assertBaseVersion(fresh, versions, input.baseVersion)
-
-        const nextNumber = fresh.headVersion + 1
-        const version = createImmutableVersion({
-          artifactId: fresh.publicId,
-          version: nextNumber,
-          parentVersion: fresh.headVersion,
-          author: input.author,
-          title: input.title.trim() || fresh.title,
-          source: input.source,
-          createdAt: now,
-        })
-        const updated: Artifact = {
-          ...fresh,
-          title: version.title,
-          type: input.type,
-          visibility: input.visibility ?? fresh.visibility,
-          headVersion: nextNumber,
-          updatedAt: now,
-        }
-        await this.deps.artifacts.appendVersion(version, updated.type)
-        await this.deps.artifacts.saveArtifact(updated)
-        await this.deps.realtime.publish(
-          {
-            type: 'version.created',
-            artifactId: updated.publicId,
-            version,
-          },
-          { projectId: updated.projectId },
-        )
-        return { artifact: updated, version }
-      })
-    })
-  }
-
-  /** 只修改制品展示标题，历史快照以及其 permalink 保持不变。 */
-  async renameArtifact(input: {
-    id: ArtifactIdentifier
-    projectId?: string
-    title: string
-  }): Promise<Artifact> {
-    const title = input.title.trim()
-    if (!title) throw new DomainError('BAD_REQUEST', '制品标题不能为空')
-    const { publicId } = await this.resolveArtifact(input.id, input.projectId)
-    return this.withArtifactLock(publicId, async () => {
-      const artifact = await this.deps.artifacts.renameTitle(publicId, title, this.deps.clock.now())
-      if (!artifact) throw new NotFoundError(`未找到 Artifact "${publicId}"`)
-      await this.deps.realtime.publish(
-        { type: 'artifact.metadata', artifactId: publicId },
-        { projectId: artifact.projectId },
-      )
-      return artifact
-    })
-  }
-
-  /** 只复制所选源码快照，或在服务内原子移动既有标识。 */
-  async transferArtifact(id: ArtifactIdentifier, input: ArtifactTransferInput, author: Author) {
-    const artifact = await this.resolveArtifact(id)
-    if (!(await this.deps.projects.findById(input.targetProjectId))) {
-      throw new NotFoundError('目标项目未在当前服务登记')
-    }
-    if (input.kind === 'copy') {
-      const snapshot = await this.deps.artifacts.getVersion(artifact.publicId, input.version)
-      if (!snapshot) throw new NotFoundError(`找不到要复制的固定版本 v${input.version}`)
-      return this.publish({
-        projectId: input.targetProjectId,
-        slug: input.slug,
-        title: snapshot.title,
-        type: artifact.type,
-        source: snapshot.source,
-        visibility: 'private',
-        createOnly: true,
-        author,
-      })
-    }
-    if (input.targetProjectId === artifact.projectId) {
-      throw new DomainError('BAD_REQUEST', '请选择不同的目标项目')
-    }
-    return this.writeLocks.run(`slug:${input.targetProjectId}::${artifact.slug}`, () =>
-      this.withArtifactLock(artifact.publicId, async () => {
-        const moved = await this.deps.artifacts.relocate({
-          publicId: artifact.publicId,
-          sourceProjectId: artifact.projectId,
-          targetProjectId: input.targetProjectId,
-          updatedAt: this.deps.clock.now(),
-        })
-        if (!moved)
-          throw new DomainError('RESOURCE_CONFLICT', '制品归属或目标项目已改变，未移动制品')
-        await this.deps.realtime.publish(
-          { type: 'artifact.metadata', artifactId: moved.publicId },
-          { projectId: moved.projectId },
-        )
-        return { artifact: moved }
-      }),
-    )
-  }
-
-  /** 软撤下和恢复只更改可见性层，不重建源码、版本或反馈。 */
-  async setArtifactWithdrawal(publicId: PublicId, withdrawn: boolean): Promise<Artifact> {
-    if (!PublicIdSchema.safeParse(publicId).success) throw new NotFoundError('未找到制品')
-    const lifecycle = this.deps.artifacts.lifecycle
-    return this.withArtifactLock(publicId, async () => {
-      const artifact = withdrawn
-        ? await this.deps.artifacts.findByPublicId(publicId)
-        : (await lifecycle.findWithdrawn(publicId))?.artifact
-      if (
-        !artifact ||
-        !(await lifecycle.setWithdrawal(publicId, withdrawn ? this.deps.clock.now() : null))
-      ) {
-        throw new NotFoundError(withdrawn ? '未找到活动制品' : '未找到可恢复的制品')
-      }
-      await this.deps.realtime.publish(
-        { type: 'artifact.metadata', artifactId: artifact.publicId },
-        { projectId: artifact.projectId },
-      )
-      return artifact
-    })
+  publish(input: PublishArtifactInput) {
+    return this.versions.publish(input)
   }
 
   /**
@@ -392,84 +136,43 @@ export class ArtifactService {
    * @throws {NotFoundError} 制品或其头版本不存在。
    * @throws {VersionConflictError} `baseVersion` 不等于头版本。
    */
-  async update(
-    input: {
-      id: ArtifactIdentifier
-      projectId?: string
-      baseVersion: number
-      title?: string
-      author: Author
-      /** 等待制品写锁期间撤销的轮次，不得开始写入新版本。 */
-      signal?: AbortSignal
-    } & ({ edits: readonly TextEdit[] } | { source: string }),
-  ): Promise<{ artifact: Artifact; version: Readonly<Version> }> {
-    const resolved = await this.resolveArtifact(input.id, input.projectId)
-    return this.writeLocks.run(`artifact:${resolved.publicId}`, async () => {
-      const existing = await this.deps.artifacts.findByPublicId(resolved.publicId)
-      if (!existing || (input.projectId !== undefined && input.projectId !== existing.projectId)) {
-        throw new NotFoundError(`未找到 Artifact "${resolved.publicId}"`)
-      }
-      const versions = await this.deps.artifacts.getVersions(existing.publicId)
-      assertBaseVersion(existing, versions, input.baseVersion)
+  update(input: UpdateArtifactInput) {
+    return this.versions.update(input)
+  }
 
-      const head = versions.find((v) => v.version === existing.headVersion)
-      if (!head) {
-        throw new NotFoundError(`缺少头版本 v${existing.headVersion}`)
-      }
-      const nextSource = 'source' in input ? input.source : applyTextEdits(head.source, input.edits)
-      const now = this.deps.clock.now()
-      const nextNumber = existing.headVersion + 1
-      const version = createImmutableVersion({
-        artifactId: existing.publicId,
-        version: nextNumber,
-        parentVersion: existing.headVersion,
-        author: input.author,
-        title: input.title?.trim() || existing.title,
-        source: nextSource,
-        createdAt: now,
-      })
-      const updated: Artifact = {
-        ...existing,
-        title: version.title,
-        headVersion: nextNumber,
-        updatedAt: now,
-      }
-      input.signal?.throwIfAborted()
-      await this.deps.artifacts.appendVersion(version, updated.type)
-      await this.deps.artifacts.saveArtifact(updated)
-      await this.deps.realtime.publish(
-        {
-          type: 'version.created',
-          artifactId: updated.publicId,
-          version,
-        },
-        { projectId: updated.projectId },
-      )
-      return { artifact: updated, version }
-    })
+  /**
+   * 回退到历史版本：生成内容等于目标版本的新版本，不改动既有版本。
+   *
+   * @throws {NotFoundError} 目标版本不存在。
+   * @throws {VersionConflictError} `baseVersion` 不等于头版本。
+   */
+  revert(input: RevertArtifactInput) {
+    return this.versions.revert(input)
+  }
+
+  /** 只修改制品展示标题，历史快照以及其 permalink 保持不变。 */
+  renameArtifact(input: RenameArtifactInput) {
+    return this.lifecycle.renameArtifact(input)
+  }
+
+  /** 只复制所选源码快照，或在服务内原子移动既有标识。 */
+  transferArtifact(id: ArtifactIdentifier, input: ArtifactTransferInput, author: Author) {
+    return this.lifecycle.transferArtifact(id, input, author)
+  }
+
+  /** 软撤下和恢复只更改可见性层，不重建源码、版本或反馈。 */
+  setArtifactWithdrawal(publicId: PublicId, withdrawn: boolean) {
+    return this.lifecycle.setArtifactWithdrawal(publicId, withdrawn)
   }
 
   /** 查询某个 `loc` 能否直改；不带 `loc` 时返回当前可撤销的版本号。 */
-  async inspectVisualEdit(input: VisualEditBase & { loc?: string; boardId?: string }) {
-    const artifact = await this.resolveArtifact(input.id, input.projectId)
-    const head = await this.visualEditHead(artifact, input.baseVersion)
-    if (input.loc) {
-      if (input.boardId === undefined)
-        return { target: inspectVisualTarget(artifact.type, head.source, input.loc) }
-      const board =
-        artifact.type === 'artboard'
-          ? visualBoardSource(head.source, head.version, input.boardId)
-          : null
-      return { target: board ? inspectVisualTarget('html', board.html, input.loc) : null }
-    }
-    return { undoVersion: (await this.findVisualUndo(artifact, head))?.version ?? null }
+  inspectVisualEdit(input: VisualEditBase & { loc?: string; boardId?: string }) {
+    return this.visual.inspectVisualEdit(input)
   }
 
   /** 只计算直改后的源码，供沙盒乐观预览；不写入版本。 */
-  async previewVisualEdit(input: VisualEditBase & VisualEditCommand): Promise<string> {
-    const artifact = await this.resolveArtifact(input.id, input.projectId)
-    const head = await this.visualEditHead(artifact, input.baseVersion)
-    return this.visualEditSource(artifact, head, input)
+  previewVisualEdit(input: VisualEditBase & VisualEditCommand) {
+    return this.visual.previewVisualEdit(input)
   }
 
   /**
@@ -479,189 +182,27 @@ export class ArtifactService {
    * 撤销链据此识别连续的直改。
    * @throws {DomainError} `author` 不是人类；错误码为 `FORBIDDEN`。
    */
-  async visualEdit(input: VisualEditBase & VisualEditCommand & { author: Author }) {
-    if (!input.author.startsWith('human:')) {
-      throw new DomainError('FORBIDDEN', '可视化直改仅支持人类作者')
-    }
-    const resolved = await this.resolveArtifact(input.id, input.projectId)
-    return this.withArtifactLock(resolved.publicId, async () => {
-      const artifact = await this.deps.artifacts.findByPublicId(resolved.publicId)
-      if (!artifact) throw new NotFoundError(`未找到 Artifact "${resolved.publicId}"`)
-      const head = await this.visualEditHead(artifact, input.baseVersion)
-      const source = await this.visualEditSource(artifact, head, input)
-      if (source === head.source) return { artifact, version: head }
-      const now = this.deps.clock.now()
-      const version = createImmutableVersion({
-        artifactId: artifact.publicId,
-        version: head.version + 1,
-        parentVersion: head.version,
-        author: input.author,
-        title: artifact.title,
-        source,
-        createdAt: now,
-      })
-      const updated = { ...artifact, headVersion: version.version, updatedAt: now }
-      await this.deps.artifacts.appendVersion(version, updated.type)
-      await this.deps.artifacts.saveArtifact(updated)
-      await this.submitFeedback(
-        {
-          id: updated.publicId,
-          projectId: updated.projectId,
-          version: version.version,
-          kind: 'edit',
-          // loc 属于基准源码；写入新版本后位置可能漂移，不把它当作新版本的图钉。
-          body:
-            'op' in input
-              ? `${VISUAL_EDIT_LABEL}${VISUAL_EDIT_KIND_LABEL[input.op.kind]}（v${head.version}，${input.op.loc}）`
-              : `${VISUAL_UNDO_LABEL}${input.undoVersion}`,
-          author: input.author,
-        },
-        VISUAL_EDIT_FEEDBACK_PREFIX,
-      )
-      await this.deps.realtime.publish(
-        { type: 'version.created', artifactId: updated.publicId, version },
-        { projectId: updated.projectId },
-      )
-      return { artifact: updated, version }
-    })
+  visualEdit(input: VisualEditBase & VisualEditCommand & { author: Author }) {
+    return this.visual.visualEdit(input)
   }
 
-  private async visualEditHead(
-    artifact: Artifact,
-    baseVersion: number,
-  ): Promise<Readonly<Version>> {
-    if (baseVersion !== artifact.headVersion) {
-      assertBaseVersion(
-        artifact,
-        await this.deps.artifacts.getVersions(artifact.publicId),
-        baseVersion,
-      )
-    }
-    const head = await this.deps.artifacts.getVersion(artifact.publicId, artifact.headVersion)
-    if (!head) throw new NotFoundError(`缺少头版本 v${artifact.headVersion}`)
-    return head
+  /** 读取制品元数据、指定版本（缺省为头版本）、最新状态快照与全部轮次。 */
+  getArtifact(input: ArtifactVersionQuery) {
+    return this.queries.getArtifact(input)
   }
 
-  private async visualEditSource(
-    artifact: Artifact,
-    head: Readonly<Version>,
-    command: VisualEditCommand,
-  ): Promise<string> {
-    if ('op' in command) {
-      try {
-        if (command.boardId !== undefined) {
-          const board =
-            artifact.type === 'artboard' && command.op.kind === 'text'
-              ? visualBoardSource(head.source, head.version, command.boardId)
-              : null
-          if (!board) throw new VisualEditError('该画板仅支持直改静态文字')
-          return board.replace(applyVisualEdit('html', board.html, command.op))
-        }
-        return applyVisualEdit(artifact.type, head.source, command.op)
-      } catch (error) {
-        if (!(error instanceof VisualEditError)) throw error
-        throw new DomainError('BAD_REQUEST', error.message, { annotationOnly: true })
-      }
-    }
-    const edited = await this.findVisualUndo(artifact, head)
-    if (
-      edited?.version !== command.undoVersion ||
-      !edited.parentVersion ||
-      edited.source !== head.source
-    ) {
-      throw new DomainError('BAD_REQUEST', '只能撤销当前源码中的最近一次直改')
-    }
-    const parent = await this.deps.artifacts.getVersion(artifact.publicId, edited.parentVersion)
-    if (!parent) throw new NotFoundError(`缺少基准版本 v${edited.parentVersion}`)
-    return artifact.type === 'artboard'
-      ? stabilizeArtboardSource(parent.source, parent.version)
-      : parent.source
+  /** 工作区只打开布局索引；源码读取保留给编辑、导出和 Agent。 */
+  getWorkspace(input: ArtifactVersionQuery) {
+    return this.queries.getWorkspace(input)
   }
 
-  private async findVisualUndo(
-    artifact: Artifact,
-    head: Readonly<Version>,
-  ): Promise<Readonly<Version> | undefined> {
-    if (!head.parentVersion || !['react', 'html', 'artboard'].includes(artifact.type))
-      return undefined
-    const { items } = await this.deps.feedbacks.list({ artifactId: artifact.publicId })
-    const editNotes = new Map<number, string>()
-    for (const item of items) {
-      if (
-        item.kind === 'edit' &&
-        item.id.startsWith(`${VISUAL_EDIT_FEEDBACK_PREFIX}_`) &&
-        item.version <= head.version
-      ) {
-        editNotes.set(item.version, item.body)
-      }
-    }
-    const versions = await this.deps.artifacts.getVersions(artifact.publicId)
-    const stack: Readonly<Version>[] = []
-    // 任何普通发布、代码保存或历史回退都会打断直改撤销链。
-    for (const version of [...versions].sort((a, b) => a.version - b.version)) {
-      if (version.version > head.version) break
-      const note = editNotes.get(version.version)
-      if (note?.startsWith(VISUAL_EDIT_LABEL)) stack.push(version)
-      else if (note === `${VISUAL_UNDO_LABEL}${stack.at(-1)?.version}`) stack.pop()
-      else stack.length = 0
-    }
-    return stack.at(-1)
+  getHistory(id: ArtifactIdentifier, projectId?: string) {
+    return this.queries.getHistory(id, projectId)
   }
 
-  /**
-   * 回退到历史版本：生成内容等于目标版本的新版本，不改动既有版本。
-   *
-   * @throws {NotFoundError} 目标版本不存在。
-   * @throws {VersionConflictError} `baseVersion` 不等于头版本。
-   */
-  async revert(input: {
-    id: ArtifactIdentifier
-    projectId?: string
-    targetVersion: number
-    baseVersion: number
-    author: Author
-  }): Promise<{ artifact: Artifact; version: Readonly<Version> }> {
-    const resolved = await this.resolveArtifact(input.id, input.projectId)
-    return this.writeLocks.run(`artifact:${resolved.publicId}`, async () => {
-      const existing = await this.deps.artifacts.findByPublicId(resolved.publicId)
-      if (!existing) {
-        throw new NotFoundError(`未找到 Artifact "${resolved.publicId}"`)
-      }
-      const versions = await this.deps.artifacts.getVersions(existing.publicId)
-      assertBaseVersion(existing, versions, input.baseVersion)
-
-      const target = versions.find((v) => v.version === input.targetVersion)
-      if (!target) {
-        throw new NotFoundError(`目标版本 v${input.targetVersion} 不存在`)
-      }
-      const now = this.deps.clock.now()
-      const nextNumber = existing.headVersion + 1
-      const version = createImmutableVersion({
-        artifactId: existing.publicId,
-        version: nextNumber,
-        parentVersion: existing.headVersion,
-        author: input.author,
-        title: existing.title,
-        source: target.source,
-        createdAt: now,
-      })
-      const updated: Artifact = {
-        ...existing,
-        headVersion: nextNumber,
-        updatedAt: now,
-      }
-      await this.deps.artifacts.appendVersion(version, updated.type)
-      await this.deps.artifacts.saveArtifact(updated)
-      await this.deps.realtime.publish(
-        {
-          type: 'version.created',
-          artifactId: updated.publicId,
-          version,
-        },
-        { projectId: updated.projectId },
-      )
-      return { artifact: updated, version }
-    })
+  /** 源码不会随版本菜单一起下载。 */
+  getHistorySummaries(id: ArtifactIdentifier, projectId?: string) {
+    return this.queries.getHistorySummaries(id, projectId)
   }
 
   /**
@@ -671,148 +212,18 @@ export class ArtifactService {
    * `state.patched`。
    * @throws {StatePatchError} 补丁应用失败，此时状态流不变。
    */
-  async pushState(input: {
-    id: ArtifactIdentifier
-    projectId?: string
-    ops: readonly JsonPatchOp[]
-  }): Promise<StateStreamSnapshot> {
-    if (input.ops.length === 0) {
-      throw new DomainError('BAD_REQUEST', '状态补丁 ops 不能为空')
-    }
-    const artifact = await this.resolveArtifact(input.id, input.projectId)
-    return this.stateLocks.run(artifact.publicId, async () => {
-      const now = this.deps.clock.now()
-      const current = (await this.deps.states.getSnapshot(artifact.publicId)) ?? {
-        artifactId: artifact.publicId,
-        seq: 0,
-        snapshot: {},
-        updatedAt: now,
-      }
-      const nextData = applyJsonPatch(current.snapshot, input.ops)
-      const nextSeq = current.seq + 1
-      const nextSnapshot: StateStreamSnapshot = {
-        artifactId: artifact.publicId,
-        seq: nextSeq,
-        snapshot: nextData,
-        updatedAt: now,
-      }
-      await this.deps.states.appendPatch(artifact.publicId, {
-        seq: nextSeq,
-        ops: structuredClone(input.ops) as JsonPatchOp[],
-        createdAt: now,
-      })
-      await this.deps.states.saveSnapshot(nextSnapshot)
-      await this.deps.realtime.publish(
-        {
-          type: 'state.patched',
-          artifactId: artifact.publicId,
-          stateSeq: nextSeq,
-          ops: structuredClone(input.ops) as JsonPatchOp[],
-        },
-        { projectId: artifact.projectId },
-      )
-      return nextSnapshot
-    })
+  pushState(input: PushStateInput) {
+    return this.state.pushState(input)
   }
 
   /** 回放补丁日志得到指定 `seq` 处的状态；省略 `seq` 时为最新状态。 */
-  async getStateAt(input: {
-    id: ArtifactIdentifier
-    projectId?: string
-    seq?: number
-  }): Promise<{ artifactId: PublicId; seq: number; snapshot: Record<string, unknown> }> {
-    const artifact = await this.resolveArtifact(input.id, input.projectId)
-    const patches = await this.deps.states.getPatches(artifact.publicId)
-    const replayed = replayStateStream(patches, input.seq)
-    return { artifactId: artifact.publicId, ...replayed }
-  }
-
-  /** 读取制品元数据、指定版本（缺省为头版本）、最新状态快照与全部轮次。 */
-  async getArtifact(input: {
-    id: ArtifactIdentifier
-    projectId?: string
-    version?: number
-  }): Promise<{
-    artifact: Artifact
-    version: Readonly<Version>
-    state: StateStreamSnapshot
-    rounds: readonly ReviewRound[]
-  }> {
-    const artifact = await this.resolveArtifact(input.id, input.projectId)
-    const targetNum = input.version ?? artifact.headVersion
-    const version = await this.deps.artifacts.getVersion(artifact.publicId, targetNum)
-    if (!version) {
-      throw new NotFoundError(`未找到版本 v${targetNum}`)
-    }
-    return { artifact, version, ...(await this.readRuntime(artifact)) }
-  }
-
-  /** 工作区只打开布局索引；源码读取保留给编辑、导出和 Agent。 */
-  async getWorkspace(input: {
-    id: ArtifactIdentifier
-    projectId?: string
-    version?: number
-  }): Promise<ArtifactWorkspaceDetail> {
-    const artifact = await this.resolveArtifact(input.id, input.projectId)
-    const number = input.version ?? artifact.headVersion
-    const entry = await this.workspace.getVersion(artifact, number)
-    if (!entry) throw new NotFoundError(`未找到版本 v${number}`)
-    return { artifact, ...entry, ...(await this.readRuntime(artifact)) }
-  }
-
-  private async readRuntime(artifact: Artifact) {
-    const [snapshot, rounds] = await Promise.all([
-      this.deps.states.getSnapshot(artifact.publicId),
-      this.deps.rounds.listByArtifact(artifact.publicId),
-    ])
-    const state = snapshot ?? {
-      artifactId: artifact.publicId,
-      seq: 0,
-      snapshot: {},
-      updatedAt: artifact.updatedAt,
-    }
-    return { state, rounds }
-  }
-
-  async getHistory(
-    id: ArtifactIdentifier,
-    projectId?: string,
-  ): Promise<readonly Readonly<Version>[]> {
-    const artifact = await this.resolveArtifact(id, projectId)
-    return this.deps.artifacts.getVersions(artifact.publicId)
-  }
-
-  /** 源码不会随版本菜单一起下载。 */
-  async getHistorySummaries(id: ArtifactIdentifier, projectId?: string) {
-    const artifact = await this.resolveArtifact(id, projectId)
-    return this.deps.artifacts.getVersionSummaries(artifact.publicId)
+  getStateAt(input: StateQuery) {
+    return this.state.getStateAt(input)
   }
 
   /** 开启新一轮：此前未关闭的轮次自动转为 `closed`。 */
-  async openRound(input: {
-    id: ArtifactIdentifier
-    projectId?: string
-    groups: ReviewGroup[]
-  }): Promise<ReviewRound> {
-    const artifact = await this.resolveArtifact(input.id, input.projectId)
-    const existing = await this.deps.rounds.listByArtifact(artifact.publicId)
-    const closed = closeActiveRounds(existing)
-    const round = createReviewRound({
-      id: this.deps.ids.id('round'),
-      artifactId: artifact.publicId,
-      groups: input.groups,
-      createdAt: this.deps.clock.now(),
-    })
-    await this.deps.rounds.replaceRounds(artifact.publicId, [...closed, round])
-    await this.deps.realtime.publish(
-      {
-        type: 'round.updated',
-        artifactId: artifact.publicId,
-        round,
-      },
-      { projectId: artifact.projectId },
-    )
-    return round
+  openRound(input: OpenRoundInput) {
+    return this.rounds.openRound(input)
   }
 
   /**
@@ -822,98 +233,18 @@ export class ArtifactService {
    * `fromAgent` 为 true 时允许改写非 `drafting` 轮次，用于回写终端里的口头答复。
    * @throws {NotFoundError} 没有可用的轮次。
    */
-  async recordDecision(input: {
-    id: ArtifactIdentifier
-    projectId?: string
-    roundId?: string
-    groupId?: string
-    choice?: string | null
-    verdict?: Verdict
-    note?: string
-    submitRound?: boolean
-    fromAgent?: boolean
-  }): Promise<ReviewRound> {
-    const artifact = await this.resolveArtifact(input.id, input.projectId)
-    const rounds = await this.deps.rounds.listByArtifact(artifact.publicId)
-    const target = input.roundId ? rounds.find((r) => r.id === input.roundId) : rounds.at(-1)
-    if (!target) {
-      throw new NotFoundError('当前 Artifact 没有可用的评审轮次')
-    }
-    let next = target
-    if (input.groupId) {
-      next = applyGroupDecision(next, {
-        groupId: input.groupId,
-        choice: input.choice,
-        verdict: input.verdict,
-        note: input.note,
-        fromAgent: input.fromAgent,
-      })
-    }
-    const now = this.deps.clock.now()
-    if (input.submitRound) {
-      next = submitReviewRound(next, now)
-      await this.deps.feedbacks.promoteRoundDrafts(artifact.publicId, next.id, now)
-    }
-    await this.deps.rounds.saveRound(next)
-    await this.deps.realtime.publish(
-      {
-        type: 'round.updated',
-        artifactId: artifact.publicId,
-        round: next,
-      },
-      { projectId: artifact.projectId },
-    )
-    return next
+  recordDecision(input: RecordDecisionInput) {
+    return this.rounds.recordDecision(input)
   }
 
   /** 提交轮次并把本轮草稿转为可投递，随后广播 `round.updated`。 */
-  async submitRound(input: {
-    id: ArtifactIdentifier
-    projectId?: string
-    roundId: string
-  }): Promise<ReviewRound> {
-    const artifact = await this.resolveArtifact(input.id, input.projectId)
-    const round = await this.deps.rounds.findById(artifact.publicId, input.roundId)
-    if (!round) {
-      throw new NotFoundError(`未找到轮次 "${input.roundId}"`)
-    }
-    const now = this.deps.clock.now()
-    const submitted = submitReviewRound(round, now)
-    await this.deps.feedbacks.promoteRoundDrafts(artifact.publicId, submitted.id, now)
-    await this.deps.rounds.saveRound(submitted)
-    await this.deps.realtime.publish(
-      {
-        type: 'round.updated',
-        artifactId: artifact.publicId,
-        round: submitted,
-      },
-      { projectId: artifact.projectId },
-    )
-    return submitted
+  submitRound(input: RoundReference) {
+    return this.rounds.submitRound(input)
   }
 
   /** 撤回已提交的轮次，回到 `drafting`；已转正的草稿不会退回。 */
-  async withdrawRound(input: {
-    id: ArtifactIdentifier
-    projectId?: string
-    roundId: string
-  }): Promise<ReviewRound> {
-    const artifact = await this.resolveArtifact(input.id, input.projectId)
-    const round = await this.deps.rounds.findById(artifact.publicId, input.roundId)
-    if (!round) {
-      throw new NotFoundError(`未找到轮次 "${input.roundId}"`)
-    }
-    const withdrawn = withdrawReviewRound(round)
-    await this.deps.rounds.saveRound(withdrawn)
-    await this.deps.realtime.publish(
-      {
-        type: 'round.updated',
-        artifactId: artifact.publicId,
-        round: withdrawn,
-      },
-      { projectId: artifact.projectId },
-    )
-    return withdrawn
+  withdrawRound(input: RoundReference) {
+    return this.rounds.withdrawRound(input)
   }
 
   /**
@@ -922,123 +253,23 @@ export class ArtifactService {
    * @remarks 只供讨论的意见和草稿不会唤醒 Agent。`idPrefix` 区分可视化直改的 `visualedit`。
    * @throws {NotFoundError} 反馈绑定的版本不存在。
    */
-  async submitFeedback(
-    input: {
-      id: ArtifactIdentifier
-      projectId?: string
-      version: number
-      roundId?: string | null
-      groupId?: string | null
-      kind: FeedbackKind
-      audience?: Feedback['audience']
-      element?: ElementRef | null
-      body: string
-      author: Author
-    },
-    idPrefix = 'fb',
-  ): Promise<Feedback> {
-    const artifact = await this.resolveArtifact(input.id, input.projectId)
-    const ver = await this.deps.artifacts.getVersion(artifact.publicId, input.version)
-    if (!ver) {
-      throw new NotFoundError(`反馈绑定的版本 v${input.version} 不存在`)
-    }
-    const round = input.roundId
-      ? await this.deps.rounds.findById(artifact.publicId, input.roundId)
-      : undefined
-    const now = this.deps.clock.now()
-    const feedback: Feedback = {
-      id: this.deps.ids.id(idPrefix),
-      artifactId: artifact.publicId,
-      version: input.version,
-      roundId: input.roundId ?? null,
-      groupId: input.groupId ?? null,
-      kind: input.kind,
-      ...(input.audience && { audience: input.audience }),
-      element: input.element ?? null,
-      body: input.body,
-      author: input.author,
-      draft: isDraftFeedback(round),
-      status: 'pending',
-      createdAt: now,
-      updatedAt: now,
-    }
-    await this.deps.feedbacks.save(feedback)
-    if (shouldNotifyImmediately(feedback)) {
-      await this.deps.realtime.publish(
-        {
-          type: 'feedback.created',
-          artifactId: artifact.publicId,
-          feedback,
-        },
-        { projectId: artifact.projectId },
-      )
-    } else if (feedback.audience !== undefined) {
-      await this.deps.realtime.publish(
-        { type: 'annotation.changed', artifactId: artifact.publicId },
-        { projectId: artifact.projectId },
-      )
-    }
-    return feedback
+  submitFeedback(input: SubmitFeedbackInput, idPrefix = 'fb') {
+    return this.feedback.submitFeedback(input, idPrefix)
   }
 
   /** 读取制品的审阅记录，不签发 Agent 消费回执。 */
-  async listFeedbackForReview(input: {
-    id: ArtifactIdentifier
-    projectId?: string
-    includeDrafts: boolean
-  }): Promise<{ items: readonly Feedback[]; threads: Record<string, AnnotationThread> }> {
-    const artifact = await this.resolveArtifact(input.id, input.projectId)
-    const { feedbacks } = this.deps
-    const [items, threads] = await Promise.all([
-      feedbacks.listForReview(artifact.publicId, input.includeDrafts),
-      feedbacks.annotations.list(artifact.publicId, input.includeDrafts),
-    ])
-    return { items: await this.workspace.resolveLegacyFeedback(artifact, items), threads }
-  }
-
-  private async resolveDiscussionArtifact(input: DiscussionActionInput): Promise<Artifact> {
-    const artifact = await this.resolveArtifact(input.id, input.projectId)
-    const root = await this.deps.feedbacks.findById(input.feedbackId)
-    if (
-      !root ||
-      root.artifactId !== artifact.publicId ||
-      !isAnnotationKind(root.kind) ||
-      (root.draft && !input.includeDrafts)
-    )
-      throw new NotFoundError('未找到可访问的批注线程')
-    return artifact
+  listFeedbackForReview(input: ReviewFeedbackQuery) {
+    return this.feedback.listFeedbackForReview(input)
   }
 
   /** 回复保持根批注的版本与定位，不单独投递给 Agent。 */
-  async replyToAnnotation(
-    input: DiscussionActionInput & { body: string },
-  ): Promise<AnnotationReply> {
-    const artifact = await this.resolveDiscussionArtifact(input)
-    const reply: AnnotationReply = {
-      id: this.deps.ids.id('reply'),
-      author: input.author,
-      body: input.body,
-      createdAt: this.deps.clock.now(),
-    }
-    await this.deps.feedbacks.annotations.reply(input.feedbackId, reply)
-    await this.deps.realtime.publish(
-      { type: 'annotation.changed', artifactId: artifact.publicId },
-      { projectId: artifact.projectId },
-    )
-    return reply
+  replyToAnnotation(input: DiscussionActionInput & { body: string }) {
+    return this.feedback.replyToAnnotation(input)
   }
 
   /** 人工解决或重新打开讨论，不改变该批注的 Agent 投递状态。 */
-  async resolveAnnotation(input: DiscussionActionInput & { resolved: boolean }): Promise<void> {
-    const artifact = await this.resolveDiscussionArtifact(input)
-    await this.deps.feedbacks.annotations.setResolution(
-      input.feedbackId,
-      input.resolved ? { author: input.author, resolvedAt: this.deps.clock.now() } : null,
-    )
-    await this.deps.realtime.publish(
-      { type: 'annotation.changed', artifactId: artifact.publicId },
-      { projectId: artifact.projectId },
-    )
+  resolveAnnotation(input: DiscussionActionInput & { resolved: boolean }) {
+    return this.feedback.resolveAnnotation(input)
   }
 
   /**
@@ -1047,61 +278,8 @@ export class ArtifactService {
    * @remarks 未指定 `id` 而指定 `projectId` 时，范围限定为该项目内的全部制品。
    * 只有 `detail` 为真且有结果时才签发回执。
    */
-  async pullFeedback(input: {
-    id?: ArtifactIdentifier
-    projectId?: string
-    after?: string
-    includeDrafts?: boolean
-    detail?: boolean
-  }): Promise<{
-    items: readonly Feedback[]
-    rounds: readonly ReviewRound[]
-    cursor: string
-    receipt?: string
-  }> {
-    const artifact = input.id ? await this.resolveArtifact(input.id, input.projectId) : undefined
-
-    // 不按制品读取时也只能拉取活动制品，不能通过全局队列读到撤下内容。
-    let artifactIds: Set<PublicId> | undefined
-    if (!artifact) {
-      const projectArtifacts = await this.deps.artifacts.listByProject(input.projectId)
-      artifactIds = new Set(projectArtifacts.map((a) => a.publicId))
-      if (artifactIds.size === 0) {
-        return { items: [], rounds: [], cursor: input.after ?? '' }
-      }
-    }
-
-    const { items, cursor } = await this.deps.feedbacks.list({
-      artifactId: artifact?.publicId,
-      artifactIds,
-      afterCursor: input.after,
-      includeDrafts: input.includeDrafts ?? false,
-    })
-    const rounds = artifact
-      ? await this.deps.rounds.listByArtifact(artifact.publicId)
-      : artifactIds
-        ? (
-            await Promise.all(
-              Array.from(artifactIds, (aid) => this.deps.rounds.listByArtifact(aid)),
-            )
-          ).flat()
-        : []
-    const detail = input.detail ?? true
-
-    // 仅完整拉取且存在待消费条目时签发回执；预览摘要不推进消费游标
-    let receipt: string | undefined
-    if (detail && items.length > 0) {
-      receipt = this.deps.ids.id('rcpt')
-      await this.deps.receipts.save({
-        receipt,
-        artifactId: artifact?.publicId ?? null,
-        cursor,
-        feedbackIds: items.map((i) => i.id),
-        issuedAt: this.deps.clock.now(),
-      })
-    }
-
-    return { items, rounds, cursor, receipt }
+  pullFeedback(input: PullFeedbackInput) {
+    return this.delivery.pullFeedback(input)
   }
 
   /**
@@ -1110,42 +288,7 @@ export class ArtifactService {
    * @returns 实际更新的条数，以及其中被标记为 `resolved` 的条数。
    * @throws {InvalidReceiptError} 回执不存在或已被消费。
    */
-  async ackFeedback(input: {
-    receipt: string
-    resolveIds?: readonly string[]
-  }): Promise<{ acknowledged: number; resolved: number }> {
-    const consumed = await this.deps.receipts.consume(input.receipt)
-    if (!consumed) {
-      throw new InvalidReceiptError(input.receipt)
-    }
-    const resolveSet = new Set(input.resolveIds ?? [])
-    const now = this.deps.clock.now()
-    let acknowledged = 0
-    let resolved = 0
-
-    for (const id of consumed.feedbackIds) {
-      const fb = await this.deps.feedbacks.findById(id)
-      if (!fb) continue
-      const nextStatus = resolveSet.has(id)
-        ? 'resolved'
-        : fb.status === 'resolved'
-          ? 'resolved'
-          : 'delivered'
-      const updated: Feedback = { ...fb, status: nextStatus, updatedAt: now }
-      await this.deps.feedbacks.save(updated)
-      acknowledged++
-      if (resolveSet.has(id)) resolved++
-      const owner = await this.deps.artifacts.findByPublicId(updated.artifactId)
-      await this.deps.realtime.publish(
-        {
-          type: 'feedback.updated',
-          artifactId: updated.artifactId,
-          feedback: updated,
-        },
-        owner ? { projectId: owner.projectId } : undefined,
-      )
-    }
-
-    return { acknowledged, resolved }
+  ackFeedback(input: AckFeedbackInput) {
+    return this.delivery.ackFeedback(input)
   }
 }

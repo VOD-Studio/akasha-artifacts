@@ -2,7 +2,7 @@
 import { waitFor } from '@testing-library/react'
 import { toSvg } from 'html-to-image'
 import { afterEach, expect, it, onTestFinished, vi } from 'vitest'
-import { createPrintSession } from '../src/capture-print'
+import { createPrintSession } from '../src/capture/print'
 
 vi.mock('html-to-image', () => ({ toSvg: vi.fn(), toBlob: vi.fn() }))
 

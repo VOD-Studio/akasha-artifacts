@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { hasOverviewMotion, loopOverviewMotion, pauseOverviewMotion } from '../src/overview-motion'
+import { hasOverviewMotion, loopOverviewMotion, pauseOverviewMotion } from '../src/overview/motion'
 
 function cssMotion({ paused = false, transition = false } = {}) {
   let iterations = 2

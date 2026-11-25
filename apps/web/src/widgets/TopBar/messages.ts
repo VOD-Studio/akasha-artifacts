@@ -2,19 +2,6 @@ import type { Messages } from '@/shared/i18n'
 
 export const messages = {
   存储用量: ['Speicherbelegung', 'استخدام التخزين', 'Storage usage'],
-  '仅统计运行数据，不含源码与版本。': [
-    'Nur Laufzeitdaten, ohne Quellcode und Versionen.',
-    'تشمل الإحصاءات بيانات التشغيل فقط، دون الشيفرة والإصدارات.',
-    'Runtime data only. Source code and versions are excluded.',
-  ],
-  关闭: ['Schließen', 'إغلاق', 'Close'],
-  正在加载用量: [
-    'Speicherbelegung wird geladen',
-    'جارٍ تحميل استخدام التخزين',
-    'Loading storage usage',
-  ],
-  共享: ['Gemeinsam', 'مشترك', 'Shared'],
-  个人: ['Persönlich', 'شخصي', 'Personal'],
   已收藏: ['Zu Favoriten hinzugefügt', 'أُضيف إلى المفضلة', 'Added to favorites'],
   已取消收藏: ['Aus Favoriten entfernt', 'أُزيل من المفضلة', 'Removed from favorites'],
   已重新加载: ['Neu geladen', 'أُعيد التحميل', 'Reloaded'],
@@ -39,17 +26,6 @@ export const messages = {
   '移交给 Agent': ['An Agent übergeben', 'تسليم إلى الوكيل', 'Hand off to agent'],
   快速跳转: ['Schnellnavigation', 'انتقال سريع', 'Quick navigation'],
   '撤下…': ['Zurückziehen…', 'سحب…', 'Withdraw…'],
-  已撤下: ['Zurückgezogen', 'سُحب العمل', 'Withdrawn'],
-  '撤下「{title}」？': ['„{title}“ zurückziehen?', 'هل تريد سحب «{title}»؟', 'Withdraw “{title}”?'],
-  '可在作品库恢复。旧分享链接永久失效。': [
-    'In der Bibliothek wiederherstellbar. Bisherige Freigabelinks werden dauerhaft ungültig.',
-    'يمكن استعادته من المكتبة. ستبطل روابط المشاركة السابقة نهائيًا.',
-    'You can restore it from the library. Existing share links will stop working permanently.',
-  ],
-  取消: ['Abbrechen', 'إلغاء', 'Cancel'],
-  撤下: ['Zurückziehen', 'سحب', 'Withdraw'],
-  保存: ['Speichern', 'حفظ', 'Save'],
-  名称: ['Name', 'الاسم', 'Name'],
   仅查看: ['Nur ansehen', 'عرض فقط', 'Can view'],
   可编辑: ['Darf bearbeiten', 'يمكنه التحرير', 'Can edit'],
   可批注: ['Darf kommentieren', 'يمكنه التعليق', 'Can comment'],

@@ -3,8 +3,8 @@ import type { AgentConversation, Project } from '@akasha/protocol'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
+import { CreateDesignDialog } from '../src/features/agent-conversation'
 import { LibraryShell } from '../src/widgets/LibraryShell'
-import { CreateDesignDialog } from '../src/widgets/LibraryShell/CreateDesignDialog'
 
 const projects: Project[] = [
   { id: 'p-alpha', rootPath: '/tmp/alpha', name: '预约项目', lastActiveAt: '2026-11-23T00:00:00Z' },

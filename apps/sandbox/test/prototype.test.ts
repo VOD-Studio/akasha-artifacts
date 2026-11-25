@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { expect, it } from 'vitest'
-import { bindPrototype, hasPlayableControls } from '../src/prototype'
-import { preparePrototypeMedia } from '../src/prototype-media'
+import { bindPrototype, hasPlayableControls } from '../src/prototype/binding'
+import { preparePrototypeMedia } from '../src/prototype/media'
 
 it('保留表单校验，使用提交按钮声明的导航，并支持从输入框退出', () => {
   const root = document.createElement('main')

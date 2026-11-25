@@ -1,6 +1,7 @@
 import { ARTBOARD_GEOMETRY_LIMITS, type VersionSummary } from '@akasha/protocol'
 import { type MouseEvent, type PointerEvent, useEffect, useRef, useState } from 'react'
-import type { CanvasBounds } from '@/entities/artifact'
+import type { CanvasBounds, CanvasPage } from '@/entities/artifact'
+import { groupMembers } from '../lib/canvas-arrangement'
 import type { Point } from '../lib/canvas-camera'
 import type { CanvasBoardEditing } from './useCanvasBoardEditing'
 
@@ -83,6 +84,12 @@ function sameBounds(a: ReadonlyMap<string, CanvasBounds>, b: ReadonlyMap<string,
 /** 按手势开始时的相机换算坐标，进行中从不发布；松手后沿用抓取时的版本。 */
 export function useBoardGesture(
   editing: CanvasBoardEditing | undefined,
+  layout: {
+    page?: CanvasPage
+    bounds: ReadonlyMap<string, CanvasBounds>
+    selection: ReadonlySet<string>
+    scale: number
+  },
   onMoving: (boardId: string) => void,
 ) {
   const active = useRef<Gesture | null>(null)
@@ -124,23 +131,43 @@ export function useBoardGesture(
       (preview.phase === 'dragging' || (preview.baseVersion === editing?.version.version && saving))
         ? preview
         : null,
-    begin(event: HandleEvent, start: GestureStart) {
+    begin(event: HandleEvent, boardId: string, bounds: CanvasBounds, mode: GestureStart['mode']) {
       draggedTitle.current = null
-      if (!editing?.available || active.current || event.button !== 0 || event.isPrimary === false)
+      if (
+        !layout.page ||
+        !editing?.available ||
+        active.current ||
+        event.button !== 0 ||
+        event.isPrimary === false
+      )
         return
+      const initial = new Map([[boardId, bounds]])
+      if (mode === 'move') {
+        const ids = layout.selection.has(boardId)
+          ? layout.selection
+          : groupMembers(layout.page.boards, boardId)
+        for (const id of ids) {
+          const included = layout.bounds.get(id)
+          if (included) initial.set(id, included)
+        }
+      }
       event.stopPropagation()
       event.currentTarget.setPointerCapture?.(event.pointerId)
       const { coordinate } = ARTBOARD_GEOMETRY_LIMITS
       const minDelta = { x: -Infinity, y: -Infinity }
       const maxDelta = { x: Infinity, y: Infinity }
-      for (const bounds of start.initial.values()) {
+      for (const bounds of initial.values()) {
         minDelta.x = Math.max(minDelta.x, -coordinate - bounds.x)
         minDelta.y = Math.max(minDelta.y, -coordinate - bounds.y)
         maxDelta.x = Math.min(maxDelta.x, coordinate - bounds.x)
         maxDelta.y = Math.min(maxDelta.y, coordinate - bounds.y)
       }
       active.current = {
-        ...start,
+        pageId: layout.page.id,
+        boardId,
+        initial,
+        mode,
+        scale: layout.scale,
         pointerId: event.pointerId,
         handle: event.currentTarget,
         start: { x: event.clientX, y: event.clientY },

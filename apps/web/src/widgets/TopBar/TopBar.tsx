@@ -13,9 +13,9 @@ import { HubAccountButton } from '@/features/hub'
 import { VersionTimeline } from '@/features/version-timeline'
 import { AkashaMark } from '@/shared/brand'
 import { LanguageMenu, useMessages } from '@/shared/i18n'
-import { ArtifactTitleMenu } from './ArtifactTitleMenu'
 import { messages } from './messages'
-import { WorkspacePanelButtons } from './WorkspacePanelButtons'
+import { ArtifactTitleMenu } from './ui/ArtifactTitleMenu'
+import { WorkspacePanelButtons } from './ui/WorkspacePanelButtons'
 
 export interface TopBarProps {
   artifact: Artifact

@@ -14,6 +14,7 @@
 ## 规范与文档
 
 - **设计依据**：架构、协议与原则见 `docs/design/architecture.md`，术语见 `CONTEXT.md`，技术选型见 `docs/adr/`。与设计冲突的改动须先更新设计或新增 ADR。
+- **代码组织**：所有工作区都按[功能职责](docs/design/architecture.md#121-仓库结构)组织。给已有文件加功能前，先判断它是否应由独立用例、渲染器或适配器负责；不要把新场景继续追加到无关的实现或总测试文件中。
 - **Web 实现**：写组件、hook、工具、测试或 `className` 前，先读 [Web 文案与实现规范](docs/agents/frontend.md)；页面不复制基础组件，交互改动在真实消费页面验收。
 - **双语 README 对称**：修改 `README.md` 必须同步修改 `README.zh-CN.md`，保持章节、配置示例与表格完全对齐。
 - **分支、提交、PR 与 Issue**：遵循 [提交纪律](docs/agents/git.md)：完成一个可独立验证和回退的改动就本地提交，默认不推送。

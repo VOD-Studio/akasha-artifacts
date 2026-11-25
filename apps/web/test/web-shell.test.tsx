@@ -22,7 +22,6 @@ beforeAll(() => {
 })
 
 import { type ArtifactDetailResponse, artifactKeys } from '../src/entities/artifact'
-import { projectKeys } from '../src/entities/project'
 import { useSelectionStore } from '../src/entities/selection'
 import { useWorkspaceStore } from '../src/entities/workspace'
 import { RuntimeErrorPanel } from '../src/features/error-recovery'
@@ -33,8 +32,6 @@ import { VersionDiffView } from '../src/features/version-diff'
 import { AkashaWsClient } from '../src/shared/api/ws'
 import { SANDBOX_IFRAME_SANDBOX_ATTR, SandboxBridgeHost } from '../src/shared/bridge/host'
 import { ArtifactWorkspace } from '../src/widgets/ArtifactWorkspace'
-import { LibraryShell } from '../src/widgets/LibraryShell'
-import { useLibraryView } from '../src/widgets/LibraryShell/library-view'
 import { TopBar } from '../src/widgets/TopBar'
 
 const SAMPLE_ARTIFACT: Artifact = {
@@ -74,7 +71,6 @@ afterEach(() => {
   vi.useRealTimers()
   sessionStorage.clear()
   vi.restoreAllMocks()
-  useLibraryView.setState(useLibraryView.getInitialState())
   useWorkspaceStore.setState({
     selectedProjectId: null,
     commandPaletteOpen: false,
@@ -456,127 +452,10 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     })
   })
 
-  it('制品库快捷键聚焦同一搜索框，打开制品再返回保留关键词与滚动位置', () => {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
-    })
-    queryClient.setQueryData(projectKeys.all, [
-      {
-        id: 'proj_1',
-        rootPath: '/repo/alpha',
-        name: 'Alpha Repo',
-        lastActiveAt: '2026-11-22T09:00:00.000Z',
-        dormant: false,
-      },
-      {
-        id: 'proj_old',
-        rootPath: '/repo/legacy',
-        name: 'Legacy Repo',
-        lastActiveAt: '2026-10-01T00:00:00.000Z',
-        dormant: true,
-      },
-    ])
-    queryClient.setQueryData(artifactKeys.list(undefined), [
-      SAMPLE_ARTIFACT,
-      {
-        ...SAMPLE_ARTIFACT,
-        publicId: 'LegacyLibraryItemAbC123',
-        projectId: 'proj_old',
-        title: '旧任务参考',
-        type: 'markdown',
-      },
-    ])
-
-    const opened: string[] = []
-    const openLibrary = () =>
-      render(
-        <QueryClientProvider client={queryClient}>
-          <LibraryShell onOpenArtifact={(id) => opened.push(id)} />
-        </QueryClientProvider>,
-      )
-
-    const library = openLibrary()
-    expect(screen.getByRole('link', { name: '旧任务参考' }).getAttribute('href')).toBe(
-      '/a/LegacyLibraryItemAbC123',
-    )
-    fireEvent.keyDown(window, { key: 'k', ctrlKey: true })
-    const search = screen.getByRole('searchbox', { name: '搜索作品' })
-    expect(document.activeElement).toBe(search)
-    fireEvent.change(search, { target: { value: '状态' } })
-    expect(screen.queryByText('旧任务参考')).toBeNull()
-    const scroller = screen.getByRole('region', { name: '作品列表' })
-    scroller.scrollTop = 80
-    fireEvent.scroll(scroller)
-
-    fireEvent.click(screen.getByText('实时状态卡片'))
-    expect(opened).toEqual([SAMPLE_ARTIFACT.publicId])
-    library.unmount()
-    openLibrary()
-    expect(screen.getByRole<HTMLInputElement>('searchbox', { name: '搜索作品' }).value).toBe('状态')
-    expect(screen.getByRole('region', { name: '作品列表' }).scrollTop).toBe(80)
-    expect(screen.queryByText('旧任务参考')).toBeNull()
-  })
-
   it('VersionDiffView 展示源内容的行级增删', () => {
     render(<VersionDiffView versions={[SAMPLE_V1, SAMPLE_V2]} activeVersion={2} />)
     expect(screen.getByText('+1')).toBeTruthy()
     expect(screen.getByText('-1')).toBeTruthy()
-  })
-
-  it('Hub 项目库持续打开时会显示 Agent 新发布的项目和制品', async () => {
-    vi.useFakeTimers()
-    vi.stubGlobal('__AKASHA_CONFIG__', { hub: true })
-    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
-    const project = {
-      id: 'proj_review',
-      rootPath: '/repo/review',
-      name: '新登记项目',
-      lastActiveAt: '2026-11-22T09:00:00.000Z',
-      dormant: false,
-    }
-    let published = false
-    vi.stubGlobal('fetch', async (url: string) => {
-      switch (url) {
-        case '/api/v1/projects':
-          return Response.json({ projects: published ? [project] : [] })
-        case '/api/v1/artifacts':
-          return Response.json({
-            artifacts: published
-              ? [{ ...SAMPLE_ARTIFACT, projectId: project.id, title: '新发布制品' }]
-              : [],
-          })
-        case '/api/v1/auth/session':
-          return Response.json({ user: { login: 'reviewer', member: true } })
-        default:
-          throw new Error(`意外请求：${url}`)
-      }
-    })
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
-    })
-    try {
-      render(
-        <QueryClientProvider client={queryClient}>
-          <LibraryShell onOpenArtifact={() => {}} />
-        </QueryClientProvider>,
-      )
-      await act(() => vi.advanceTimersByTimeAsync(20))
-      expect(screen.queryByText('新发布制品')).toBeNull()
-      expect(screen.queryByRole('button', { name: '新建设计' })).toBeNull()
-
-      published = true
-      await act(() => vi.advanceTimersByTimeAsync(15_000))
-      expect(screen.getByText('新发布制品')).toBeTruthy()
-      const projects = screen.getByRole('button', { name: '筛选项目' })
-      fireEvent.keyDown(projects, { key: 'ArrowDown' })
-      fireEvent.click(screen.getByRole('menuitemradio', { name: '新登记项目' }))
-      expect(projects.textContent).toBe('新登记项目')
-      expect(screen.getByText('新发布制品')).toBeTruthy()
-    } finally {
-      cleanup()
-      queryClient.clear()
-      vi.unstubAllGlobals()
-    }
   })
 
   it('RuntimeErrorPanel 高亮报错源码行、一键提交 runtime_error 给 Agent 并对重复异常去重', async () => {
