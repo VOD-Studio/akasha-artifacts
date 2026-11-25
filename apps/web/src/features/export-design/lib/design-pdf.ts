@@ -1,15 +1,15 @@
 import { getMessages } from '@/shared/i18n'
 import { messages } from '../messages'
 
-/** 一张已在独立沙盒成功渲染的画板。 */
+/** 已在独立沙盒渲染的一页；Flow 画板可提供连续多页。 */
 export interface DesignPdfPage {
   png: Blob
-  /** 固有 CSS 像素，与封面或 PDF 的输出比例无关。 */
+  /** 完整纸页的 CSS 像素宽高；版面保留小数，不使用位图取整后的尺寸。 */
   width: number
   height: number
 }
 
-/** 按输入顺序增量嵌入图像；读完所有画板后才生成可下载的文件。 */
+/** 按输入顺序增量嵌入图像；读完所有纸页后才生成可下载的文件。 */
 export async function composeDesignPdf(title: string, pages: AsyncIterable<DesignPdfPage>) {
   const { PDFDocument } = await import('pdf-lib')
   const pdf = await PDFDocument.create()
