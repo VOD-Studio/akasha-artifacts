@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/logo.svg" width="440" alt="Akasha Logo">
+  <img src="docs/assets/logo.svg" width="300" alt="Akasha Logo">
 </p>
 
 <h1 align="center">Akasha (虚空) — Interactive Artifacts for Coding Agents</h1>
