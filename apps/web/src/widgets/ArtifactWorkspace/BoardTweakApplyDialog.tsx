@@ -17,7 +17,7 @@ import {
   DialogTitle,
 } from '@akasha/ui/dialog'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useRef, useState } from 'react'
+import { useId, useMemo, useRef, useState } from 'react'
 import { hasVersionSource, useArtifactSourceQuery } from '@/entities/artifact'
 import { fetchArtifactConversation, sendArtifactConversation } from '@/features/agent-conversation'
 import { getRequestErrorMessage } from '@/shared/api/error'
@@ -55,6 +55,7 @@ export function BoardTweakApplyDialog({
   onClose,
 }: BoardTweakApplyDialogProps) {
   const { t } = useMessages(tweakApplyMessages)
+  const targetGroupId = useId()
   const sourceQuery = useArtifactSourceQuery(
     artifact.publicId,
     base.version,
@@ -186,8 +187,13 @@ export function BoardTweakApplyDialog({
             <fieldset className="space-y-2">
               <legend>{t('选择画板')}</legend>
               {targets.map((target) => (
-                <label key={target.id} className="flex items-center gap-2">
+                <label
+                  key={target.id}
+                  htmlFor={`${targetGroupId}-${target.id}`}
+                  className="flex items-center gap-2"
+                >
                   <Checkbox
+                    id={`${targetGroupId}-${target.id}`}
                     checked={target.status === 'changed' && selected.has(target.id)}
                     disabled={target.status !== 'changed' || Boolean(pending)}
                     onCheckedChange={(checked) => changeSelection(target.id, checked === true)}
