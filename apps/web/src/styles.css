@@ -79,15 +79,6 @@ body {
   background-size: 14px 14px;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .library-header,
-  .theme-toggle-core,
-  .theme-toggle-cutout,
-  .theme-toggle-rays {
-    transition: none;
-  }
-}
-
 /* 亮暗主题切换：6 道斜向光幕百叶切页，仅在主题切换期间接管根视图过渡。 */
 html[data-theme-transition]::view-transition-old(root),
 html[data-theme-transition]::view-transition-new(root) {
@@ -144,6 +135,15 @@ html[data-theme-transition]::view-transition-new(root) {
 .theme-toggle-icon[data-sun="true"] .theme-toggle-rays {
   opacity: 1;
   transform: scale(1) rotate(0deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .library-header,
+  .theme-toggle-core,
+  .theme-toggle-cutout,
+  .theme-toggle-rays {
+    transition: none;
+  }
 }
 
 @media (prefers-contrast: more) {
