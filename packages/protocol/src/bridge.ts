@@ -183,17 +183,19 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
     value: z.unknown().optional(),
     error: z.string().optional(),
   }),
-  z.object({
-    ...BridgeEnvelopeBase,
-    type: z.literal('capture.png'),
-    version: z.number().int().min(1),
-    // 常驻画板可多次捕获；区分过期响应。一次性导出不传此字段。
-    requestId: z.string().min(1).max(64).optional(),
-    // 保持固有 CSS 视口；scale 只决定输出位图大小
-    width: z.number().int().min(1).max(8192),
-    height: z.number().int().min(1).max(8192),
-    scale: z.number().positive().max(1),
-  }),
+  z
+    .object({
+      ...BridgeEnvelopeBase,
+      type: z.literal('capture.png'),
+      version: z.number().int().min(1),
+      // 常驻画板可多次捕获；区分过期响应。一次性导出不传此字段。
+      requestId: z.string().min(1).max(64).optional(),
+      // CSS 视口不变。缩略图不放大；只有一次性定版导出可以请求双倍位图。
+      width: z.number().int().min(1).max(8192),
+      height: z.number().int().min(1).max(8192),
+      scale: z.union([z.number().positive().max(1), z.literal(2)]),
+    })
+    .refine(({ requestId, scale }) => requestId === undefined || scale <= 1),
   z.object({
     ...BridgeEnvelopeBase,
     type: z.literal('capture.cancel'),

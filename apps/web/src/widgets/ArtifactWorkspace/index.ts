@@ -3,3 +3,4 @@ export { ArtifactHandoffDialog, type ArtifactHandoffTarget } from './ArtifactHan
 export { ArtifactShareDialog } from './ArtifactShareDialog'
 export { ArtifactTransferDialog, type ArtifactTransferTarget } from './ArtifactTransferDialog'
 export { ArtifactWorkspace } from './ArtifactWorkspace'
+export type { CanvasExportSelection } from './canvas-export-selection'

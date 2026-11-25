@@ -24,7 +24,7 @@ import {
   Star,
   Trash2,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useArtifactFavoritesQuery, useSetArtifactFavoriteMutation } from '@/entities/artifact'
 import type { WorkspaceViewMode } from '@/entities/workspace'
@@ -72,7 +72,20 @@ export function ArtifactTitleMenu({
   const [showUsage, setShowUsage] = useState(false)
   const [showWithdrawal, setShowWithdrawal] = useState(false)
   const [showRename, setShowRename] = useState(false)
-  const openRename = () => setShowRename(true)
+  const menuTrigger = useRef<HTMLButtonElement>(null)
+  const pendingDialog = useRef<(() => void) | null>(null)
+  const openDialog = (open: () => void) => {
+    pendingDialog.current = open
+  }
+  const returnMenuFocus = (event: Event) => {
+    const open = pendingDialog.current
+    if (!open) return
+    pendingDialog.current = null
+    // 等菜单关闭才打开对话框，使它接到稳定的打开者，而非即将卸载的菜单项。
+    event.preventDefault()
+    menuTrigger.current?.focus({ preventScroll: true })
+    open()
+  }
   const closeRename = () => setShowRename(false)
 
   const toggleFavorite = () => {
@@ -104,6 +117,7 @@ export function ArtifactTitleMenu({
         <h1 className="min-w-0">
           <DropdownMenuTrigger asChild>
             <Button
+              ref={menuTrigger}
               variant="ghost"
               size="sm"
               aria-label="作品菜单"
@@ -117,7 +131,7 @@ export function ArtifactTitleMenu({
             </Button>
           </DropdownMenuTrigger>
         </h1>
-        <DropdownMenuContent align="start">
+        <DropdownMenuContent align="start" onCloseAutoFocus={returnMenuFocus}>
           <DropdownMenuItem onSelect={() => void copyLink()}>
             <Link2 size={14} />
             复制链接
@@ -129,18 +143,18 @@ export function ArtifactTitleMenu({
             </DropdownMenuItem>
           ) : null}
           {canManage ? (
-            <DropdownMenuItem onSelect={openRename}>
+            <DropdownMenuItem onSelect={() => openDialog(() => setShowRename(true))}>
               <Pencil size={14} />
               重命名
             </DropdownMenuItem>
           ) : null}
           {onTransfer && canManage ? (
             <>
-              <DropdownMenuItem onSelect={() => onTransfer('copy')}>
+              <DropdownMenuItem onSelect={() => openDialog(() => onTransfer('copy'))}>
                 <Copy size={14} />
                 创建副本…
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onTransfer('move')}>
+              <DropdownMenuItem onSelect={() => openDialog(() => onTransfer('move'))}>
                 <FolderInput size={14} />
                 移动到项目…
               </DropdownMenuItem>
@@ -151,7 +165,7 @@ export function ArtifactTitleMenu({
             重新加载
           </DropdownMenuItem>
           {canManage ? (
-            <DropdownMenuItem onSelect={() => setShowUsage(true)}>
+            <DropdownMenuItem onSelect={() => openDialog(() => setShowUsage(true))}>
               <HardDrive size={14} />
               存储用量
             </DropdownMenuItem>
@@ -172,18 +186,18 @@ export function ArtifactTitleMenu({
             对比版本
           </DropdownMenuItem>
           {onExport ? (
-            <DropdownMenuItem onSelect={onExport}>
+            <DropdownMenuItem onSelect={() => openDialog(onExport)}>
               <Download size={14} />
               导出
             </DropdownMenuItem>
           ) : null}
           {onHandoff ? (
-            <DropdownMenuItem onSelect={onHandoff}>
+            <DropdownMenuItem onSelect={() => openDialog(onHandoff)}>
               <HandMetal size={14} />
               移交给 Agent
             </DropdownMenuItem>
           ) : null}
-          <DropdownMenuItem onSelect={onQuickJump}>
+          <DropdownMenuItem onSelect={() => openDialog(onQuickJump)}>
             <Search size={14} />
             快速跳转
           </DropdownMenuItem>
@@ -196,7 +210,10 @@ export function ArtifactTitleMenu({
           {onWithdrawn && canManage ? (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onSelect={() => setShowWithdrawal(true)}>
+              <DropdownMenuItem
+                variant="destructive"
+                onSelect={() => openDialog(() => setShowWithdrawal(true))}
+              >
                 <Trash2 size={14} />
                 撤下…
               </DropdownMenuItem>

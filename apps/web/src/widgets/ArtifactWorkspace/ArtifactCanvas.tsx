@@ -1,10 +1,13 @@
+import type { VersionSummary } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import {
   type MouseEvent,
   type PointerEvent,
   type ReactNode,
+  type Ref,
   useEffect,
   useEffectEvent,
+  useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -39,6 +42,7 @@ import {
   type Point,
   zoomCamera,
 } from './canvas-camera'
+import type { CanvasExportSelection } from './canvas-export-selection'
 import {
   DETAIL_SCALE,
   indexViewportBoards,
@@ -82,6 +86,8 @@ interface ArtifactCanvasProps {
   onComment: () => void
   /** 用该画板的稳定标识打开和制品共用的导出面板。 */
   onExportBoard?: (boardId: string) => void
+  exportVersion: VersionSummary
+  exportSelectionRef?: Ref<() => CanvasExportSelection | undefined>
   renderBoard: (board: CanvasBoard, purpose: BoardFramePurpose, detailed: boolean) => ReactNode
   /** 从最新的可见范围提交优先队列，不把占位板或遗留选区当成加载需求。 */
   onDemandChange: (ids: readonly string[], idle: boolean) => void
@@ -182,6 +188,8 @@ export function ArtifactCanvas({
   onClearElement,
   onComment,
   onExportBoard,
+  exportVersion,
+  exportSelectionRef,
   renderBoard,
   onDemandChange,
   canPlay,
@@ -259,6 +267,15 @@ export function ArtifactCanvas({
   const activeSelection = useMemo(
     () => layoutSelectionIds(page?.boards ?? [], { selected, selectedIds: explicitSelection }),
     [page, selected, explicitSelection],
+  )
+  const { artifactId, version } = exportVersion
+  useImperativeHandle(
+    exportSelectionRef,
+    () => () =>
+      pageId !== undefined && activeSelection.size > 0
+        ? { artifactId, version, pageId, columns: document.columns, boardIds: [...activeSelection] }
+        : undefined,
+    [activeSelection, artifactId, document.columns, pageId, version],
   )
   const selectedBoards = useMemo(
     () => (page?.boards ?? []).filter((board) => activeSelection.has(board.id)),

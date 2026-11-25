@@ -25,6 +25,7 @@ import {
   ArtifactTransferDialog,
   type ArtifactTransferTarget,
   ArtifactWorkspace,
+  type CanvasExportSelection,
   type DesignExportTarget,
 } from '@/widgets/ArtifactWorkspace'
 import { TopBar } from '@/widgets/TopBar'
@@ -56,6 +57,7 @@ export function ArtifactRouteView({
   const address = useLocation({ select: (location) => location.hash })
   const search = useLocation({ select: (location) => location.searchStr })
   const [exportTarget, setExportTarget] = useState<DesignExportTarget | null>(null)
+  const exportSelectionRef = useRef<(() => CanvasExportSelection | undefined) | null>(null)
   const [handoffTarget, setHandoffTarget] = useState<ArtifactHandoffTarget | null>(null)
   const [shareTarget, setShareTarget] = useState<
     (DesignExportTarget & { canvas?: ArtboardIndex }) | null
@@ -203,8 +205,19 @@ export function ArtifactRouteView({
   const feedbacks = feedbackQuery.data?.items ?? []
   const rounds = detail.rounds
   const sandboxOrigin = resolveSandboxOrigin(daemonStatus?.sandboxPort)
-  const openExport = (boardId?: string) =>
-    setExportTarget({ artifact: detail.artifact, version: detail.version, boardId })
+  const openExport = (boardId?: string) => {
+    const selection = exportSelectionRef.current?.()
+    setExportTarget({
+      artifact: detail.artifact,
+      version: detail.version,
+      boardId,
+      selection:
+        selection?.artifactId === detail.artifact.publicId &&
+        selection.version === detail.version.version
+          ? selection
+          : undefined,
+    })
+  }
   const openHandoff = (label: string, scope?: HandoffScope) =>
     setHandoffTarget({ label, reference: getHandoffReference(detail, scope) })
   const cloudHub = isCloudHub()
@@ -307,6 +320,7 @@ export function ArtifactRouteView({
             onClearAddress={clearAddress}
             onRememberThread={rememberThread}
             onExportBoard={openExport}
+            exportSelectionRef={exportSelectionRef}
             onHandoff={openHandoff}
             onAskAgent={canTalkToAgent ? askAgent : undefined}
             onRegisterStateForwarder={registerStateForwarder}

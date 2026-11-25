@@ -12,7 +12,7 @@ import {
   type VersionSummary,
 } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type Ref, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type CanvasBoard,
   type CanvasLocation,
@@ -37,6 +37,7 @@ import { BoardInspector, type BoardInspectorHandoff } from './BoardInspector'
 import { BoardResourceView, readLoadedBoard, useBoardResource } from './BoardResourceView'
 import { BoardResources } from './board-resources'
 import { createBoardTweakPreviewStore } from './board-tweak-previews'
+import type { CanvasExportSelection } from './canvas-export-selection'
 import { InlineCanvasText } from './InlineCanvasText'
 import { useBoardCapabilities } from './useBoardCapabilities'
 import { useBoardInspection } from './useBoardInspection'
@@ -62,6 +63,8 @@ export interface ArtifactWorkspaceProps {
   onRememberThread?: (id: string) => void
   /** 只导出当前已保存快照中的画板，编辑器临时预览不提供出口。 */
   onExportBoard?: (boardId: string) => void
+  /** 仅在已保存的画布可见时，供导出入口按需读取当前选区。 */
+  exportSelectionRef?: Ref<() => CanvasExportSelection | undefined>
   /** 未保存的预览不能移交画板或对象。 */
   onHandoff?: BoardInspectorHandoff
   /** 从已保存且带版本的对象定位进入同一个发布会话。 */
@@ -90,6 +93,7 @@ export function ArtifactWorkspace({
   onClearAddress,
   onRememberThread,
   onExportBoard,
+  exportSelectionRef,
   onHandoff,
   onAskAgent,
   onRegisterStateForwarder,
@@ -570,6 +574,10 @@ export function ArtifactWorkspace({
             address={address}
             onClearAddress={onClearAddress}
             onExportBoard={canvas === savedCanvas ? onExportBoard : undefined}
+            exportVersion={version}
+            exportSelectionRef={
+              showCanvas && canvas === savedCanvas ? exportSelectionRef : undefined
+            }
             pageLink={pageLink}
             reveal={inspectorReveal}
             onRevealHandled={clearInspectorReveal}
