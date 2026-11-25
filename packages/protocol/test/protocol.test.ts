@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  AgentConversationTurnSchema,
   AgentDesignInputSchema,
   AgentMessageInputSchema,
+  AnnotationThreadSchema,
   ApplyRequestedTweaksInputSchema,
   ArtifactAwaitFeedbackInputSchema,
   ArtifactPublishInputSchema,
@@ -202,6 +204,55 @@ describe('@akasha/protocol primitives & domain', () => {
           { severity: 'error', code: 'DISALLOWED_IMPORT', message: '不允许导入 fs', line: 1 },
         ],
         warnings: [],
+      }).success,
+    ).toBe(true)
+
+    const sessionId = '29f7e3f3-cfe3-497e-a080-ee5fd08780ec'
+    const turnId = '8b4b4d2a-6f89-4f08-9e2e-2fb70a3e2c11'
+    expect(
+      AnnotationThreadSchema.safeParse({
+        replies: [],
+        resolution: null,
+        agent: {
+          sessionId,
+          turnId,
+          state: 'published',
+          reply: '已调整按钮对比度并发布新版本。',
+          publications: [{ artifactId: PUB_ID, version: 2 }],
+          updatedAt: NOW,
+        },
+      }).success,
+    ).toBe(true)
+    expect(
+      AnnotationThreadSchema.safeParse({
+        replies: [],
+        resolution: null,
+        agent: {
+          state: 'queued',
+          publications: [],
+          updatedAt: NOW,
+        },
+      }).success,
+    ).toBe(true)
+    expect(
+      AnnotationThreadSchema.safeParse({
+        replies: [],
+        resolution: null,
+        agent: {
+          state: 'unknown-state',
+          publications: [],
+          updatedAt: NOW,
+        },
+      }).success,
+    ).toBe(false)
+    expect(
+      AgentConversationTurnSchema.safeParse({
+        id: turnId,
+        feedbackId: 'fb_123',
+        message: '调整标题间距',
+        status: 'complete',
+        reply: '已更新',
+        publications: [{ artifactId: PUB_ID, version: 2 }],
       }).success,
     ).toBe(true)
   })
