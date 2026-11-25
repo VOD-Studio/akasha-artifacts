@@ -65,11 +65,14 @@ it.each(['review-only', 'deleted'])('选区含页外或已删除的成员 %s 时
   )
 })
 
-it.each([{ artifactId: 'another' }, { version: 5 }])('作品或版本不对应时拒绝旧选区：%o', (change) => {
-  expect(() =>
-    resolveSelectedExportBoards(document, { ...version, ...change }, selection(['first'])),
-  ).toThrow(/固定版本/)
-})
+it.each([{ artifactId: 'another' }, { version: 5 }])(
+  '作品或版本不对应时拒绝旧选区：%o',
+  (change) => {
+    expect(() =>
+      resolveSelectedExportBoards(document, { ...version, ...change }, selection(['first'])),
+    ).toThrow(/固定版本/)
+  },
+)
 
 it('页面不存在时不从其他页补选同名成员', () => {
   expect(() =>
