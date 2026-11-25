@@ -21,6 +21,14 @@ export function isAccessDenied(error: unknown): boolean {
   return error instanceof ApiError && (error.status === 401 || error.status === 403)
 }
 
+/** 当前访问范围下，重试同一地址无法恢复已撤权、删除或失效的资源。 */
+export function isResourceUnavailable(error: unknown): boolean {
+  return (
+    isAccessDenied(error) ||
+    (error instanceof ApiError && (error.status === 404 || error.status === 410))
+  )
+}
+
 const messages = {
   请先登录: ['Bitte zuerst anmelden.', 'سجّل الدخول أولًا.', 'Sign in first.'],
   没有权限执行此操作: [

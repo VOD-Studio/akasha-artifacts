@@ -14,7 +14,7 @@ import { useSelectionStore } from '@/entities/selection'
 import { useWorkspaceStore } from '@/entities/workspace'
 import { AgentConversationPane, type ConversationTarget } from '@/features/agent-conversation'
 import { useLiveSync } from '@/features/live-sync'
-import { ApiError, isAccessDenied } from '@/shared/api/error'
+import { isResourceUnavailable } from '@/shared/api/error'
 import { useLocalArtifactRedirect } from '@/shared/config/local-artifact'
 import { isCloudHub, resolveSandboxOrigin } from '@/shared/config/runtime'
 import {
@@ -181,9 +181,7 @@ export function ArtifactRouteView({
 
   if (probingLocal || detailQuery.isLoading) return <OpeningArtifact />
 
-  const { error } = detailQuery
-  const denied =
-    isAccessDenied(error) || (error instanceof ApiError && [404, 410].includes(error.status))
+  const denied = isResourceUnavailable(detailQuery.error)
   const backToLibrary = () => void navigate({ to: '/' })
   const retry = () => void detailQuery.refetch()
   // 暂时读不到服务端时保留画布和未保存代码；明确撤回读取权限时不展示旧缓存。

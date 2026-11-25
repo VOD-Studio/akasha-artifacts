@@ -9,6 +9,7 @@ import {
   useSyncExternalStore,
 } from 'react'
 import { type CanvasBoard, type LoadedCanvasBoard, loadCanvasBoard } from '@/entities/artifact'
+import { getRequestErrorMessage, isResourceUnavailable } from '@/shared/api/error'
 import { AkashaMark } from '@/shared/brand'
 import { useMessages } from '@/shared/i18n'
 import { navigationMessages } from './board-navigation-messages'
@@ -61,8 +62,13 @@ export function useBoardResource(board: CanvasBoard | undefined, resources: Boar
     if (board?.source !== undefined) return board as LoadedCanvasBoard
     return board && entry?.type === 'ready' ? loadCanvasBoard(board, entry.data) : undefined
   }, [board, entry])
-  const boardReadError = entry?.type === 'error' ? entry.message || t('无法读取画板') : undefined
-  return { loadedBoard, boardReadError }
+  const boardReadError =
+    entry?.type === 'error' ? getRequestErrorMessage(entry.cause, t('无法读取画板')) : undefined
+  return {
+    loadedBoard,
+    boardReadError,
+    canRetryBoard: entry?.type === 'error' && !isResourceUnavailable(entry.cause),
+  }
 }
 
 function BoardThumbnail({
@@ -89,12 +95,12 @@ type BoardDetailProps = Required<Omit<BoardResourceViewProps, 'detailed'>>
 
 function BoardDetail({ board, resources, showThumbnail, render }: BoardDetailProps) {
   const { t, dir } = useMessages(navigationMessages)
-  const { loadedBoard, boardReadError } = useBoardResource(board, resources)
+  const { loadedBoard, boardReadError, canRetryBoard } = useBoardResource(board, resources)
   const [rendered, setRendered] = useState(false)
   useEffect(() => {
     if (showThumbnail) return () => resources.previewClosed(board.id)
   }, [board.id, resources, showThumbnail])
-  const rootRef = useRef<HTMLDivElement>(null)
+  const rootRef = useRef<HTMLFieldSetElement>(null)
   const retry = (event: MouseEvent<HTMLButtonElement>) => {
     // 重试按钮会随错误状态卸载；只在焦点确实位于按钮上时移到同一画板。
     if (document.activeElement === event.currentTarget)
@@ -103,12 +109,11 @@ function BoardDetail({ board, resources, showThumbnail, render }: BoardDetailPro
   }
 
   return (
-    <div
+    <fieldset
       ref={rootRef}
-      role="group"
       tabIndex={-1}
       aria-label={t('画板内容：{title}', { title: board.title })}
-      className="h-full w-full"
+      className="h-full w-full min-w-0"
     >
       {loadedBoard && (
         <>
@@ -129,9 +134,11 @@ function BoardDetail({ board, resources, showThumbnail, render }: BoardDetailPro
               ? boardReadError
               : t('画板读取失败：{error}', { error: boardReadError })}
           </p>
-          <Button size="sm" variant="outline" className="pointer-events-auto" onClick={retry}>
-            {t('重试读取画板')}
-          </Button>
+          {canRetryBoard && (
+            <Button size="sm" variant="outline" className="pointer-events-auto" onClick={retry}>
+              {t('重试读取画板')}
+            </Button>
+          )}
         </div>
       )}
       {!loadedBoard && boardReadError === undefined && (
@@ -148,6 +155,6 @@ function BoardDetail({ board, resources, showThumbnail, render }: BoardDetailPro
           <span className="relative">{t('正在读取画板…')}</span>
         </div>
       )}
-    </div>
+    </fieldset>
   )
 }

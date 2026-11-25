@@ -194,7 +194,7 @@ export function CanvasToolbar({
         </Button>
         {arrangementMenu}
         {history ? (
-          <div role="group" aria-label={t('编辑历史')} className="flex items-center">
+          <fieldset aria-label={t('编辑历史')} className="flex items-center">
             <Button
               variant="ghost"
               size="sm"
@@ -219,7 +219,7 @@ export function CanvasToolbar({
             >
               <Redo2 size={15} />
             </Button>
-          </div>
+          </fieldset>
         ) : null}
       </section>
       <section ref={toolbar} aria-label={t('画布工具')} className="artifact-canvas-tools">
@@ -265,7 +265,7 @@ export function CanvasToolbar({
         {designTools && (
           <>
             <DrawingButton tools={designTools} tool={DRAWING_TOOLS.note} />
-            <div role="group" aria-label={t('选择绘图工具')} className="flex items-center">
+            <fieldset aria-label={t('选择绘图工具')} className="flex items-center">
               <DrawingButton
                 tools={designTools}
                 tool={designTools.value?.kind === 'pen' ? DRAWING_TOOLS.pen : DRAWING_TOOLS.stroke}
@@ -302,7 +302,7 @@ export function CanvasToolbar({
                   ))}
                 </PopoverContent>
               </Popover>
-            </div>
+            </fieldset>
             <Popover open={shapesOpen} onOpenChange={setShapesOpen}>
               <PopoverTrigger asChild>
                 <Button

@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { useState } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { CanvasBoard, CanvasPage } from '../src/entities/artifact'
+import { ApiError } from '../src/shared/api/error'
 import { LanguageMenu, setLocale } from '../src/shared/i18n'
 import { BoardPresentation } from '../src/widgets/ArtifactWorkspace/BoardPresentation'
 import { BoardResourceView } from '../src/widgets/ArtifactWorkspace/BoardResourceView'
@@ -129,6 +130,31 @@ it('菜单打开时切换为阿拉伯语，Escape 仍逐层返回原触发器', 
   await waitFor(() => expect(document.activeElement).toBe(trigger))
 })
 
+it('已撤权的画板不提供重试，切换语言立即重译错误而不重新请求', async () => {
+  const load = vi.fn().mockRejectedValue(new ApiError(403, 'FORBIDDEN', '画板已撤权'))
+  const resources = new BoardResources(load)
+  try {
+    resources.setDemand([first.id], false)
+    render(
+      <BoardResourceView
+        board={first}
+        resources={resources}
+        detailed
+        render={(board) => <pre>{board.source}</pre>}
+      />,
+    )
+    expect((await screen.findByRole('alert')).textContent).toContain('画板已撤权')
+    expect(screen.queryByRole('button', { name: '重试读取画板' })).toBeNull()
+    act(() => setLocale('en'))
+    expect(screen.getByRole('alert').textContent).toContain('You do not have permission')
+    expect(screen.queryByRole('button', { name: 'Retry loading artboard' })).toBeNull()
+    resources.retry(first.id)
+    expect(load).toHaveBeenCalledTimes(1)
+  } finally {
+    resources.reset()
+  }
+})
+
 it('失败画板单独重试，语言切换不清空同级内容或让焦点离开重试画板', async () => {
   setLocale('ar')
   const retry = Promise.withResolvers<ArtboardContent>()
@@ -141,17 +167,15 @@ it('失败画板单独重试，语言切换不清空同级内容或让焦点离�
   try {
     resources.setDemand(['a', 'b'], false)
     render(
-      <>
-        {[first, second].map((board) => (
-          <BoardResourceView
-            key={board.id}
-            board={board}
-            resources={resources}
-            detailed
-            render={(loaded) => <pre dir="ltr">{loaded.source}</pre>}
-          />
-        ))}
-      </>,
+      [first, second].map((board) => (
+        <BoardResourceView
+          key={board.id}
+          board={board}
+          resources={resources}
+          detailed
+          render={(loaded) => <pre dir="ltr">{loaded.source}</pre>}
+        />
+      )),
     )
     const retryButton = await screen.findByRole('button', { name: 'إعادة محاولة تحميل لوحة الرسم' })
     const healthy = screen.getByText('B — محتوى')

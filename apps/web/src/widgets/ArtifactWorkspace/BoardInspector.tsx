@@ -22,7 +22,7 @@ import {
 import { selectionForVersion, useSelectionStore } from '@/entities/selection'
 import { useWorkspaceStore } from '@/entities/workspace'
 import { extractPropFieldsFromSpec, PropsPanel } from '@/features/props-panel'
-import { isAccessDenied } from '@/shared/api/error'
+import { getRequestErrorMessage, isResourceUnavailable } from '@/shared/api/error'
 import { useMessages } from '@/shared/i18n'
 import { BoardInspectorProperties } from './BoardInspectorProperties'
 import { BoardInspectorSource } from './BoardInspectorSource'
@@ -144,7 +144,10 @@ export function BoardInspector({
   )
   const fullSource = inline ?? sourceRead.data?.source
   const sourceReady = usesBoardSource ? board?.source !== undefined : fullSource !== undefined
-  const retrySource = isAccessDenied(sourceRead.error) ? undefined : () => void sourceRead.refetch()
+  const sourceError = sourceRead.error ? getRequestErrorMessage(sourceRead.error) : undefined
+  const retrySource = isResourceUnavailable(sourceRead.error)
+    ? undefined
+    : () => void sourceRead.refetch()
   const retryBoard =
     inspectorBoardId !== undefined && onRetryBoard
       ? () => onRetryBoard(inspectorBoardId)
@@ -341,7 +344,7 @@ export function BoardInspector({
                   />
                 ) : (
                   <InspectorSourceStatus
-                    error={usesBoardSource ? boardReadError : sourceRead.error?.message}
+                    error={usesBoardSource ? boardReadError : sourceError}
                     retry={usesBoardSource ? retryBoard : retrySource}
                   />
                 )}
@@ -376,7 +379,7 @@ export function BoardInspector({
                       specOverride={template.data}
                     />
                   ) : (
-                    <InspectorSourceStatus error={sourceRead.error?.message} retry={retrySource} />
+                    <InspectorSourceStatus error={sourceError} retry={retrySource} />
                   )}
                 </TabsContent>
               )}

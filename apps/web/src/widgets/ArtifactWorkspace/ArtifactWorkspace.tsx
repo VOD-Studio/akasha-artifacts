@@ -671,7 +671,7 @@ export function ArtifactWorkspace({
         onTabChange={setInspectorPage}
         {...inspected}
         onRequestBoard={onRequestBoard}
-        onRetryBoard={onRetryBoard}
+        onRetryBoard={inspected.canRetryBoard ? onRetryBoard : undefined}
         version={version}
         stateSnapshot={state.snapshot}
         document={savedCanvas}
