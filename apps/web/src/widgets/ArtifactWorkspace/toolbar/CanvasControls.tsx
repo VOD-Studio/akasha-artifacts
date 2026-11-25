@@ -1,6 +1,7 @@
 import { Button } from '@akasha/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@akasha/ui/popover'
 import {
+  Check,
   ChevronDown,
   Focus,
   Frame,
@@ -60,6 +61,8 @@ export function CanvasToolbar({
   designTools,
   canZoom,
   onZoom,
+  guidesVisible,
+  onToggleGuides,
   onFitPage,
   onFitSelection,
   visualEditActive,
@@ -76,6 +79,8 @@ export function CanvasToolbar({
   designTools?: DrawingTools
   canZoom: boolean
   onZoom: (factor: number) => void
+  guidesVisible: boolean | undefined
+  onToggleGuides: (() => void) | undefined
   onFitPage: (() => void) | undefined
   onFitSelection: (() => void) | undefined
   visualEditActive: boolean | undefined
@@ -89,6 +94,7 @@ export function CanvasToolbar({
   const { t, number } = useMessages(canvasToolsMessages)
   const toolbar = useRef<HTMLElement>(null)
   const [pensOpen, setPensOpen] = useState(false)
+  const [zoomOpen, setZoomOpen] = useState(false)
   const handleKey = useEffectEvent((event: KeyboardEvent) => {
     if (
       !acceptsCanvasShortcut(event, toolbar.current?.parentElement) ||
@@ -105,6 +111,7 @@ export function CanvasToolbar({
     if (event.shiftKey) {
       if (event.code === 'Digit1') action = onFitPage
       if (event.code === 'Digit2') action = onFitSelection
+      if (key === 'g') action = onToggleGuides
     } else if (key === 'v') action = () => onChangeTool(false)
     else if (key === 'h') action = () => onChangeTool(true)
     else if (key === 'c') action = onComment
@@ -174,12 +181,39 @@ export function CanvasToolbar({
         >
           <Minus size={15} />
         </Button>
-        <output
-          aria-label={t('画布缩放比例')}
-          className="min-w-10 text-center text-xs tabular-nums"
-        >
-          {number(camera.scale, { style: 'percent', maximumFractionDigits: 1 })}
-        </output>
+        <Popover open={zoomOpen} onOpenChange={setZoomOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={t('缩放选项')}
+              title={t('缩放选项')}
+              rightIcon={<ChevronDown size={12} />}
+            >
+              <output aria-label={t('画布缩放比例')} className="text-center text-xs tabular-nums">
+                {number(camera.scale, { style: 'percent', maximumFractionDigits: 1 })}
+              </output>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-auto p-1" aria-label={t('缩放选项')}>
+            <Button
+              variant="ghost"
+              size="sm"
+              leftIcon={<Check size={15} className={guidesVisible ? undefined : 'invisible'} />}
+              aria-label={t('显示画板辅助线')}
+              aria-keyshortcuts="Shift+G"
+              aria-pressed={guidesVisible ?? false}
+              disabled={!onToggleGuides}
+              onClick={() => {
+                onToggleGuides?.()
+                setZoomOpen(false)
+              }}
+            >
+              {t('显示画板辅助线')}
+              <kbd className="text-xs text-ink-muted">Shift+G</kbd>
+            </Button>
+          </PopoverContent>
+        </Popover>
         <Button
           variant="ghost"
           size="sm"

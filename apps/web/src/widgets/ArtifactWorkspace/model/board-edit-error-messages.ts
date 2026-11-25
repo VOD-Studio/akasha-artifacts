@@ -52,6 +52,16 @@ const editErrors = {
     'لم تعد لوحة الرسم المراد تعديلها موجودة',
     'The artboard to adjust no longer exists',
   ],
+  请先修正画板视口的宽高: [
+    'Korrigiere zuerst die Breite und Höhe des Zeichenflächen-Viewports',
+    'صحّح عرض إطار عرض اللوحة وارتفاعه أولًا',
+    'Correct the artboard viewport width and height first',
+  ],
+  打印版式或辅助线不符合约束: [
+    'Drucklayout oder Hilfslinien sind ungültig',
+    'تخطيط الطباعة أو أدلة المحاذاة غير صالحة',
+    'The print layout or layout guides are invalid',
+  ],
   画板背景或圆角不符合约束: [
     'Hintergrund oder Eckenradius der Zeichenfläche ist ungültig',
     'خلفية لوحة الرسم أو نصف قطر زواياها غير صالح',

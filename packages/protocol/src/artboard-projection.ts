@@ -8,6 +8,8 @@ export interface ArtboardIndexBoard
     | 'title'
     | 'subtitle'
     | 'viewport'
+    | 'printLayout'
+    | 'layoutGuides'
     | 'position'
     | 'layoutGroup'
     | 'recommended'
@@ -65,6 +67,8 @@ export function projectArtboard(source: string, version: number): ArtboardProjec
       title: board.title,
       subtitle: board.subtitle,
       viewport: board.viewport,
+      printLayout: board.printLayout,
+      layoutGuides: board.layoutGuides,
       cornerRadius: board.appearance?.cornerRadius,
       position: board.position,
       layoutGroup: board.layoutGroup,

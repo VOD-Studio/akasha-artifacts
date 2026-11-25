@@ -2,6 +2,10 @@ import {
   ARTBOARD_GEOMETRY_LIMITS,
   ARTIFACT_DEFAULT_VIEWPORT,
   ArtboardAppearanceSchema,
+  type ArtboardLayoutGuide,
+  ArtboardLayoutGuidesSchema,
+  type ArtboardPrintLayout,
+  ArtboardPrintLayoutSchema,
   DEFAULT_ARTBOARD_APPEARANCE,
   type DesignLayer,
   DesignLayersSchema,
@@ -23,6 +27,12 @@ export type CanvasBoardEdit =
       height: number
       background: string
       cornerRadius: number
+    }
+  | {
+      kind: 'printLayout'
+      boardId: string
+      printLayout: ArtboardPrintLayout
+      layoutGuides: ArtboardLayoutGuide[]
     }
   | { kind: 'group'; ids: readonly string[]; layoutGroup: string | null }
   | {
@@ -143,6 +153,31 @@ export function editCanvasBoards(
         Object.assign(target.raw, geometry(bounds))
       }
       break
+    case 'printLayout': {
+      const target = boards.get(edit.boardId)
+      if (!target) throw new Error('要调整的画板已不存在')
+      const layout = ArtboardPrintLayoutSchema.safeParse(edit.printLayout)
+      const guides = ArtboardLayoutGuidesSchema.safeParse(edit.layoutGuides)
+      if (!layout.success || !guides.success) throw new Error('打印版式或辅助线不符合约束')
+      const currentLayout = target.board.printLayout ?? { mode: 'fixed' }
+      const currentGuides = target.board.layoutGuides ?? []
+      const sameLayout =
+        currentLayout.mode === layout.data.mode &&
+        (layout.data.mode === 'fixed' ||
+          (currentLayout.mode === 'flow' && currentLayout.paper === layout.data.paper))
+      const sameGuides =
+        currentGuides.length === guides.data.length &&
+        currentGuides.every(
+          ({ axis, position }, index) =>
+            axis === guides.data[index]?.axis && position === guides.data[index]?.position,
+        )
+      if (sameLayout && sameGuides) return { before: source, after: source }
+      if (target.raw.viewport !== undefined && !target.board.viewport)
+        throw new Error('请先修正画板视口的宽高')
+      if (!sameLayout) target.raw.printLayout = layout.data
+      if (!sameGuides) target.raw.layoutGuides = guides.data
+      break
+    }
     case 'boardProperties': {
       const target = boards.get(edit.boardId)
       if (!target) throw new Error('要调整的画板已不存在')

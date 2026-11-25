@@ -11,6 +11,16 @@ export const captureMessages = {
     'صيغة PNG أو أبعاد الصورة المُعادة من البيئة المعزولة غير صحيحة',
     'The sandbox returned an invalid PNG format or dimensions',
   ],
+  无法生成画板打印页: [
+    'Die Druckseite der Zeichenfläche konnte nicht erstellt werden',
+    'تعذّر إنشاء صفحة الطباعة للوحة',
+    'Could not render the artboard print page',
+  ],
+  画板打印页渲染超时: [
+    'Zeitüberschreitung beim Rendern der Druckseite',
+    'انتهت مهلة تصيير صفحة الطباعة',
+    'The print page took too long to render',
+  ],
   画板渲染任务: ['Zeichenfläche rendern', 'مهمة تصيير اللوحة', 'Artboard rendering task'],
   静态画板不读取或修改制品运行存储: [
     'Statische Zeichenflächen lesen oder verändern keine Laufzeitdaten des Werks',

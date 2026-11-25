@@ -14,13 +14,14 @@ import {
   useArtifactSourceQuery,
 } from '@/entities/artifact'
 import { getRequestErrorMessage } from '@/shared/api/error'
-import { captureBoardPng } from '@/shared/bridge/capture-png'
+import { captureBoardPng, captureBoardPrintPages } from '@/shared/bridge/capture-png'
 import { getMessages, useMessages } from '@/shared/i18n'
 import {
   type CanvasExportSelection,
   resolveSelectedExportBoards,
 } from '../lib/canvas-export-selection'
 import { messages } from '../messages'
+import { PrintPreview } from './PrintPreview'
 
 /** 打开面板时固定版本；不因 Agent 推进头版本而改变下载内容。 */
 export interface DesignExportTarget {
@@ -81,10 +82,20 @@ function captureError(cause: unknown) {
   return getRequestErrorMessage(cause, t('无法生成画面'))
 }
 
+function boardCaptureError(board: LoadedCanvasBoard, cause: unknown, signal: AbortSignal) {
+  signal.throwIfAborted()
+  return new Error(
+    getMessages(messages).t('「{title}」：{error}', {
+      title: board.title,
+      error: captureError(cause),
+    }),
+  )
+}
+
 async function* renderPages(
   boards: readonly LoadedCanvasBoard[],
   version: number,
-  scale: 1 | 2,
+  previewImages: Blob[] | undefined,
   signal: AbortSignal,
   onProgress: (current: number, total: number, title: string) => void,
 ) {
@@ -92,16 +103,16 @@ async function* renderPages(
     signal.throwIfAborted()
     onProgress(index + 1, boards.length, board.title)
     try {
-      const png = await captureBoardPng(board, version, scale, signal)
-      yield { png, width: board.width, height: board.height }
+      let rendered = false
+      for await (const page of captureBoardPrintPages(board, version, signal)) {
+        signal.throwIfAborted()
+        rendered = true
+        previewImages?.push(page.png)
+        yield page
+      }
+      if (!rendered) throw new Error(getMessages(messages).t('没有成功渲染的画面'))
     } catch (cause) {
-      if (signal.aborted) throw signal.reason
-      throw new Error(
-        getMessages(messages).t('「{title}」：{error}', {
-          title: board.title,
-          error: captureError(cause),
-        }),
-      )
+      throw boardCaptureError(board, cause, signal)
     }
   }
 }
@@ -109,10 +120,16 @@ async function* renderPages(
 /** 同一个入口按指定画板或整份制品导出，始终先重新检查固定版本的访问权。 */
 export function ArtifactExportDialog({ target, onClose }: ExportDialogProps) {
   const { version } = target
+  const key = JSON.stringify([
+    target.artifact.publicId,
+    version.version,
+    target.boardId,
+    target.selection,
+  ])
   if ('source' in version && typeof version.source === 'string') {
-    return <ExportDialog target={target} onClose={onClose} source={version.source} />
+    return <ExportDialog key={key} target={target} onClose={onClose} source={version.source} />
   }
-  return <QueriedExportDialog target={target} onClose={onClose} />
+  return <QueriedExportDialog key={key} target={target} onClose={onClose} />
 }
 
 function QueriedExportDialog(props: ExportDialogProps) {
@@ -125,6 +142,7 @@ function QueriedExportDialog(props: ExportDialogProps) {
   const error = query.error ? getRequestErrorMessage(query.error) : mismatch
   return (
     <ExportDialog
+      key={matches && !query.isError ? 'loaded' : 'unavailable'}
       {...props}
       source={matches && !query.isError ? snapshot.source : undefined}
       load={{ error, fetching: query.isFetching, retry: () => void query.refetch() }}
@@ -161,6 +179,8 @@ function ExportDialog({
     'checking' | { phase: 'render' | 'preflight'; current: number; total: number; title: string }
   >()
   const job = useRef<AbortController | null>(null)
+  const [printPreview, setPrintPreview] = useState<{ pages: Blob[]; pdf: Blob }>()
+  const [previewing, setPreviewing] = useState(false)
   const busy = Boolean(progress)
   const offline = format === 'design-html' || format === 'design-zip' || format === 'board-zip'
   const board = boardId ? initialBoards?.get(boardId)?.board : undefined
@@ -177,9 +197,14 @@ function ExportDialog({
     (!boardId || Boolean(board)) &&
     (!isSelection || Boolean(selectionPreview?.boards?.length))
   useEffect(() => () => job.current?.abort(), [])
+  const cancel = () => {
+    job.current?.abort()
+    onClose()
+  }
 
   const selectScope = (value: string) => {
     if (value === 'selection' && !selection?.boardIds.length) return
+    setPrintPreview(undefined)
     setScope(value)
     setFormat(value.startsWith('board:') ? 'png' : 'pdf')
     setFailure(undefined)
@@ -192,6 +217,7 @@ function ExportDialog({
       !(scope === 'design' && (value === 'design-html' || value === 'design-zip'))
     )
       return
+    setPrintPreview(undefined)
     setFormat(value)
     setFailure(undefined)
   }
@@ -201,11 +227,12 @@ function ExportDialog({
     setFailure(undefined)
   }
 
-  const download = async () => {
+  const runExport = async (action: 'preview' | 'download') => {
     if (job.current || !preview || !canDownload) return
     const controller = new AbortController()
     const { signal } = controller
     job.current = controller
+    setPreviewing(action === 'preview')
     setFailure(undefined)
     setProgress('checking')
     try {
@@ -213,6 +240,7 @@ function ExportDialog({
       const result = await (load
         ? fetchArtifactWorkspace(artifact.publicId, version.version, signal)
         : fetchArtifactDetail(artifact.publicId, version.version, signal))
+      signal.throwIfAborted()
       if (
         result.artifact.publicId !== artifact.publicId ||
         result.version.artifactId !== artifact.publicId ||
@@ -270,23 +298,32 @@ function ExportDialog({
         return
       }
 
-      const pages = renderPages(
-        boards,
-        version.version,
-        format === 'png' ? pngScale : 1,
-        signal,
-        (current, total, title) => setProgress({ phase: 'render', current, total, title }),
-      )
-      let output: Blob | undefined
+      const reportRender = (current: number, total: number, title: string) =>
+        setProgress({ phase: 'render', current, total, title })
+      let output: Blob
       if (format === 'png') {
         if (!selected) throw new Error(t('请选择一张画板导出 PNG'))
-        output = (await pages.next()).value?.png
+        reportRender(1, 1, selected.title)
+        try {
+          output = await captureBoardPng(selected, version.version, pngScale, signal)
+        } catch (cause) {
+          throw boardCaptureError(selected, cause, signal)
+        }
+      } else if (printPreview) {
+        // 下载已预览的同一文件；重新渲染会改变动画或依赖时间的内容。
+        output = printPreview.pdf
       } else {
         const { composeDesignPdf } = await import('../lib/design-pdf')
+        const images: Blob[] | undefined = action === 'preview' ? [] : undefined
+        const pages = renderPages(boards, version.version, images, signal, reportRender)
         output = await composeDesignPdf(`${result.version.title} · v${version.version}`, pages)
+        if (images) {
+          signal.throwIfAborted()
+          setPrintPreview({ pages: images, pdf: output })
+          return
+        }
       }
       signal.throwIfAborted()
-      if (!output) throw new Error(t('没有成功渲染的画面'))
       let suffix = isSelection ? `-${t('选区')}` : ''
       if (selected) suffix = `-${filePart(selected.title)}`
       if (format === 'png' && pngScale === 2) suffix += '@2x'
@@ -296,7 +333,10 @@ function ExportDialog({
       )
       onClose()
     } catch (cause) {
-      if (!signal.aborted) setFailure({ cause })
+      if (!signal.aborted) {
+        setPrintPreview(undefined)
+        setFailure({ cause })
+      }
     } finally {
       job.current = null
       if (!signal.aborted) setProgress(undefined)
@@ -307,7 +347,7 @@ function ExportDialog({
     <Modal
       open
       onOpenChange={(open) => {
-        if (!open) onClose()
+        if (!open) cancel()
       }}
       title={target.boardId ? t('导出画板') : t('导出作品')}
       description={t('{snapshot}。仅导出已保存的画板，不含批注和工作区工具。', {
@@ -318,14 +358,24 @@ function ExportDialog({
       })}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={cancel}>
             {t('取消')}
           </Button>
+          {format === 'pdf' && (
+            <Button
+              variant="outline"
+              loading={busy && previewing}
+              disabled={busy || !canDownload || Boolean(printPreview)}
+              onClick={() => void runExport('preview')}
+            >
+              {t('打印预览')}
+            </Button>
+          )}
           <Button
             leftIcon={<Download size={16} />}
-            loading={busy}
-            disabled={!canDownload}
-            onClick={() => void download()}
+            loading={busy && !previewing}
+            disabled={busy || !canDownload}
+            onClick={() => void runExport('download')}
           >
             {t('导出')}
           </Button>
@@ -412,6 +462,7 @@ function ExportDialog({
             </output>
           </FieldSet>
         )}
+        {printPreview && <PrintPreview pages={printPreview.pages} />}
         {initialBoards?.size === 0 && (
           <p className="text-ink-muted">{t('当前版本没有可导出的画板。')}</p>
         )}

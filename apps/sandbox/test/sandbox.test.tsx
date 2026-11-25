@@ -836,6 +836,65 @@ it('原生图层和作者 HTML 独立渲染，同名标记不能接走原生图�
   expect(container.querySelector('p')?.getAttribute('data-ak-loc')).toBe('1:7')
 })
 
+it('只有专用纸宽帧按固定版读取页，保留版内外观和图层，不采纳临时预览', async () => {
+  const { bridge, posted, dispatchFromHost, nonce } = createMockBridgeHarness()
+  const { container } = render(
+    <SandboxApp
+      bridge={bridge}
+      stateStore={new ArtifactStateStore()}
+      preserved={new PreservedStateManager()}
+    />,
+  )
+  const send = (message: object) => dispatchFromHost({ v: PROTOCOL_VERSION, nonce, ...message })
+  const base = {
+    type: 'render',
+    version: 3,
+    boardId: 'reading',
+    artifactType: 'html',
+    state: {},
+    source: '<p>作者正文</p>',
+    boardAppearance: { background: '#f0f0f0' },
+    boardTweaks: { spacing: 8 },
+    designLayers: [
+      { id: 'footer', kind: 'text', x: 30, y: 2400, width: 200, height: 40, text: '页尾图层' },
+    ],
+  }
+  act(() => send(base))
+  act(() => send({ type: 'capture.print', version: 3, page: 0 }))
+  expect(posted.at(-1)?.data).toMatchObject({ type: 'capture.print.failure', version: 3, page: 0 })
+  const image = 'data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22/%3E'
+  const images = Array.from({ length: 18 }, (_, i) => `<img alt="${i}" src="${image}#${i}">`)
+  const source = `${base.source}${images.join('')}<video autoplay></video>`
+  act(() => send({ ...base, source, version: 4, printPaper: 'letter' }))
+  await waitFor(() => {
+    expect(posted.some(({ data }) => data.type === 'rendered' && data.version === 4)).toBe(true)
+  })
+  act(() =>
+    send({ type: 'board.tweaks.preview', boardId: 'reading', version: 4, values: { spacing: 30 } }),
+  )
+  const root = container.firstElementChild
+  if (!(root instanceof HTMLElement)) throw new Error('打印画板未就绪')
+  expect(root.style.width).toBe('816px')
+  expect(root.style.minHeight).toBe('2440px')
+  expect(root.style.backgroundColor).toBe('rgb(240, 240, 240)')
+  expect(root.style.getPropertyValue('--akasha-tweak-spacing')).toBe('8')
+  expect(root.textContent).toContain('作者正文')
+  expect(root.textContent).toContain('页尾图层')
+  expect(root.querySelectorAll('img')).toHaveLength(18)
+  expect(root.querySelector('img[alt="17"]')?.getAttribute('src')).toBe(`${image}#17`)
+  expect(root.querySelector('video')?.hasAttribute('autoplay')).toBe(false)
+  act(() => send({ type: 'capture.print', version: 3, page: 0 }))
+  expect(posted.at(-1)?.data).toMatchObject({ type: 'capture.print.failure', version: 3, page: 0 })
+  act(() => send({ type: 'capture.print', version: 4, page: 1 }))
+  await waitFor(() => {
+    expect(posted.at(-1)?.data).toMatchObject({
+      type: 'capture.print.failure',
+      version: 4,
+      page: 1,
+    })
+  })
+})
+
 it('按运行节点订阅作者样式，切版后不把同位置的新样式归给旧选区', async () => {
   const { bridge, posted, dispatchFromHost, nonce } = createMockBridgeHarness()
   render(

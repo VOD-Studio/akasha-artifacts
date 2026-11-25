@@ -3,7 +3,9 @@ import {
   type ArtboardAppearance,
   type ArtboardContent,
   type ArtboardIndex,
+  type ArtboardLayoutGuide,
   type ArtboardPresentation,
+  type ArtboardPrintLayout,
   type ArtboardTweak,
   type ArtifactType,
   type DesignLayer,
@@ -32,6 +34,10 @@ export interface CanvasBoard {
   cornerRadius?: number
   /** 随正文读取；未声明时使用白底与直角，不影响布局。 */
   appearance?: ArtboardAppearance
+  /** 缺省沿用固定版式；不改变画布视口。 */
+  printLayout?: ArtboardPrintLayout
+  /** 索引中的板内坐标；显隐由当前视图管理。 */
+  layoutGuides?: ArtboardLayoutGuide[]
   /** 传给沙盒的渲染器类型；并排多画板的每块内容是 HTML。 */
   type: ArtifactType
   /** 未声明时沿用旧制品的网格布局。 */
@@ -175,6 +181,8 @@ function composeDocument<B extends CanvasBoard>(
       scoped: true,
       ...(board.viewport ?? ARTIFACT_DEFAULT_VIEWPORT),
       cornerRadius: board.cornerRadius,
+      printLayout: board.printLayout,
+      layoutGuides: board.layoutGuides,
       position: board.position,
       layoutGroup: board.layoutGroup,
     })

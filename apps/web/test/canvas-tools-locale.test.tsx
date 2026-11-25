@@ -31,7 +31,7 @@ const canvas: CanvasDocument = {
   handDrawnFlows: false,
 }
 
-function showCanvas(readOnly = false) {
+function showCanvas(readOnly = false, document = canvas) {
   const change = vi.fn<CanvasBoardEditing['change']>().mockResolvedValue(true)
   const undo = vi.fn()
   const editing: CanvasBoardEditing = {
@@ -48,7 +48,7 @@ function showCanvas(readOnly = false) {
   const onComment = vi.fn()
   render(
     <ArtifactCanvas
-      document={canvas}
+      document={document}
       visible
       storageKey="test-pen"
       address="#page=proofs"
@@ -160,6 +160,7 @@ it('画板设置输入中不拦截单字符、撤销或 IME，切换语言不清
   const input = screen.getByRole<HTMLInputElement>('spinbutton', { name: '宽度' })
   input.focus()
   fireEvent.change(input, { target: { value: '520' } })
+  expect(fireEvent.keyDown(input, { key: 'G', shiftKey: true })).toBe(true)
   for (const key of ['v', 'p', 'c', 'f', ' ']) expect(fireEvent.keyDown(input, { key })).toBe(true)
   expect(fireEvent.keyDown(input, { key: 'z', ctrlKey: true })).toBe(true)
   expect(fireEvent.keyDown(input, { key: 'v', isComposing: true })).toBe(true)
@@ -185,4 +186,68 @@ it('只读画布保留浏览和批注快捷键，不显示也不能键盘唤起�
   expect(change).not.toHaveBeenCalled()
   fireEvent.keyDown(document.body, { key: 'c' })
   expect(onComment).toHaveBeenCalledOnce()
+})
+
+it('辅助线在画板固有坐标内显示；缩放菜单和快捷键只切换单选画板，不写快照', () => {
+  const board = canvas.pages[0].boards[0]
+  const document: CanvasDocument = {
+    ...canvas,
+    pages: [
+      {
+        ...canvas.pages[0],
+        boards: [
+          { ...board, layoutGuides: [{ axis: 'x', position: 37 }] },
+          { ...board, id: 'second', title: 'Letter', layoutGuides: [{ axis: 'y', position: 61 }] },
+        ],
+      },
+    ],
+  }
+  const { change } = showCanvas(false, document)
+  const poster = screen.getByRole('button', { name: 'Poster' })
+  const letter = screen.getByRole('button', { name: 'Letter' })
+  const guide = (title: HTMLElement) =>
+    title.closest('.artifact-canvas-board')?.querySelector('svg[data-layout-guides]')
+  const shortcut = { key: 'G', code: 'KeyG', shiftKey: true }
+  expect(guide(poster)?.getAttribute('viewBox')).toBe('0 0 400 200')
+  expect(guide(poster)?.querySelector('path')?.getAttribute('d')).toBe('M37 0V200')
+  expect(guide(letter)?.querySelector('path')?.getAttribute('d')).toBe('M0 61H400')
+  expect(fireEvent.keyDown(poster, shortcut)).toBe(true)
+  fireEvent.click(poster)
+  const zoom = screen.getByLabelText('画布缩放比例').textContent
+  fireEvent.click(screen.getByRole('button', { name: '缩放选项' }))
+  const toggle = screen.getByRole('button', { name: '显示画板辅助线' })
+  expect(toggle.getAttribute('aria-pressed')).toBe('true')
+  expect(fireEvent.keyDown(toggle, shortcut)).toBe(true)
+  act(() => setLocale('en'))
+  expect(screen.getByRole('button', { name: 'Show artboard guides' })).toBe(toggle)
+  act(() => setLocale('de'))
+  expect(screen.getByRole('button', { name: 'Hilfslinien der Zeichenfläche anzeigen' })).toBe(
+    toggle,
+  )
+  act(() => setLocale('ar'))
+  expect(screen.getByRole('button', { name: 'إظهار خطوط إرشاد لوحة الرسم' })).toBe(toggle)
+  act(() => setLocale('zh-CN'))
+  fireEvent.click(toggle)
+  expect(guide(poster)).toBeNull()
+  expect(guide(letter)).toBeTruthy()
+  expect(screen.getByLabelText('画布缩放比例').textContent).toBe(zoom)
+  fireEvent.click(letter)
+  expect(fireEvent.keyDown(letter, shortcut)).toBe(false)
+  expect(guide(letter)).toBeNull()
+  fireEvent.click(poster, { shiftKey: true })
+  expect(fireEvent.keyDown(poster, shortcut)).toBe(true)
+  expect(guide(poster)).toBeNull()
+  expect(guide(letter)).toBeNull()
+  fireEvent.click(poster)
+  fireEvent.keyDown(poster, shortcut)
+  expect(guide(poster)).toBeTruthy()
+  expect(guide(letter)).toBeNull()
+  expect(change).not.toHaveBeenCalled()
+  cleanup()
+  showCanvas(true, document)
+  const reopened = screen.getByRole('button', { name: 'Letter' })
+  expect(guide(reopened)).toBeTruthy()
+  fireEvent.click(reopened)
+  fireEvent.keyDown(reopened, shortcut)
+  expect(guide(reopened)).toBeNull()
 })

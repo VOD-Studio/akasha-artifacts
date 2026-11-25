@@ -15,6 +15,7 @@ import { artifactTypeLabel } from '@/shared/lib/format'
 import type { CanvasBoardEditing } from '../hooks/useCanvasBoardEditing'
 import type { CanvasTextTools } from '../hooks/useInlineCanvasText'
 import { canvasToolsMessages } from '../toolbar/canvas-tools-messages'
+import { BoardPrintSettings } from './BoardPrintSettings'
 import { DESIGN_LAYER_COLOR_LABELS, DesignLayerLayout } from './DesignLayerLayout'
 import { panelMessages } from './messages'
 
@@ -144,6 +145,7 @@ export function BoardInspectorProperties({
         )}
       </dl>
       {editing && <BoardAppearanceForm boardId={board.id} current={current} editing={editing} />}
+      {board.scoped && <BoardPrintSettings board={board} editing={editing} />}
     </section>
   )
 }

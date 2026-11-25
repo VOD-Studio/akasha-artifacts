@@ -4,6 +4,12 @@ import {
   type DesignLayer,
   DesignLayersSchema,
 } from './artboard-layers.js'
+import {
+  type ArtboardLayoutGuide,
+  ArtboardLayoutGuidesSchema,
+  type ArtboardPrintLayout,
+  ArtboardPrintLayoutSchema,
+} from './artboard-print.js'
 import { type ArtboardTweak, ArtboardTweaksSchema } from './artboard-tweaks.js'
 
 /** 普通 HTML、React 等制品在画布上的唯一画板标识。 */
@@ -54,6 +60,10 @@ export interface ArtboardBoard {
   viewport?: { width: number; height: number }
   /** 位于作者内容下方的底色与画板边界圆角；不影响视口大小。 */
   appearance?: ArtboardAppearance
+  /** 未声明时按固有视口输出一张固定版式页面。 */
+  printLayout?: ArtboardPrintLayout
+  /** 画板的辅助线几何；缺省时没有辅助线，显隐不属于快照。 */
+  layoutGuides?: ArtboardLayoutGuide[]
   /** 绝对画布坐标，单位 CSS 像素；缺省时仍参加自动排列。 */
   position?: { x: number; y: number }
   /** 标记为推荐方案。 */
@@ -214,6 +224,25 @@ export function parseArtboardValue(value: unknown): ArtboardParseResult {
         error: `boards[${i}].appearance 无效：${appearance.error.issues[0]?.message}`,
       }
     }
+    if (
+      (rec.printLayout !== undefined || rec.layoutGuides !== undefined) &&
+      rec.viewport !== undefined &&
+      (!validSize(width) || !validSize(height))
+    ) {
+      return { ok: false, error: `boards[${i}].viewport 打印视口宽高必须为 1–8192 的整数` }
+    }
+    const printLayout =
+      rec.printLayout === undefined
+        ? undefined
+        : ArtboardPrintLayoutSchema.safeParse(rec.printLayout)
+    if (printLayout && !printLayout.success)
+      return { ok: false, error: `boards[${i}].printLayout 无效` }
+    const layoutGuides =
+      rec.layoutGuides === undefined
+        ? undefined
+        : ArtboardLayoutGuidesSchema.safeParse(rec.layoutGuides)
+    if (layoutGuides && !layoutGuides.success)
+      return { ok: false, error: `boards[${i}].layoutGuides 无效` }
     const tweaks = rec.tweaks === undefined ? undefined : ArtboardTweaksSchema.safeParse(rec.tweaks)
     if (tweaks && !tweaks.success) {
       return {
@@ -232,6 +261,8 @@ export function parseArtboardValue(value: unknown): ArtboardParseResult {
       layoutGroup: asString(rec.layoutGroup)?.trim() || undefined,
       ...(validSize(width) && validSize(height) ? { viewport: { width, height } } : {}),
       appearance: appearance?.data,
+      printLayout: printLayout?.data,
+      layoutGuides: layoutGuides?.data,
       ...(x !== undefined &&
       y !== undefined &&
       Math.abs(x) <= ARTBOARD_GEOMETRY_LIMITS.coordinate &&

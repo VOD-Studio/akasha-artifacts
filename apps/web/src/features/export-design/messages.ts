@@ -58,6 +58,14 @@ export const messages = {
   ],
   取消: ['Abbrechen', 'إلغاء', 'Cancel'],
   导出: ['Exportieren', 'تصدير', 'Export'],
+  打印预览: ['Druckvorschau', 'معاينة الطباعة', 'Print preview'],
+  上一页: ['Vorherige Seite', 'الصفحة السابقة', 'Previous page'],
+  下一页: ['Nächste Seite', 'الصفحة التالية', 'Next page'],
+  '第 {current} 页，共 {total} 页': [
+    'Seite {current} von {total}',
+    'الصفحة {current} من {total}',
+    'Page {current} of {total}',
+  ],
   导出范围: ['Exportumfang', 'نطاق التصدير', 'Export scope'],
   '选区 PDF 页序': [
     'PDF-Seitenreihenfolge der Auswahl',

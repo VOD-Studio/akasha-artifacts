@@ -169,6 +169,8 @@ describe('Hono HTTP server & @akasha/protocol contract tests', () => {
     const dbPath = path.join(dir, 'akasha.db')
     const original = await startNodeServer({ dbPath, port: 0 })
     let pathToArtifact: string
+    const printLayout = { mode: 'flow', paper: 'letter' }
+    const layoutGuides = [{ axis: 'x', position: 16.5 }]
     try {
       const publish = async (html: string, baseVersion?: number) => {
         const result = await fetch(`${original.baseUrl}/api/v1/artifacts`, {
@@ -181,7 +183,12 @@ describe('Hono HTTP server & @akasha/protocol contract tests', () => {
             baseVersion,
             source: JSON.stringify({
               boards: [
-                { id: 'checkout', title: '结账', html },
+                {
+                  id: 'checkout',
+                  title: '结账',
+                  html,
+                  ...(baseVersion && { printLayout, layoutGuides }),
+                },
                 { id: 'away', title: '屏外板', html: `屏外大图${'x'.repeat(80_000)}` },
                 { id: '.', title: '旧标识', html: '<p>单点</p>' },
                 { id: '..', title: '旧标识二', html: '<p>双点</p>' },
@@ -209,6 +216,10 @@ describe('Hono HTTP server & @akasha/protocol contract tests', () => {
       artifact: { headVersion: 2 },
       canvas: { boards: [{ id: 'checkout' }, { id: 'away' }, { id: '.' }, { id: '..' }] },
     })
+    expect(JSON.parse(index).canvas.boards[0]).not.toHaveProperty('printLayout')
+    const head = JSON.parse(await (await get('?view=canvas&version=2')).text())
+    expect(head.canvas.boards[0]).toMatchObject({ id: 'checkout', printLayout, layoutGuides })
+    expect(head.canvas.boards[1]).not.toHaveProperty('layoutGuides')
     expect(await (await get('/boards?version=1&boardId=checkout')).json()).toMatchObject({
       version: 1,
       board: { id: 'checkout', html: '<h1>原结账页</h1>' },

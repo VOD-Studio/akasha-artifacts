@@ -319,6 +319,33 @@ describe('@akasha/protocol MCP, HTTP, Realtime, and Bridge', () => {
     ).toBe(true)
   })
 
+  it('流式打印按固定版本与页序传送一张 PNG，不接受含糊的末页或无效纸型', () => {
+    const envelope = { v: PROTOCOL_VERSION, nonce: 'print', version: 3 }
+    const render = { ...envelope, type: 'render', artifactType: 'html', state: {}, source: '' }
+    const page = { ...envelope, type: 'capture.print', page: 0 }
+    expect(ShellToSandboxMessageSchema.parse({ ...render, printPaper: 'letter' })).toMatchObject({
+      printPaper: 'letter',
+    })
+    expect(ShellToSandboxMessageSchema.safeParse({ ...render, printPaper: 'custom' }).success).toBe(
+      false,
+    )
+    expect(ShellToSandboxMessageSchema.parse(page)).toEqual(page)
+    expect(ShellToSandboxMessageSchema.safeParse({ ...page, page: -1 }).success).toBe(false)
+    const result = {
+      ...page,
+      type: 'capture.print.result',
+      last: true,
+      png: new Blob(['png'], { type: 'image/png' }),
+    }
+    expect(SandboxToShellMessageSchema.parse(result)).toEqual(result)
+    expect(SandboxToShellMessageSchema.safeParse({ ...result, last: undefined }).success).toBe(
+      false,
+    )
+    expect(SandboxToShellMessageSchema.safeParse({ ...result, png: [result.png] }).success).toBe(
+      false,
+    )
+  })
+
   it('保留总览控制、独立选区消息和单板参数预览', () => {
     const envelope = { v: PROTOCOL_VERSION, nonce: 'board-frame' }
     const messages = [

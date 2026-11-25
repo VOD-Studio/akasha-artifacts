@@ -5,9 +5,9 @@ import {
   ShellToSandboxMessageSchema,
   type Version,
 } from '@akasha/protocol'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { strFromU8, unzipSync } from 'fflate'
-import { PDFDocument } from 'pdf-lib'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { strFromU8, unzipSync, unzlibSync } from 'fflate'
+import { PDFDict, PDFDocument, PDFName, PDFRawStream } from 'pdf-lib'
 import { afterEach, expect, it, onTestFinished, vi } from 'vitest'
 import { ArtifactExportDialog } from '../src/features/export-design'
 import * as capture from '../src/shared/bridge/capture-png'
@@ -96,6 +96,7 @@ const pinned = {
         id: 'start',
         title: '首页',
         pageId: 'flow',
+        printLayout: { mode: 'flow', paper: 'a4' },
         viewport: { width: 720, height: 520 },
       },
     ],
@@ -237,16 +238,35 @@ it('单板 PNG 倍率改变输出像素，但不改变固有布局或固定版�
   ])
 })
 
-it('选区 PDF 只下载完整的定版选板，分页与画布位置一致', async () => {
+const blackPixel =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYGAAAAAEAAH2FzhVAAAAAElFTkSuQmCC'
+const whitePixel =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC'
+
+async function* fixturePrintPages(
+  board: Parameters<typeof capture.captureBoardPrintPages>[0],
+  first: Blob,
+  last: Blob,
+  fail = false,
+) {
+  if (board.printLayout?.mode !== 'flow') {
+    yield { png: first, width: board.width, height: board.height }
+    return
+  }
+  const paper = { width: (210 / 25.4) * 96, height: (297 / 25.4) * 96 }
+  yield { png: first, ...paper }
+  if (fail) throw new Error('图片未加载')
+  yield { png: last, ...paper }
+}
+
+it('选区打印预览与下载使用相同的纸页：保留板序、实际图像及 Fixed/A4 MediaBox', async () => {
   const { names, blobs } = trackDownloads()
-  const png = pngFixture(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jx1UAAAAASUVORK5CYII=',
-  )
+  const png = pngFixture(blackPixel)
+  const end = pngFixture(whitePixel)
+  let fail = true
   const rasterize = vi
-    .spyOn(capture, 'captureBoardPng')
-    .mockResolvedValueOnce(png)
-    .mockRejectedValueOnce(new Error('图片未加载'))
-    .mockResolvedValue(png)
+    .spyOn(capture, 'captureBoardPrintPages')
+    .mockImplementation((board) => fixturePrintPages(board, png, end, fail))
   const selection = {
     artifactId: artifact.publicId,
     version: 2,
@@ -265,8 +285,20 @@ it('选区 PDF 只下载完整的定版选板，分页与画布位置一致', as
   expect(screen.queryByRole('radio', { name: 'PNG' })).toBeNull()
   expect(screen.getAllByRole('radio')).toHaveLength(1)
   fireEvent.click(screen.getByRole('button', { name: '导出' }))
-  expect((await screen.findByRole('alert')).textContent).toContain('图片未加载')
+  expect((await screen.findByRole('alert')).textContent).toContain('「首页」：图片未加载')
   expect(names).toEqual([])
+  fail = false
+  fireEvent.click(screen.getByRole('button', { name: '打印预览' }))
+  const first = await screen.findByRole<HTMLImageElement>('img', { name: '第 1 页，共 3 页' })
+  await waitFor(() => expect(first.src).toContain('blob:'))
+  expect(blobs.at(-1)).toBe(png)
+  const firstUrl = first.src
+  fireEvent.click(screen.getByRole('button', { name: '下一页' }))
+  fireEvent.click(screen.getByRole('button', { name: '下一页' }))
+  expect(screen.getAllByRole('img')).toHaveLength(1)
+  expect(screen.getByRole('img', { name: '第 3 页，共 3 页' })).toBeTruthy()
+  expect(liveDownloadUrls.has(firstUrl)).toBe(false)
+  expect(blobs.at(-1)).toBe(end)
   fireEvent.click(screen.getByRole('button', { name: '导出' }))
   await waitFor(() => expect(names).toEqual(['受保护的设计-v2-选区.pdf']))
   expect(rasterize.mock.calls.map(([board]) => board.id)).toEqual([
@@ -275,14 +307,116 @@ it('选区 PDF 只下载完整的定版选板，分页与画布位置一致', as
     'finish',
     'start',
   ])
-  const file = blobs[0]
+  const file = blobs.at(-1)
   if (!file) throw new Error('没有收到 PDF 下载')
   const pdf = await PDFDocument.load(await file.arrayBuffer())
-  expect(pdf.getPages().map((page) => page.getSize())).toEqual([
-    { width: 300, height: 210 },
-    { width: 540, height: 390 },
+  const [fixed, a4, last] = pdf.getPages()
+  expect(fixed?.getMediaBox()).toEqual({ x: 0, y: 0, width: 300, height: 210 })
+  expect(a4?.getWidth()).toBeCloseTo(595.27559055, 6)
+  expect(a4?.getHeight()).toBeCloseTo(841.88976378, 6)
+  expect(last?.getMediaBox()).toEqual(a4?.getMediaBox())
+  const colors = pdf.getPages().map((page) => {
+    const objects = page.node.Resources()?.lookup(PDFName.of('XObject'), PDFDict)
+    const reference = objects?.entries()[0]?.[1]
+    if (!reference) throw new Error('纸页没有图像')
+    const image = pdf.context.lookup(reference)
+    if (!(image instanceof PDFRawStream)) throw new Error('纸页图像不是可解码的数据流')
+    return Array.from(unzlibSync(image.getContents()))
+  })
+  expect(colors).toEqual([
+    [0, 0, 0],
+    [0, 0, 0],
+    [255, 255, 255],
   ])
 })
+
+it('范围和固定版本切换清理预览；复核下载权限失败不交付预览过的 PDF', async () => {
+  const { names } = trackDownloads()
+  const png = pngFixture(blackPixel)
+  const rasterize = vi
+    .spyOn(capture, 'captureBoardPrintPages')
+    .mockImplementation((board) => fixturePrintPages(board, png, png))
+  setLocale('en')
+  onTestFinished(() => setLocale('zh-CN'))
+  const view = render(
+    <ArtifactExportDialog target={{ artifact: artboard, version: pinned }} onClose={cleanup} />,
+  )
+  const openPreview = () => fireEvent.click(screen.getByRole('button', { name: 'Print preview' }))
+  expect(rasterize).not.toHaveBeenCalled()
+  openPreview()
+  await screen.findByRole('img', { name: 'Page 1 of 4' })
+  expect(rasterize.mock.calls.map(([board]) => board.id)).toEqual(['finish', 'other', 'start'])
+  fireEvent.click(screen.getByRole('combobox', { name: 'Export scope' }))
+  fireEvent.click(screen.getByRole('option', { name: '首页' }))
+  expect(screen.queryByRole('img')).toBeNull()
+  expect(liveDownloadUrls.size).toBe(0)
+  fireEvent.click(screen.getByRole('radio', { name: 'PDF' }))
+  openPreview()
+  await screen.findByRole('img', { name: 'Page 1 of 2' })
+  vi.mocked(window.fetch).mockResolvedValueOnce(
+    Response.json({ error: { code: 'FORBIDDEN', message: '不可读取' } }, { status: 403 }),
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Export' }))
+  await screen.findByRole('alert')
+  expect(screen.queryByRole('img')).toBeNull()
+  expect(liveDownloadUrls.size).toBe(0)
+  expect(names).toEqual([])
+  openPreview()
+  await screen.findByRole('img', { name: 'Page 1 of 2' })
+  view.rerender(
+    <ArtifactExportDialog
+      target={{ artifact: artboard, version: { ...pinned, version: 3 } }}
+      onClose={cleanup}
+    />,
+  )
+  expect(screen.queryByRole('img')).toBeNull()
+  expect(liveDownloadUrls.size).toBe(0)
+  openPreview()
+  expect((await screen.findByRole('alert')).textContent).toContain('specified version')
+  expect(rasterize).toHaveBeenCalledTimes(5)
+})
+
+async function* delayedPrintPages(png: Blob, waitForNext: () => Promise<void>) {
+  yield { png, width: 720, height: 520 }
+  await waitForNext()
+  yield { png, width: 720, height: 520 }
+}
+
+it.each(['取消', '切换版本'])(
+  '%s使未完成的打印预览失效，迟到的纸页不再显示或下载',
+  async (action) => {
+    const { blobs, names } = trackDownloads()
+    const waiting = Promise.withResolvers<void>()
+    const next = Promise.withResolvers<void>()
+    const waitForNext = () => {
+      waiting.resolve()
+      return next.promise
+    }
+    const png = pngFixture(blackPixel)
+    const rasterize = vi
+      .spyOn(capture, 'captureBoardPrintPages')
+      .mockImplementation(() => delayedPrintPages(png, waitForNext))
+    const view = render(
+      <ArtifactExportDialog target={{ artifact: artboard, version: pinned }} onClose={cleanup} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '打印预览' }))
+    await waiting.promise
+    expect(screen.queryByRole('img')).toBeNull()
+    if (action === '取消') fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    else
+      view.rerender(
+        <ArtifactExportDialog
+          target={{ artifact: artboard, version: { ...pinned, version: 3 } }}
+          onClose={cleanup}
+        />,
+      )
+    expect(rasterize.mock.calls[0]?.[2].aborted).toBe(true)
+    await act(async () => next.resolve())
+    expect(screen.queryByRole('img')).toBeNull()
+    expect(blobs).toEqual([])
+    expect(names).toEqual([])
+  },
+)
 
 const offlineLocales = [
   ['zh-CN', '导出范围', '整份作品（3 张）', '离线 ZIP', '离线 HTML', '导出'],

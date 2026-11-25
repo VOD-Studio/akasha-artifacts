@@ -63,6 +63,7 @@ import { CanvasToolbar } from '../toolbar/CanvasControls'
 import { canvasToolsMessages } from '../toolbar/canvas-tools-messages'
 import type { BoardFramePurpose } from './ArtifactFrame'
 import { BoardDrawingSurface, type DrawingTool } from './BoardDrawingSurface'
+import { BoardLayoutGuides } from './BoardLayoutGuides'
 import { BoardPresentation } from './BoardPresentation'
 
 /** 显式选板要求适配；元素指认与图层选择只在画板不可见时移动相机。 */
@@ -219,6 +220,7 @@ export function ArtifactCanvas({
   const [dismissedAddress, setDismissedAddress] = useState('')
   const [navigatorOpen, setNavigatorOpen] = useState(false)
   const [copyStatus, setCopyStatus] = useState('')
+  const [hiddenGuideBoards, setHiddenGuideBoards] = useState<ReadonlySet<string>>(() => new Set())
   const [drawingTool, setDrawingTool] = useState<DrawingTool | null>(null)
   const hand = view.hand ?? false
   const setHand = (next: boolean) =>
@@ -290,6 +292,15 @@ export function ArtifactCanvas({
     () => (page?.boards ?? []).filter((board) => activeSelection.has(board.id)),
     [page, activeSelection],
   )
+  const guideBoard = selectedBoards.length === 1 ? selectedBoards[0] : undefined
+  const toggleSelectedGuides = () => {
+    if (!guideBoard) return
+    setHiddenGuideBoards((previous) => {
+      const next = new Set(previous)
+      if (!next.delete(guideBoard.id)) next.add(guideBoard.id)
+      return next
+    })
+  }
   const camera = pageView.camera ?? DEFAULT_CAMERA
   const layout = useMemo(
     () => layoutBoards(page?.boards ?? [], document.columns),
@@ -1048,6 +1059,13 @@ export function ArtifactCanvas({
                           },
                           detailed,
                         )}
+                        {board.layoutGuides?.length && !hiddenGuideBoards.has(board.id) ? (
+                          <BoardLayoutGuides
+                            width={board.width}
+                            height={board.height}
+                            guides={board.layoutGuides}
+                          />
+                        ) : null}
                       </div>
                       {/* 抓手与组合键缩放由外层捕获，不依赖跨域 iframe 冒泡。 */}
                       {captureGesture && (
@@ -1120,6 +1138,8 @@ export function ArtifactCanvas({
         </section>
         <CanvasToolbar
           camera={camera}
+          guidesVisible={guideBoard ? !hiddenGuideBoards.has(guideBoard.id) : undefined}
+          onToggleGuides={guideBoard ? toggleSelectedGuides : undefined}
           playbackMenu={
             !invalidAddress && page && page.boards.length > 0 ? (
               <CanvasPlaybackMenu

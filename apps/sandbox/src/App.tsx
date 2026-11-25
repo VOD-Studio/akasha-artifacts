@@ -1,14 +1,17 @@
 import {
   type ArtboardAppearance,
+  type ArtboardPrintLayout,
   type ArtboardTweakValues,
   type ArtifactType,
   CANVAS_PREVIEW_MAX_EDGE,
   type DesignLayer,
+  getArtboardPaperSize,
   type PreservedViewState,
 } from '@akasha/protocol'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { SandboxBridgeClient } from './bridge/client'
 import { captureSandboxPng } from './capture-png'
+import { createPrintSession, type PrintSession } from './capture-print'
 import { SandboxInspector } from './inspector/index'
 import { readCanvasLayers } from './inspector/layers'
 import {
@@ -44,6 +47,8 @@ export interface RenderPayload {
   version: number
   /** 同一 scoped 总览会话的渲染编号。 */
   renderId?: number
+  /** 只在专用的流式打印帧内按纸张宽度排版。 */
+  printPaper?: Extract<ArtboardPrintLayout, { mode: 'flow' }>['paper']
   source: string
   designLayers?: DesignLayer[]
   /** 仅 `boardId` 所属的持久外观与参数，不包含临时覆写。 */
@@ -92,6 +97,17 @@ export function SandboxApp({
   const versionRef = useRef<number>(initialRender?.version ?? 0)
   versionRef.current = payload?.version ?? 0
 
+  useLayoutEffect(() => {
+    if (!payload?.printPaper) return
+    // 打印帧不滚动，避免系统滚动条从纸张可排版宽度里扣去一条。
+    const viewport = document.documentElement
+    const overflow = viewport.style.overflow
+    viewport.style.overflow = 'hidden'
+    return () => {
+      viewport.style.overflow = overflow
+    }
+  }, [payload?.printPaper])
+
   useEffect(() => {
     if (initialState) stateStore.replace(initialState)
   }, [initialState, stateStore])
@@ -120,6 +136,7 @@ export function SandboxApp({
     )
 
     let capture: { requestId?: string; controller: AbortController } | null = null
+    let print: PrintSession | undefined
     let overviewVersion: number | undefined
     let looping: OverviewMotion | undefined
     let paused: OverviewMotion | undefined
@@ -147,8 +164,17 @@ export function SandboxApp({
       looping?.sync()
     }
     const off = bridge.onMessage((msg) => {
+      if (
+        committedPayloadRef.current?.printPaper &&
+        msg.type !== 'render' &&
+        msg.type !== 'capture.print'
+      ) {
+        return
+      }
       if (msg.type === 'render') {
         capture?.controller.abort()
+        print?.close()
+        print = msg.printPaper ? createPrintSession(msg.printPaper) : undefined
         renderedVisualVersionRef.current = 0
         lastPlayable.current = undefined
         overviewVersion =
@@ -166,6 +192,7 @@ export function SandboxApp({
           artifactType: msg.artifactType,
           version: msg.version,
           source: msg.source,
+          ...(msg.printPaper ? { printPaper: msg.printPaper } : {}),
           ...(overviewVersion !== undefined && msg.renderId !== undefined
             ? { renderId: msg.renderId }
             : {}),
@@ -201,6 +228,36 @@ export function SandboxApp({
           if (isPreview) capture?.controller.abort()
           setTweakPreview(isPreview ? { values: msg.values } : {})
         }
+      } else if (msg.type === 'capture.print') {
+        const { version, page } = msg
+        const root = rootRef.current
+        const session = print
+        if (!session || !root || version !== renderedVisualVersionRef.current) {
+          bridge.send({
+            type: 'capture.print.failure',
+            version,
+            page,
+            message: '没有对应的打印画板',
+          })
+          return
+        }
+        void session.read(root, page).then(
+          (result) => {
+            if (session === print) {
+              bridge.send({ type: 'capture.print.result', version, page, ...result })
+            }
+          },
+          (error: unknown) => {
+            if (session !== print) return
+            bridge.send({
+              type: 'capture.print.failure',
+              version,
+              page,
+              message:
+                error instanceof Error && error.message ? error.message : '无法生成画板打印页',
+            })
+          },
+        )
       } else if (msg.type === 'capture.cancel') {
         if (capture && capture.requestId === msg.requestId) capture.controller.abort()
       } else if (msg.type === 'capture.png') {
@@ -307,6 +364,8 @@ export function SandboxApp({
 
     return () => {
       capture?.controller.abort()
+      print?.close()
+      print = undefined
       releaseMotion()
       syncOverviewMotion.current = null
       inspector.dispose()
@@ -510,10 +569,21 @@ export function SandboxApp({
     [payload],
   )
   const designLayers = payload?.designLayers?.length ? payload.designLayers : undefined
-  const style = useMemo(
-    () => artboardStyle(payload?.boardAppearance, tweakPreview?.values ?? payload?.boardTweaks),
-    [payload?.boardAppearance, payload?.boardTweaks, tweakPreview?.values],
-  )
+  const style = useMemo(() => {
+    const appearance = artboardStyle(
+      payload?.boardAppearance,
+      tweakPreview?.values ?? payload?.boardTweaks,
+    )
+    if (!payload?.printPaper) return appearance
+    const { width } = getArtboardPaperSize(payload.printPaper)
+    const minHeight =
+      payload.designLayers?.reduce((bottom, layer) => {
+        if (layer.x >= width || layer.x + layer.width <= 0) return bottom
+        return Math.max(bottom, layer.y + layer.height)
+      }, 0) ?? 0
+    return { ...appearance, width, minHeight, display: 'flow-root', position: 'relative' as const }
+  }, [payload, tweakPreview?.values])
+  const scopedView = payload?.playback ? 'play' : 'design'
 
   return (
     <ArtifactStateContext.Provider value={stateStore}>
@@ -530,8 +600,11 @@ export function SandboxApp({
             renderer ? (
               renderer({
                 source: payload.source,
-                ...(payload.artifactType === 'html' && payload.boardId
-                  ? { boardId: payload.boardId, artboardView: payload.playback ? 'play' : 'design' }
+                ...(payload.artifactType === 'html' && (payload.boardId || payload.printPaper)
+                  ? {
+                      boardId: payload.boardId,
+                      artboardView: payload.printPaper ? 'print' : scopedView,
+                    }
                   : {}),
                 version: payload.version,
                 stateStore,

@@ -1,5 +1,11 @@
+import { projectArtboard } from '@akasha/protocol'
 import { expect, it } from 'vitest'
-import { createCanvasDocument, layoutBoards } from '@/entities/artifact'
+import {
+  createCanvasDocument,
+  createCanvasDocumentFromIndex,
+  layoutBoards,
+  loadCanvasBoard,
+} from '@/entities/artifact'
 import { editCanvasBoards } from '../src/widgets/ArtifactWorkspace/lib/canvas-board-source'
 
 const source = JSON.stringify({
@@ -15,6 +21,41 @@ const source = JSON.stringify({
   ],
   flows: [{ from: 'board-1', to: 'mobile', label: '预约', custom: true }],
   metadata: { provenance: 'cli' },
+})
+
+it('一次确认保存版式和辅助线，旧定位、原文及他板不变，索引可独立还原', () => {
+  const original = createCanvasDocument('artboard', '预约', source, 4, undefined).pages[0].boards[0]
+  const base = { kind: 'printLayout', boardId: original.id } as const
+  expect(
+    editCanvasBoards(source, 4, { ...base, printLayout: { mode: 'fixed' }, layoutGuides: [] }),
+  ).toEqual({ before: source, after: source })
+  const printLayout = { mode: 'flow', paper: 'a4' } as const
+  const layoutGuides = [
+    { axis: 'x' as const, position: 10.5 },
+    { axis: 'y' as const, position: 10.5 },
+  ]
+  const change = editCanvasBoards(source, 4, { ...base, printLayout, layoutGuides })
+  const projection = projectArtboard(change.after, 5)
+  if (!projection) throw new Error('打印版式无法投影')
+  const storedIndex = JSON.parse(JSON.stringify(projection.index))
+  const page = createCanvasDocumentFromIndex(storedIndex, undefined).pages[0]
+  expect(page.boards[0]).toMatchObject({ id: original.id, printLayout, layoutGuides })
+  expect(page.boards[0]).not.toHaveProperty('source')
+  expect(loadCanvasBoard(page.boards[0], projection.contents[0])).toMatchObject({
+    printLayout,
+    layoutGuides,
+    source: '<h1>预约</h1>',
+    legacyBlockId: 'board-1',
+  })
+  expect(page.boards[1]?.printLayout).toBeUndefined()
+  expect(JSON.parse(change.after).metadata).toEqual({ provenance: 'cli' })
+  expect(editCanvasBoards(change.after, 5, { ...base, printLayout, layoutGuides }).after).toBe(
+    change.after,
+  )
+  const restored = projectArtboard(change.before, 6)?.index.boards[0]
+  expect(restored?.id).toBe(original.id)
+  expect(restored?.printLayout).toBeUndefined()
+  expect(restored?.layoutGuides).toBeUndefined()
 })
 
 it('移动到负坐标并调整独立视口；旧定位和流程继续指向原来的画板', () => {

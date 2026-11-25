@@ -45,6 +45,12 @@ export const canvasToolsMessages = {
   放大: ['Vergrößern', 'تكبير', 'Zoom in'],
   放大画布: ['Ansicht vergrößern', 'تكبير مساحة الرسم', 'Zoom in on canvas'],
   画布缩放比例: ['Zoomstufe', 'نسبة التكبير', 'Canvas zoom'],
+  缩放选项: ['Zoomoptionen', 'خيارات التكبير', 'Zoom options'],
+  显示画板辅助线: [
+    'Hilfslinien der Zeichenfläche anzeigen',
+    'إظهار خطوط إرشاد لوحة الرسم',
+    'Show artboard guides',
+  ],
   撤销画布编辑: [
     'Bearbeitung rückgängig machen',
     'التراجع عن تعديل مساحة الرسم',

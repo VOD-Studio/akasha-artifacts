@@ -140,7 +140,7 @@ function HtmlRenderer({
       el.replaceChildren(fragment)
       return rendered()
     }
-    if (artboardView === 'play') return mount()
+    if (artboardView !== 'design') return mount()
     const controller = new AbortController()
     const pending = freezePreviewBitmaps(fragment, el.ownerDocument, controller.signal)
     if (!pending) return mount()
