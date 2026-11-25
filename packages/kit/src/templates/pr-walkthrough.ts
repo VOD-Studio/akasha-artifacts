@@ -1,3 +1,4 @@
+import { buildPropsJsonSchema, type KitPropField, type KitTemplateDefinition } from '../registry.js'
 import {
   decisionDiagnostics,
   invalid,
@@ -10,7 +11,6 @@ import {
   text,
   uniqueIndex,
 } from './decision-validation.js'
-import { buildPropsJsonSchema, type KitPropField, type KitTemplateDefinition } from './registry.js'
 
 /** 差异视图：`unified` 是统一 diff；`split` 是新旧并排。 */
 export type WalkthroughDiffMode = 'unified' | 'split'

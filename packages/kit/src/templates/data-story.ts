@@ -1,4 +1,5 @@
 import { DATA_POINT_SELECTION_LIMITS } from '@akasha/protocol'
+import { buildPropsJsonSchema, type KitPropField, type KitTemplateDefinition } from '../registry.js'
 import {
   decisionDiagnostics,
   invalid,
@@ -11,7 +12,6 @@ import {
   text,
   uniqueIndex,
 } from './decision-validation.js'
-import { buildPropsJsonSchema, type KitPropField, type KitTemplateDefinition } from './registry.js'
 
 type StoryValue = string | number
 

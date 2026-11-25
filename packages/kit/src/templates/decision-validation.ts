@@ -1,5 +1,5 @@
 import type { CheckDiagnostic } from '@akasha/protocol'
-import type { KitParseResult } from './registry.js'
+import type { KitParseResult } from '../registry.js'
 
 /** 稳定标识的格式：字母或数字开头，其后可含点、下划线与连字符。 */
 export const stableIdPattern = '^[A-Za-z0-9][A-Za-z0-9._-]*$'
