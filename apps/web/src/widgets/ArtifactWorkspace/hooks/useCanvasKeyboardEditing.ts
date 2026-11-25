@@ -39,6 +39,7 @@ interface KeyboardEditingOptions {
   visualTarget: VisualEditTarget | null
   editing?: CanvasBoardEditing
   canEditBoards: boolean
+  canEditRuntime: boolean
   versionNumber: number
   readFullSource: () => Promise<string | null>
   onSelectLayer: (layer: CanvasLayer | null, shouldReveal?: boolean) => void
@@ -74,6 +75,7 @@ export function useCanvasKeyboardEditing({
   visualTarget,
   editing,
   canEditBoards,
+  canEditRuntime,
   versionNumber,
   readFullSource,
   onSelectLayer,
@@ -118,9 +120,12 @@ export function useCanvasKeyboardEditing({
     return activeBoard.designLayers.filter((item) => ids.has(item.id))
   }
 
+  const hasLayerSelection = Boolean(selectedLayer || selectedDesignLayer)
+
   const copySelection = async (): Promise<boolean> => {
-    const native = selectedNativeGroup()
-    if (native.length && activeBoard) {
+    if (hasLayerSelection) {
+      const native = selectedNativeGroup()
+      if (!native.length || !activeBoard) return false
       clipboard.current = {
         kind: 'layers',
         sourceBoardId: activeBoard.id,
@@ -147,21 +152,25 @@ export function useCanvasKeyboardEditing({
   }
 
   const deleteSelection = () => {
+    if (hasLayerSelection) {
+      const native = selectedNativeGroup()
+      if (native.length && activeBoard) {
+        if (!canEditBoards || !editing?.available) return false
+        const ids = native.map((layer) => layer.id)
+        onSelectLayer(null)
+        focusBoardTitle(activeBoard.id)
+        void editing.change({ kind: 'layerDeleteMany', boardId: activeBoard.id, layerIds: ids })
+        return true
+      }
+      if (canEditRuntime && selectedLayer?.sourceLoc && visualTarget && activeBoard) {
+        onSelectLayer(null)
+        focusBoardTitle(activeBoard.id)
+        void onApplyRuntimeOp({ kind: 'remove', loc: selectedLayer.sourceLoc })
+        return true
+      }
+      return false
+    }
     if (!canEditBoards || !editing?.available) return false
-    const native = selectedNativeGroup()
-    if (native.length && activeBoard) {
-      const ids = native.map((layer) => layer.id)
-      onSelectLayer(null)
-      focusBoardTitle(activeBoard.id)
-      void editing.change({ kind: 'layerDeleteMany', boardId: activeBoard.id, layerIds: ids })
-      return true
-    }
-    if (selectedLayer?.sourceLoc && visualTarget && activeBoard) {
-      onSelectLayer(null)
-      focusBoardTitle(activeBoard.id)
-      void onApplyRuntimeOp({ kind: 'remove', loc: selectedLayer.sourceLoc })
-      return true
-    }
     if (selectedBoards.length) {
       const ids = selectedBoards.map((board) => board.id)
       onSelectBoard(null)
@@ -193,7 +202,8 @@ export function useCanvasKeyboardEditing({
 
   const duplicateSelection = () => {
     if (!canEditBoards || !editing?.available) return false
-    if (selectedDesignLayer && activeBoard) {
+    if (hasLayerSelection) {
+      if (!selectedDesignLayer || !activeBoard) return false
       void editing.change({
         kind: 'layerDuplicate',
         boardId: activeBoard.id,
@@ -224,8 +234,9 @@ export function useCanvasKeyboardEditing({
 
   const flipSelection = (axis: 'horizontal' | 'vertical') => {
     if (!canEditBoards || !editing?.available) return false
-    const native = selectedNativeGroup()
-    if (native.length && activeBoard) {
+    if (hasLayerSelection) {
+      const native = selectedNativeGroup()
+      if (!native.length || !activeBoard) return false
       void editing.change({
         kind: 'layerFlip',
         boardId: activeBoard.id,
@@ -247,8 +258,8 @@ export function useCanvasKeyboardEditing({
   }
 
   const reorderSelectedFlow = (delta: -1 | 1): boolean => {
-    if (!canEditBoards || !editing?.available) return false
     if (selectedDesignLayer && activeBoard) {
+      if (!canEditBoards || !editing?.available) return false
       void editing.change({
         kind: 'layerReorder',
         boardId: activeBoard.id,
@@ -257,7 +268,7 @@ export function useCanvasKeyboardEditing({
       })
       return true
     }
-    if (selectedLayer?.sourceLoc && visualTarget?.order) {
+    if (canEditRuntime && selectedLayer?.sourceLoc && visualTarget?.order) {
       const siblings = visualTarget.order.siblings
       const index = siblings.findIndex((item) => item.loc === selectedLayer.sourceLoc)
       const nextIndex = index + delta

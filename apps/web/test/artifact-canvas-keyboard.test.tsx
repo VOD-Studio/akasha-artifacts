@@ -346,3 +346,175 @@ it('流内静态元素支持 Alt+方向键重排且只读模式方向键不触�
     '<section><p>第二项</p><p>第一项</p></section>',
   )
 })
+
+it('选中运行图层时 Delete 与 Ctrl+C/X 不会误删或误复制所属整张画板', async () => {
+  stubResizeObserver()
+  const source = JSON.stringify({
+    ...design,
+    boards: design.boards.map((board) =>
+      board.id === 'desktop'
+        ? { ...board, html: '<section><p>第一项</p><p>第二项</p></section>' }
+        : board,
+    ),
+  })
+  const editor = showEditableWorkspace(detailFor(1, source))
+  const mockFetch = vi.mocked(fetch)
+  const previous = mockFetch.getMockImplementation()
+  mockFetch.mockImplementation(async (input, init) => {
+    const url = String(input)
+    if (url.includes('/visual-edit?') && (!init?.method || init.method === 'GET')) {
+      return new Response('not found', { status: 404 })
+    }
+    if (!previous) throw new Error('缺少默认请求桩')
+    return previous(input, init)
+  })
+
+  const frame = sandbox(screen.getByTitle('画板内容：宽屏首页'))
+  frame.receive({ type: 'ready' })
+  const title = screen.getByRole('button', { name: '宽屏首页' })
+  title.focus()
+  fireEvent.keyDown(title, { key: 'Enter' })
+  frame.receive({
+    type: 'inspect.layers.snapshot',
+    version: 1,
+    truncated: false,
+    layers: [
+      {
+        id: 'p1',
+        tag: 'p',
+        selector: 'section > p:nth-of-type(1)',
+        sourceLoc: '1:10',
+        label: '第一项',
+        width: 200,
+        height: 24,
+      },
+    ],
+  })
+
+  const layerFocus = screen.getByTestId('canvas-layer-focus')
+  // visualTarget 未就绪时按 Delete / Ctrl+C / Ctrl+X / Ctrl+V 不得回退到删除或复制整张画板。
+  fireEvent.keyDown(layerFocus, { key: 'Delete' })
+  fireEvent.keyDown(layerFocus, { key: 'c', code: 'KeyC', ctrlKey: true })
+  fireEvent.keyDown(layerFocus, { key: 'x', code: 'KeyX', ctrlKey: true })
+  fireEvent.keyDown(layerFocus, { key: 'v', code: 'KeyV', ctrlKey: true })
+  await Promise.resolve()
+  expect(editor.current.version.version).toBe(1)
+  expect(JSON.parse(editor.current.version.source).boards).toHaveLength(design.boards.length)
+})
+
+it('独立 HTML 作品同样支持通过 Alt+方向键、工具栏与 Delete 编辑运行图层', async () => {
+  stubResizeObserver()
+  const htmlDetail = {
+    ...detailFor(1, '<section><p>第一项</p><p>第二项</p></section>'),
+    artifact: {
+      ...artifact,
+      type: 'html' as const,
+    },
+  }
+  const editor = showEditableWorkspace(htmlDetail)
+  const mockFetch = vi.mocked(fetch)
+  const previous = mockFetch.getMockImplementation()
+  const previewOps: unknown[] = []
+  mockFetch.mockImplementation(async (input, init) => {
+    const url = String(input)
+    if (url.includes('/visual-edit?') && (!init?.method || init.method === 'GET')) {
+      return Response.json({
+        target: {
+          tagName: 'p',
+          text: '第一项',
+          className: '',
+          order: {
+            parentLoc: '1:1',
+            siblings: [
+              { loc: '1:10', label: '第一项' },
+              { loc: '1:20', label: '第二项' },
+            ],
+          },
+        },
+      })
+    }
+    if (url.includes('/visual-edit/preview') && init?.method === 'POST') {
+      const body = JSON.parse(String(init.body))
+      previewOps.push(body.op)
+      const nextHtml =
+        body.op.kind === 'remove'
+          ? '<section><p>第二项</p></section>'
+          : '<section><p>第二项</p><p>第一项</p></section>'
+      return Response.json({ source: nextHtml })
+    }
+    if (!previous) throw new Error('缺少默认请求桩')
+    return previous(input, init)
+  })
+
+  const frame = sandbox(screen.getByTitle('画板内容：茶席预约'))
+  frame.receive({ type: 'ready' })
+  const title = screen.getByRole('button', { name: '茶席预约' })
+  title.focus()
+  fireEvent.keyDown(title, { key: 'Enter' })
+  frame.receive({
+    type: 'inspect.layers.snapshot',
+    version: 1,
+    truncated: false,
+    layers: [
+      {
+        id: 'p1',
+        tag: 'p',
+        selector: 'section > p:nth-of-type(1)',
+        sourceLoc: '1:10',
+        label: '第一项',
+        width: 200,
+        height: 24,
+      },
+      {
+        id: 'p2',
+        tag: 'p',
+        selector: 'section > p:nth-of-type(2)',
+        sourceLoc: '1:20',
+        label: '第二项',
+        width: 200,
+        height: 24,
+      },
+    ],
+  })
+
+  const layerFocus = screen.getByTestId('canvas-layer-focus')
+  await waitFor(() =>
+    expect(mockFetch.mock.calls.some(([url]) => String(url).includes('/visual-edit?'))).toBe(true),
+  )
+  fireEvent.keyDown(layerFocus, { key: 'ArrowDown', altKey: true })
+  await waitFor(() => expect(editor.current.version.version).toBe(2))
+  expect(previewOps).toEqual([{ kind: 'move', loc: '1:10', targetParentLoc: '1:1', index: 1 }])
+
+  // 独立 HTML 作品也允许 Delete 删除已选运行节点。
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: '撤销画布编辑' }).hasAttribute('disabled')).toBe(
+      false,
+    ),
+  )
+  frame.receive({
+    type: 'inspect.layers.snapshot',
+    version: 2,
+    truncated: false,
+    layers: [
+      {
+        id: 'v2:p1',
+        tag: 'p',
+        selector: 'section > p:nth-of-type(2)',
+        sourceLoc: '1:10',
+        label: '第一项',
+        width: 200,
+        height: 24,
+      },
+    ],
+  })
+  title.focus()
+  fireEvent.keyDown(title, { key: 'Enter' })
+  await waitFor(() =>
+    expect(
+      mockFetch.mock.calls.filter(([url]) => String(url).includes('/visual-edit?')).length,
+    ).toBeGreaterThanOrEqual(2),
+  )
+  fireEvent.keyDown(screen.getByTestId('canvas-layer-focus'), { key: 'Delete' })
+  await waitFor(() => expect(editor.current.version.version).toBe(3))
+  expect(previewOps[1]).toEqual({ kind: 'remove', loc: '1:10' })
+})

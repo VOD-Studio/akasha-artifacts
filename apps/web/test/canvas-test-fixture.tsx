@@ -128,6 +128,13 @@ export function showEditableWorkspace(
   refreshDetails?: Promise<void>,
 ) {
   const view = showWorkspace(initial)
+  const nextDetail = (version: number, source: string): ArtifactDetailResponse => {
+    const base = detailFor(version, source)
+    return {
+      ...base,
+      artifact: { ...initial.artifact, headVersion: version },
+    }
+  }
   const editable = (detail: ArtifactDetailResponse) => (
     <ArtifactWorkspace
       detail={detail}
@@ -136,7 +143,7 @@ export function showEditableWorkspace(
       address={address}
       onVersionSaved={async (version) => {
         if (refreshDetails) await refreshDetails
-        view.update(editable(detailFor(version.version, version.source)))
+        view.update(editable(nextDetail(version.version, version.source)))
       }}
     />
   )
@@ -146,7 +153,7 @@ export function showEditableWorkspace(
     if (input === '/api/v1/artifacts' && options?.method === 'POST') {
       const payload = JSON.parse(String(options.body))
       submittedVersion = payload.baseVersion
-      current = detailFor(current.version.version + 1, payload.source)
+      current = nextDetail(current.version.version + 1, payload.source)
       return Response.json(current)
     }
     return Response.json({ selection: null })

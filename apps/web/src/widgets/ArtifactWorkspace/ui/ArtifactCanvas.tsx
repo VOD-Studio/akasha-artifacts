@@ -359,6 +359,7 @@ export function ArtifactCanvas({
     visualTarget: layerSelection?.visualTarget ?? null,
     editing: boardEditing,
     canEditBoards: Boolean(boardEditing),
+    canEditRuntime: Boolean(historyEditing?.available),
     versionNumber: version,
     readFullSource: layerSelection?.readFullSource ?? (async () => null),
     onSelectLayer: layerSelection?.onSelectLayer ?? (() => {}),
