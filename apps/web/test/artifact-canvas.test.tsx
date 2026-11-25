@@ -657,7 +657,8 @@ it('图层选择跟随画布点击，旧请求和旧坐标不改选区', () => {
     },
   })
   expect(within(inspector).getByText('color: maroon;')).toBeTruthy()
-  expect(within(inspector).getByText('源码位置 1:1')).toBeTruthy()
+  const position = within(inspector).getByText('1:1')
+  expect(position.closest('[dir]')?.getAttribute('dir')).toBe('ltr')
   expect(
     within(inspector).getByText('<h1', { selector: 'mark' }).closest('code')?.textContent,
   ).toContain('<h1>桌面预约</h1>')
