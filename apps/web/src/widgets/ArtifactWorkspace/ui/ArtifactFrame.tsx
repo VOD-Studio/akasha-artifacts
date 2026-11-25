@@ -82,6 +82,11 @@ interface ArtifactFrameProps {
     boardId: string,
     message: Extract<SandboxToShellMessage, { type: 'inspect.target' }>,
   ) => void
+  /** 选中节点坐标或计算呈现同步时回调，用于选区工具栏定位与对比度提示。 */
+  onSelectSync?: (
+    boardId: string,
+    message: Extract<SandboxToShellMessage, { type: 'inspect.select' }>,
+  ) => void
   /** 直改模式下沙盒上报选中元素时调用。 */
   onVisualSelect: (message: Extract<SandboxToShellMessage, { type: 'visual.select' }>) => void
 }
@@ -146,6 +151,7 @@ export function ArtifactFrame({
   styleLayerId,
   onLayers,
   onElementTarget,
+  onSelectSync,
   onVisualSelect,
 }: ArtifactFrameProps) {
   const { t, dir } = useMessages(navigationMessages)
@@ -253,6 +259,7 @@ export function ArtifactFrame({
     watchLayers,
     onLayers,
     onElementTarget,
+    onSelectSync,
   })
   latest.current = {
     nonce,
@@ -270,6 +277,7 @@ export function ArtifactFrame({
     watchLayers,
     onLayers,
     onElementTarget,
+    onSelectSync,
   }
 
   useEffect(() => {
@@ -491,6 +499,7 @@ export function ArtifactFrame({
             },
             layer,
           )
+          latest.current.onSelectSync?.(id, message)
           break
         }
         case 'pins.rects':
