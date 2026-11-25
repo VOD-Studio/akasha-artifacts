@@ -2,6 +2,7 @@ import type {
   AgentConnection,
   AgentConversation,
   AgentConversationStatus,
+  ArtboardTweakApplication,
   ArtifactHandoffReference,
 } from '@akasha/protocol'
 import { requestJson } from '@/shared/api/request'
@@ -20,12 +21,16 @@ export async function fetchArtifactConversation(id: string, signal?: AbortSignal
 /**
  * 把消息交给该作品已绑定的本机 CLI 会话；回执不代表已回复或发布。
  *
- * @param input - 省略 `target` 时不附带定点交接；指定时必须属于该作品及项目，且版本存在。
+ * @param input - `target` 固定作品和版本；应用画板参数时还须明确写入范围，不会自动改投新基准。
  * @throws 无有效绑定、CLI 离线或项目已有轮次时拒绝，不会改投其他会话。
  */
 export async function sendArtifactConversation(
   id: string,
-  input: { message: string; target?: ArtifactHandoffReference },
+  input: {
+    message: string
+    target?: ArtifactHandoffReference
+    tweakApplication?: ArtboardTweakApplication
+  },
 ) {
   return requestJson<AgentConversation>(
     `/api/v1/artifacts/${encodeURIComponent(id)}/agent-session`,

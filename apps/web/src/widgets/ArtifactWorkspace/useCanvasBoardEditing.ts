@@ -53,8 +53,12 @@ export interface CanvasBoardEditing {
   available: boolean
   busy: boolean
   change: (command: CanvasBoardEdit, base?: VersionSummary) => Promise<boolean>
-  /** 提交由服务端按基准源码预览得到的完整版本，也加入同一撤销历史。 */
-  replaceSource: (source: string, base: VersionSummary) => Promise<boolean>
+  /** 返回是否暂存；只有真实发布成功才调用 `onSaved`，完整源码仍计入同一撤销历史。 */
+  replaceSource: (
+    source: string,
+    base: VersionSummary,
+    onSaved?: (saved: Version) => void,
+  ) => Promise<boolean>
   undo?: () => void
   redo?: () => void
   dismissDraft: () => void
@@ -88,7 +92,7 @@ export function useCanvasBoardEditing({
       ? history.timeline
       : EMPTY_TIMELINE
 
-  async function save(edit: PendingEdit) {
+  const save = async (edit: PendingEdit, onSaved?: (saved: Version) => void) => {
     const live = latest.current
     const sameBase =
       live.enabled &&
@@ -125,6 +129,7 @@ export function useCanvasBoardEditing({
       setPending(null)
       void query.invalidateQueries({ queryKey: artifactKeys.all })
       onVersionSaved?.(saved.version)
+      onSaved?.(saved.version)
     } catch (cause) {
       setPending({
         ...edit,
@@ -139,23 +144,11 @@ export function useCanvasBoardEditing({
     }
   }
 
-  function replay(forward: boolean) {
-    if (!available) return
-    const change = (forward ? timeline.future : timeline.past).at(-1)
-    if (!change) return
-    void prepare(version, (base) => ({
-      base,
-      source: forward ? change.after : change.before,
-      timeline: forward
-        ? { past: [...timeline.past, change], future: timeline.future.slice(0, -1) }
-        : { past: timeline.past.slice(0, -1), future: [...timeline.future, change] },
-    }))
-  }
-
-  async function prepare(
+  const prepare = async (
     base: VersionSummary,
     transform: (full: Version) => Pick<PendingEdit, 'base' | 'source' | 'timeline'> | null,
-  ): Promise<boolean> {
+    onSaved?: (saved: Version) => void,
+  ): Promise<boolean> => {
     if (!available || inFlight.current) return false
     inFlight.current = true
     setInputError('')
@@ -169,7 +162,7 @@ export function useCanvasBoardEditing({
       const change = transform(full)
       if (!change) return true
       publishing = true
-      void save({ ...change, artifactId: base.artifactId, status: 'saving' })
+      void save({ ...change, artifactId: base.artifactId, status: 'saving' }, onSaved)
       return true
     } catch (cause) {
       setInputError(cause instanceof Error ? cause.message : '无法应用改动')
@@ -180,16 +173,37 @@ export function useCanvasBoardEditing({
     }
   }
 
-  function stage(base: VersionSummary, edit: (full: Version) => CanvasSourceChange) {
-    return prepare(base, (full) => {
-      const change = edit(full)
-      if (change.after === full.source) return null
-      return {
-        base: full,
-        source: change.after,
-        timeline: { past: [...timeline.past.slice(1 - MAX_LOCAL_EDITS), change], future: [] },
-      }
-    })
+  const replay = (forward: boolean) => {
+    if (!available) return
+    const change = (forward ? timeline.future : timeline.past).at(-1)
+    if (!change) return
+    void prepare(version, (base) => ({
+      base,
+      source: forward ? change.after : change.before,
+      timeline: forward
+        ? { past: [...timeline.past, change], future: timeline.future.slice(0, -1) }
+        : { past: timeline.past.slice(0, -1), future: [...timeline.future, change] },
+    }))
+  }
+
+  const stage = (
+    base: VersionSummary,
+    edit: (full: Version) => CanvasSourceChange,
+    onSaved?: (saved: Version) => void,
+  ) => {
+    return prepare(
+      base,
+      (full) => {
+        const change = edit(full)
+        if (change.after === full.source) return null
+        return {
+          base: full,
+          source: change.after,
+          timeline: { past: [...timeline.past.slice(1 - MAX_LOCAL_EDITS), change], future: [] },
+        }
+      },
+      onSaved,
+    )
   }
 
   return {
@@ -200,19 +214,22 @@ export function useCanvasBoardEditing({
     busy: reading || draft?.status === 'saving',
     undo: available && timeline.past.length ? () => replay(false) : undefined,
     redo: available && timeline.future.length ? () => replay(true) : undefined,
-    change(command, base = version) {
-      return stage(base, (full) => editCanvasBoards(full.source, full.version, command))
+    change: (command, base = version) =>
+      stage(base, (full) => editCanvasBoards(full.source, full.version, command)),
+    replaceSource: (source, base, onSaved) => {
+      return stage(
+        base,
+        (full) => ({
+          before:
+            artifact.type === 'artboard' && source !== full.source
+              ? stabilizeArtboardSource(full.source, full.version)
+              : full.source,
+          after: source,
+        }),
+        onSaved,
+      )
     },
-    replaceSource(source, base) {
-      return stage(base, (full) => ({
-        before:
-          artifact.type === 'artboard' && source !== full.source
-            ? stabilizeArtboardSource(full.source, full.version)
-            : full.source,
-        after: source,
-      }))
-    },
-    dismissDraft() {
+    dismissDraft: () => {
       if (inFlight.current) return
       setPending(null)
       setInputError('')

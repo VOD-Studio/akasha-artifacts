@@ -43,7 +43,7 @@ export function AgentTurnList({ turns }: { turns: readonly AgentConversationTurn
           ) : null}
           {turn.publications.length ? (
             <ul className="space-y-1 px-3 text-xs" aria-label={t('此轮发布的版本')}>
-              {turn.publications.map(({ artifactId, version }) => (
+              {turn.publications.map(({ artifactId, version, changed }) => (
                 <li key={`${artifactId}:${version}`}>
                   <Link
                     to="/a/$publicId/v/$version"
@@ -52,6 +52,18 @@ export function AgentTurnList({ turns }: { turns: readonly AgentConversationTurn
                   >
                     {t('已发布 {version}', { version: `v${version}` })}
                   </Link>
+                  {changed?.length ? (
+                    <ul aria-label={t('已更新的画板')} className="mt-1 space-y-1">
+                      {changed.map((board) => (
+                        <li key={board.id} className="wrap-break-word">
+                          <bdi>{board.title}</bdi>{' '}
+                          <code dir="ltr" className="text-ink-muted">
+                            {board.id}
+                          </code>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </li>
               ))}
             </ul>

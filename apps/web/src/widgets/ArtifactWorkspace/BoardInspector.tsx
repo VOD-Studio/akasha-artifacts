@@ -1,4 +1,5 @@
 import {
+  type ArtboardTweakValues,
   type Artifact,
   type ArtifactHandoffReference,
   type CanvasLayer,
@@ -11,6 +12,7 @@ import { Button } from '@akasha/ui/button'
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@akasha/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@akasha/ui/tabs'
 import { useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import {
   type CanvasDocument,
   type CanvasLocation,
@@ -28,7 +30,9 @@ import { BoardInspectorProperties } from './BoardInspectorProperties'
 import { BoardInspectorSource } from './BoardInspectorSource'
 import { BoardInspectorTree } from './BoardInspectorTree'
 import { BoardLayerStyles } from './BoardLayerStyles'
+import { BoardTweakApplyDialog } from './BoardTweakApplyDialog'
 import { BoardTweakPanel } from './BoardTweakPanel'
+import { tweakApplyMessages } from './board-tweak-apply-messages'
 import type { BoardTweakPreviewStore } from './board-tweak-previews'
 import {
   changeLayoutSelection,
@@ -74,6 +78,10 @@ interface BoardInspectorProps {
   selectedLayerId?: string
   onHandoff?: BoardInspectorHandoff
   onAskAgent?: BoardInspectorHandoff
+  /** 受理参数请求后打开已绑定会话；不等同于发布版本。 */
+  onOpenAgentConversation?: () => void
+  /** 预览可供访客使用；发布画板默认值须以成员身份打开可写头版本。 */
+  canPublishTweaks: boolean
   /** 树选区包含运行时节点 id；传 null 清除已有图层选区。 */
   onSelectLayer: (layer: CanvasLayer | null) => void
   onNavigate: (location: CanvasLocation) => void
@@ -107,12 +115,39 @@ export function BoardInspector({
   selectedLayerId,
   onHandoff,
   onAskAgent,
+  onOpenAgentConversation,
+  canPublishTweaks,
   onSelectLayer,
   onNavigate,
 }: BoardInspectorProps) {
   const { t, dir } = useMessages(panelMessages)
   const open = useWorkspaceStore((state) => state.inspectorTab === 'inspect')
   const setDrawer = useWorkspaceStore((state) => state.setInspectorTab)
+  const { t: tweakText, locale } = useMessages(tweakApplyMessages)
+  const [tweakRequest, setTweakRequest] = useState<{
+    base: VersionSummary
+    boardId: string
+    values: ArtboardTweakValues
+  } | null>(null)
+  const allowTweakWrite = Boolean(editing && canPublishTweaks && layersAvailable)
+  const requestIsCurrent =
+    tweakRequest?.base.artifactId === artifact.publicId &&
+    tweakRequest.base.version === version.version
+  useEffect(() => {
+    if (!tweakRequest || (open && tab === 'tweaks' && allowTweakWrite && requestIsCurrent)) return
+    if (
+      open &&
+      allowTweakWrite &&
+      tweakRequest.base.artifactId === artifact.publicId &&
+      !requestIsCurrent
+    )
+      toast.info(
+        tweakText('已基于 v{version} 打开，作品已更新。请重新选择。', {
+          version: tweakRequest.base.version,
+        }),
+      )
+    setTweakRequest(null)
+  }, [allowTweakWrite, artifact.publicId, open, requestIsCurrent, tab, tweakRequest, tweakText])
   const page = document.pages.find((item) => item.id === location?.pageId)
   const layout = page?.boards.find((item) => item.id === location?.boardId)
   const loaded = layout && loadedBoard?.id === layout.id ? loadedBoard : undefined
@@ -356,6 +391,11 @@ export function BoardInspector({
                     boardId={board.id}
                     tweaks={tweaks}
                     previews={tweakPreviews}
+                    onApply={
+                      allowTweakWrite && editing?.available
+                        ? (values) => setTweakRequest({ base: version, boardId: board.id, values })
+                        : undefined
+                    }
                   />
                 </TabsContent>
               )}
@@ -387,6 +427,29 @@ export function BoardInspector({
           </div>
         </SheetBody>
       </SheetContent>
+      {open && allowTweakWrite && requestIsCurrent && tweakRequest && editing && (
+        <BoardTweakApplyDialog
+          artifact={artifact}
+          base={tweakRequest.base}
+          boardId={tweakRequest.boardId}
+          values={tweakRequest.values}
+          agentAllowed={Boolean(onOpenAgentConversation)}
+          onApply={editing.replaceSource}
+          onApplied={(saved, titles) =>
+            toast.success(
+              tweakText('已发布 v{version}：{boards}', {
+                version: saved.version,
+                boards: new Intl.ListFormat(locale).format(titles),
+              }),
+            )
+          }
+          onAgentAccepted={() => {
+            setTweakRequest(null)
+            onOpenAgentConversation?.()
+          }}
+          onClose={() => setTweakRequest(null)}
+        />
+      )}
     </Sheet>
   )
 }

@@ -322,6 +322,7 @@ export function ArtifactRouteView({
             exportSelectionRef={exportSelectionRef}
             onHandoff={openHandoff}
             onAskAgent={canTalkToAgent ? askAgent : undefined}
+            onOpenAgentConversation={canTalkToAgent ? () => openAgent() : undefined}
             onRegisterStateForwarder={registerStateForwarder}
             onVersionSaved={returnToHead}
             onVersionAdopted={returnToHead}

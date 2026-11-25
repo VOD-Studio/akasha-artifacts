@@ -21,6 +21,7 @@ export const messages = {
     'Versions published in this turn',
   ],
   '已发布 {version}': ['{version} veröffentlicht', 'نُشر {version}', 'Published {version}'],
+  已更新的画板: ['Geänderte Zeichenflächen', 'لوحات الرسم المحدَّثة', 'Updated artboards'],
   '处理中…': ['Wird verarbeitet…', 'جارٍ التنفيذ…', 'Processing…'],
   处理失败: ['Verarbeitung fehlgeschlagen', 'تعذّر التنفيذ', 'Processing failed'],
   未发布新版本: [

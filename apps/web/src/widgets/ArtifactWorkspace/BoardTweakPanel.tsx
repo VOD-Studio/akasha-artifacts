@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useState } from 'react'
 import { useStore } from 'zustand'
 import { useMessages } from '@/shared/i18n'
+import { tweakApplyMessages } from './board-tweak-apply-messages'
 import type { BoardTweakPreviewStore } from './board-tweak-previews'
 import { panelMessages } from './messages'
 
@@ -15,16 +16,23 @@ interface BoardTweakPanelProps {
   tweaks: readonly ArtboardTweak[]
   /** 同一版本内换板保留覆写；切版本由工作区重新创建。 */
   previews: BoardTweakPreviewStore
+  /** 仅对可写头版本开放；传出本板实际覆写的值，不含其余默认值。 */
+  onApply?: (values: ArtboardTweakValues) => void
 }
 
-/** 参数只预览当前画板；模板参数继续走独立的作品状态流。 */
-export function BoardTweakPanel({ boardId, tweaks, previews }: BoardTweakPanelProps) {
+/** 控件只改本会话的预览；发布动作须另行确认范围。 */
+export function BoardTweakPanel({ boardId, tweaks, previews, onApply }: BoardTweakPanelProps) {
   const { t, locale } = useMessages(panelMessages)
+  const { t: applyText } = useMessages(tweakApplyMessages)
   const overrides = useStore(previews, (state) => state.byBoard.get(boardId))
 
   return (
     <section className="flex flex-col gap-3" aria-label={t('画板参数预览')}>
-      <p className="text-xs text-ink-muted">{t('仅预览当前画板，不会保存或随作品导出。')}</p>
+      <p className="text-xs text-ink-muted">
+        {onApply
+          ? applyText('仅在此预览。发布新版本后，所选画板才会使用这些值。')
+          : t('仅预览当前画板，不会保存或随作品导出。')}
+      </p>
       {tweaks.map((tweak) => (
         <TweakControl
           key={tweak.id}
@@ -36,7 +44,7 @@ export function BoardTweakPanel({ boardId, tweaks, previews }: BoardTweakPanelPr
           onChange={(value) => previews.getState().set(boardId, tweak, value)}
         />
       ))}
-      <div>
+      <div className="flex flex-wrap gap-2">
         <Button
           variant="outline"
           size="sm"
@@ -45,6 +53,11 @@ export function BoardTweakPanel({ boardId, tweaks, previews }: BoardTweakPanelPr
         >
           {t('重置本板')}
         </Button>
+        {onApply && (
+          <Button size="sm" disabled={!overrides} onClick={() => overrides && onApply(overrides)}>
+            {applyText('应用参数…')}
+          </Button>
+        )}
       </div>
     </section>
   )
