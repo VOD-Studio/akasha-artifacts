@@ -2,8 +2,10 @@ import { PROTOCOL_VERSION } from '@akasha/protocol'
 import { Hono } from 'hono'
 import { ArtifactService, type ArtifactServiceDeps } from '../application/artifact-service.js'
 import { CheckService } from '../application/check-service.js'
+import { createHubSharing } from '../application/hub-sharing/service.js'
 import { SpecRegistry } from '../application/spec-registry.js'
 import type { ArtifactStorageRepository } from '../domain/artifact-storage.js'
+import type { HubSharingRepository } from '../domain/hub-sharing.js'
 import type { RealtimePublisher, RealtimeSubscriber } from '../domain/ports.js'
 import { CryptoIdGenerator, SystemClock } from '../infrastructure/storage/memory/index.js'
 import { createHttpApp } from '../interfaces/http/app.js'
@@ -16,7 +18,7 @@ export interface HubContainerOptions {
   repositories: Pick<
     ArtifactServiceDeps,
     'projects' | 'artifacts' | 'states' | 'rounds' | 'feedbacks' | 'receipts'
-  >
+  > & { sharing: HubSharingRepository }
   // 须同时支持发布与订阅
   realtime: RealtimePublisher & RealtimeSubscriber
   clock?: ArtifactServiceDeps['clock']
@@ -50,8 +52,23 @@ export function createHubContainer(options: HubContainerOptions) {
     clock,
     repositories.receipts,
     repositories.artifacts,
+    repositories.sharing,
   )
-  const access = createHubAccess(repositories.artifacts, auth, origin)
+  const sharing = createHubSharing({
+    repository: repositories.sharing,
+    artifacts: repositories.artifacts,
+    auth,
+    clock,
+    origin,
+    realtime,
+  })
+  const access = createHubAccess(
+    repositories.artifacts,
+    auth,
+    origin,
+    repositories.sharing,
+    sharing,
+  )
   const specs = new SpecRegistry()
   const core = createHttpApp({
     service,
@@ -74,13 +91,15 @@ export function createHubContainer(options: HubContainerOptions) {
     },
     artifactStorage: options.artifactStorage,
     storagePrincipal: async (request) => (await auth.authenticate(request))?.userId ?? null,
-    canReadFavorite: (request, artifactId) => access.authorizeArtifact(request, artifactId, 'read'),
+    filterVisibleFavorites: async (request, candidates) =>
+      access.listVisible(candidates, await auth.authenticate(request)),
   })
   const app = new Hono()
   mountHubGuard(app, {
     core,
     auth,
     access,
+    sharing,
     workspace: service.workspace,
     repositories,
     origin,

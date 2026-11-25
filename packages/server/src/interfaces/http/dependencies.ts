@@ -1,3 +1,4 @@
+import type { Artifact } from '@akasha/protocol'
 import type { AgentSessions } from '../../application/agent-sessions.js'
 import type { ArtifactService } from '../../application/artifact-service.js'
 import type { CheckService } from '../../application/check-service.js'
@@ -56,7 +57,10 @@ export interface HttpAppDeps {
   // 从请求解析制品存储的调用方身份；null 表示未登录。省略时视为本地单一用户
   storagePrincipal?: (request: Request) => Promise<string | null>
   // 收藏保留用户意愿，但列出时仍须检查当前权限；本地只验证制品仍存在。
-  canReadFavorite?: (request: Request, artifactId: string) => Promise<boolean>
+  filterVisibleFavorites?: (
+    request: Request,
+    candidates: readonly Artifact[],
+  ) => Promise<readonly Artifact[]>
   // 仅装配本机 CLI 的容器提供。
   agentSessions?: AgentSessions
 }

@@ -71,7 +71,7 @@ export function attachNodeWebSocket(
 
           const subscription: { unsubscribe?: () => void } = {}
           subscriptions.set(key, subscription)
-          function subscribe() {
+          const subscribe = () => {
             if (subscriptions.get(key) !== subscription || ws.readyState !== 1) return
             let queue = Promise.resolve()
             let pendingEvents = 0
@@ -93,12 +93,17 @@ export function attachNodeWebSocket(
                 queue = queue
                   .then(async () => {
                     if (subscriptions.get(key) !== subscription || ws.readyState !== 1) return
-                    if (
-                      (await authorize(request, scope, event)) &&
-                      subscriptions.get(key) === subscription &&
-                      ws.readyState === 1
-                    ) {
+                    const allowed = await authorize(request, scope, event)
+                    if (subscriptions.get(key) !== subscription || ws.readyState !== 1) return
+                    if (allowed) {
                       ws.send(JSON.stringify(event))
+                    } else if (
+                      scope.artifactId &&
+                      event.type === 'artifact.metadata' &&
+                      event.artifactId === scope.artifactId
+                    ) {
+                      // 仅已获准的单制品订阅能到达这里。撤权只发送关闭码，工作台随后丢弃旧缓存。
+                      ws.close(4403, '制品访问权限已变更')
                     }
                   })
                   .catch(() => {

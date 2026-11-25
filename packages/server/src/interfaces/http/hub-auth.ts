@@ -7,7 +7,18 @@ import {
 import type { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { z } from 'zod'
+import type {
+  HubIdentityAuthority,
+  HubPrincipal,
+  HubShareClaim,
+} from '../../application/hub-sharing/authority.js'
+import type { HubSharingRepository } from '../../domain/hub-sharing.js'
 import type { ArtifactRepository, Clock, ReceiptRepository } from '../../domain/ports.js'
+import { createGitHubDirectory } from './hub-sharing/github-directory.js'
+import { base64url, decodeBase64url } from './hub-sharing/identity-vault.js'
+import { createSignedLinks } from './hub-sharing/signed-links.js'
+
+export type { HubPrincipal, HubShareClaim } from '../../application/hub-sharing/authority.js'
 
 // __Host- 前缀要求 cookie 带 Secure、Path=/ 且不设 Domain，子域名无法覆盖这些 cookie
 const sessionCookie = '__Host-akasha_hub_session'
@@ -32,6 +43,8 @@ export interface HubOAuthOptions {
   team?: string
   // 按 GitHub login 放行的成员白名单，比较时不区分大小写
   allowlist?: readonly string[]
+  /** 只有数字 ID 匹配的浏览器登录者能管理分享策略；不因此获得作品内容。 */
+  adminIds?: readonly string[]
   // 缺省用全局 `fetch`；测试时可替换
   fetch?: typeof fetch
 }
@@ -64,6 +77,7 @@ const credentials = z.discriminatedUnion('kind', [
     entry: ArtifactShareEntrySchema.default({ kind: 'artifact' }),
     // 没有撤下过的旧签名仍使用代数 0；恢复不会回退代数。
     generation: z.number().int().nonnegative().default(0),
+    grantId: z.uuid().optional(),
   }),
   expires.extend({
     kind: z.literal('receipt'),
@@ -74,27 +88,13 @@ const credentials = z.discriminatedUnion('kind', [
 ])
 type Credential = z.infer<typeof credentials>
 
-/** 已校验签名、制品及到期时间的分享授权。 */
-export type HubShareClaim = Extract<Credential, { kind: 'share' }>
-
 /** 固定范围不依赖浏览器传来的路径或查询参数。 */
 export function fixedShareVersion(claim: HubShareClaim) {
   return claim.entry.kind === 'artifact' ? undefined : claim.entry.version
 }
-interface GitHubIdentity {
-  userId: string
-  login: string
-  member: boolean
-}
 
-/** 已通过鉴权的调用方身份。 */
-export interface HubPrincipal extends GitHubIdentity {
-  // session 来自浏览器 cookie，cli 来自 Bearer 令牌
-  kind: 'session' | 'cli'
-  // 是否为 Hub 成员；非成员只能读 public 制品
-}
-
-export interface HubAuth {
+/** 供 HTTP、CLI 和实时订阅共同使用的 Hub 鉴权入口。 */
+export interface HubAuth extends HubIdentityAuthority {
   /** 注册 `/auth/*` 登录路由与 CLI 令牌接口。 */
   mount(app: Hono): void
   /** 凭会话 cookie 或 Bearer 令牌识别调用方；Bearer 只接受 cli 凭证。 */
@@ -117,19 +117,6 @@ export interface HubAuth {
     token: string,
     principal: HubPrincipal,
   ): Promise<{ artifactId: string; receipt: string } | undefined>
-}
-
-function base64url(bytes: Uint8Array): string {
-  return btoa(String.fromCharCode(...bytes))
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replace(/=+$/, '')
-}
-
-function decodeBase64url(value: string): Uint8Array<ArrayBuffer> {
-  return Uint8Array.from(atob(value.replaceAll('-', '+').replaceAll('_', '/')), (c) =>
-    c.charCodeAt(0),
-  )
 }
 
 function random(): string {
@@ -176,6 +163,7 @@ export function createHubAuth(
   clock: Clock,
   receipts: ReceiptRepository,
   artifacts: ArtifactRepository,
+  sharing: HubSharingRepository,
 ): HubAuth {
   if (
     !options.clientId ||
@@ -185,8 +173,7 @@ export function createHubAuth(
     throw new Error('Hub 需要 GitHub OAuth 配置和至少 32 字节的签名密钥')
   }
   if (options.team && !options.organization) throw new Error('GitHub 团队配置需要同时设置组织')
-  const allowlist = new Set(options.allowlist?.map((login) => login.trim().toLowerCase()))
-  const fetchGithub = options.fetch ?? fetch
+  const directory = createGitHubDirectory(options, origin, sharing)
   const key = crypto.subtle.importKey(
     'raw',
     encoder.encode(options.signingSecret),
@@ -195,15 +182,16 @@ export function createHubAuth(
     ['sign', 'verify'],
   )
   const now = () => Math.floor(Date.parse(clock.now()) / 1000)
+  const links = createSignedLinks(sharing, artifacts.lifecycle, now)
 
   // 签名内容带上 origin，令牌换到别的 Hub 域名下即失效
-  async function sign(claim: Credential): Promise<string> {
+  const sign = async (claim: Credential): Promise<string> => {
     const payload = base64url(encoder.encode(JSON.stringify(claim)))
     const mac = await crypto.subtle.sign('HMAC', await key, encoder.encode(`${origin}\n${payload}`))
     return `${payload}.${base64url(new Uint8Array(mac))}`
   }
 
-  async function verify(token: string | undefined): Promise<Credential | undefined> {
+  const verify = async (token: string | undefined): Promise<Credential | undefined> => {
     if (!token || token.length > 4096 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/.test(token)) return
     const dot = token.indexOf('.')
     const payload = token.slice(0, dot)
@@ -224,45 +212,34 @@ export function createHubAuth(
     }
   }
 
-  async function authenticate(request: Request): Promise<HubPrincipal | undefined> {
+  const authenticate = async (request: Request): Promise<HubPrincipal | undefined> => {
     const bearer = request.headers.get('authorization')
     const credential = await verify(
       bearer ? /^Bearer (\S+)$/i.exec(bearer)?.[1] : cookie(request, sessionCookie),
     )
-    if (!credential || credential.kind !== (bearer ? 'cli' : 'session')) return
-    if (credential.kind === 'cli' || credential.kind === 'session') {
-      return {
-        kind: credential.kind,
-        userId: credential.userId,
-        login: credential.login,
-        member: credential.member,
-      }
-    }
+    if (credential?.kind !== 'cli' && credential?.kind !== 'session') return
+    if ((credential.kind === 'cli') !== Boolean(bearer)) return
+    return directory.authenticate(credential.userId, credential.kind)
   }
 
-  async function readShare(request: Request, artifactId: string, mode?: 'revocation') {
+  const readShare = async (request: Request, artifactId: string, mode?: 'revocation') => {
     if (request.headers.has('authorization')) return
     const claim = await verify(cookie(request, shareCookie(artifactId)))
     if (claim?.kind !== 'share' || claim.artifactId !== artifactId) return
-    if (
-      mode === 'revocation' ||
-      (await artifacts.lifecycle.activeShareGeneration(artifactId)) === claim.generation
-    )
-      return claim
+    return links.resolve(claim, mode)
   }
 
-  async function createShare(artifactId: string, { ttlSeconds, role, entry }: ArtifactShareInput) {
-    const generation = await artifacts.lifecycle.activeShareGeneration(artifactId)
-    if (generation === undefined) return
-    const exp = now() + ttlSeconds
-    const token = await sign({ kind: 'share', artifactId, role, entry, generation, exp })
+  const createShare = async (artifactId: string, input: ArtifactShareInput) => {
+    const claim = await links.issue(artifactId, input)
+    if (!claim) return
+    const token = await sign(claim)
     return {
       url: `${origin}/auth/share?token=${encodeURIComponent(token)}`,
-      expiresAt: new Date(exp * 1000).toISOString(),
+      expiresAt: new Date(claim.exp * 1000).toISOString(),
     }
   }
 
-  async function sealReceipt(principal: HubPrincipal, artifactId: string, receipt: string) {
+  const sealReceipt = async (principal: HubPrincipal, artifactId: string, receipt: string) => {
     return sign({
       kind: 'receipt',
       artifactId,
@@ -272,71 +249,21 @@ export function createHubAuth(
     })
   }
 
-  async function openReceipt(token: string, principal: HubPrincipal) {
+  const openReceipt = async (token: string, principal: HubPrincipal) => {
     const claim = await verify(token)
     return claim?.kind === 'receipt' && claim.userId === principal.userId ? claim : undefined
   }
 
-  // 成员资格：命中白名单，或是所配置组织（及团队）的活跃成员
-  async function githubIdentity(code: string) {
-    const tokenResponse = await fetchGithub('https://github.com/login/oauth/access_token', {
-      method: 'POST',
-      redirect: 'error',
-      headers: { accept: 'application/json', 'content-type': 'application/json' },
-      body: JSON.stringify({
-        client_id: options.clientId,
-        client_secret: options.clientSecret,
-        code,
-        redirect_uri: `${origin}/auth/github/callback`,
-      }),
-    })
-    if (!tokenResponse.ok) return
-    const token = z
-      .object({ access_token: z.string().min(1) })
-      .safeParse(await tokenResponse.json())
-    if (!token.success) return
-    const headers = {
-      accept: 'application/vnd.github+json',
-      authorization: `Bearer ${token.data.access_token}`,
-      'user-agent': 'akasha-hub',
-    }
-    const api = (path: string) =>
-      fetchGithub(`https://api.github.com${path}`, { headers, redirect: 'error' })
-    const response = await api('/user')
-    if (!response.ok) return
-    const user = z
-      .object({ id: z.number().int().positive(), login: z.string().regex(/^[A-Za-z0-9-]{1,39}$/) })
-      .safeParse(await response.json())
-    if (!user.success) return
-    const login = user.data.login.toLowerCase()
-    let member = allowlist.has(login)
-    if (!member && options.organization) {
-      const org = encodeURIComponent(options.organization)
-      const membership = await api(`/user/memberships/orgs/${org}`)
-      member =
-        membership.ok &&
-        z.object({ state: z.literal('active') }).safeParse(await membership.json()).success
-      if (member && options.team) {
-        const team = await api(
-          `/orgs/${org}/teams/${encodeURIComponent(options.team)}/memberships/${encodeURIComponent(login)}`,
-        )
-        member =
-          team.ok && z.object({ state: z.literal('active') }).safeParse(await team.json()).success
-      }
-    }
-    return { login, member, userId: String(user.data.id) }
-  }
-
-  function mount(app: Hono) {
+  const mount = (app: Hono) => {
     // 发起 GitHub OAuth：签一个带 nonce 的 state 存入 cookie，回调时比对
-    async function begin(next: string, challenge?: string) {
+    const begin = async (next: string, challenge?: string) => {
       const nonce = random()
       const state = await sign({ kind: 'state', nonce, next, challenge, exp: now() + stateTtl })
       const url = new URL('https://github.com/login/oauth/authorize')
       url.searchParams.set('client_id', options.clientId)
       url.searchParams.set('redirect_uri', `${origin}/auth/github/callback`)
       url.searchParams.set('state', nonce)
-      if (options.organization) url.searchParams.set('scope', 'read:org')
+      url.searchParams.set('scope', options.organization ? 'read:org user:email' : 'user:email')
       return new Response(null, {
         status: 302,
         headers: {
@@ -359,9 +286,9 @@ export function createHubAuth(
       if (state?.kind !== 'state' || c.req.query('state') !== state.nonce || !code) {
         return c.text('GitHub 登录请求已过期或无效', 400)
       }
-      let user: GitHubIdentity | undefined
+      let user: Omit<HubPrincipal, 'kind'> | undefined
       try {
-        user = await githubIdentity(code)
+        user = await directory.login(code)
       } catch {
         return c.text('无法完成 GitHub 登录', 502)
       }
@@ -404,34 +331,37 @@ export function createHubAuth(
       const challenge = base64url(
         new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(parsed.data.verifier))),
       )
-      if (challenge !== grant.challenge || !(await receipts.consume(`hub-cli:${grant.nonce}`))) {
+      if (challenge !== grant.challenge)
+        return c.json({ error: { code: 'UNAUTHORIZED', message: '授权码或登录证明已失效' } }, 401)
+      const current = await directory.authenticate(grant.userId, 'cli')
+      if (!current || !(await receipts.consume(`hub-cli:${grant.nonce}`))) {
         return c.json({ error: { code: 'UNAUTHORIZED', message: '授权码或登录证明已失效' } }, 401)
       }
       const exp = now() + cliTtl
       const token = await sign({
         kind: 'cli',
-        login: grant.login,
-        userId: grant.userId,
+        login: current.login,
+        userId: current.userId,
         member: true,
         exp,
       })
       return c.json({ token, expiresAt: new Date(exp * 1000).toISOString() })
     })
-    app.get('/api/v1/auth/session', async (c) =>
-      c.json({ user: (await authenticate(c.req.raw)) ?? null }),
-    )
+    app.get('/api/v1/auth/session', async (c) => {
+      const user = await authenticate(c.req.raw)
+      return c.json({
+        user: user ? { ...user, admin: directory.authority.isAdministrator(user) } : null,
+      })
+    })
     app.post('/api/v1/auth/logout', (c) => {
       c.header('set-cookie', cookieHeader(sessionCookie, '', 0))
       return c.json({ ok: true })
     })
     app.get('/auth/share', async (c) => {
       const token = c.req.query('token')
-      const claim = await verify(token)
-      if (
-        claim?.kind !== 'share' ||
-        !token ||
-        (await artifacts.lifecycle.activeShareGeneration(claim.artifactId)) !== claim.generation
-      ) {
+      const signed = await verify(token)
+      const claim = signed?.kind === 'share' ? await links.resolve(signed) : undefined
+      if (!claim || !token) {
         return c.text('分享链接无效或已过期', 404)
       }
       c.header('set-cookie', cookieHeader(shareCookie(claim.artifactId), token, claim.exp - now()))
@@ -446,5 +376,13 @@ export function createHubAuth(
     })
   }
 
-  return { mount, authenticate, readShare, createShare, sealReceipt, openReceipt }
+  return {
+    ...directory.authority,
+    mount,
+    authenticate,
+    readShare,
+    createShare,
+    sealReceipt,
+    openReceipt,
+  }
 }

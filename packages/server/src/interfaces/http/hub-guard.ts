@@ -5,10 +5,12 @@ import {
   ArtifactTransferInputSchema,
   PublicIdSchema,
 } from '@akasha/protocol'
-import type { Context, Hono } from 'hono'
+import type { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { z } from 'zod'
 import type { ArtifactWorkspaceRead } from '../../application/artifact-workspace-read.js'
+import type { HubSharing } from '../../application/hub-sharing/service.js'
+import type { HubSharingRepository } from '../../domain/hub-sharing.js'
 import type {
   ArtifactRepository,
   Clock,
@@ -17,35 +19,28 @@ import type {
   ProjectRepository,
 } from '../../domain/ports.js'
 import {
-  baseArtifactRole,
   type HubArtifactAccess,
   hubAuthor,
   hubProjectPrefix,
   ownsHubProject,
 } from './hub-access.js'
-import {
-  fixedShareVersion,
-  type HubAuth,
-  type HubPrincipal,
-  type HubShareClaim,
-  sameHubOrigin,
-} from './hub-auth.js'
-import {
-  canEditSharedArtifact,
-  matchesShareBoard,
-  sharedArtifactDetail,
-  visibleSharedDiscussion,
-} from './hub-share-policy.js'
+import { type HubAuth, sameHubOrigin } from './hub-auth.js'
+import { canEditSharedArtifact, matchesShareBoard } from './hub-share-policy.js'
+import { forbidden, hidden, invalid } from './hub-sharing/responses.js'
+import { mountHubSharing } from './hub-sharing/routes.js'
+import { serveSharedArtifact, sharedAuthor } from './hub-sharing/shared-artifact.js'
 
 interface HubGuardOptions {
   core: Hono
   auth: HubAuth
   access: HubArtifactAccess
+  sharing: HubSharing
   workspace: ArtifactWorkspaceRead
   repositories: {
     artifacts: ArtifactRepository
     projects: ProjectRepository
     feedbacks: FeedbackRepository
+    sharing: HubSharingRepository
   }
   origin: string
   clock: Clock
@@ -90,20 +85,6 @@ const roundAction = /^\/rounds\/[^/]+\/(?:submit|withdraw)$/
 const discussionAction = /^\/feedback\/([^/]+)\/(?:replies|resolve)$/
 const artifactPath = /^\/api\/v1\/artifacts\/([^/]+)(.*)$/
 
-// 无权访问与不存在统一返回 404，不泄露制品是否存在
-function hidden(c: Context) {
-  return c.json({ error: { code: 'NOT_FOUND', message: '未找到请求的资源' } }, 404)
-}
-
-function forbidden(c: Context, access?: HubPrincipal | HubShareClaim) {
-  return access
-    ? c.json({ error: { code: 'FORBIDDEN', message: '当前权限不允许此操作' } }, 403)
-    : c.json({ error: { code: 'UNAUTHORIZED', message: '请先登录 Hub' } }, 401)
-}
-
-function invalid(c: Context) {
-  return c.json({ error: { code: 'BAD_REQUEST', message: '请求参数无效' } }, 400)
-}
 function decodeSegment(segment: string): string {
   try {
     return decodeURIComponent(segment)
@@ -151,7 +132,7 @@ function rewrite(
  */
 export function mountHubGuard(
   app: Hono,
-  { core, auth, access, workspace, repositories, origin, clock, ids }: HubGuardOptions,
+  { core, auth, access, sharing, workspace, repositories, origin, clock, ids }: HubGuardOptions,
 ) {
   app.use('*', async (c, next) => {
     if (
@@ -166,6 +147,7 @@ export function mountHubGuard(
     await next()
   })
   auth.mount(app)
+  mountHubSharing(app, { auth, artifacts: repositories.artifacts, sharing })
   app.post('/api/v1/artifacts/:id/storage', bodyLimit({ maxSize: 128 * 1024, onError: invalid }))
 
   // 仅转发显式授权的路径；新增 core 路由默认不会在 Hub 暴露。
@@ -197,7 +179,7 @@ export function mountHubGuard(
       return c.json({ items })
     }
 
-    async function coreFeedback(scope: string, body?: Record<string, unknown>) {
+    const coreFeedback = async (scope: string, body?: Record<string, unknown>) => {
       const response = await core.fetch(rewrite(request, url, body))
       if (!response.ok || request.method === 'HEAD') return response
       const payload = jsonObject.parse(await response.json())
@@ -274,11 +256,7 @@ export function mountHubGuard(
     if (path === '/api/v1/artifacts') {
       if (read) {
         const artifacts = await repositories.artifacts.listByProject(projectQuery)
-        return c.json({
-          artifacts: artifacts.filter(
-            (artifact) => baseArtifactRole(artifact, principal) !== 'none',
-          ),
-        })
+        return c.json({ artifacts: await access.listVisible(artifacts, principal) })
       }
       if (method !== 'POST') return hidden(c)
       const body = ArtifactPublishInputSchema.safeParse(await readJson(request))
@@ -286,7 +264,8 @@ export function mountHubGuard(
       const project = body.data.project ?? defaultProject
       if (!project) return principal ? invalid(c) : forbidden(c)
       const existing = await repositories.artifacts.findBySlug(project, body.data.slug)
-      const grant = existing && (await access.share(request, existing, principal))
+      const decision = existing && (await access.decide(request, existing, principal))
+      const grant = decision?.grant
       if (grant && existing) {
         if (
           !canEditSharedArtifact(grant) ||
@@ -304,7 +283,7 @@ export function mountHubGuard(
             {
               baseVersion: body.data.baseVersion,
               source: body.data.source,
-              author: 'human:share',
+              author: sharedAuthor(grant),
             },
             'PATCH',
           ),
@@ -316,7 +295,7 @@ export function mountHubGuard(
         return ownsHubProject(principal, project)
           ? core.fetch(rewrite(request, url, publish))
           : hidden(c)
-      const role = baseArtifactRole(existing, principal)
+      const role = decision?.role
       if (role === 'owner') return core.fetch(rewrite(request, url, publish))
       if (role !== 'editor') return hidden(c)
       if (publish.visibility !== undefined && publish.visibility !== existing.visibility)
@@ -336,7 +315,7 @@ export function mountHubGuard(
       if (id) {
         const artifact = await access.resolve(id, projectQuery, principal)
         if (!artifact) return hidden(c)
-        const role = await access.role(request, artifact, principal)
+        const { role } = await access.decide(request, artifact, principal)
         if (role === 'none' || role === 'share') return hidden(c)
         url.searchParams.set('id', artifact.publicId)
         if (role !== 'owner' && role !== 'editor') url.searchParams.set('includeDrafts', 'false')
@@ -366,7 +345,7 @@ export function mountHubGuard(
         typeof body.project === 'string' ? body.project : undefined,
         principal,
       )
-      if (!artifact || baseArtifactRole(artifact, principal) !== 'owner') return hidden(c)
+      if (!artifact || !ownsHubProject(principal, artifact.projectId)) return hidden(c)
       return coreFeedback(artifact.publicId, { ...body, id: artifact.publicId })
     }
 
@@ -381,7 +360,7 @@ export function mountHubGuard(
         if (!ownsHubProject(principal, signed.artifactId.slice('project:'.length))) return hidden(c)
       } else {
         const artifact = await repositories.artifacts.findByPublicId(signed.artifactId)
-        if (!artifact || baseArtifactRole(artifact, principal) !== 'owner') return hidden(c)
+        if (!artifact || !ownsHubProject(principal, artifact.projectId)) return hidden(c)
       }
       return core.fetch(rewrite(request, url, { ...body, receipt: signed.receipt }))
     }
@@ -441,95 +420,23 @@ export function mountHubGuard(
           : undefined
         : await access.resolve(id, project, principal)
     if (!artifact) return hidden(c)
-    const grant = await access.share(request, artifact, principal)
-    const role = grant ? 'share' : baseArtifactRole(artifact, principal)
+    const { grant, role } = await access.decide(request, artifact, principal)
     if (role === 'none') return hidden(c)
     const writer = role === 'owner' || role === 'editor'
     url.pathname = `/api/v1/artifacts/${artifact.publicId}${suffix}`
 
     if (grant) {
-      const fixed = fixedShareVersion(grant)
-      const rawVersion = url.searchParams.get('version')
-      if (fixed !== undefined && rawVersion !== null && rawVersion !== String(fixed))
-        return hidden(c)
-      if (read) {
-        if (suffix === '/management') return c.json({ canManage: false })
-        if (suffix === '/visual-edit' && canEditSharedArtifact(grant))
-          return core.fetch(rewrite(request, url))
-        if (suffix === '/versions') {
-          if (url.searchParams.get('view') === 'metadata') {
-            const versions = await repositories.artifacts.getVersionSummaries(
-              artifact.publicId,
-              fixed,
-            )
-            return fixed === undefined || versions.length ? c.json({ versions }) : hidden(c)
-          }
-          const versions =
-            fixed === undefined
-              ? await repositories.artifacts.getVersions(artifact.publicId)
-              : [await repositories.artifacts.getVersion(artifact.publicId, fixed)]
-          return versions.every(Boolean) ? c.json({ versions }) : hidden(c)
-        }
-        if (suffix === '') {
-          if (rawVersion !== null && !/^[1-9]\d*$/.test(rawVersion)) return invalid(c)
-          const number = fixed ?? (rawVersion === null ? artifact.headVersion : Number(rawVersion))
-          if (url.searchParams.get('view') === 'canvas') {
-            const entry = await workspace.getVersion(artifact, number)
-            if (!entry) return hidden(c)
-            return c.json({
-              ...sharedArtifactDetail(artifact, entry.version, grant),
-              ...(entry.canvas ? { canvas: entry.canvas } : {}),
-            })
-          }
-          const version = await repositories.artifacts.getVersion(artifact.publicId, number)
-          return version ? c.json(sharedArtifactDetail(artifact, version, grant)) : hidden(c)
-        }
-        if (suffix === '/boards') return core.fetch(rewrite(request, url))
-        if (suffix !== '/feedback') return hidden(c)
-        const feedbacks = repositories.feedbacks
-        const items = (await feedbacks.listForReview(artifact.publicId, false)).filter((item) =>
-          visibleSharedDiscussion(item, grant),
-        )
-        const threads = await feedbacks.annotations.list(artifact.publicId, false)
-        return c.json({
-          items: await workspace.resolveLegacyFeedback(artifact, items),
-          threads: Object.fromEntries(
-            items.flatMap(({ id }) => (threads[id] ? [[id, threads[id]]] : [])),
-          ),
-        })
-      }
-      if (
-        (method === 'PATCH' && !suffix) ||
-        suffix === '/revert' ||
-        suffix === '/visual-edit/preview'
-      ) {
-        return canEditSharedArtifact(grant)
-          ? core.fetch(rewrite(request, url, { ...body, title: undefined, author: 'human:share' }))
-          : forbidden(c, grant)
-      }
-      if (grant.role === 'view' || (suffix !== '/feedback' && !discussion))
-        return forbidden(c, grant)
-      if (suffix === '/feedback') {
-        if (fixed !== undefined && body?.version !== fixed) return hidden(c)
-        if (
-          body?.kind !== 'comment' ||
-          body.audience === 'agent' ||
-          body.roundId != null ||
-          body.groupId != null
-        )
-          return forbidden(c, grant)
-        return core.fetch(
-          rewrite(request, url, { ...body, author: 'human:share', audience: 'human' }),
-        )
-      }
-      const item = discussion?.[1]
-        ? await repositories.feedbacks.findById(decodeSegment(discussion[1]))
-        : undefined
-      if (!item || item.artifactId !== artifact.publicId || !visibleSharedDiscussion(item, grant))
-        return hidden(c)
-      return core.fetch(
-        rewrite(request, url, { ...body, includeDrafts: false, author: 'human:share' }),
-      )
+      return serveSharedArtifact(c, {
+        artifact,
+        grant,
+        suffix,
+        discussion,
+        body,
+        url,
+        workspace,
+        repositories,
+        forward: (data) => core.fetch(rewrite(request, url, data)),
+      })
     }
 
     const canManage = role === 'owner' && principal?.kind === 'session'
@@ -567,7 +474,7 @@ export function mountHubGuard(
           return hidden(c)
       }
       const signed = await auth.createShare(artifact.publicId, parsed.data)
-      return signed ? c.json(signed, 201) : hidden(c)
+      return signed ? c.json(signed, 201) : forbidden(c, principal)
     }
     if (suffix === '/storage') {
       const operation = storageAccess.safeParse(body)
@@ -586,6 +493,14 @@ export function mountHubGuard(
         if (!writer) url.searchParams.set('includeDrafts', 'false')
       }
       const response = await core.fetch(rewrite(request, url))
+      if (
+        role === 'owner' &&
+        !suffix &&
+        method === 'GET' &&
+        response.ok &&
+        (await repositories.sharing.getScope(artifact.publicId)).restricted
+      )
+        return c.json({ ...jsonObject.parse(await response.json()), hubRestricted: true })
       return role === 'owner' ||
         (await access.authorizeArtifact(request, artifact.publicId, 'read'))
         ? response

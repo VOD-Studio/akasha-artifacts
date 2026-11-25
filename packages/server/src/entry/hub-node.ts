@@ -87,6 +87,8 @@ export async function startNodeHub(options: NodeHubOptions) {
     }
     app.get('/', (c) => c.html(shell, 200, headers))
     app.get('/a/*', (c) => c.html(shell, 200, headers))
+    app.get('/invite/:id', (c) => c.html(shell, 200, headers))
+    app.get('/admin/sharing/:id', (c) => c.html(shell, 200, headers))
 
     const server = serve({ fetch: app.fetch, hostname: options.host, port: options.port })
     injectWebSocket(server)

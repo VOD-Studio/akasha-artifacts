@@ -127,6 +127,8 @@ export type ArtifactWorkspaceDetail = WorkspaceVersion & {
   state: StateStreamSnapshot
   rounds: readonly ReviewRound[]
   access?: ArtifactSharedAccess
+  /** 受控设计的所有者也留在 Hub 工作区；个人预览才探测本机副本。 */
+  hubRestricted?: true
 }
 
 /** 复制固定快照或把原制品移动到当前服务内已登记的项目。 */
