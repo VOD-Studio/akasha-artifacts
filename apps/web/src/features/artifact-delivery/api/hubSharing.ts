@@ -1,8 +1,19 @@
 import type { ArtifactShareInput, HubArtifactSharing, HubInviteInput } from '@akasha/protocol'
+import type { QueryClient } from '@tanstack/react-query'
+import { artifactKeys } from '@/entities/artifact'
 import { requestJson } from '@/shared/api/request'
 
 /** 分享角色：仅查看、可批注或可编辑最新版本。 */
 export type HubShareRole = ArtifactShareInput['role']
+
+/** 同一作品的写操作共用 mutation key；即使表单已卸载，也等授权清单刷新后再接受下一次操作。 */
+export function hubSharingMutationOptions(client: QueryClient, artifactId: string) {
+  const mutationKey = artifactKeys.sharing(artifactId)
+  return {
+    mutationKey,
+    onSettled: () => client.invalidateQueries({ queryKey: mutationKey }),
+  }
+}
 
 /** 新建邀请的回执；`url` 是可直接外发的 `/invite/<id>` 绝对地址。 */
 export interface HubInvitation {

@@ -8,7 +8,7 @@ import type {
 import { Button } from '@akasha/ui/button'
 import { ConfirmDialog } from '@akasha/ui/confirm-dialog'
 import { Modal } from '@akasha/ui/dialog'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { artifactKeys } from '@/entities/artifact'
 import { ApiError, getRequestErrorMessage } from '@/shared/api/error'
@@ -18,6 +18,7 @@ import {
   changeHubGrantRole,
   fetchHubArtifactSharing,
   type HubShareRole,
+  hubSharingMutationOptions,
   restrictHubSharingToOwner,
   revokeHubGrant,
 } from '../api/hubSharing'
@@ -49,6 +50,8 @@ export function ArtifactShareDialog({
 }: ArtifactShareDialogProps) {
   const { t } = useMessages(messages)
   const client = useQueryClient()
+  const writes = hubSharingMutationOptions(client, artifact.publicId)
+  const saving = useIsMutating({ mutationKey: writes.mutationKey }) > 0
   const sharing = useQuery({
     queryKey: artifactKeys.sharing(artifact.publicId),
     queryFn: () => fetchHubArtifactSharing(artifact.publicId),
@@ -58,23 +61,34 @@ export function ArtifactShareDialog({
   const [revoking, setRevoking] = useState<RevokingGrant | null>(null)
   const [restricting, setRestricting] = useState(false)
 
-  const refresh = () => {
-    void client.invalidateQueries({ queryKey: artifactKeys.sharing(artifact.publicId) })
-  }
+  const isSaving = () => client.isMutating({ mutationKey: writes.mutationKey }) > 0
 
   const roleChange = useMutation({
+    ...writes,
     mutationFn: ({ grantId, role }: { grantId: string; role: HubShareRole }) =>
       changeHubGrantRole(artifact.publicId, grantId, role),
   })
   const revoke = useMutation({
+    ...writes,
     mutationFn: (grantId: string) => revokeHubGrant(artifact.publicId, grantId),
+    onSuccess: (_, grantId) => {
+      client.setQueryData<HubArtifactSharing>(writes.mutationKey, (current) =>
+        current ? { ...current, grants: current.grants.filter((g) => g.id !== grantId) } : current,
+      )
+    },
   })
   const restrict = useMutation({
+    ...writes,
     mutationFn: () => restrictHubSharingToOwner(artifact.publicId),
+    onSuccess: () => {
+      client.setQueryData<HubArtifactSharing>(writes.mutationKey, (current) =>
+        current ? { ...current, restricted: true, grants: [] } : current,
+      )
+    },
   })
 
   const commitRole = (grantId: string, role: HubShareRole) => {
-    if (roleChange.isPending || revoke.isPending || restrict.isPending) return
+    if (isSaving()) return
     // 乐观更新缓存里的角色；失败后由失效重取回滚，成功后由重取确认。
     client.setQueryData<HubArtifactSharing>(artifactKeys.sharing(artifact.publicId), (current) =>
       current
@@ -86,32 +100,26 @@ export function ArtifactShareDialog({
           }
         : current,
     )
-    roleChange.mutate({ grantId, role }, { onSettled: refresh })
+    roleChange.mutate({ grantId, role })
   }
 
   const revokeGrant = () => {
-    if (!revoking || revoke.isPending) return
+    if (!revoking || isSaving()) return
     revoke.mutate(revoking.grant.id, {
-      onSuccess: () => {
-        setRevoking(null)
-        refresh()
-      },
+      onSuccess: () => setRevoking(null),
     })
   }
 
   const restrictToOwner = () => {
-    if (restrict.isPending) return
+    if (isSaving()) return
     restrict.mutate(undefined, {
-      onSuccess: () => {
-        setRestricting(false)
-        refresh()
-      },
+      onSuccess: () => setRestricting(false),
     })
   }
 
   const closeLinkDialog = () => {
     setLinkOpen(false)
-    refresh()
+    void client.invalidateQueries({ queryKey: artifactKeys.sharing(artifact.publicId) })
   }
 
   const rowError = roleChange.error
@@ -141,6 +149,7 @@ export function ArtifactShareDialog({
           <>
             <Button
               variant="ghost"
+              disabled={saving}
               onClick={() => {
                 restrict.reset()
                 setRestricting(true)
@@ -149,7 +158,7 @@ export function ArtifactShareDialog({
               {t('仅本人可访问')}
             </Button>
             {data.policy.externalLinks ? (
-              <Button variant="outline" onClick={() => setLinkOpen(true)}>
+              <Button variant="outline" disabled={saving} onClick={() => setLinkOpen(true)}>
                 {t('创建链接')}
               </Button>
             ) : null}
@@ -194,22 +203,20 @@ export function ArtifactShareDialog({
               </p>
             ) : null}
           </div>
-          <HubShareGrants
-            grants={data.grants}
-            organization={data.organization}
-            pendingGrantId={pendingGrantId}
-            error={rowError}
-            onRoleChange={commitRole}
-            onRevoke={(grant, target) => {
-              revoke.reset()
-              setRevoking({ grant, target })
-            }}
-          />
-          <HubInviteForm
-            artifactId={artifact.publicId}
-            organization={data.organization}
-            policy={data.policy}
-          />
+          <fieldset disabled={saving} className="min-w-0">
+            <HubShareGrants
+              grants={data.grants}
+              organization={data.organization}
+              pendingGrantId={pendingGrantId}
+              error={rowError}
+              onRoleChange={commitRole}
+              onRevoke={(grant, target) => {
+                revoke.reset()
+                setRevoking({ grant, target })
+              }}
+            />
+          </fieldset>
+          <HubInviteForm artifactId={artifact.publicId} sharing={data} saving={saving} />
         </div>
       ) : null}
       {linkOpen ? (
@@ -217,6 +224,7 @@ export function ArtifactShareDialog({
           artifact={artifact}
           version={version}
           canvas={canvas}
+          saving={saving}
           onClose={closeLinkDialog}
         />
       ) : null}

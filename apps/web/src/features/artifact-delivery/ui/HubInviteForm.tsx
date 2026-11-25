@@ -6,10 +6,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { type FormEvent, useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { artifactKeys } from '@/entities/artifact'
 import { getRequestErrorMessage } from '@/shared/api/error'
 import { useMessages } from '@/shared/i18n'
-import { createHubInvitation, type HubShareRole } from '../api/hubSharing'
+import {
+  createHubInvitation,
+  type HubShareRole,
+  hubSharingMutationOptions,
+} from '../api/hubSharing'
 import { messages } from '../owner-sharing.messages'
 
 /** 有效期两档：一天与协议上限一周。 */
@@ -18,15 +21,17 @@ const TTL_LONG = 7 * 24 * 60 * 60
 
 interface HubInviteFormProps {
   artifactId: string
-  organization: string | null
-  /** Hub 的外发策略；停用外部邮箱时提示只接受已验证的成员邮箱。 */
-  policy: HubArtifactSharing['policy']
+  /** 只有最新授权清单中仍存在的邀请才可继续复制。 */
+  sharing: HubArtifactSharing
+  saving: boolean
 }
 
 /** 所有者创建定向邀请：点名成员、邮箱、组织或团队；创建后给出可复制的邀请地址。 */
-export function HubInviteForm({ artifactId, organization, policy }: HubInviteFormProps) {
+export function HubInviteForm({ artifactId, sharing, saving }: HubInviteFormProps) {
+  const { organization, policy, grants } = sharing
   const { t, date } = useMessages(messages)
   const client = useQueryClient()
+  const writes = hubSharingMutationOptions(client, artifactId)
   const [kind, setKind] = useState<HubInviteTarget['kind']>('member')
   const [login, setLogin] = useState('')
   const [email, setEmail] = useState('')
@@ -36,16 +41,17 @@ export function HubInviteForm({ artifactId, organization, policy }: HubInviteFor
   const [copying, setCopying] = useState(false)
   const [copied, setCopied] = useState(false)
   const invite = useMutation({
+    ...writes,
     mutationFn: (input: HubInviteInput) => createHubInvitation(artifactId, input),
     onSuccess: () => {
-      void client.invalidateQueries({ queryKey: artifactKeys.sharing(artifactId) })
       if (kind === 'member') setLogin('')
       if (kind === 'email') setEmail('')
       if (kind === 'group') setSlug('')
       setCopied(false)
     },
   })
-  const issued = invite.data
+  const receipt = invite.data
+  const issued = receipt && grants.some((grant) => grant.id === receipt.id) ? receipt : undefined
 
   // 组织配置在重取后可能消失；及时回到可用目标，避免提交旧的组织或团队目标。
   useEffect(() => {
@@ -86,12 +92,14 @@ export function HubInviteForm({ artifactId, organization, policy }: HubInviteFor
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const target = buildTarget()
-    if (!target || invite.isPending) return
+    if (!target || client.isMutating({ mutationKey: writes.mutationKey })) return
     invite.mutate({ target, role, ttlSeconds: ttl })
   }
 
   const copyLink = async () => {
-    if (!issued || copying) return
+    if (!issued || copying || client.isMutating({ mutationKey: writes.mutationKey })) return
+    const latest = client.getQueryData<HubArtifactSharing>(writes.mutationKey)
+    if (!latest?.grants.some((grant) => grant.id === issued.id)) return
     setCopying(true)
     try {
       await navigator.clipboard.writeText(issued.url)
@@ -106,7 +114,7 @@ export function HubInviteForm({ artifactId, organization, policy }: HubInviteFor
   return (
     <form className="space-y-3" onSubmit={submit}>
       <Field label={t('邀请对象')}>
-        <Select value={kind} disabled={invite.isPending} onValueChange={selectKind}>
+        <Select value={kind} disabled={saving} onValueChange={selectKind}>
           <SelectTrigger className="w-full">
             <SelectValue />
           </SelectTrigger>
@@ -125,7 +133,7 @@ export function HubInviteForm({ artifactId, organization, policy }: HubInviteFor
           <Input
             value={login}
             onChange={(event) => setLogin(event.currentTarget.value)}
-            disabled={invite.isPending}
+            disabled={saving}
             autoComplete="off"
           />
         </Field>
@@ -139,7 +147,7 @@ export function HubInviteForm({ artifactId, organization, policy }: HubInviteFor
             type="email"
             value={email}
             onChange={(event) => setEmail(event.currentTarget.value)}
-            disabled={invite.isPending}
+            disabled={saving}
             autoComplete="off"
           />
         </Field>
@@ -149,7 +157,7 @@ export function HubInviteForm({ artifactId, organization, policy }: HubInviteFor
           <Input
             value={slug}
             onChange={(event) => setSlug(event.currentTarget.value)}
-            disabled={invite.isPending}
+            disabled={saving}
             autoComplete="off"
           />
         </Field>
@@ -160,7 +168,7 @@ export function HubInviteForm({ artifactId, organization, policy }: HubInviteFor
         </p>
       ) : null}
       <Field label={t('被邀请者权限')}>
-        <Select value={role} disabled={invite.isPending} onValueChange={selectRole}>
+        <Select value={role} disabled={saving} onValueChange={selectRole}>
           <SelectTrigger className="w-full">
             <SelectValue />
           </SelectTrigger>
@@ -174,7 +182,7 @@ export function HubInviteForm({ artifactId, organization, policy }: HubInviteFor
       <Field label={t('有效期')}>
         <Select
           value={ttl === TTL_LONG ? 'long' : 'short'}
-          disabled={invite.isPending}
+          disabled={saving}
           onValueChange={selectTtl}
         >
           <SelectTrigger className="w-full">
@@ -186,7 +194,7 @@ export function HubInviteForm({ artifactId, organization, policy }: HubInviteFor
           </SelectContent>
         </Select>
       </Field>
-      <Button type="submit" loading={invite.isPending} disabled={valueEmpty}>
+      <Button type="submit" loading={invite.isPending} disabled={valueEmpty || saving}>
         {t('邀请')}
       </Button>
       {invite.error ? (
@@ -213,7 +221,13 @@ export function HubInviteForm({ artifactId, organization, policy }: HubInviteFor
                 }),
               })}
             </p>
-            <Button variant="outline" size="sm" loading={copying} onClick={() => void copyLink()}>
+            <Button
+              variant="outline"
+              size="sm"
+              loading={copying}
+              disabled={saving}
+              onClick={() => void copyLink()}
+            >
               {copied ? t('已复制') : t('复制链接')}
             </Button>
           </div>

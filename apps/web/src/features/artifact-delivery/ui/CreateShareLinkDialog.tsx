@@ -10,7 +10,7 @@ import { Modal } from '@akasha/ui/dialog'
 import { Field } from '@akasha/ui/field'
 import { Input } from '@akasha/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { type FormEvent, useId, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
@@ -22,6 +22,7 @@ import {
 } from '@/entities/artifact'
 import { getRequestErrorMessage } from '@/shared/api/error'
 import { useMessages } from '@/shared/i18n'
+import { hubSharingMutationOptions } from '../api/hubSharing'
 import { messages } from '../messages'
 
 interface CreateShareLinkDialogProps {
@@ -29,6 +30,7 @@ interface CreateShareLinkDialogProps {
   /** 签发时使用打开面板时已经读到的快照；不跟随后台更新。 */
   version: VersionSummary
   canvas?: ArtboardIndex
+  saving: boolean
   onClose: () => void
 }
 
@@ -47,9 +49,12 @@ export function CreateShareLinkDialog({
   artifact,
   version,
   canvas,
+  saving,
   onClose,
 }: CreateShareLinkDialogProps) {
   const { t, date } = useMessages(messages)
+  const client = useQueryClient()
+  const writes = hubSharingMutationOptions(client, artifact.publicId)
   const formId = useId()
   const [role, setRole] = useState<ArtifactShareInput['role']>('view')
   const [entryKind, setEntryKind] = useState<ArtifactShareEntry['kind']>('artifact')
@@ -81,6 +86,7 @@ export function CreateShareLinkDialog({
     )
   }, [artifact.type, canvas, version])
   const share = useMutation({
+    ...writes,
     mutationFn: (input: ArtifactShareInput) => createArtifactShare(artifact.publicId, input),
   })
   const issued = share.data
@@ -100,7 +106,8 @@ export function CreateShareLinkDialog({
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (entry && !share.isPending) share.mutate({ role, entry, ttlSeconds: 24 * 60 * 60 })
+    if (!entry || client.isMutating({ mutationKey: writes.mutationKey })) return
+    share.mutate({ role, entry, ttlSeconds: 24 * 60 * 60 })
   }
 
   const copyLink = async () => {
@@ -132,7 +139,12 @@ export function CreateShareLinkDialog({
             </Button>
           )}
           {!issued && (
-            <Button type="submit" form={formId} loading={share.isPending} disabled={!entry}>
+            <Button
+              type="submit"
+              form={formId}
+              loading={share.isPending}
+              disabled={!entry || saving}
+            >
               {t('创建链接')}
             </Button>
           )}
@@ -159,7 +171,7 @@ export function CreateShareLinkDialog({
       {!issued && (
         <form id={formId} className="space-y-3" onSubmit={submit}>
           <Field label={t('持链接者权限')}>
-            <Select value={role} disabled={share.isPending} onValueChange={selectRole}>
+            <Select value={role} disabled={saving} onValueChange={selectRole}>
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
@@ -173,7 +185,7 @@ export function CreateShareLinkDialog({
             </Select>
           </Field>
           <Field label={t('打开位置')}>
-            <Select value={entryKind} disabled={share.isPending} onValueChange={selectEntry}>
+            <Select value={entryKind} disabled={saving} onValueChange={selectEntry}>
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
@@ -194,7 +206,7 @@ export function CreateShareLinkDialog({
             <Field label={t('画板')}>
               <Select
                 value={String(boardIndex)}
-                disabled={share.isPending}
+                disabled={saving}
                 onValueChange={(value) => setBoardIndex(Number(value))}
               >
                 <SelectTrigger className="w-full">
