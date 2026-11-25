@@ -8,8 +8,8 @@ import {
 } from '@akasha/kit'
 import { DATA_POINT_SELECTION_LIMITS, type ElementRef } from '@akasha/protocol'
 import { useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import type { RendererProps } from '../registry'
 import { annotationAnchor, DecisionSourceError, useDecisionRendered } from './decision-shared'
-import type { RendererProps } from './registry'
 
 type Dataset = DataStoryData['datasets'][number]
 type Annotation = NonNullable<RendererProps['onRequestAnnotation']>

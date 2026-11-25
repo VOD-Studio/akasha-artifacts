@@ -5,7 +5,7 @@ import mermaid from 'mermaid'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SandboxApp } from '../src/App'
 import { parseSandboxHash, SandboxBridgeClient } from '../src/bridge/client'
-import * as capturePng from '../src/capture-png'
+import * as capturePng from '../src/capture/png'
 import { PreservedStateManager } from '../src/state/preserve'
 import { ArtifactStateStore } from '../src/state/store'
 

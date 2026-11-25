@@ -1,6 +1,6 @@
 import { DESIGN_LAYER_BLOCK_PREFIX, type DesignLayer } from '@akasha/protocol'
 import type { CSSProperties } from 'react'
-import { bindDesignLayer } from '../inspector/layers'
+import { bindDesignLayer } from '../../inspector/layers'
 
 const palette = {
   ink: { foreground: '#202733', surface: '#dce2eb' },

@@ -1,4 +1,4 @@
-import { createSmilLoops, smilElements, smilTimeline } from './overview-smil'
+import { createSmilLoops, smilElements, smilTimeline } from './smil'
 
 /** 同步新增时间轴。`resume` 释放本次总览控制，不替作者启动动画。 */
 export interface OverviewMotion {

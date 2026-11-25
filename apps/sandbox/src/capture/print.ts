@@ -1,7 +1,7 @@
 import { type ArtboardPrintLayout, getArtboardPaperSize } from '@akasha/protocol'
 import { toSvg } from 'html-to-image'
-import { waitForCaptureResources, waitForCaptureStep } from './capture-png'
-import { pauseOverviewMotion } from './overview-motion'
+import { pauseOverviewMotion } from '../overview/motion'
+import { waitForCaptureResources, waitForCaptureStep } from './resources'
 
 type Paper = Extract<ArtboardPrintLayout, { mode: 'flow' }>['paper']
 interface PrintPage {

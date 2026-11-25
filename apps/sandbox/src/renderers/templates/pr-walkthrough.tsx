@@ -6,8 +6,8 @@ import {
   type WalkthroughLine,
 } from '@akasha/kit'
 import { useMemo, useSyncExternalStore } from 'react'
+import type { RendererProps } from '../registry'
 import { annotationAnchor, DecisionSourceError, useDecisionRendered } from './decision-shared'
-import type { RendererProps } from './registry'
 
 type Side = 'old' | 'new'
 type SideBySideRow = { old?: WalkthroughLine; new?: WalkthroughLine }

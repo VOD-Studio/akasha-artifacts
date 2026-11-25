@@ -1,5 +1,5 @@
-import { embeddedBitmapKind, embeddedBitmapPoster } from './preview-bitmap-format'
-import { rewriteCssImages, rewriteImageSrcset } from './preview-css-images'
+import { embeddedBitmapKind, embeddedBitmapPoster } from './bitmap-format'
+import { rewriteCssImages, rewriteImageSrcset } from './css-images'
 
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
 const PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
