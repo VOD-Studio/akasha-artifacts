@@ -23,6 +23,7 @@ import {
   useStackedScrim,
   useTrackClicks,
 } from '../../lib/modal-opener'
+import { useUiLocale } from '../../locale'
 import { Button } from '../button'
 import { hideOrigin, morph, morphOrigin, returnOrigin } from './morph'
 
@@ -214,6 +215,7 @@ function DialogContent({
   ...props
 }: DialogContentProps) {
   const { open, modal, trigger, dirtyRef } = useDialogContext('DialogContent')
+  const { labels } = useUiLocale()
   const stacked = useStackedScrim(open && modal)
   const contentRef = useRef<HTMLDivElement | null>(null)
   const openerRef = useRef<Opener>({ clicked: null, focus: null })
@@ -314,7 +316,7 @@ function DialogContent({
                 iconOnly
                 size="sm"
                 className="v-dialog__close"
-                aria-label="关闭"
+                aria-label={labels.close}
               >
                 <XIcon aria-hidden="true" />
               </Button>
@@ -405,6 +407,7 @@ function DialogBody({ ref, className, ...props }: ComponentProps<'div'>) {
 /** 底栏：按钮右对齐、主按钮在最右；有未保存的修改时换成「要放弃吗」的询问。 */
 function DialogFooter({ className, children, ...props }: ComponentProps<'div'>) {
   const { guarding, keepEditing, discard } = useDialogContext('DialogFooter')
+  const { labels } = useUiLocale()
   const statusId = useId()
   const keepRef = useRef<HTMLButtonElement>(null)
 
@@ -418,7 +421,7 @@ function DialogFooter({ className, children, ...props }: ComponentProps<'div'>) 
       {guarding ? (
         <Fragment key="guard">
           <span id={statusId} role="status" className="v-dialog__guard">
-            有未保存的修改，要放弃吗？
+            {labels.discardQuestion}
           </span>
           <Button
             ref={keepRef}
@@ -426,10 +429,10 @@ function DialogFooter({ className, children, ...props }: ComponentProps<'div'>) 
             aria-describedby={statusId}
             onClick={keepEditing}
           >
-            继续编辑
+            {labels.keep}
           </Button>
           <Button variant="secondary" className="v-dialog__discard" onClick={discard}>
-            放弃修改
+            {labels.discard}
           </Button>
         </Fragment>
       ) : (

@@ -1,5 +1,6 @@
 import { CircleAlert } from 'lucide-react'
 import { type ReactNode, useId, useRef, useState } from 'react'
+import { useUiLocale } from '../../locale'
 import { Button } from '../button'
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from '../dialog'
 import { Label } from '../field'
@@ -47,16 +48,19 @@ export function ConfirmDialog({
   onOpenChange,
   title,
   description,
-  confirmLabel = '确认',
-  cancelLabel = '取消',
+  confirmLabel: confirmTextLabel,
+  cancelLabel: cancelTextLabel,
   loading = false,
-  loadingLabel = `正在${confirmLabel}…`,
+  loadingLabel,
   error,
   confirmText,
   destructive = true,
   onConfirm,
   container,
 }: ConfirmDialogProps) {
+  const { labels } = useUiLocale()
+  const confirmLabel = confirmTextLabel ?? labels.confirm
+  const cancelLabel = cancelTextLabel ?? labels.cancel
   const cancelRef = useRef<HTMLButtonElement>(null)
   const fieldId = useId()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -111,9 +115,7 @@ export function ConfirmDialog({
         )}
         {confirmText !== undefined && (
           <div className="v-confirm__field">
-            <Label htmlFor={fieldId}>
-              输入 <b>{confirmText}</b> 继续
-            </Label>
+            <Label htmlFor={fieldId}>{labels.typeToConfirm(<b dir="auto">{confirmText}</b>)}</Label>
             <Input
               ref={inputRef}
               id={fieldId}
@@ -151,14 +153,14 @@ export function ConfirmDialog({
           <Button
             variant={destructive ? 'destructive' : 'primary'}
             loading={loading}
-            loadingText={loadingLabel}
+            loadingText={loadingLabel ?? labels.pending(confirmLabel)}
             aria-disabled={!matched || undefined}
             onClick={confirm}
           >
             {confirmLabel}
           </Button>
         </div>
-        {nudged && <p className="v-confirm__hint">点遮罩不会关闭，按 Esc 或点「{cancelLabel}」</p>}
+        {nudged && <p className="v-confirm__hint">{labels.dismissedOutside(cancelLabel)}</p>}
       </DialogContent>
     </Dialog>
   )

@@ -35,6 +35,22 @@ const FLASH_MS = 140
 const ENTER_MS = 400
 const STAGGER_COUNT = 8
 
+const defaultLabels = {
+  title: '命令面板',
+  searching: '正在搜索全文',
+  results: '结果',
+  fullText: '全文',
+  empty: '没有找到结果',
+  tryFullText: '试试在全文里搜索。',
+  tryKeywords: '试试其他关键词。',
+  searchAll: '在全文里搜索',
+  select: '选择',
+  open: '打开',
+  newTab: '新标签打开',
+  searchWithin: (label: string) => `在「${label}」里搜索`,
+  count: (count: number) => `${count} 项`,
+}
+
 /** ⌘K 打开的命令面板：同一个输入框搜文章、跳页面、执行命令，所有操作都能不碰鼠标完成。 */
 export interface CommandListProps {
   open: boolean
@@ -58,6 +74,8 @@ export interface CommandListProps {
   limit?: number
   /** @default "搜索文章、页面与命令" */
   placeholder?: string
+  /** 界面标签、层级搜索提示及按实际数量格式化的结果数。 */
+  labels?: typeof defaultLabels
   /**
    * 模态：锁住背后、困住焦点，打开就聚焦输入框；关掉时不抢焦点，只用于陈列。
    * @default true
@@ -104,6 +122,7 @@ export function CommandList({
   onSearchAll,
   limit = 5,
   placeholder = '搜索文章、页面与命令',
+  labels = defaultLabels,
   modal = true,
   container,
 }: CommandListProps) {
@@ -139,6 +158,7 @@ export function CommandList({
   const empty = flat.length === 0 && !showSkeleton && query.trim().length > 0
   const searchAll = empty && onSearchAll !== undefined && !level
   const count = searchAll ? 1 : flat.length
+  const searchLabel = level ? labels.searchWithin(level.label) : placeholder
 
   const captureOpener = useCallback((opener: Opener) => {
     openerRef.current = opener
@@ -158,11 +178,20 @@ export function CommandList({
     setFlashing(null)
   }, [open])
 
-  // 结果变化时当前项回到第一项
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 依赖的是结果本身而不是读取它
+  // 查询或层级变化时回到首项；只换语言时保留当前结果的稳定标识。
+  const previous = useRef({ flat, query, level })
   useLayoutEffect(() => {
-    setActive(0)
-  }, [sections, trail])
+    const before = previous.current
+    previous.current = { flat, query, level }
+    setActive((index) => {
+      if (before.query !== query || before.level !== level) return 0
+      const id = before.flat[index]?.item.id
+      return Math.max(
+        0,
+        flat.findIndex((entry) => entry.item.id === id),
+      )
+    })
+  }, [flat, query, level])
 
   // 列表的高度跟着结果数量变化
   useLayoutEffect(() => {
@@ -281,7 +310,7 @@ export function CommandList({
             }
           }}
         >
-          <DialogPrimitive.Title className="v-command__title">命令面板</DialogPrimitive.Title>
+          <DialogPrimitive.Title className="v-command__title">{labels.title}</DialogPrimitive.Title>
           <div className="v-command__field">
             {level ? (
               <button type="button" className="v-command__trail" onClick={back}>
@@ -298,9 +327,9 @@ export function CommandList({
               aria-controls={listboxId}
               aria-autocomplete="list"
               aria-activedescendant={count > 0 ? optionId(active) : undefined}
-              aria-label={level ? `在「${level.label}」里搜索` : placeholder}
+              aria-label={searchLabel}
               className="v-command__input"
-              placeholder={level ? `在「${level.label}」里搜索` : placeholder}
+              placeholder={searchLabel}
               value={query}
               autoComplete="off"
               spellCheck={false}
@@ -308,7 +337,7 @@ export function CommandList({
               onKeyDown={handleKeyDown}
             />
             {showBusy ? (
-              <Spinner size={16} aria-label="正在搜索全文" className="v-command__busy" />
+              <Spinner size={16} aria-label={labels.searching} className="v-command__busy" />
             ) : (
               <Kbd size="sm">Esc</Kbd>
             )}
@@ -319,7 +348,7 @@ export function CommandList({
             id={listboxId}
             role="listbox"
             tabIndex={-1}
-            aria-label={level ? level.label : '结果'}
+            aria-label={level ? level.label : labels.results}
             aria-busy={searching || undefined}
           >
             <ListHighlight mode="active" key={trail.length}>
@@ -371,11 +400,14 @@ export function CommandList({
                                 </span>
                               )}
                               <span className="v-command__item-text">
-                                <span className="v-command__item-label">
+                                <span dir="auto" className="v-command__item-label">
                                   <Highlight label={item.label} ranges={match.ranges} />
                                 </span>
                                 {item.description && (
-                                  <span className="v-command__item-description">
+                                  <span
+                                    dir={item.descriptionDir ?? 'auto'}
+                                    className="v-command__item-description"
+                                  >
                                     <Highlight
                                       label={item.description}
                                       ranges={match.descriptionRanges}
@@ -409,8 +441,8 @@ export function CommandList({
                   )
                 })}
                 {showSkeleton && !sections.some(({ group }) => group.id === fullTextGroup) && (
-                  <div role="group" aria-label="全文" className="v-command__group">
-                    <div className="v-command__group-label">全文</div>
+                  <div role="group" aria-label={labels.fullText} className="v-command__group">
+                    <div className="v-command__group-label">{labels.fullText}</div>
                     <FullTextSkeleton />
                   </div>
                 )}
@@ -419,11 +451,11 @@ export function CommandList({
                     <Empty
                       className="v-command__empty"
                       variant="plain"
-                      title="没有找到结果"
+                      title={labels.empty}
                       description={
                         <>
-                          <span className="v-command__query">「{query.trim()}」</span>
-                          {searchAll ? '试试在全文里搜索。' : '试试其他关键词。'}
+                          <bdi className="v-command__query">{query.trim()}</bdi>
+                          {searchAll ? labels.tryFullText : labels.tryKeywords}
                         </>
                       }
                     />
@@ -443,7 +475,7 @@ export function CommandList({
                           <span aria-hidden="true" className="v-command__item-icon">
                             <Search />
                           </span>
-                          <span className="v-command__item-label">在全文里搜索</span>
+                          <span className="v-command__item-label">{labels.searchAll}</span>
                         </div>
                       </ListHighlightItem>
                     )}
@@ -456,14 +488,14 @@ export function CommandList({
             <span className="v-command__keys">
               <Kbd size="sm" keys={['up']} />
               <Kbd size="sm" keys={['down']} />
-              选择
+              {labels.select}
               <Kbd size="sm" keys={['enter']} />
-              打开
+              {labels.open}
               <Kbd size="sm" keys={['mod', 'enter']} />
-              新标签打开
+              {labels.newTab}
             </span>
             <span className="v-command__status">
-              {level ? level.label : count > 0 ? `${count} 项` : ''}
+              {level ? level.label : count > 0 ? labels.count(count) : ''}
             </span>
           </div>
         </DialogPrimitive.Content>

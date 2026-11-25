@@ -16,6 +16,8 @@ export interface CommandItem {
   shortcut?: readonly KbdKey[]
   /** 标题下的纯文本摘要；允许换行完整显示，不解析 HTML */
   description?: string
+  /** 路径或代码可指定 LTR；普通作者文本自动判断方向。 */
+  descriptionDir?: 'ltr' | 'rtl' | 'auto'
   /**
    * 是否按输入筛选；调用方已经匹配过的结果（全文搜索）传 false，总是显示。
    * @default true
