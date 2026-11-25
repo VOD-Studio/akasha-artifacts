@@ -105,6 +105,7 @@ export function ArtifactWorkspace({
   const [liveEdit, setLiveEdit] = useState<{ version: number; source: string } | null>(null)
   const [canvasLocation, setCanvasLocation] = useState<CanvasLocation | null>(null)
   const [inspectorReveal, setInspectorReveal] = useState<InspectorReveal | null>(null)
+  const [inspectorPage, setInspectorPage] = useState('properties')
   const clearInspectorReveal = useCallback(() => setInspectorReveal(null), [])
   const latestVersion = useMemo(() => {
     if (versions.length === 0) return version
@@ -454,11 +455,14 @@ export function ArtifactWorkspace({
   )
   const inspectedBoard = inspection.open ? canvasLocation?.boardId : inspection.pendingBoardId
   const watchBoard = canvas === savedCanvas ? inspectedBoard : undefined
+  const styleLayerId =
+    inspection.open && inspectorPage === 'source' ? inspection.selectedId : undefined
   const useTweakPreview = canvas === savedCanvas
   const renderBoard = useCallback(
     (board: CanvasBoard, purpose: BoardFramePurpose, detailed: boolean) => {
       const overview = purpose.type === 'overview'
       const register = purpose.type === 'focus' ? registerFocusedFrame : undefined
+      const watchLayers = overview && watchBoard === board.id
       const frame = (board: LoadedCanvasBoard, ready?: () => void) => (
         <ArtifactFrame
           artifact={artifact}
@@ -481,7 +485,8 @@ export function ArtifactWorkspace({
               : undefined
           }
           onCapabilities={onObserve}
-          watchLayers={overview && watchBoard === board.id}
+          watchLayers={watchLayers}
+          styleLayerId={watchLayers ? styleLayerId : undefined}
           onLayers={inspection.onLayers}
           onElementTarget={onElementTarget}
           onVisualSelect={onVisualSelect}
@@ -512,6 +517,7 @@ export function ArtifactWorkspace({
       registerFocusedFrame,
       onObserve,
       watchBoard,
+      styleLayerId,
       inspection.onLayers,
       onElementTarget,
       onVisualSelect,
@@ -638,6 +644,8 @@ export function ArtifactWorkspace({
       />
       <BoardInspector
         artifact={artifact}
+        tab={inspectorPage}
+        onTabChange={setInspectorPage}
         {...inspected}
         onRequestBoard={onRequestBoard}
         onRetryBoard={onRetryBoard}

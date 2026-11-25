@@ -2,6 +2,7 @@ import {
   type Artifact,
   type ArtifactHandoffReference,
   type CanvasLayer,
+  type CanvasLayerStyles,
   DESIGN_LAYER_BLOCK_PREFIX,
   STANDALONE_BOARD_ID,
   type VersionSummary,
@@ -24,6 +25,7 @@ import { extractPropFieldsFromSpec, PropsPanel } from '@/features/props-panel'
 import { BoardInspectorProperties } from './BoardInspectorProperties'
 import { BoardInspectorSource } from './BoardInspectorSource'
 import { BoardInspectorTree } from './BoardInspectorTree'
+import { BoardLayerStyles } from './BoardLayerStyles'
 import { BoardTweakPanel } from './BoardTweakPanel'
 import type { BoardTweakPreviewStore } from './board-tweak-previews'
 import {
@@ -62,7 +64,9 @@ interface BoardInspectorProps {
   editing?: CanvasBoardEditing
   /** 只有可写的头版本可从图层属性打开就地文字编辑。 */
   onEditText?: CanvasTextTools['edit']
-  layers: { layers: readonly CanvasLayer[]; truncated: boolean } | null
+  tab: string
+  onTabChange: (tab: string) => void
+  layers: { layers: readonly CanvasLayer[]; truncated: boolean; styles?: CanvasLayerStyles } | null
   layersAvailable: boolean
   selectedLayerId?: string
   onHandoff?: BoardInspectorHandoff
@@ -93,6 +97,8 @@ export function BoardInspector({
   canComment = true,
   editing,
   onEditText,
+  tab,
+  onTabChange,
   layers,
   layersAvailable,
   selectedLayerId,
@@ -121,7 +127,6 @@ export function BoardInspector({
     () => extractPropFieldsFromSpec(template.data).length > 0,
     [template.data],
   )
-  const [tab, setTab] = useState('properties')
   const unavailableTab =
     (tab === 'tweaks' && !tweaks?.length) || (tab === 'template' && !hasTemplateProps)
   const usesBoardSource = Boolean(board?.scoped && !board.generated)
@@ -238,7 +243,7 @@ export function BoardInspector({
               onNavigate={navigate}
             />
             {readOnly && <p className="text-xs text-ink-muted">{readOnlyLabel}</p>}
-            <Tabs value={unavailableTab ? 'properties' : tab} onValueChange={setTab}>
+            <Tabs value={unavailableTab ? 'properties' : tab} onValueChange={onTabChange}>
               <TabsList aria-label="检查器选项">
                 <TabsTrigger value="properties">属性</TabsTrigger>
                 <TabsTrigger value="source">源码</TabsTrigger>
@@ -314,7 +319,9 @@ export function BoardInspector({
                 )}
                 {!board && <p className="py-2 text-sm text-ink-muted">选择画板以查看属性</p>}
               </TabsContent>
-              <TabsContent value="source" className="pt-3">
+              <TabsContent value="source" className="space-y-4 pt-3">
+                {board && layer && <BoardLayerStyles layerId={layer.id} styles={layers?.styles} />}
+                <h3 className="text-sm font-medium">原始源码</h3>
                 {sourceReady || designLayer ? (
                   <BoardInspectorSource
                     board={board}
@@ -322,7 +329,7 @@ export function BoardInspector({
                     fullSource={fullSource}
                     designLayer={designLayer}
                     runtimeLayer={layer}
-                    onOpenEditor={onOpenEditor}
+                    onOpenEditor={!readOnly && followHead ? onOpenEditor : undefined}
                   />
                 ) : (
                   <InspectorSourceStatus

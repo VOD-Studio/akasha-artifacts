@@ -1,7 +1,6 @@
 import {
   type Artifact,
   CANVAS_PREVIEW_MAX_EDGE,
-  type CanvasLayer,
   DESIGN_LAYER_BLOCK_PREFIX,
   type ElementRect,
   type ElementRef,
@@ -69,7 +68,11 @@ interface ArtifactFrameProps {
     capabilities: { playable?: boolean; animated?: boolean },
   ) => void
   watchLayers: boolean
-  onLayers: (id: string, version: number, layers: CanvasLayer[], truncated: boolean) => void
+  styleLayerId?: string
+  onLayers: (
+    id: string,
+    message: Extract<SandboxToShellMessage, { type: 'inspect.layers.snapshot' }>,
+  ) => void
   /** 仅把当前设计帧的命中回报交给工作区；请求标识由工作区核对。 */
   onElementTarget: (
     boardId: string,
@@ -135,6 +138,7 @@ export function ArtifactFrame({
   onReady,
   onCapabilities,
   watchLayers,
+  styleLayerId,
   onLayers,
   onElementTarget,
   onVisualSelect,
@@ -225,6 +229,7 @@ export function ArtifactFrame({
     tweakPreview: typeof tweakPreview
     pins: readonly Feedback[]
     watchingLayers: boolean
+    styleLayerId?: string
   } | null>(null)
   const latest = useRef({
     nonce,
@@ -450,7 +455,7 @@ export function ArtifactFrame({
         }
         case 'inspect.layers.snapshot':
           if (!isolated && latest.current.watchLayers && message.version === activeVersion) {
-            latest.current.onLayers(id, activeVersion, message.layers, message.truncated)
+            latest.current.onLayers(id, message)
           }
           break
         case 'inspect.target':
@@ -606,8 +611,17 @@ export function ArtifactFrame({
       })
     }
     const watchingLayers = !isolated && watchLayers
-    if ((needsRender && watchingLayers) || watchingLayers !== (previous?.watchingLayers ?? false)) {
-      host.send({ type: 'inspect.layers.watch', active: watchingLayers })
+    const watchedStyle = watchingLayers ? styleLayerId : undefined
+    if (
+      (needsRender && watchingLayers) ||
+      watchingLayers !== (previous?.watchingLayers ?? false) ||
+      watchedStyle !== previous?.styleLayerId
+    ) {
+      host.send({
+        type: 'inspect.layers.watch',
+        active: watchingLayers,
+        styleLayerId: watchedStyle,
+      })
     }
     if (!playback && (needsRender || previous?.pins !== versionPins)) trackPins(host, versionPins)
     applied.current = {
@@ -617,6 +631,7 @@ export function ArtifactFrame({
       tweakPreview,
       pins: versionPins,
       watchingLayers,
+      styleLayerId: watchedStyle,
     }
   }, [
     boardTweaks,
@@ -628,6 +643,7 @@ export function ArtifactFrame({
     render,
     scoped,
     scopedOverview,
+    styleLayerId,
     tweakPreview,
     versionNumber,
     versionPins,

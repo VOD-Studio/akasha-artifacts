@@ -636,6 +636,21 @@ it('图层选择跟随画布点击，旧请求和旧坐标不改选区', () => {
   )
   expect(within(inspector).getByText('160 × 35 px')).toBeTruthy()
   fireEvent.keyDown(within(inspector).getByRole('tab', { name: '源码' }), { key: 'Enter' })
+  expect(desktop.post).toHaveBeenCalledWith(
+    expect.objectContaining({ type: 'inspect.layers.watch', styleLayerId: desktopLayer.id }),
+    '*',
+  )
+  desktop.receive({
+    ...report([desktopLayer]),
+    styles: {
+      layerId: desktopLayer.id,
+      declarations: [
+        { property: 'color', value: 'maroon', source: 'style', inheritedFrom: 'main' },
+      ],
+      truncated: false,
+    },
+  })
+  expect(within(inspector).getByText('color: maroon;')).toBeTruthy()
   expect(within(inspector).getByText('源码位置 1:1')).toBeTruthy()
   expect(
     within(inspector).getByText('<h1', { selector: 'mark' }).closest('code')?.textContent,
@@ -668,6 +683,7 @@ it('图层选择跟随画布点击，旧请求和旧坐标不改选区', () => {
   mobile.receive(report([mobileLayer]))
   expect(within(inspector).getByRole('button', { name: '手机首页', pressed: true })).toBeTruthy()
   expect(within(inspector).getByRole('button', { name: '重复标题', pressed: true })).toBeTruthy()
+  expect(within(inspector).queryByText('color: maroon;')).toBeNull()
   const selectedBox = screen.getByTestId('overlay-select-box')
   const originalRect = selectedBox.getAttribute('style')
   mobile.receive({

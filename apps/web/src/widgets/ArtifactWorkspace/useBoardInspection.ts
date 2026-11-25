@@ -1,5 +1,6 @@
 import {
   type CanvasLayer,
+  type CanvasLayerStyles,
   DESIGN_LAYER_BLOCK_PREFIX,
   type SandboxToShellMessage,
   STANDALONE_BOARD_ID,
@@ -39,7 +40,7 @@ export function useBoardInspection({
 }: BoardInspectionInput) {
   const open = useWorkspaceStore((state) => state.inspectorTab === 'inspect')
   const [snapshot, setSnapshot] = useState<
-    (Scope & { layers: CanvasLayer[]; truncated: boolean }) | null
+    (Scope & { layers: CanvasLayer[]; truncated: boolean; styles?: CanvasLayerStyles }) | null
   >(null)
   const pendingPoint = useRef<(Scope & { requestId: string }) | null>(null)
   const clearPoint = useCallback(() => {
@@ -108,8 +109,12 @@ export function useBoardInspection({
       ? snapshot
       : null
   const onLayers = useCallback(
-    (boardId: string, activeVersion: number, layers: CanvasLayer[], truncated: boolean) => {
-      setSnapshot({ artifactId, version: activeVersion, boardId, layers, truncated })
+    (
+      boardId: string,
+      message: Extract<SandboxToShellMessage, { type: 'inspect.layers.snapshot' }>,
+    ) => {
+      const { version: activeVersion, layers, truncated, styles } = message
+      setSnapshot({ artifactId, version: activeVersion, boardId, layers, truncated, styles })
       const store = useSelectionStore.getState()
       const selected = store.selectedByArtifact[artifactId]
       const oldScope = store.layersByArtifact[artifactId]
