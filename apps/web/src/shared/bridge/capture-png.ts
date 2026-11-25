@@ -1,123 +1,152 @@
-import {
-  type ArtboardAppearance,
-  type ArtboardTweak,
-  type ArtifactType,
-  type DesignLayer,
-  resolveArtboardTweaks,
-} from '@akasha/protocol'
-import { resolveSandboxOrigin } from '../config/runtime'
+import { getArtboardPaperSize, type SandboxToShellMessage } from '@akasha/protocol'
 import { getMessages } from '../i18n/messages'
-import { captureMessages } from './capture-messages'
 import {
-  buildSandboxIframeUrl,
-  createBridgeNonce,
-  SANDBOX_IFRAME_SANDBOX_ATTR,
-  SandboxBridgeHost,
-} from './host'
+  type CaptureBoard,
+  captureLocks,
+  createCaptureFrame,
+  validateCapturePng,
+} from './capture-frame'
+import { captureMessages } from './capture-messages'
 
-interface PngBoard {
-  id: string
-  scoped: boolean
-  type: ArtifactType
-  source: string
-  /** 原生绘制的数据属于同一版本，必须随作者源码一起栅格化。 */
-  designLayers?: DesignLayer[]
-  appearance?: ArtboardAppearance
-  tweaks?: readonly ArtboardTweak[]
-  width: number
-  height: number
-}
+const CAPTURE_LOCK = 'akasha-capture-png'
 
 /** 对指定版本渲染一次静态 PNG。同一外壳 origin 一次最多启动一个临时沙盒。 */
 export async function captureBoardPng(
-  board: PngBoard,
+  board: CaptureBoard,
   version: number,
   scale: number,
   signal: AbortSignal,
 ): Promise<Blob> {
-  if (!navigator.locks)
-    throw new Error(getMessages(captureMessages).t('当前浏览器不能在安全上下文中渲染画板 PNG'))
-  return navigator.locks.request('akasha-capture-png', { signal }, () =>
+  return captureLocks().request(CAPTURE_LOCK, { signal }, () =>
     renderPng(board, version, scale, signal),
   )
 }
 
-async function renderPng(board: PngBoard, version: number, scale: number, signal: AbortSignal) {
+async function renderPng(board: CaptureBoard, version: number, scale: number, signal: AbortSignal) {
   const lifetime = AbortSignal.any([signal, AbortSignal.timeout(10_000)])
   lifetime.throwIfAborted()
-  const nonce = createBridgeNonce()
-  const sandboxOrigin = resolveSandboxOrigin()
-  const iframe = document.createElement('iframe')
-  iframe.title = getMessages(captureMessages).t('画板渲染任务')
-  iframe.width = String(board.width)
-  iframe.height = String(board.height)
-  iframe.setAttribute('sandbox', SANDBOX_IFRAME_SANDBOX_ATTR)
-  iframe.setAttribute('aria-hidden', 'true')
-  iframe.tabIndex = -1
-  iframe.inert = true
-  iframe.referrerPolicy = 'no-referrer'
-  iframe.src = buildSandboxIframeUrl(sandboxOrigin, nonce, window.location.origin)
-  // 不移出视口：Chromium 会暂停不可见跨源 iframe 的动画帧。
-  iframe.style.cssText =
-    'position:fixed; left:0; top:0; opacity:0; z-index:-1; border:0; pointer-events:none'
-  const host = new SandboxBridgeHost({
-    nonce,
-    sandboxOrigin,
-    getIframeWindow: () => iframe.contentWindow,
-  })
+  const frame = createCaptureFrame(board, version, board)
   const { promise, resolve, reject } = Promise.withResolvers<Blob>()
   const abort = () => reject(lifetime.reason)
   lifetime.addEventListener('abort', abort, { once: true })
   let requested = false
-  const off = host.onMessage((message) => {
+  const off = frame.host.onMessage((message) => {
     if (message.type === 'error') reject(new Error(message.message))
     else if (message.type === 'rendered' && message.version === version && !requested) {
       requested = true
-      host.send({ type: 'capture.png', version, width: board.width, height: board.height, scale })
+      frame.host.send({
+        type: 'capture.png',
+        version,
+        width: board.width,
+        height: board.height,
+        scale,
+      })
     } else if (message.type === 'capture.png.result' && message.version === version && requested) {
       resolve(message.png)
     } else if (message.type === 'capture.png.failure' && message.version === version && requested) {
       reject(new Error(message.message))
-    } else if (message.type === 'storage.request') {
-      host.send({
-        type: 'storage.response',
-        requestId: message.requestId,
-        ok: false,
-        error: getMessages(captureMessages).t('静态画板不读取或修改制品运行存储'),
-      })
     }
   })
   try {
-    host.start()
-    host.send({
-      type: 'render',
-      version,
-      artifactType: board.type,
-      source: board.source,
-      designLayers: board.designLayers,
-      boardAppearance: board.appearance,
-      boardTweaks: board.tweaks?.length ? resolveArtboardTweaks(board.tweaks) : undefined,
-      ...(board.scoped ? { boardId: board.id } : {}),
-      state: {},
-    })
-    document.body.append(iframe)
+    frame.mount()
     const png = await promise
-    const header = new DataView(await png.slice(0, 24).arrayBuffer())
-    if (
-      header.byteLength !== 24 ||
-      header.getUint32(0) !== 0x89504e47 ||
-      header.getUint32(4) !== 0x0d0a1a0a ||
-      header.getUint32(12) !== 0x49484452 ||
-      header.getUint32(16) !== Math.round(board.width * scale) ||
-      header.getUint32(20) !== Math.round(board.height * scale)
-    ) {
-      throw new Error(getMessages(captureMessages).t('沙盒返回的 PNG 格式或尺寸不符'))
-    }
+    await validateCapturePng(png, board.width * scale, board.height * scale)
+    lifetime.throwIfAborted()
     return png
   } finally {
     lifetime.removeEventListener('abort', abort)
     off()
-    host.stop()
-    iframe.remove()
+    frame.dispose()
+  }
+}
+
+type PrintResult = Extract<SandboxToShellMessage, { type: 'capture.print.result' }>
+
+/** 只在消费者拉取时栅格化下一张；尺寸为未取整的纸张 CSS 像素。 */
+export async function* captureBoardPrintPages(
+  board: CaptureBoard,
+  version: number,
+  signal: AbortSignal,
+): AsyncGenerator<{ png: Blob; width: number; height: number }> {
+  if (board.printLayout?.mode !== 'flow') {
+    const png = await captureBoardPng(board, version, 1, signal)
+    yield { png, width: board.width, height: board.height }
+    return
+  }
+  const paper = board.printLayout.paper
+  const size = getArtboardPaperSize(paper)
+  const locks = captureLocks()
+  const frame = createCaptureFrame(board, version, size, paper)
+  const granted = Promise.withResolvers<void>()
+  const released = Promise.withResolvers<void>()
+  const lifetime = new AbortController()
+  let page = 0
+  let rendered = false
+  let pending: PromiseWithResolvers<PrintResult> | undefined
+  const close = (reason?: unknown) => {
+    if (lifetime.signal.aborted) return
+    lifetime.abort(reason)
+    pending?.reject(lifetime.signal.reason)
+    off()
+    signal.removeEventListener('abort', abort)
+    frame.dispose()
+    released.resolve()
+  }
+  const abort = () => close(signal.reason)
+  const off = frame.host.onMessage((message) => {
+    if (message.type === 'rendered' && message.version === version && !rendered) {
+      rendered = true
+      frame.host.send({ type: 'capture.print', page, version })
+    }
+    if (message.type !== 'error') {
+      if (!rendered || !pending) return
+      if (message.type !== 'capture.print.result' && message.type !== 'capture.print.failure')
+        return
+      if (message.version !== version || message.page !== page) return
+      if (message.type === 'capture.print.result') {
+        pending.resolve(message)
+        return
+      }
+    }
+    close(
+      new Error(getMessages(captureMessages).t('无法生成画板打印页'), { cause: message.message }),
+    )
+  })
+  try {
+    // Web Lock 的回调必须跨越多次 yield；放弃迭代或 AbortSignal 取消都会解锁。
+    void locks
+      .request(CAPTURE_LOCK, { signal }, () => {
+        granted.resolve()
+        return released.promise
+      })
+      .catch(granted.reject)
+    await granted.promise
+    signal.throwIfAborted()
+    signal.addEventListener('abort', abort, { once: true })
+    for (;;) {
+      lifetime.signal.throwIfAborted()
+      pending = Promise.withResolvers<PrintResult>()
+      const timeout = window.setTimeout(
+        () => close(new Error(getMessages(captureMessages).t('画板打印页渲染超时'))),
+        30_000,
+      )
+      let result: PrintResult
+      try {
+        if (page === 0) frame.mount()
+        else frame.host.send({ type: 'capture.print', page, version })
+        result = await pending.promise
+      } finally {
+        window.clearTimeout(timeout)
+        pending = undefined
+      }
+      await validateCapturePng(result.png, size.width, size.height)
+      lifetime.signal.throwIfAborted()
+      if (result.last) close()
+      yield { png: result.png, ...size }
+      if (result.last) return
+      page++
+    }
+  } finally {
+    close()
   }
 }

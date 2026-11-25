@@ -89,6 +89,16 @@ const BridgeEnvelopeBase = {
   nonce: z.string().min(1),
 }
 
+const PrintPageIdentity = {
+  version: z.number().int().positive(),
+  // 页序从 0 起，每次只允许请求当前会话的下一张。
+  page: z.number().int().nonnegative(),
+}
+
+const CapturedPngSchema = z
+  .instanceof(Blob)
+  .refine((blob) => blob.type === 'image/png' && blob.size > 0 && blob.size <= 32 * 1024 * 1024)
+
 /** 外壳 → 沙盒的 Bridge 消息。 */
 export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
   z.object({
@@ -104,6 +114,8 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
     version: z.number().int().min(1),
     // 区分同一连接中版本号相同的不同渲染，仅常驻总览需要。
     renderId: z.number().int().positive().optional(),
+    // 只有专用打印帧设置纸型；总览和 PNG 的固有视口不变。
+    printPaper: z.enum(['a4', 'letter']).optional(),
     source: z.string(),
     designLayers: DesignLayersSchema.optional(),
     // 单板持久外观和参数默认值；不从预览覆写构造固定版本载荷。
@@ -198,6 +210,11 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
     .refine(({ requestId, scale }) => requestId === undefined || scale <= 1),
   z.object({
     ...BridgeEnvelopeBase,
+    ...PrintPageIdentity,
+    type: z.literal('capture.print'),
+  }),
+  z.object({
+    ...BridgeEnvelopeBase,
     type: z.literal('capture.cancel'),
     requestId: z.string().min(1).max(64),
   }),
@@ -266,17 +283,26 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
     version: z.number().int().min(1),
     requestId: z.string().min(1).max(64).optional(),
     // 通过结构化克隆发送 Blob，不把 PNG 放进 JSON 或源码
-    png: z
-      .instanceof(Blob)
-      .refine(
-        (blob) => blob.type === 'image/png' && blob.size > 0 && blob.size <= 32 * 1024 * 1024,
-      ),
+    png: CapturedPngSchema,
   }),
   z.object({
     ...BridgeEnvelopeBase,
     type: z.literal('capture.png.failure'),
     version: z.number().int().min(1),
     requestId: z.string().min(1).max(64).optional(),
+    message: z.string().min(1),
+  }),
+  z.object({
+    ...BridgeEnvelopeBase,
+    ...PrintPageIdentity,
+    type: z.literal('capture.print.result'),
+    png: CapturedPngSchema,
+    last: z.boolean(),
+  }),
+  z.object({
+    ...BridgeEnvelopeBase,
+    ...PrintPageIdentity,
+    type: z.literal('capture.print.failure'),
     message: z.string().min(1),
   }),
   z.object({
