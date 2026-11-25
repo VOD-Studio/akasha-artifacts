@@ -1,6 +1,8 @@
 const boot = document.currentScript
 function bootFailed(message) {
-  document.getElementById('root').textContent = message
+  const root = document.getElementById('root')
+  root.lang = offlineText.lang
+  root.textContent = message
   parent.postMessage({ type: 'akasha.offline.error', message }, '*')
 }
 
@@ -17,7 +19,7 @@ void (async () => {
     const runtime = document.createElement('script')
     runtime.nonce = boot.nonce
     runtime.textContent = script
-    const crash = (event) => bootFailed(`离线运行器启动失败：${event.message || '未知错误'}`)
+    const crash = (event) => bootFailed(event.message || offlineText.startup)
     window.addEventListener('error', crash)
     try {
       document.body.append(runtime)
@@ -25,6 +27,6 @@ void (async () => {
       window.removeEventListener('error', crash)
     }
   } catch {
-    bootFailed('浏览器无法解压离线运行器')
+    bootFailed(offlineText.unpack)
   }
 })()

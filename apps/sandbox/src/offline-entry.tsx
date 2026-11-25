@@ -18,6 +18,11 @@ import { installSandboxStorage } from './runtime/storage'
 import { defaultPreservedStateManager } from './state/preserve'
 import { defaultArtifactStateStore } from './state/store'
 
+// 与当前运行器同包的启动脚本提供文案；不从作者内容或浏览器默认语言推断。
+declare const offlineText: Readonly<
+  Record<'lang' | 'failed' | 'decode' | 'missing' | 'unsupported' | 'resource' | 'startup', string>
+>
+
 interface OfflineRender {
   type: ArtifactType
   version: number
@@ -36,10 +41,11 @@ const rootElement = document.getElementById('root')
 let failure: string | undefined
 function failed(message: string) {
   if (failure) return
-  failure = message.slice(0, 600) || '无法打开离线预览'
+  failure = message.slice(0, 600) || offlineText.failed
   if (rootElement?.parentElement) {
     const notice = document.createElement('p')
     notice.setAttribute('role', 'alert')
+    notice.lang = offlineText.lang
     notice.textContent = failure
     rootElement.before(notice)
   }
@@ -61,27 +67,32 @@ async function rendered() {
     await new Promise((resolve) => window.setTimeout(resolve, 30))
     if (!failure) notify('ready')
   } catch {
-    failed('有图片无法离线加载')
+    failed(offlineText.decode)
   }
 }
 
 try {
-  if (!rootElement) throw new Error('离线运行容器缺失')
+  if (!rootElement) throw new Error(offlineText.startup)
   const input = document.getElementById('akasha-offline-board')?.textContent
-  if (!input) throw new Error('离线画板数据缺失')
+  if (!input) throw new Error(offlineText.missing)
   const payload = JSON.parse(input) as OfflineRender
   installSandboxGlobals()
   installSandboxStorage(null)
   registerBuiltinRenderers()
   const render = getRenderer(payload.type)
-  if (!render) throw new Error('此作品无法离线打开')
+  if (!render) throw new Error(offlineText.unsupported)
 
   window.addEventListener('securitypolicyviolation', (event) => {
     const location =
       event.blockedURI === 'eval' ? `（${event.lineNumber}:${event.columnNumber}）` : ''
-    failed(`不能离线载入资源：${event.blockedURI || event.violatedDirective}${location}`)
+    failed(
+      offlineText.resource.replace(
+        '{location}',
+        () => `${event.blockedURI || event.violatedDirective}${location}`,
+      ),
+    )
   })
-  window.addEventListener('error', (event) => failed(event.message || '离线资源加载失败'), true)
+  window.addEventListener('error', (event) => failed(event.message || offlineText.failed), true)
   window.addEventListener('unhandledrejection', (event) => {
     failed(event.reason instanceof Error ? event.reason.message : String(event.reason))
   })
@@ -109,5 +120,5 @@ try {
     </div>,
   )
 } catch (error) {
-  failed(error instanceof Error ? error.message : '离线预览不能启动')
+  failed(error instanceof Error ? error.message : offlineText.startup)
 }

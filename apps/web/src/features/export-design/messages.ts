@@ -1,10 +1,50 @@
 import type { Messages } from '@/shared/i18n'
 
 export const messages = {
+  无法打开离线预览: [
+    'Offline-Vorschau nicht verfügbar',
+    'تعذّر فتح المعاينة دون اتصال',
+    'Cannot open offline preview',
+  ],
+  有图片无法离线加载: [
+    'Ein Bild konnte offline nicht geladen werden',
+    'تعذّر تحميل إحدى الصور دون اتصال',
+    'An image could not be loaded offline',
+  ],
+  离线画板数据缺失: [
+    'Daten der Offline-Zeichenfläche fehlen',
+    'بيانات لوحة الرسم غير متوفرة',
+    'Offline artboard data is missing',
+  ],
+  此作品无法离线打开: [
+    'Dieses Werk lässt sich offline nicht öffnen',
+    'لا يمكن فتح هذا العمل دون اتصال',
+    'This artifact cannot be opened offline',
+  ],
+  '不能离线载入资源：{location}': [
+    'Ressource offline nicht verfügbar: {location}',
+    'لا يمكن تحميل المورد دون اتصال: {location}',
+    'Cannot load resource offline: {location}',
+  ],
+  离线运行器启动失败: [
+    'Offline-Laufzeit konnte nicht starten',
+    'تعذّر بدء مشغّل المعاينة دون اتصال',
+    'The offline runtime could not start',
+  ],
+  浏览器无法解压离线运行器: [
+    'Der Browser kann die Offline-Laufzeit nicht entpacken',
+    'لا يستطيع المتصفح فك ضغط مشغّل المعاينة',
+    'This browser cannot unpack the offline runtime',
+  ],
   指定版本没有可导出的画板: [
     'Diese Version enthält keine exportierbaren Zeichenflächen',
     'لا توجد لوحات قابلة للتصدير في هذا الإصدار',
     'The specified version has no artboards to export',
+  ],
+  '单板 ZIP 只能包含一张画板': [
+    'Ein Einzel-ZIP kann nur eine Zeichenfläche enthalten',
+    'يمكن أن تتضمن حزمة اللوحة الواحدة لوحة واحدة فقط',
+    'A single-artboard ZIP must contain exactly one artboard',
   ],
   '离线包不能加载 CSS @import，请内联样式和资源': [
     'Offline-Pakete unterstützen kein CSS @import. Stile und Ressourcen direkt einbetten',

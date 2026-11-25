@@ -66,6 +66,12 @@ export const messages = {
   ],
   格式: ['Format', 'الصيغة', 'Format'],
   '离线 HTML': ['Offline-HTML', 'HTML دون اتصال', 'Offline HTML'],
+  '离线 ZIP': ['Offline-ZIP', 'ZIP دون اتصال', 'Offline ZIP'],
+  '解压整个 ZIP 后打开 index.html，离线浏览各页和画板。': [
+    'Das gesamte ZIP-Archiv entpacken und index.html öffnen, um Seiten und Zeichenflächen offline anzusehen.',
+    'فك ضغط ملف ZIP بالكامل وافتح index.html لتصفح الصفحات واللوحات دون اتصال.',
+    'Extract the entire ZIP and open index.html to browse the pages and artboards offline.',
+  ],
   'PNG 倍率': ['PNG-Skalierung', 'مقياس PNG', 'PNG scale'],
   输出像素尺寸: ['Ausgabegröße in Pixeln', 'أبعاد الصورة بالبكسل', 'Output dimensions in pixels'],
   '{width} × {height} 像素': [
