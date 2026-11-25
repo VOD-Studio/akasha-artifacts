@@ -1,4 +1,4 @@
-import { CANVAS_STYLE_LIMITS as LIMIT, type CanvasLayerStyles } from '@akasha/protocol'
+import { type CanvasLayerStyles, CANVAS_STYLE_LIMITS as LIMIT } from '@akasha/protocol'
 
 type Declaration = CanvasLayerStyles['declarations'][number]
 
