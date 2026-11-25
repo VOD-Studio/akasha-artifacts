@@ -1,13 +1,13 @@
 import { z } from 'zod'
-import type { ArtboardIndex } from './artboard-projection.js'
+import type { ArtboardIndex } from '../artboard/projection.js'
 import type {
   Artifact,
   ReviewRound,
   StateStreamSnapshot,
   Version,
   VersionSummary,
-} from './domain.js'
-import { AuthorSchema, ISODateTimeSchema, PublicIdSchema, SlugSchema } from './primitives.js'
+} from '../domain.js'
+import { AuthorSchema, ISODateTimeSchema, PublicIdSchema, SlugSchema } from '../primitives.js'
 
 /** 错误码；含义见行尾说明。 */
 export const ERROR_CODES = [

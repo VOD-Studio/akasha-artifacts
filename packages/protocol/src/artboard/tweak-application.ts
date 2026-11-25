@@ -1,12 +1,12 @@
 import { z } from 'zod'
-import type { ArtboardBoard } from './artboard.js'
-import { type EditableArtboardSource, readEditableArtboardSource } from './artboard-edit.js'
+import { type EditableArtboardSource, readEditableArtboardSource } from './edit.js'
+import type { ArtboardBoard } from './model.js'
 import {
   type ArtboardTweak,
   type ArtboardTweakValues,
   ArtboardTweakValuesSchema,
   acceptsArtboardTweakValue,
-} from './artboard-tweaks.js'
+} from './tweaks.js'
 
 const changedValues = ArtboardTweakValuesSchema.refine((values) => Object.keys(values).length > 0)
 const boardIdSchema = z.string().min(1)

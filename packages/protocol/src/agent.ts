@@ -1,7 +1,7 @@
 import { z } from 'zod'
-import { ArtboardTweakApplicationSchema } from './artboard-tweak-application.js'
-import { ArtifactHandoffReferenceSchema } from './mcp.js'
+import { ArtboardTweakApplicationSchema } from './artboard/tweak-application.js'
 import { PublicIdSchema } from './primitives.js'
+import { ArtifactHandoffReferenceSchema } from './transport/mcp.js'
 
 export const AgentMessageInputSchema = z
   .object({

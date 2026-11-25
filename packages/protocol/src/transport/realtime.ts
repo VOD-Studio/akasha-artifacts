@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import { FeedbackSchema, JsonPatchOpSchema, ReviewRoundSchema, VersionSchema } from './domain.js'
-import { ISODateTimeSchema, PROTOCOL_VERSION, PublicIdSchema } from './primitives.js'
+import { FeedbackSchema, JsonPatchOpSchema, ReviewRoundSchema, VersionSchema } from '../domain.js'
+import { ISODateTimeSchema, PROTOCOL_VERSION, PublicIdSchema } from '../primitives.js'
 
 /** Agent 活跃状态：`editing` 正在修改、`idle` 空闲待命、`offline` 离线。 */
 export const AgentActivityStateSchema = z.enum(['editing', 'idle', 'offline'])

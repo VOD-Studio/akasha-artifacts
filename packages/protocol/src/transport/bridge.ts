@@ -1,10 +1,10 @@
 import { z } from 'zod'
-import { ArtboardAppearanceSchema } from './artboard-appearance.js'
-import { DesignLayersSchema } from './artboard-layers.js'
-import { ArtboardTweakValuesSchema } from './artboard-tweaks.js'
-import { EditOpSchema, ElementRectSchema, ElementRefSchema, JsonPatchOpSchema } from './domain.js'
-import { ArtifactTypeSchema, PROTOCOL_VERSION } from './primitives.js'
-import { ArtifactStorageOperationSchema } from './storage.js'
+import { ArtboardAppearanceSchema } from '../artboard/appearance.js'
+import { DesignLayersSchema } from '../artboard/layers.js'
+import { ArtboardTweakValuesSchema } from '../artboard/tweaks.js'
+import { EditOpSchema, ElementRectSchema, ElementRefSchema, JsonPatchOpSchema } from '../domain.js'
+import { ArtifactTypeSchema, PROTOCOL_VERSION } from '../primitives.js'
+import { ArtifactStorageOperationSchema } from '../storage.js'
 
 /** 常驻总览画板位图的最大边长（像素）；不限制用户导出。 */
 export const CANVAS_PREVIEW_MAX_EDGE = 256

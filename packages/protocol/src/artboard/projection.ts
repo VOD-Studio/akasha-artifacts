@@ -1,4 +1,4 @@
-import { type ArtboardBoard, type ArtboardData, canvasIds, parseArtboard } from './artboard.js'
+import { type ArtboardBoard, type ArtboardData, canvasIds, parseArtboard } from './model.js'
 
 /** 布局与播放入口所需的单板元数据；正文一律通过单板读取。 */
 export interface ArtboardIndexBoard

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { ARTBOARD_GEOMETRY_LIMITS } from './artboard-layers.js'
+import { ARTBOARD_GEOMETRY_LIMITS } from './layers.js'
 
 /** 固定版式使用画板视口；只有流式版式接受纸型。 */
 export const ArtboardPrintLayoutSchema = z.discriminatedUnion('mode', [

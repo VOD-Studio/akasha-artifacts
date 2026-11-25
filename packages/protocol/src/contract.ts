@@ -4,12 +4,12 @@ import {
   ErrorEnvelopeSchema,
   HealthResponseSchema,
   VersionConflictDetailsSchema,
-} from './http.js'
+} from './transport/http.js'
 import {
   ArtifactAckFeedbackOutputSchema,
   ArtifactPullFeedbackOutputSchema,
   ArtifactSpecOutputSchema,
-} from './mcp.js'
+} from './transport/mcp.js'
 
 export interface ContractTestOptions {
   // 存在时以 `Bearer <token>` 随每个请求发送

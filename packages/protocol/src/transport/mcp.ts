@@ -9,8 +9,8 @@ import {
   StateStreamSnapshotSchema,
   VerdictSchema,
   VersionSchema,
-} from './domain.js'
-import { ArtifactTypeSchema, PublicIdSchema, SlugSchema, VisibilitySchema } from './primitives.js'
+} from '../domain.js'
+import { ArtifactTypeSchema, PublicIdSchema, SlugSchema, VisibilitySchema } from '../primitives.js'
 
 /**
  * 以不可变 `publicId` 或项目内可读 `slug` 定位制品。

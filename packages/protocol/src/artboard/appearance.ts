@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { ARTBOARD_GEOMETRY_LIMITS } from './artboard-layers.js'
+import { ARTBOARD_GEOMETRY_LIMITS } from './layers.js'
 
 /** 画板颜色使用六位 sRGB 十六进制，不接受任意 CSS 值。 */
 export const ArtboardColorSchema = z.string().regex(/^#[\da-f]{6}$/i)

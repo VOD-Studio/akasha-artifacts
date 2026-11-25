@@ -1,16 +1,12 @@
-import { type ArtboardAppearance, ArtboardAppearanceSchema } from './artboard-appearance.js'
-import {
-  ARTBOARD_GEOMETRY_LIMITS,
-  type DesignLayer,
-  DesignLayersSchema,
-} from './artboard-layers.js'
+import { type ArtboardAppearance, ArtboardAppearanceSchema } from './appearance.js'
+import { ARTBOARD_GEOMETRY_LIMITS, type DesignLayer, DesignLayersSchema } from './layers.js'
 import {
   type ArtboardLayoutGuide,
   ArtboardLayoutGuidesSchema,
   type ArtboardPrintLayout,
   ArtboardPrintLayoutSchema,
-} from './artboard-print.js'
-import { type ArtboardTweak, ArtboardTweaksSchema } from './artboard-tweaks.js'
+} from './print.js'
+import { type ArtboardTweak, ArtboardTweaksSchema } from './tweaks.js'
 
 /** 普通 HTML、React 等制品在画布上的唯一画板标识。 */
 export const STANDALONE_BOARD_ID = 'main'

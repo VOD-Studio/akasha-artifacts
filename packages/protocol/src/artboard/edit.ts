@@ -1,4 +1,4 @@
-import { type ArtboardBoard, type ArtboardPage, canvasIds, parseArtboardValue } from './artboard.js'
+import { type ArtboardBoard, type ArtboardPage, canvasIds, parseArtboardValue } from './model.js'
 
 type RawRecord = Record<string, unknown>
 

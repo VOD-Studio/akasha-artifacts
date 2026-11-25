@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { ArtboardColorSchema } from './artboard-appearance.js'
+import { ArtboardColorSchema } from './appearance.js'
 
 const MAX_TWEAKS = 32
 const id = z.string().regex(/^[a-z][a-z0-9-]{0,63}$/)
