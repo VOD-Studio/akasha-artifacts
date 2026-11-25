@@ -1,4 +1,9 @@
-import { type CanvasLayer, DESIGN_LAYER_BLOCK_PREFIX } from '@akasha/protocol'
+import {
+  type CanvasLayer,
+  type CanvasLayerStyles,
+  DESIGN_LAYER_BLOCK_PREFIX,
+} from '@akasha/protocol'
+import { readLayerStyles } from './layer-styles'
 
 const SKIP = 'script, style, link, meta, title, template, noscript, defs'
 const MAX_DEPTH = 14
@@ -80,10 +85,11 @@ export function uniqueLayerBlock(target: Element, root: Element) {
 }
 
 /** 只给具备唯一静态标记的节点关联源码；重复判断包括未展示的节点。 */
-export function readCanvasLayers(root: HTMLElement) {
+export function readCanvasLayers(root: HTMLElement, styleLayerId?: string) {
   const layers: CanvasLayer[] = []
   const locations: Array<{ layer: CanvasLayer; location: string }> = []
   const blocks = new Map<string, { layer: CanvasLayer; count: number }>()
+  let styles: CanvasLayerStyles | undefined
   let visited = 0
   let truncated = false
 
@@ -111,6 +117,7 @@ export function readCanvasLayers(root: HTMLElement) {
         continue
       }
       const id = layerElementId(element)
+      if (id === styleLayerId) styles = readLayerStyles(element, root, id)
       const label = layerLabel(element)
       const designId = readDesignLayerId(element)
       const bounds = element.getBoundingClientRect()
@@ -159,5 +166,5 @@ export function readCanvasLayers(root: HTMLElement) {
       if (count === 1) layer.blockId = blockId
     }
   }
-  return { layers, truncated }
+  return { layers, truncated, styles }
 }

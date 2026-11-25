@@ -10,6 +10,38 @@ import { ArtifactStorageOperationSchema } from './storage.js'
 export const CANVAS_PREVIEW_MAX_EDGE = 256
 
 const LayerIdSchema = z.string().min(1).max(1024)
+
+/** 单个选区的样式读取与 Bridge 校验使用同一上限；图层树本身不携带逐节点样式。 */
+export const CANVAS_STYLE_LIMITS = {
+  declarations: 64,
+  property: 128,
+  value: 512,
+  source: 256,
+  inheritedFrom: 128,
+} as const
+
+const CanvasLayerStylesSchema = z.object({
+  layerId: LayerIdSchema,
+  declarations: z
+    .array(
+      z.object({
+        property: z.string().min(1).max(CANVAS_STYLE_LIMITS.property),
+        value: z.string().max(CANVAS_STYLE_LIMITS.value),
+        // 作品内的匹配选择器或行内 style，不是源码位置。
+        source: z.string().min(1).max(CANVAS_STYLE_LIMITS.source),
+        important: z.literal(true).optional(),
+        // 缺省即选中节点自身的声明；否则标识提供继承声明的祖先。
+        inheritedFrom: z.string().min(1).max(CANVAS_STYLE_LIMITS.inheritedFrom).optional(),
+      }),
+    )
+    .max(CANVAS_STYLE_LIMITS.declarations),
+  // 超过读取边界或不能确定来源时，不能将空列表解释成作品没有声明。
+  truncated: z.boolean(),
+})
+
+/** 当前沙盒节点可归属的只读样式证据，不授予编辑源码或运行节点的权限。 */
+export type CanvasLayerStyles = z.infer<typeof CanvasLayerStylesSchema>
+
 const CanvasLayerSchema = z.object({
   // 同一沙盒的 DOM 节点标识；重排时不会指向占据旧位置的其他节点
   id: LayerIdSchema,
@@ -172,6 +204,8 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('inspect.layers.watch'),
     // 关闭检查器或换板即停止；只订阅本帧
     active: z.boolean(),
+    // 仅源码标签页订阅具体的运行节点；未指定时不采集样式。
+    styleLayerId: LayerIdSchema.optional(),
   }),
   z.object({
     ...BridgeEnvelopeBase,
@@ -281,6 +315,7 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
     version: z.number().int().min(1),
     layers: z.array(CanvasLayerSchema).max(240),
     truncated: z.boolean(),
+    styles: CanvasLayerStylesSchema.optional(),
   }),
   z.object({
     ...BridgeEnvelopeBase,
