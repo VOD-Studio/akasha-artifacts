@@ -28,13 +28,15 @@ import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useArtifactFavoritesQuery, useSetArtifactFavoriteMutation } from '@/entities/artifact'
 import type { WorkspaceViewMode } from '@/entities/workspace'
+import {
+  ArtifactStorageUsageDialog,
+  ArtifactWithdrawalDialog,
+  RenameArtifactDialog,
+} from '@/features/artifact-management'
 import { getRequestErrorMessage } from '@/shared/api/error'
 import { useMessages } from '@/shared/i18n'
-import { ArtifactStorageUsageDialog } from './ArtifactStorageUsageDialog'
-import { ArtifactWithdrawalDialog } from './ArtifactWithdrawalDialog'
-import { messages } from './messages'
-import { RenameArtifactDialog } from './RenameArtifactDialog'
-import { useReloadArtifactMutation } from './use-reload-artifact'
+import { useReloadArtifactMutation } from '../hooks/use-reload-artifact'
+import { messages } from '../messages'
 
 interface ArtifactTitleMenuProps {
   artifact: Artifact

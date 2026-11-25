@@ -7,7 +7,7 @@ import { type ChangeEventHandler, type FormEventHandler, useId, useState } from 
 import { useRenameArtifactMutation } from '@/entities/artifact'
 import { getRequestErrorMessage } from '@/shared/api/error'
 import { useMessages } from '@/shared/i18n'
-import { messages } from './messages'
+import { messages } from '../messages'
 
 interface RenameArtifactDialogProps {
   artifact: Artifact

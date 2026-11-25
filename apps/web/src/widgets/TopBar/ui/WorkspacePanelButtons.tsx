@@ -3,7 +3,7 @@ import { MessageSquare, ScanLine } from 'lucide-react'
 import { useSelectionStore } from '@/entities/selection'
 import { useWorkspaceStore } from '@/entities/workspace'
 import { useMessages } from '@/shared/i18n'
-import { messages } from './messages'
+import { messages } from '../messages'
 
 /** 检查器与批注共用一个面板状态，开关不改变画布布局。 */
 export function WorkspacePanelButtons({

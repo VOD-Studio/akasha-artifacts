@@ -8,7 +8,7 @@ import { artifactKeys, fetchWithdrawnArtifacts, restoreArtifact } from '@/entiti
 import { ApiError, getRequestErrorMessage } from '@/shared/api/error'
 import { AkashaMark } from '@/shared/brand'
 import { useMessages } from '@/shared/i18n'
-import { messages } from './messages'
+import { messages } from '../withdrawn-list.messages'
 
 interface WithdrawnArtifactsDialogProps {
   onOpenArtifact: (publicId: string) => void

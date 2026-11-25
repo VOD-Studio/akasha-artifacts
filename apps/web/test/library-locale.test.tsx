@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, expect, it, vi } from 'vitest'
 import { setLocale } from '../src/shared/i18n'
 import { LibraryShell } from '../src/widgets/LibraryShell'
-import { useLibraryView } from '../src/widgets/LibraryShell/library-view'
+import { useLibraryView } from '../src/widgets/LibraryShell/model/library-view'
 
 const artifact = {
   publicId: 'aLocalLibraryExample01',

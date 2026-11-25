@@ -13,8 +13,8 @@ import { type ReactNode, useEffect, useRef } from 'react'
 import { useWorkspaceStore } from '@/entities/workspace'
 import { useMessages } from '@/shared/i18n'
 import { artifactTypeLabel } from '@/shared/lib/format'
-import { useLibraryView } from './library-view'
-import { messages } from './messages'
+import { messages } from '../messages'
+import { useLibraryView } from '../model/library-view'
 
 interface FilterMenuProps {
   label: string

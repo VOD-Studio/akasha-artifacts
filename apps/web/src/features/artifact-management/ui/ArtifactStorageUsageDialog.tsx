@@ -4,7 +4,7 @@ import { Skeleton } from '@akasha/ui/skeleton'
 import { useArtifactStorageUsageQuery } from '@/entities/artifact'
 import { getRequestErrorMessage } from '@/shared/api/error'
 import { useMessages } from '@/shared/i18n'
-import { messages } from './messages'
+import { messages } from '../messages'
 
 interface ArtifactStorageUsageDialogProps {
   artifactId: string

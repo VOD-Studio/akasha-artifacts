@@ -17,7 +17,7 @@ import { useRemoveProjectMutation } from '@/entities/project'
 import { useWorkspaceStore } from '@/entities/workspace'
 import { getRequestErrorMessage } from '@/shared/api/error'
 import { useMessages } from '@/shared/i18n'
-import { messages } from './messages'
+import { messages } from '../messages'
 
 interface LibraryMenuProps {
   projects: readonly Project[]

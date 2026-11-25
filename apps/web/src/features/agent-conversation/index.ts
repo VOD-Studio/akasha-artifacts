@@ -1,10 +1,4 @@
-export {
-  fetchAgentConnections,
-  fetchAgentDesignSession,
-  fetchArtifactConversation,
-  sendArtifactConversation,
-  startAgentDesign,
-} from './api/client'
-export { useAgentDraft } from './model/agent-draft'
+export { fetchArtifactConversation, sendArtifactConversation } from './api/client'
+export { CreateDesignDialog } from './design-session/CreateDesignDialog'
+export { useDesignAvailability } from './design-session/useDesignConnections'
 export { AgentConversationPane, type ConversationTarget } from './ui/AgentConversationPane'
-export { AgentTurnList } from './ui/AgentTurnList'
