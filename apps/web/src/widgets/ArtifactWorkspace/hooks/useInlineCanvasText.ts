@@ -6,12 +6,13 @@ import {
   type SandboxToShellMessage,
   type VersionSummary,
 } from '@akasha/protocol'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import {
   type CanvasBoard,
   type CanvasTextTarget,
   canvasTextDraftKey,
   discardCanvasTextDraft,
+  moveCanvasTextDraft,
   readCanvasTextDraft,
   writeCanvasTextDraft,
 } from '@/entities/artifact'
@@ -52,6 +53,7 @@ interface TextEditingInput {
   artifact: Artifact
   version: VersionSummary
   enabled: boolean
+  writable: boolean
   shareExpiresAt?: string
   activeBoardId?: string
   editing: CanvasBoardEditing
@@ -74,6 +76,18 @@ export function useInlineCanvasText(input: TextEditingInput) {
       anchor: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
     }
   })
+  // 作品与授权未变时保留编辑器；跨项目只迁移仍有写权限的当前快照。
+  const project = input.artifact.projectId
+  const previousProject = useRef(project)
+  useLayoutEffect(() => {
+    const from = previousProject.current
+    previousProject.current = project
+    if (from === project || !input.writable) return
+    moveCanvasTextDraft(
+      canvasTextDraftKey(from, input.version, input.shareExpiresAt),
+      canvasTextDraftKey(project, input.version, input.shareExpiresAt),
+    )
+  }, [project, input.writable, input.version, input.shareExpiresAt])
   const pending = useRef<Request | null>(null)
   const remembered = useRef<{ draft: CanvasTextDraft; value: string } | null>(null)
   const latest = useRef({ ...input, draft })

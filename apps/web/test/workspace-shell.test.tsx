@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { projectArtboard } from '@akasha/protocol'
+import { type ArtifactWorkspaceDetail, projectArtboard } from '@akasha/protocol'
+import { EditorView } from '@codemirror/view'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
@@ -105,7 +106,7 @@ function openWorkspace(
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   })
-  client.setQueryData(artifactKeys.management(publicId), { canManage })
+  client.setQueryData(artifactKeys.management(publicId, projectId), { canManage })
   const router = createAppRouter(createMemoryHistory({ initialEntries: [startAt] }))
   render(
     <QueryClientProvider client={client}>
@@ -114,6 +115,8 @@ function openWorkspace(
   )
   return {
     router,
+    client,
+    responses,
     denyAccess: () => {
       failDetailWith = 403
     },
@@ -306,4 +309,70 @@ it('Hub 登录与退出使用工作台同源，不把会话 Cookie 发往作品 
       expect.objectContaining({ method: 'POST', credentials: 'same-origin' }),
     )
   })
+})
+
+it('移动作品后原编辑器保留未保存源码和撤销历史，目标项目不沿用原管理权', async () => {
+  Range.prototype.getClientRects ??= () => document.body.getClientRects()
+  Range.prototype.getBoundingClientRect ??= () => document.body.getBoundingClientRect()
+  const { client, responses } = openWorkspace(true)
+  const endpoint = `/api/v1/artifacts/${publicId}`
+  const target = {
+    id: 'second-project',
+    name: '目标工作室',
+    rootPath: '/studio',
+    lastActiveAt: createdAt,
+  }
+  responses.set('/api/v1/projects', { projects: [target] })
+  const destinationPermission = Promise.withResolvers<void>()
+  const server = vi.mocked(fetch).getMockImplementation()
+  if (!server) throw new Error('缺少工作台测试服务')
+  let moved = false
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    const path = new URL(String(input), window.location.origin).pathname
+    if (path === `${endpoint}/transfer` && init?.method === 'POST') {
+      expect(JSON.parse(String(init.body))).toEqual({ kind: 'move', targetProjectId: target.id })
+      const artifact = { ...detail.artifact, projectId: target.id }
+      responses.set(endpoint, { ...client.getQueryData<ArtifactWorkspaceDetail>(artifactKeys.canvas(publicId)), artifact })
+      moved = true
+      return Response.json({ artifact })
+    }
+    if (moved && path === `${endpoint}/management`) {
+      await destinationPermission.promise
+      return Response.json({ canManage: false })
+    }
+    return server(input, init)
+  })
+  const menu = async (name: string) => {
+    fireEvent.keyDown(await screen.findByRole('button', { name: '作品菜单' }), { key: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name }))
+  }
+  await screen.findByRole('button', { name: '分享' })
+  await menu('编辑代码')
+  const editor = await screen.findByTestId('l3-code-editor')
+  const field = within(editor).getByRole('textbox')
+  const view = EditorView.findFromDOM(field)
+  if (!view) throw new Error('代码编辑器未挂载')
+  const draft = detail.version.source.replace('确认订单', '保留未保存修改')
+  act(() => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: draft } }))
+  await screen.findByText('未保存')
+  await menu('移动到项目…')
+  const dialog = within(await screen.findByRole('dialog', { name: '移动作品' }))
+  const projects = dialog.getByRole<HTMLButtonElement>('combobox', { name: '目标项目' })
+  await waitFor(() => expect(projects.disabled).toBe(false))
+  fireEvent.click(projects)
+  fireEvent.click(await screen.findByRole('option', { name: target.name }))
+  fireEvent.click(dialog.getByRole('button', { name: '移动' }))
+  await waitFor(() =>
+    expect(
+      client.getQueryData<ArtifactWorkspaceDetail>(artifactKeys.canvas(publicId))?.artifact
+        .projectId,
+    ).toBe(target.id),
+  )
+  await waitFor(() => expect(screen.queryByRole('button', { name: '分享' })).toBeNull())
+  const movedEditor = within(screen.getByTestId('l3-code-editor')).getByRole('textbox')
+  expect(movedEditor.textContent).toContain('保留未保存修改')
+  fireEvent.keyDown(movedEditor, { key: 'z', ctrlKey: true })
+  await waitFor(() => expect(movedEditor.textContent).toBe(detail.version.source))
+  await act(async () => destinationPermission.resolve())
+  expect(screen.queryByRole('button', { name: '分享' })).toBeNull()
 })

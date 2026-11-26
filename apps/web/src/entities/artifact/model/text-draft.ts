@@ -51,6 +51,16 @@ export function writeCanvasTextDraft(key: string, target: CanvasTextTarget, valu
   } catch {}
 }
 
+/** 只迁移同一可写快照的记录；写入失败时保留原项目的草稿。 */
+export function moveCanvasTextDraft(from: string, to: string): void {
+  try {
+    const raw = sessionStorage.getItem(from)
+    if (raw === null) return
+    sessionStorage.setItem(to, raw)
+    sessionStorage.removeItem(from)
+  } catch {}
+}
+
 /** 用户取消或确认为已发布后清理当前快照的未提交正文。 */
 export function discardCanvasTextDraft(key: string): void {
   try {

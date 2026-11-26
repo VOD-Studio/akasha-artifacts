@@ -29,7 +29,8 @@ export const artifactKeys = {
     [...artifactKeys.detailPrefix(id), version ?? 'head'] as const,
   source: (id: string, version: number) => ['artifacts', 'source', id, version] as const,
   versions: (id: string) => ['artifacts', 'versions', id] as const,
-  management: (id: string) => ['artifacts', 'management', id] as const,
+  management: (id: string, projectId: string) =>
+    ['artifacts', 'management', id, projectId] as const,
   sharing: (id: string) => ['artifacts', 'sharing', id] as const,
   withdrawn: ['artifacts', 'withdrawn'] as const,
   favorites: ['artifact-favorites'] as const,
@@ -101,9 +102,9 @@ export function useArtifactVersionsQuery(id: string) {
 }
 
 /** 管理权限独立于详情读取；失败时不在此 hook 重试。 */
-export function useArtifactManagementQuery(id: string, enabled = true) {
+export function useArtifactManagementQuery(id: string, projectId: string, enabled = true) {
   return useQuery({
-    queryKey: artifactKeys.management(id),
+    queryKey: artifactKeys.management(id, projectId),
     queryFn: () => fetchArtifactManagement(id),
     enabled: enabled && Boolean(id),
     retry: false,

@@ -72,7 +72,7 @@ export function ArtifactTitleMenu({
 }: ArtifactTitleMenuProps) {
   const { t, dir } = useMessages(messages)
   const { publicId, title } = artifact
-  const reload = useReloadArtifactMutation(publicId)
+  const reload = useReloadArtifactMutation(publicId, artifact.projectId)
   const favorites = useArtifactFavoritesQuery()
   const setFavorite = useSetArtifactFavoriteMutation(publicId)
   const isFavorite = favorites.data?.includes(publicId) ?? false

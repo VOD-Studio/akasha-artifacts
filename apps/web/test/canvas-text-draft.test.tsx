@@ -8,23 +8,28 @@ import {
   showEditableWorkspace,
   showWorkspace,
   stubResizeObserver,
+  workspace,
 } from './canvas-test-fixture'
 
 setupCanvasTest()
 
-it('离开画布不发布文字：在原快照恢复到原画板，其他版本和只读访客不显示草稿', async () => {
-  stubResizeObserver()
-  vi.stubGlobal('PointerEvent', MouseEvent)
-  const detail = detailFor()
-  const first = showWorkspace(detail)
+function typeCanvasText(text: string) {
   fireEvent.click(screen.getByRole('button', { name: '添加文本' }))
   const board = screen.getByRole('button', { name: '在手机首页添加文本' })
   vi.spyOn(board, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 390, 844))
   const point = { button: 0, clientX: 48, clientY: 64 }
   fireEvent.pointerDown(board, point)
   fireEvent.pointerUp(board, point)
-  const text = '只在确认后发布的文字'
   fireEvent.change(screen.getByRole('textbox', { name: '文字' }), { target: { value: text } })
+}
+
+it('离开画布不发布文字：在原快照恢复到原画板，其他版本和只读访客不显示草稿', async () => {
+  stubResizeObserver()
+  vi.stubGlobal('PointerEvent', MouseEvent)
+  const detail = detailFor()
+  const first = showWorkspace(detail)
+  const text = '只在确认后发布的文字'
+  typeCanvasText(text)
   act(() => useWorkspaceStore.getState().setViewMode('source'))
   expect(screen.queryByRole('textbox', { name: '文字' })).toBeNull()
   act(() => useWorkspaceStore.getState().setViewMode('preview'))
@@ -52,4 +57,22 @@ it('离开画布不发布文字：在原快照恢复到原画板，其他版本�
     id: 'mobile',
     designLayers: [{ kind: 'text', text, x: 48, y: 64 }],
   })
+})
+
+it('移动作品后只在目标项目的同一快照恢复文字草稿', () => {
+  stubResizeObserver()
+  vi.stubGlobal('PointerEvent', MouseEvent)
+  const detail = detailFor()
+  const moved = { ...detail, artifact: { ...detail.artifact, projectId: '目标项目' } }
+  const open = showWorkspace(detail)
+  typeCanvasText('随作品移动的草稿')
+  open.update(workspace(moved))
+  open.unmount()
+  const old = showWorkspace(detail)
+  expect(screen.queryByRole('textbox', { name: '文字' })).toBeNull()
+  old.unmount()
+  showWorkspace(moved)
+  expect(screen.getByRole<HTMLTextAreaElement>('textbox', { name: '文字' }).value).toBe(
+    '随作品移动的草稿',
+  )
 })

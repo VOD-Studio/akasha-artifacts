@@ -536,6 +536,7 @@ export function ArtifactWorkspace({
     artifact,
     version,
     enabled: canEditText,
+    writable: canWriteVersion,
     shareExpiresAt: access?.expiresAt,
     activeBoardId: canvasLocation?.boardId,
     editing: boardEditing,

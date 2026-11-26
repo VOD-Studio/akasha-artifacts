@@ -319,12 +319,7 @@ export function ArtifactRouteView({
         )}
         <div className={`flex min-h-0 min-w-0 flex-1 ${agent?.open ? 'max-lg:invisible' : ''}`}>
           <ArtifactWorkspace
-            key={JSON.stringify([
-              detail.artifact.projectId,
-              detail.artifact.publicId,
-              shareAccess?.role,
-              expiresAt,
-            ])}
+            key={JSON.stringify([detail.artifact.publicId, shareAccess?.role, expiresAt])}
             detail={detail}
             versions={versions}
             feedbacks={feedbacks}

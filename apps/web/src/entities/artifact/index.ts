@@ -45,6 +45,7 @@ export {
   canvasTextDraftKey,
   clearCanvasTextDrafts,
   discardCanvasTextDraft,
+  moveCanvasTextDraft,
   readCanvasTextDraft,
   writeCanvasTextDraft,
 } from './model/text-draft'
