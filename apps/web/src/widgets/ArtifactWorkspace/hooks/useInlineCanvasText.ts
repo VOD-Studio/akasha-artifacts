@@ -37,8 +37,8 @@ export interface CanvasTextTools {
 }
 
 /** 一个已定位的编辑或只读提示，保留打开时的版本和外壳定位。 */
-export type CanvasTextDraft = { anchor: Point } & (
-  | (CanvasTextTarget & { base: VersionSummary; restoredText?: string })
+export type CanvasTextDraft = { anchor: Point; base: VersionSummary } & (
+  | (CanvasTextTarget & { restoredText?: string })
   | { kind: 'readOnly'; element: ElementRef; message: string }
 )
 
@@ -66,16 +66,12 @@ interface TextEditingInput {
 export function useInlineCanvasText(input: TextEditingInput) {
   const draftKey = (base: VersionSummary) =>
     canvasTextDraftKey(input.artifact.projectId, base, input.shareExpiresAt)
-  const [draft, setDraft] = useState<CanvasTextDraft | null>(() => {
-    const saved = input.enabled && readCanvasTextDraft(draftKey(input.version))
-    if (!saved) return null
-    return {
-      ...saved.target,
-      base: input.version,
-      restoredText: saved.value,
-      anchor: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
-    }
-  })
+  const [openDraft, setDraft] = useState<CanvasTextDraft | null>(null)
+  const draft =
+    openDraft?.base.artifactId === input.artifact.publicId &&
+    openDraft.base.version === input.version.version
+      ? openDraft
+      : null
   // 作品与授权未变时保留编辑器；跨项目只迁移仍有写权限的当前快照。
   const project = input.artifact.projectId
   const previousProject = useRef(project)
@@ -88,6 +84,24 @@ export function useInlineCanvasText(input: TextEditingInput) {
       canvasTextDraftKey(project, input.version, input.shareExpiresAt),
     )
   }, [project, input.writable, input.version, input.shareExpiresAt])
+  // 可能先在源码或固定版本中挂载；首次可编辑时才读取，已在编辑的正文优先。
+  const restored = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    if (!input.enabled) return
+    const key = canvasTextDraftKey(project, input.version, input.shareExpiresAt)
+    if (restored.current === key) return
+    restored.current = key
+    if (draft) return
+    const saved = readCanvasTextDraft(key)
+    if (saved) {
+      setDraft({
+        ...saved.target,
+        base: input.version,
+        restoredText: saved.value,
+        anchor: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+      })
+    }
+  }, [project, input.version, input.shareExpiresAt, input.enabled, draft])
   const pending = useRef<Request | null>(null)
   const remembered = useRef<{ draft: CanvasTextDraft; value: string } | null>(null)
   const latest = useRef({ ...input, draft })
@@ -152,6 +166,7 @@ export function useInlineCanvasText(input: TextEditingInput) {
       } catch (cause) {
         finish({
           kind: 'readOnly',
+          base,
           element,
           anchor,
           message: cause instanceof Error ? cause.message : '无法检查文字',
@@ -161,6 +176,7 @@ export function useInlineCanvasText(input: TextEditingInput) {
     }
     finish({
       kind: 'readOnly',
+      base,
       element,
       anchor,
       message: '无法定位可编辑的静态文字。',

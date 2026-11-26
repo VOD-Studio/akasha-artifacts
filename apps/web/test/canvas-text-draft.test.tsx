@@ -76,3 +76,22 @@ it('移动作品后只在目标项目的同一快照恢复文字草稿', () => {
     '随作品移动的草稿',
   )
 })
+
+it('从源码视图重开工作区后，回到可写画布才恢复对应版本的草稿', () => {
+  stubResizeObserver()
+  vi.stubGlobal('PointerEvent', MouseEvent)
+  const detail = detailFor()
+  const first = showWorkspace(detail)
+  typeCanvasText('继续昨天的输入')
+  act(() => useWorkspaceStore.getState().setViewMode('source'))
+  first.unmount()
+
+  const next = showWorkspace(detail)
+  expect(screen.queryByRole('textbox', { name: '文字' })).toBeNull()
+  act(() => useWorkspaceStore.getState().setViewMode('preview'))
+  expect(screen.getByRole<HTMLTextAreaElement>('textbox', { name: '文字' }).value).toBe(
+    '继续昨天的输入',
+  )
+  next.update(workspace(detailFor(2)))
+  expect(screen.queryByRole('textbox', { name: '文字' })).toBeNull()
+})
