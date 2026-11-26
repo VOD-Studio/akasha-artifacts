@@ -1,4 +1,6 @@
 import { z } from 'zod'
+import { ArtifactSchema, VersionSchema } from '../domain.js'
+import { PublicIdSchema, SlugSchema } from '../primitives.js'
 
 // 路径只是所选文件集合内的键，绝不作为宿主路径或 URL 解析。
 const selectedPath = z
@@ -78,6 +80,19 @@ export const DesignSystemDraftSchema = z
   })
 export type DesignSystemDraft = z.infer<typeof DesignSystemDraftSchema>
 
+/** 缺失文件和缺失导出是不同决定；调用方必须逐项确认。 */
+export function removedDesignSystemItems(
+  previous: DesignSystemDraft,
+  next: DesignSystemDraft,
+): string[] {
+  const keys = (draft: DesignSystemDraft) => [
+    ...draft.files.map(({ path }) => `file:${path}`),
+    ...draft.components.map(componentKey),
+  ]
+  const retained = new Set(keys(next))
+  return keys(previous).filter((key) => !retained.has(key))
+}
+
 /** 构建许可只对这一份随请求发送的文件生效。 */
 export const DesignSystemPreviewInputSchema = z.object({
   draft: DesignSystemDraftSchema,
@@ -90,5 +105,50 @@ export const DesignSystemPreviewOutputSchema = z.object({
   // 来源标签与所选文件的 SHA-256，不是制品的数字版本号。
   sourceVersion: z.string().regex(/^[a-f0-9]{64}$/),
   previewSource: z.string(),
+  // 绑定同项目、完整草稿和本次构建结果的临时凭证；不能复用于其他草稿。
+  reviewToken: z.string().regex(/^[a-f0-9]{64}$/),
 })
 export type DesignSystemPreviewOutput = z.infer<typeof DesignSystemPreviewOutputSchema>
+
+/** 系统版本固定所选输入与构建结果；生成时不再触碰来源或重新构建。 */
+export const DesignSystemSnapshotSchema = DesignSystemPreviewOutputSchema.omit({
+  reviewToken: true,
+})
+  .extend({
+    draft: DesignSystemDraftSchema,
+    // 固定预览源码中的 UTF-16 区间。生成单组件时只复制选定的闭包，不运行其余组件的模块代码。
+    compiledRanges: z
+      .array(z.tuple([z.number().int().nonnegative(), z.number().int().positive()]))
+      .max(32),
+  })
+  .refine(
+    (s) =>
+      s.compiledRanges.length === s.draft.components.length &&
+      s.compiledRanges.every(
+        ([a, b], i, ranges) =>
+          a < b && b <= s.previewSource.length && (!i || a >= ranges[i - 1][1]),
+      ),
+  )
+export type DesignSystemSnapshot = z.infer<typeof DesignSystemSnapshotSchema>
+
+/** 首发不传标识和基线，重同步必须同时提交两者。 */
+export const DesignSystemPublishInputSchema = DesignSystemPreviewInputSchema.extend({
+  reviewToken: DesignSystemPreviewOutputSchema.shape.reviewToken,
+  slug: SlugSchema,
+  title: z.string().trim().min(1).max(512),
+  id: PublicIdSchema.optional(),
+  baseVersion: z.number().int().positive().optional(),
+  // 必须与相对基线缺失的文件／导出键集合一致，空数组不表示同意全部。
+  confirmedRemovals: z.array(z.string().max(800)).max(160),
+}).refine(
+  (v) => (v.id === undefined) === (v.baseVersion === undefined),
+  '重同步必须同时提供 id 与 baseVersion',
+)
+export type DesignSystemPublishInput = z.infer<typeof DesignSystemPublishInputSchema>
+
+/** 返回已提交的制品及其不可变源码，而非构建任务。 */
+export const DesignSystemWriteOutputSchema = z.object({
+  artifact: ArtifactSchema,
+  version: VersionSchema,
+})
+export type DesignSystemWriteOutput = z.infer<typeof DesignSystemWriteOutputSchema>

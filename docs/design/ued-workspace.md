@@ -94,7 +94,7 @@
 - 本机提供「新建设计」，选择项目和已授权 Agent 后提交；只在真实发布后打开设计。Hub 库不显示不能派发的本机创作入口。
 - 加载时用骨架占位；未找到制品可清除筛选；读取失败可重试。本机空库提供 Agent 接入链接。
 
-草稿预览 API：向已登记项目的 `POST /api/v1/projects/:projectId/design-systems/preview` 提交 `draft` 与 `buildApproved`。仅构建已许可并随请求提交的组件与依赖；品牌资料不需构建。返回来源指纹及可在隔离沙盒渲染的 React 源码，不创建作品。
+草稿预览 API：向已登记项目的 `POST /api/v1/projects/:projectId/design-systems/preview` 提交 `draft` 与 `buildApproved`。仅构建已许可并随请求提交的组件与依赖；品牌资料不需构建。返回来源指纹及可在隔离沙盒渲染的 React 源码，不创建作品。发布时向同项目的 `design-systems/publish` 提交原草稿及预览回执；重同步还须提交系统标识、基线版本和逐项确认的缺失文件／导出。通用发布、源码修改、回退及目录监听都不能写入系统版本。
 
 ### 设计工作区：低噪声外壳，画面是主体
 

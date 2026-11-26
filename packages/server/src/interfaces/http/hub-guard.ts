@@ -240,7 +240,8 @@ export function mountHubGuard(
       )
     }
 
-    const designSystem = /^\/api\/v1\/projects\/([^/]+)\/design-systems\/preview$/.exec(path)
+    const designSystem =
+      /^\/api\/v1\/projects\/([^/]+)\/design-systems\/(preview|publish)$/.exec(path)
     if (designSystem) {
       if (
         method !== 'POST' ||
@@ -249,7 +250,10 @@ export function mountHubGuard(
       ) {
         return hidden(c)
       }
-      return core.fetch(request)
+      if (designSystem[2] === 'preview') return core.fetch(request)
+      const body = await readJson(request)
+      if (!body) return invalid(c)
+      return core.fetch(rewrite(request, url, { ...body, author: hubAuthor(principal) }))
     }
 
     const projectPath = /^\/api\/v1\/projects\/([^/]+)(\/selection)?$/.exec(path)

@@ -139,6 +139,11 @@ function kitSpec(template: KitTemplateDefinition): ArtifactSpecDefinition {
 
 const BUILTIN_SPECS: ArtifactSpecDefinition[] = [
   {
+    type: 'design-system',
+    guide:
+      '设计系统必须在项目内通过 design-systems/preview 审阅，再通过 publish 发布。普通源码发布、编辑和目录监听不能替代来源授权。',
+  },
+  {
     type: 'react',
     guide:
       '导出默认 React 组件（export default function App()）。仅可使用白名单依赖；运行时数据用 useArtifactState() 读取，需跨重绘保留的调参控件使用 usePersistentControl(key, defaultValue) 或 data-ak-persist。',

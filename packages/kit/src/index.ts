@@ -27,7 +27,7 @@ export function registerBuiltinKitTemplates(): void {
 // 导入本包即注册内置模板，渲染器与校验门禁不需要再手动调用
 registerBuiltinKitTemplates()
 
-export { designSystemPreviewSource } from './design-system.js'
+export { designSystemPreviewSource, parseDesignSystem } from './design-system.js'
 export {
   buildPropsJsonSchema,
   getKitTemplate,

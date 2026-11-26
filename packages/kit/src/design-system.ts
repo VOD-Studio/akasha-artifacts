@@ -1,4 +1,6 @@
-import type { DesignSystemDraft } from '@akasha/protocol'
+import type { DesignSystemDraft, DesignSystemSnapshot } from '@akasha/protocol'
+import { DesignSystemSnapshotSchema } from '@akasha/protocol'
+import type { KitParseResult } from './registry.js'
 
 const mimeTypes: Record<string, string> = {
   svg: 'image/svg+xml',
@@ -10,6 +12,15 @@ const mimeTypes: Record<string, string> = {
   woff2: 'font/woff2',
   ttf: 'font/ttf',
   otf: 'font/otf',
+}
+
+/** 系统快照只能由专用的审阅流程写入；沙盒不解析来源路径、不运行构建。 */
+export function parseDesignSystem(source: string): KitParseResult<DesignSystemSnapshot> {
+  try {
+    return { ok: true, data: DesignSystemSnapshotSchema.parse(JSON.parse(source)) }
+  } catch {
+    return { ok: false, error: '无效的设计系统快照' }
+  }
 }
 
 /** 返回沙盒 React Artifact 源码；组件表来自静态编译产物，不从名称仿制组件。 */
@@ -47,7 +58,13 @@ export function designSystemPreviewSource(
     guidelines: draft.files.filter((f) => f.kind === 'guidelines').map((f) => f.content),
     css: fontRules,
   }
-  return `import * as React from 'react';\nconst reviewed = [${modules.join(',\n')}];\nconst model = ${JSON.stringify(model)};
+  let previewSource = `import * as React from 'react';\nconst reviewed = [\n`
+  const compiledRanges: [number, number][] = []
+  for (const module of modules) {
+    compiledRanges.push([previewSource.length, previewSource.length + module.length])
+    previewSource += `${module},\n`
+  }
+  previewSource += `];\nconst model = ${JSON.stringify(model)};
 export default function DesignSystemBoard() {
   const h = React.createElement;
   const style = {display:'grid', alignContent:'start', justifyItems:'start', gap:model.spacing, padding:model.spacing, color:model.color, fontFamily:model.fontFamily || undefined};
@@ -59,4 +76,5 @@ export default function DesignSystemBoard() {
     ...model.components.map((item,i) => h('div',{key:i, 'data-ak-component':item.path+'#'+item.exportName},h(reviewed[i].component,item.props)))
   );
 }\n`
+  return { previewSource, compiledRanges }
 }

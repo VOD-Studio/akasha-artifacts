@@ -1,16 +1,33 @@
+import { parseDesignSystem } from '@akasha/kit'
 import { fireEvent, render } from '@testing-library/react/pure'
 import { expect, it } from 'vitest'
 import { builtinEnvironments } from 'vitest/environments'
-import { previewDesignSystem } from '../../../packages/server/src/application/design-systems/review'
+import { createMemoryContainer } from '../../../packages/server/src/app/create-memory-container'
 import { buttons } from '../../../packages/server/test/design-systems/brand'
 import { compileReactArtifact } from '../src/runtime/compiler'
 
-it('runs the selected button and its stylesheet in the sandbox renderer', async () => {
+it('runs the published button and its selected stylesheet in the sandbox renderer', async () => {
+  // HTTP、固定版本和数据库由 publication 集成用例覆盖；渲染用例不依赖监听端口。
+  const { service } = createMemoryContainer()
   const draft = buttons('#1458ab')
-  const review = await previewDesignSystem({ draft, buildApproved: true })
+  const review = await service.designSystems.preview('original', { draft, buildApproved: true })
+  const system = await service.designSystems.publish(
+    'original',
+    {
+      draft,
+      buildApproved: true,
+      reviewToken: review.reviewToken,
+      confirmedRemovals: [],
+      slug: 'controls',
+      title: 'Original controls',
+    },
+    'human:local',
+  )
+  const snapshot = parseDesignSystem(system.version.source)
+  if (!snapshot.ok) throw new Error(snapshot.error)
   const dom = await builtinEnvironments.jsdom.setup(globalThis, {})
   try {
-    const Board = await compileReactArtifact(review.previewSource)
+    const Board = await compileReactArtifact(snapshot.data.previewSource)
     const view = render(<Board />)
     try {
       const button = view.getByRole('button', { name: 'Confirm order' })

@@ -6,6 +6,7 @@ import { SvgRenderer } from './formats/svg'
 import { registerRenderer } from './registry'
 import { ArtboardRenderer } from './templates/artboard'
 import { DataStoryRenderer } from './templates/data-story'
+import { DesignSystemRenderer } from './templates/design-system'
 import { DocumentRenderer } from './templates/document'
 import { LiveTimelineRenderer } from './templates/live-timeline'
 import { OptionCompareRenderer } from './templates/option-compare'
@@ -29,6 +30,7 @@ export function registerBuiltinRenderers(): void {
   registerRenderer('react', (props) => <ReactRenderer {...props} />)
   // M3 @akasha/kit 工程与高阶决策模板渲染器
   registerRenderer('document', (props) => <DocumentRenderer {...props} />)
+  registerRenderer('design-system', (props) => <DesignSystemRenderer {...props} />)
   registerRenderer('artboard', (props) => <ArtboardRenderer {...props} />)
   registerRenderer('verify', (props) => <VerifyRenderer {...props} />)
   registerRenderer('live-timeline', (props) => <LiveTimelineRenderer {...props} />)

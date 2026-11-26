@@ -4,7 +4,7 @@ import { designSystemPreviewSource } from '@akasha/kit'
 import type {
   DesignSystemDraft,
   DesignSystemPreviewInput,
-  DesignSystemPreviewOutput,
+  DesignSystemSnapshot,
 } from '@akasha/protocol'
 import { DomainError } from '../../domain/errors.js'
 import { bundleSelectedComponents } from './bundle.js'
@@ -97,11 +97,11 @@ function fingerprint(draft: DesignSystemDraft) {
 export async function previewDesignSystem({
   draft,
   buildApproved,
-}: DesignSystemPreviewInput): Promise<DesignSystemPreviewOutput> {
+}: DesignSystemPreviewInput): Promise<Omit<DesignSystemSnapshot, 'draft'>> {
   if (draft.components.length && !buildApproved)
     throw new DomainError('FORBIDDEN', '尚未许可构建所选组件')
   for (const file of draft.files) validateFile(file)
   const modules = draft.components.length ? await bundleSelectedComponents(draft) : []
   const sourceVersion = fingerprint(draft)
-  return { sourceVersion, previewSource: designSystemPreviewSource(draft, sourceVersion, modules) }
+  return { sourceVersion, ...designSystemPreviewSource(draft, sourceVersion, modules) }
 }

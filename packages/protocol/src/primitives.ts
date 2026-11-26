@@ -11,6 +11,7 @@ export const ARTIFACT_TYPES = [
   'mermaid', // 纯 Mermaid 图表定义
   'svg', // 纯静态 SVG，禁止脚本与内联事件
   'artboard', // 并排多画板：多方案对比与分轮单选
+  'design-system', // 项目内已审阅的设计系统，保留品牌资料、组件实现及来源指纹
   'document', // 结构化设计文档，段落带稳定块标识
   'verify', // 交付验收：预期与结果对比，逐条证据与裁决
   'pr-walkthrough', // 分章节代码走查与行级批注
