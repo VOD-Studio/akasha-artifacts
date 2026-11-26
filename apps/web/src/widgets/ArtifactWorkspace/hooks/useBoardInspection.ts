@@ -56,7 +56,17 @@ interface Scope {
   boardId: string
 }
 
-/** 运行图层引用只在其制品、版本与画板的作用域内生效。 */
+type LayerSnapshot = Scope & {
+  layers: CanvasLayer[]
+  truncated: boolean
+  styles?: CanvasLayerStyles
+}
+
+function snapshotKey(artifactId: string, version: number, boardId: string) {
+  return `${artifactId}:${version}:${boardId}`
+}
+
+/** 运行图层引用只在其制品、版本与画板的作用域内生效；同版本按画板缓存图层树以消除切换闪白。 */
 export function useBoardInspection({
   artifactId,
   version,
@@ -68,9 +78,7 @@ export function useBoardInspection({
   onEnteredLayer,
 }: BoardInspectionInput) {
   const open = useWorkspaceStore((state) => state.inspectorTab === 'inspect')
-  const [snapshot, setSnapshot] = useState<
-    (Scope & { layers: CanvasLayer[]; truncated: boolean; styles?: CanvasLayerStyles }) | null
-  >(null)
+  const [snapshots, setSnapshots] = useState<ReadonlyMap<string, LayerSnapshot>>(() => new Map())
   const [presentation, setPresentation] = useState<
     (Scope & { layerId?: string; value: CanvasElementPresentation }) | null
   >(null)
@@ -333,12 +341,9 @@ export function useBoardInspection({
       ? (element.boardId ?? STANDALONE_BOARD_ID)
       : undefined
   })
-  const layers =
-    snapshot?.artifactId === artifactId &&
-    snapshot.version === version &&
-    snapshot.boardId === current?.boardId
-      ? snapshot
-      : null
+  const layers = current?.boardId
+    ? (snapshots.get(snapshotKey(artifactId, version, current.boardId)) ?? null)
+    : null
   const activePresentation =
     presentation?.artifactId === artifactId &&
     presentation.version === version &&
@@ -352,7 +357,18 @@ export function useBoardInspection({
       message: Extract<SandboxToShellMessage, { type: 'inspect.layers.snapshot' }>,
     ) => {
       const { version: activeVersion, layers, truncated, styles } = message
-      setSnapshot({ artifactId, version: activeVersion, boardId, layers, truncated, styles })
+      const key = snapshotKey(artifactId, activeVersion, boardId)
+      setSnapshots((previous) => {
+        const next = new Map<string, LayerSnapshot>()
+        // 清理非当前制品或旧版本的过时快照，仅保留同版本的按画板缓存。
+        for (const [entryKey, entry] of previous) {
+          if (entry.artifactId === artifactId && entry.version === activeVersion) {
+            next.set(entryKey, entry)
+          }
+        }
+        next.set(key, { artifactId, version: activeVersion, boardId, layers, truncated, styles })
+        return next
+      })
       if (pendingEnterBoard.current === boardId && activeVersion === latest.current.version) {
         pendingEnterBoard.current = null
         const first = firstRootLayer(layers)
@@ -406,14 +422,9 @@ export function useBoardInspection({
     (boardId: string) => {
       pendingPoint.current = null
       const live = latest.current
-      if (
-        snapshot?.artifactId === artifactId &&
-        snapshot.version === live.version &&
-        snapshot.boardId === boardId &&
-        live.board?.id === boardId &&
-        live.current
-      ) {
-        const first = firstRootLayer(snapshot.layers)
+      const cached = snapshots.get(snapshotKey(artifactId, live.version, boardId))
+      if (cached && live.board?.id === boardId && live.current) {
+        const first = firstRootLayer(cached.layers)
         if (first) {
           pendingEnterBoard.current = null
           selectLayerDirect(live.board, live.current, first, false)
@@ -423,7 +434,7 @@ export function useBoardInspection({
       }
       pendingEnterBoard.current = boardId
     },
-    [artifactId, selectLayerDirect, snapshot],
+    [artifactId, selectLayerDirect, snapshots],
   )
 
   const hovered: HoveredCanvasElement | null =

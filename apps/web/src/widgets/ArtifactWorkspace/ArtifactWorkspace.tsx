@@ -611,7 +611,9 @@ export function ArtifactWorkspace({
     ) => {
       const overview = purpose.type === 'overview'
       const register = purpose.type === 'focus' ? registerFocusedFrame : undefined
-      const watchLayers = overview && watchBoard === board.id
+      const isInspectedBoard = overview && watchBoard === board.id
+      const watchLayers =
+        isInspectedBoard || (overview && inspection.open && canvas === savedCanvas && detailed)
       const frame = (board: LoadedCanvasBoard, ready?: () => void) => (
         <ArtifactFrame
           artifact={artifact}
@@ -638,7 +640,7 @@ export function ArtifactWorkspace({
           }
           onCapabilities={onObserve}
           watchLayers={watchLayers}
-          styleLayerId={watchLayers ? styleLayerId : undefined}
+          styleLayerId={isInspectedBoard ? styleLayerId : undefined}
           onLayers={inspection.onLayers}
           onElementTarget={onElementTarget}
           onSelectSync={inspection.onSelectSync}
@@ -671,6 +673,9 @@ export function ArtifactWorkspace({
       registerFocusedFrame,
       onObserve,
       watchBoard,
+      inspection.open,
+      canvas,
+      savedCanvas,
       styleLayerId,
       inspection.onLayers,
       inspection.onSelectSync,
