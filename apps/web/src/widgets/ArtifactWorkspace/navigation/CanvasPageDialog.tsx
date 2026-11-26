@@ -17,8 +17,9 @@ import {
   artifactSourceOptions,
   type CanvasPage,
   hasVersionSource,
-  publishHumanVersion,
+  saveCanvasVersion,
 } from '@/entities/artifact'
+import { isCloudHub } from '@/shared/config/runtime'
 import { useMessages } from '@/shared/i18n'
 import { type CanvasPageEdit, editCanvasPages } from '../lib/canvas-page-source'
 import { useBoardEditError } from '../model/board-edit-error-messages'
@@ -82,24 +83,18 @@ export function CanvasPageDialog({
     setError('')
     setSaving(true)
     try {
-      if (request.baseVersion !== version.version) {
+      if (!isCloudHub() && request.baseVersion !== version.version) {
         throw new Error('作品已更新，请重新操作')
       }
       const edit = toPageEdit(request, title)
-      const base = hasVersionSource(version)
-        ? version
-        : await queryClient.fetchQuery(
-            artifactSourceOptions(artifact.publicId, request.baseVersion),
-          )
+      const base =
+        version.version === request.baseVersion && hasVersionSource(version)
+          ? version
+          : await queryClient.fetchQuery(
+              artifactSourceOptions(artifact.publicId, request.baseVersion),
+            )
       const source = editCanvasPages(base.source, request.baseVersion, edit)
-      const saved = await publishHumanVersion({
-        project: artifact.projectId,
-        slug: artifact.slug,
-        title: version.title,
-        type: artifact.type,
-        baseVersion: request.baseVersion,
-        source,
-      })
+      const saved = await saveCanvasVersion(artifact, base, source)
       queryClient.setQueryData(
         artifactKeys.source(artifact.publicId, saved.version.version),
         saved.version,

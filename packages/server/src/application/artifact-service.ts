@@ -21,6 +21,7 @@ import {
 } from './artifacts/state-stream.js'
 import {
   ArtifactVersions,
+  type CanvasEditInput,
   type PublishArtifactInput,
   type RevertArtifactInput,
   type UpdateArtifactInput,
@@ -144,6 +145,11 @@ export class ArtifactService {
    */
   update(input: UpdateArtifactInput) {
     return this.versions.update(input)
+  }
+
+  /** 在写锁内按 Hub 当前授权合并画布草稿，保留其他编辑者已提交的内容。 */
+  editCanvas(input: CanvasEditInput) {
+    return this.versions.editCanvas(input)
   }
 
   /**

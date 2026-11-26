@@ -41,6 +41,7 @@ import { VersionDiffView } from '@/features/version-diff'
 import { useVisualEdit, VisualEditPanel } from '@/features/visual-edit'
 import { getRequestErrorMessage } from '@/shared/api/error'
 import { AkashaMark } from '@/shared/brand'
+import { isCloudHub } from '@/shared/config/runtime'
 import { type Messages, useMessages } from '@/shared/i18n'
 import { useBoardCapabilities } from './hooks/useBoardCapabilities'
 import { useBoardInspection } from './hooks/useBoardInspection'
@@ -339,6 +340,7 @@ export function ArtifactWorkspace({
   const canEditBoards =
     canWriteVersion &&
     artifact.type === 'artboard' &&
+    (!isCloudHub() || detail.hubCanEditCanvas === true) &&
     viewMode === 'preview' &&
     savedCanvas.pages.every((page) => page.boards.every((board) => board.scoped))
   const canEditText =
