@@ -113,6 +113,7 @@ export function CreateDesignDialog({
   return (
     <Modal
       open={open}
+      className="design-entry-dialog"
       onOpenChange={(visible) => {
         if (!visible) onClose()
       }}

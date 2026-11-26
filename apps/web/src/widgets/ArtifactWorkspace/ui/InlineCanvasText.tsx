@@ -2,7 +2,7 @@ import type { ElementRef } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Field } from '@akasha/ui/field'
 import { Textarea } from '@akasha/ui/textarea'
-import { useEffect, useId, useRef, useState } from 'react'
+import { type CSSProperties, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useMessages } from '@/shared/i18n'
 import type { CanvasTextDraft } from '../hooks/useInlineCanvasText'
@@ -101,11 +101,13 @@ export function InlineCanvasText({
       open
       ref={panel}
       aria-labelledby={`${id}-heading`}
-      className="fixed z-50 m-0 w-[min(18rem,calc(100vw-24px))] rounded-lg border border-border bg-surface p-3 text-ink shadow-lg"
-      style={{
-        left: `clamp(12px, ${draft.anchor.x}px, calc(100vw - 19rem))`,
-        top: `clamp(12px, ${draft.anchor.y}px, calc(100dvh - 15rem))`,
-      }}
+      className="canvas-text-editor fixed z-50 m-0 overflow-y-auto rounded-lg border border-border bg-surface p-3 text-ink shadow-lg"
+      style={
+        {
+          '--anchor-x': `${draft.anchor.x}px`,
+          '--anchor-y': `${draft.anchor.y}px`,
+        } as CSSProperties
+      }
       onKeyDown={(event) => {
         if (event.nativeEvent.isComposing) return
         if (event.key === 'Escape' && !busy) {

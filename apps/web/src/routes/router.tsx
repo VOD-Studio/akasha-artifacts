@@ -21,6 +21,7 @@ import { useLiveSync } from '@/features/live-sync'
 import { hubArtifactPath } from '@/shared/config/hub-artifact'
 import { isCloudHub } from '@/shared/config/runtime'
 import { useMessages } from '@/shared/i18n'
+import { useVisualViewport } from '@/shared/overlay/useVisualViewport'
 import { LibraryShell } from '@/widgets/LibraryShell'
 import { ArtifactRouteView } from './ArtifactRouteView'
 import { ConnectionNotice } from './ConnectionNotice'
@@ -28,6 +29,7 @@ import { routeMessages } from './messages'
 
 function RootLayout() {
   useTheme('system')
+  useVisualViewport()
   const { locale, dir, t } = useMessages(routeMessages)
   useLayoutEffect(() => {
     document.documentElement.lang = locale
