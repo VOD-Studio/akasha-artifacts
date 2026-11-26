@@ -10,6 +10,17 @@ export const messages = {
   ],
   编码工作区: ['Coding-Arbeitsbereich', 'مساحة عمل البرمجة', 'Coding workspace'],
   固定选区: ['Fixierte Auswahl', 'التحديد الثابت', 'Pinned selection'],
+  工程回传源码: ['Quellcode aus dem Arbeitsbereich', 'شيفرة مساحة العمل', 'Workspace source'],
+  已审阅组件源码: [
+    'Geprüfter Komponentenquellcode',
+    'شيفرة المكوّن المراجعة',
+    'Reviewed component source',
+  ],
+  '原设计系统 · v{version}': [
+    'Ursprüngliches Designsystem · v{version}',
+    'نظام التصميم الأصلي · v{version}',
+    'Original design system · v{version}',
+  ],
   作品源码: ['Quellcode des Werks', 'شيفرة العمل', 'Artifact source'],
   发布新版本: ['Neue Version veröffentlichen', 'نشر إصدار جديد', 'Publish new version'],
   '打开 v{version}': ['v{version} öffnen', 'فتح v{version}', 'Open v{version}'],

@@ -13,7 +13,7 @@ import { messages } from '../messages'
 function WorkspaceEditor({ workspace }: { workspace: CodingWorkspace }) {
   const { t } = useMessages(messages)
   const { target, snapshot } = workspace
-  const { reference, design, components } = snapshot
+  const { reference, design, components, reviewedSystem } = snapshot
   const [draft, setDraft] = useState(design.source)
   const save = useMutation({
     mutationFn: (source: string) => publishCodingWorkspace(reference.projectId, target.id, source),
@@ -45,9 +45,20 @@ function WorkspaceEditor({ workspace }: { workspace: CodingWorkspace }) {
           </pre>
         </details>
       )}
+      {reviewedSystem && (
+        <div>
+          <a
+            className="underline"
+            href={`/a/${encodeURIComponent(reviewedSystem.id)}/v/${reviewedSystem.version}`}
+          >
+            {t('原设计系统 · v{version}', { version: reviewedSystem.version })}
+          </a>
+        </div>
+      )}
       {components.map((component) => (
         <details key={`${component.path}#${component.exportName}`}>
           <summary className="cursor-pointer font-mono">
+            {t(component.origin === 'workspace' ? '工程回传源码' : '已审阅组件源码')} ·{' '}
             <bdi>
               {component.path}#{component.exportName}
             </bdi>

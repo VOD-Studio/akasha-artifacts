@@ -1,3 +1,10 @@
+import {
+  ArtifactGetOutputSchema,
+  CodingSessionGrantSchema,
+  DesignSystemPreviewOutputSchema,
+  DesignSystemWriteOutputSchema,
+  readDesignSystemReference,
+} from '@akasha/protocol'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { expect, it, onTestFinished } from 'vitest'
@@ -21,27 +28,33 @@ async function setup() {
   const design = (action: string, body: unknown) =>
     send(`/api/v1/projects/one/design-systems/${action}`, body)
   const draft = buttons('#445566')
-  const { reviewToken } = await (await design('preview', { draft, buildApproved: true })).json()
-  const system = await (
-    await design('publish', {
-      draft,
-      buildApproved: true,
-      reviewToken,
-      slug: 'ui',
-      title: 'UI',
-      confirmedRemovals: [],
-    })
-  ).json()
+  const { reviewToken } = DesignSystemPreviewOutputSchema.parse(
+    await (await design('preview', { draft, buildApproved: true })).json(),
+  )
+  const system = DesignSystemWriteOutputSchema.parse(
+    await (
+      await design('publish', {
+        draft,
+        buildApproved: true,
+        reviewToken,
+        slug: 'ui',
+        title: 'UI',
+        confirmedRemovals: [],
+      })
+    ).json(),
+  )
   const component = { path: 'src/Button.tsx', exportName: 'ConfirmButton' }
-  const board = await (
-    await design('generate', {
-      id: system.artifact.publicId,
-      version: 1,
-      slug: 'checkout',
-      title: '结账',
-      component,
-    })
-  ).json()
+  const board = DesignSystemWriteOutputSchema.parse(
+    await (
+      await design('generate', {
+        id: system.artifact.publicId,
+        version: 1,
+        slug: 'checkout',
+        title: '结账',
+        component,
+      })
+    ).json(),
+  )
   const reference = {
     projectId: 'one',
     artifactId: board.artifact.publicId,
@@ -54,7 +67,7 @@ async function setup() {
     send(`/api/v1/projects/${project}/coding-sessions`, { reference, label: '结账项目' }, token)
   const response = await create('one')
   expect(response.status).toBe(201)
-  const { id, token } = await response.json()
+  const { id, token } = CodingSessionGrantSchema.parse(await response.json())
   const connection = { origin: server.baseUrl, projectId: 'one', id, token }
   return { server, send, board, create, component, reference, connection }
 }
@@ -119,9 +132,11 @@ it('将工程组件发布为同一作品的新版本并拒绝旧基线覆盖', a
   const published = await workspace.publish(input)
   expect(published).toMatchObject({ artifactId: reference.artifactId, version: 2 })
   const fixed = async (version: number) =>
-    (
-      await fetch(`${server.baseUrl}/api/v1/artifacts/${reference.artifactId}?version=${version}`)
-    ).json()
+    ArtifactGetOutputSchema.parse(
+      await (
+        await fetch(`${server.baseUrl}/api/v1/artifacts/${reference.artifactId}?version=${version}`)
+      ).json(),
+    )
   const result = await fixed(2)
   expect(result.version.parentVersion).toBe(1)
   expect(result.version.source).toContain('Order submitted')
@@ -130,4 +145,72 @@ it('将工程组件发布为同一作品的新版本并拒绝旧基线覆盖', a
   expect((await fixed(1)).version.source).toBe(board.version.source)
   await expect(workspace.publish(input)).rejects.toThrow(/409|冲突/)
   expect((await fixed(2)).artifact.headVersion).toBe(2)
+})
+
+it('重新交接工程回传版本时区分当前实现与原审阅来源', async () => {
+  const { connection, reference, component, send } = await setup()
+  const original = new CodingSessionClient(connection)
+  const first = await original.read()
+  const reviewed = readDesignSystemReference(first.design.source)
+  expect(reviewed?.components).toEqual([component])
+  const current = {
+    path: 'app/OrderAction.tsx',
+    exportName: 'OrderAction',
+    props: { label: '提交订单' },
+    files: [
+      {
+        path: 'app/OrderAction.tsx',
+        content:
+          "import './order.css'; export function OrderAction({label}) { return <button>{label}</button> }",
+      },
+      { path: 'app/order.css', content: 'button { border: 1px solid black }' },
+    ],
+  }
+  const { version } = await original.publish({ component: current })
+  const reopen = async (version: number) => {
+    const response = await send('/api/v1/projects/one/coding-sessions', {
+      label: '复核',
+      reference: { ...reference, version },
+    })
+    expect(response.status).toBe(201)
+    const { id, token } = CodingSessionGrantSchema.parse(await response.json())
+    return new CodingSessionClient({ ...connection, id, token })
+  }
+  const next = await reopen(version)
+  const returned = await next.read()
+  expect(readDesignSystemReference(returned.design.source)).toEqual(reviewed)
+  expect(returned).toMatchObject({
+    reviewedSystem: reviewed,
+    components: [
+      {
+        origin: 'workspace',
+        path: current.path,
+        exportName: current.exportName,
+        source: current.files[0]?.content,
+      },
+    ],
+  })
+  expect(returned.components).toHaveLength(1)
+  expect(await original.read()).toMatchObject({
+    components: [
+      { ...component, source: expect.stringContaining('Sent from original'), origin: 'reviewed' },
+    ],
+    design: { version: 1, source: first.design.source },
+  })
+  const manual = await next.publish({
+    source: 'export default function Manual() { return <p>手写版本</p> }',
+  })
+  expect(await (await reopen(manual.version)).read()).toMatchObject({
+    components: [],
+    reviewedSystem: null,
+  })
+  const reverted = await send(`/api/v1/artifacts/${reference.artifactId}/revert`, {
+    targetVersion: version,
+    baseVersion: manual.version,
+  })
+  expect(reverted.ok).toBe(true)
+  expect(await (await reopen(manual.version + 1)).read()).toMatchObject({
+    components: returned.components,
+    reviewedSystem: reviewed,
+  })
 })

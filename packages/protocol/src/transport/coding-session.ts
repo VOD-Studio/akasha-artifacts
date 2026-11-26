@@ -3,7 +3,11 @@ import { DesignLayersSchema } from '../artboard/layers.js'
 import { ElementRefSchema } from '../domain.js'
 import type { HandoffDesign } from '../handoff.js'
 import { ArtifactTypeSchema, PublicIdSchema } from '../primitives.js'
-import { DesignSystemDraftSchema } from './design-system.js'
+import {
+  DesignSystemDraftSchema,
+  type DesignSystemReference,
+  DesignSystemReferenceSchema,
+} from './design-system.js'
 import { ArtifactHandoffReferenceSchema } from './mcp.js'
 
 /** 会话 ID 可用于续接，不是访问凭证。 */
@@ -33,11 +37,19 @@ export const CodingSessionGrantSchema = z.object({
   expiresAt: z.iso.datetime(),
 })
 
-/** 组件源码只来自本项目已审阅的固定设计系统版本。 */
+const componentSource = z.object({
+  origin: z.enum(['reviewed', 'workspace']),
+  path: z.string(),
+  exportName: z.string(),
+  source: z.string(),
+})
+
+/** 工程回传实现与生成时审阅的来源分开记录；后者不为后续改动背书。 */
 export interface CodingSessionRead {
   reference: z.infer<typeof ArtifactHandoffReferenceSchema>
   design: HandoffDesign
-  components: { path: string; exportName: string; source: string }[]
+  reviewedSystem: DesignSystemReference | null
+  components: z.infer<typeof componentSource>[]
 }
 
 /** 不信任远端返回的源码描述或引用；两者必须对应同一个不可变版本。 */
@@ -79,7 +91,8 @@ export const CodingSessionReadSchema: z.ZodType<CodingSessionRead> = z
         ),
       }),
     }),
-    components: z.array(z.object({ path: z.string(), exportName: z.string(), source: z.string() })),
+    reviewedSystem: DesignSystemReferenceSchema.nullable(),
+    components: z.array(componentSource),
   })
   .refine(
     ({ design, reference }) =>

@@ -237,6 +237,8 @@ claude mcp add --scope local --transport stdio akasha-design -- akasha coding mc
 akasha coding publish --session <id> --file src/Button.tsx --export ConfirmButton --props '{"children":"确认"}' src/button.css
 ```
 
+把回传后的版本再次移交给编码会话，`components` 会返回可编辑的工程入口源码，并标记 `origin: "workspace"`。若作品来自已审阅设计系统，`reviewedSystem` 仍指向当时的系统版本、指纹、路径和导出名，不代表工程改动已通过审阅。
+
 ---
 
 ## 本地开发

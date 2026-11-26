@@ -237,6 +237,8 @@ Edit a component in the checkout, then publish its named export and explicit dep
 akasha coding publish --session <id> --file src/Button.tsx --export ConfirmButton --props '{"children":"Confirm"}' src/button.css
 ```
 
+A new handoff pinned to the published version returns the editable entry file in `components` with `origin: "workspace"`. If the artifact came from a reviewed design system, `reviewedSystem` still points to that system’s original version, fingerprint, paths and exports. It does not mark your changes as reviewed.
+
 ---
 
 ## Development

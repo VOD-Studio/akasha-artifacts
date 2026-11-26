@@ -43,6 +43,7 @@ it('从绑定会话恢复固定选区，在 Web 修改原型后打开真实的�
             note: '素材',
           },
           components: [],
+          reviewedSystem: null,
         },
         publication: published ? receipt : null,
       })

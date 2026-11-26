@@ -1,6 +1,6 @@
 import type { Artifact, ArtifactType, PublicId, Slug, Version } from '@akasha/protocol'
 import { DomainError } from '../../../domain/errors.js'
-import type { ArtifactRepository } from '../../../domain/ports.js'
+import type { ArtifactRepository, WorkspaceComponent } from '../../../domain/ports.js'
 import type { SqliteArtifactRepository } from '../sqlite/index.js'
 import { ArtifactWorkingTree } from './artifact-working-tree.js'
 import { ExternalEditReconciler } from './external-edit-reconciler.js'
@@ -14,7 +14,10 @@ import { resolveArtifactFileLayout, resolveRealPathAllowMissing } from './file-l
  */
 export class FsArtifactRepository implements ArtifactRepository {
   // 暂存 v2+ 待提交版本：先经 saveArtifact 完成项目归属与物理目录碰撞校验，再与元数据在单事务内原子提交，防止校验拒绝后遗留孤儿版本
-  private readonly pendingVersions = new Map<PublicId, Readonly<Version>>()
+  private readonly pendingVersions = new Map<
+    PublicId,
+    { record: Readonly<Version>; component?: WorkspaceComponent }
+  >()
   private readonly files: ArtifactWorkingTree
   private readonly edits: ExternalEditReconciler
 
@@ -105,7 +108,8 @@ export class FsArtifactRepository implements ArtifactRepository {
   async saveArtifact(artifact: Artifact): Promise<void> {
     const staged = this.pendingVersions.get(artifact.publicId)
     this.pendingVersions.delete(artifact.publicId)
-    const stagedForHead = staged && staged.version === artifact.headVersion ? staged : undefined
+    const stagedForHead =
+      staged?.record.version === artifact.headVersion ? staged.record : undefined
 
     this.files.assertOwnedProject(artifact.projectId)
     const layout = resolveArtifactFileLayout(
@@ -122,7 +126,11 @@ export class FsArtifactRepository implements ArtifactRepository {
     this.files.reserve(targetDir, artifact.publicId)
 
     try {
-      this.inner.saveArtifactWithVersionSync(artifact, stagedForHead)
+      this.inner.saveArtifactWithVersionSync(
+        artifact,
+        stagedForHead,
+        stagedForHead ? staged?.component : undefined,
+      )
     } catch (err) {
       if (!previous) {
         this.files.release(targetDir)
@@ -166,19 +174,23 @@ export class FsArtifactRepository implements ArtifactRepository {
   /**
    * 追加版本；v2 及之后的版本先暂存，等随后的 `saveArtifact` 校验通过后一起提交。
    */
-  async appendVersion(version: Readonly<Version>, type?: ArtifactType): Promise<void> {
+  async appendVersion(
+    version: Readonly<Version>,
+    type?: ArtifactType,
+    component?: WorkspaceComponent,
+  ): Promise<void> {
     const artifact = await this.inner.findByPublicId(version.artifactId)
     if (artifact) {
       this.files.assertOwnedProject(artifact.projectId)
       // v2+ 更新：先暂存版本，等待随后的 saveArtifact 使用更新后的 type/slug 校验并原子提交；
       // 若目录碰撞或校验失败，versions 表不会残留孤儿行阻塞后续写入。
       if (version.version > artifact.headVersion) {
-        this.pendingVersions.set(artifact.publicId, version)
+        this.pendingVersions.set(artifact.publicId, { record: version, component })
         return
       }
       resolveArtifactFileLayout(this.artifactsRoot, artifact.type, artifact.slug, version.source)
     }
-    await this.inner.appendVersion(version, type ?? artifact?.type)
+    await this.inner.appendVersion(version, type ?? artifact?.type, component)
     // 新建 v1（saveArtifact 先于 appendVersion，此时 version === headVersion）立即落盘原生文件
     if (artifact && version.version === artifact.headVersion) {
       this.files.syncToDisk(artifact, version.source)
@@ -191,6 +203,10 @@ export class FsArtifactRepository implements ArtifactRepository {
 
   getVersion(artifactId: PublicId, version: number): Promise<Readonly<Version> | undefined> {
     return this.inner.getVersion(artifactId, version)
+  }
+
+  getWorkspaceComponent(artifactId: PublicId, version: number) {
+    return this.inner.getWorkspaceComponent(artifactId, version)
   }
 
   getVersionSummaries(artifactId: PublicId, version?: number) {

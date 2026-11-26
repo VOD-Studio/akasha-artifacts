@@ -71,6 +71,13 @@ export interface BoardProjectionRepository {
   save(artifactId: PublicId, version: number, projection: ArtboardProjection | null): Promise<void>
 }
 
+/** 随不可变版本原子保存的工程入口，独立于可公开预览的编译产物。 */
+export interface WorkspaceComponent {
+  path: string
+  exportName: string
+  source: string
+}
+
 /** 制品与其不可变版本历史的仓储端口。 */
 export interface ArtifactRepository {
   readonly lifecycle: ArtifactLifecycleRepository
@@ -86,8 +93,16 @@ export interface ArtifactRepository {
   findBySlug(projectId: string, slug: Slug): Promise<Artifact | undefined>
   /** `projectId` 省略时跨项目列出全部。 */
   listByProject(projectId?: string): Promise<readonly Artifact[]>
-  /** 版本号重复时抛错；传入 `artboard` 时原子记录同版本的派生数据。 */
-  appendVersion(version: Readonly<Version>, type?: ArtifactType): Promise<void>
+  /** 重复版本拒写；随版本一并提交画板投影或编码工作区入口。 */
+  appendVersion(
+    version: Readonly<Version>,
+    type?: ArtifactType,
+    component?: WorkspaceComponent,
+  ): Promise<void>
+  getWorkspaceComponent(
+    artifactId: PublicId,
+    version: number,
+  ): Promise<WorkspaceComponent | undefined>
   getVersions(artifactId: PublicId): Promise<readonly Readonly<Version>[]>
   getVersion(artifactId: PublicId, version: number): Promise<Readonly<Version> | undefined>
   /** 只读历史元数据，不加载源码或访问其对象存储。筛选精确版本时最多返回一条。 */

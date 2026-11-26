@@ -22,6 +22,7 @@ import type {
   IdGenerator,
   RealtimePublisher,
   StateRepository,
+  WorkspaceComponent,
 } from '../../domain/ports.js'
 import { DEFAULT_PROJECT_ID, type ResolveArtifact } from './queries.js'
 import type { ArtifactWriteLocks } from './write-locks.js'
@@ -55,6 +56,8 @@ export type UpdateArtifactInput = {
   baseVersion: number
   title?: string
   author: Author
+  /** 仅由编码会话用例传入，普通源码替换不继承前一版入口。 */
+  workspaceComponent?: WorkspaceComponent
   /** 等待制品写锁期间撤销的轮次，不得开始写入新版本。 */
   signal?: AbortSignal
 } & ({ edits: readonly TextEdit[] } | { source: string })
@@ -233,7 +236,7 @@ export class ArtifactVersions {
         updatedAt: now,
       }
       input.signal?.throwIfAborted()
-      await this.deps.artifacts.appendVersion(version, updated.type)
+      await this.deps.artifacts.appendVersion(version, updated.type, input.workspaceComponent)
       await this.deps.artifacts.saveArtifact(updated)
       await this.deps.realtime.publish(
         {
@@ -282,7 +285,11 @@ export class ArtifactVersions {
         headVersion: nextNumber,
         updatedAt: now,
       }
-      await this.deps.artifacts.appendVersion(version, updated.type)
+      const component =
+        existing.type === 'react'
+          ? await this.deps.artifacts.getWorkspaceComponent(existing.publicId, target.version)
+          : undefined
+      await this.deps.artifacts.appendVersion(version, updated.type, component)
       await this.deps.artifacts.saveArtifact(updated)
       await this.deps.realtime.publish(
         {

@@ -164,14 +164,14 @@ export const DesignSystemWriteOutputSchema = z.object({
 })
 export type DesignSystemWriteOutput = z.infer<typeof DesignSystemWriteOutputSchema>
 
-const referenceSchema = z.object({
+export const DesignSystemReferenceSchema = z.object({
   id: PublicIdSchema,
   version: z.number().int().positive(),
   sourceVersion: DesignSystemPreviewOutputSchema.shape.sourceVersion,
   components: z.array(component).max(32),
 })
 /** 生成时使用的固定来源；写在生成稿源码中，不授予打开系统的权限。 */
-export type DesignSystemReference = z.infer<typeof referenceSchema>
+export type DesignSystemReference = z.infer<typeof DesignSystemReferenceSchema>
 const referencePrefix = '// @akasha/design-system '
 
 /** 移除 JSON 中的 JS 行分隔符，保持可直接嵌入独立源码首行。 */
@@ -188,7 +188,9 @@ export function readDesignSystemReference(source: string): DesignSystemReference
   const end = source.indexOf('\n')
   if (end < 0 || end > 64 * 1024) return null
   try {
-    const parsed = referenceSchema.safeParse(JSON.parse(source.slice(referencePrefix.length, end)))
+    const parsed = DesignSystemReferenceSchema.safeParse(
+      JSON.parse(source.slice(referencePrefix.length, end)),
+    )
     return parsed.success ? parsed.data : null
   } catch {
     return null

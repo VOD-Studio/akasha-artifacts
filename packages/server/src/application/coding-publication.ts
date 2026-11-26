@@ -3,8 +3,9 @@ import type {
   CodingSessionPublication,
   CodingSessionPublish,
 } from '@akasha/protocol'
+import { designSystemReferenceHeader, readDesignSystemReference } from '@akasha/protocol'
 import { DomainError } from '../domain/errors.js'
-import type { ArtifactRepository } from '../domain/ports.js'
+import type { ArtifactRepository, WorkspaceComponent } from '../domain/ports.js'
 import type { ArtifactService } from './artifact-service.js'
 import type { CheckService } from './check-service.js'
 import { bundleSelectedComponents } from './design-systems/bundle.js'
@@ -22,6 +23,7 @@ export async function publishCodingSession(
   if (!artifact || artifact.projectId !== projectId)
     throw new DomainError('NOT_FOUND', '作品不在当前项目')
   let source = input.source
+  let workspaceComponent: WorkspaceComponent | undefined
   if (input.component) {
     if (artifact.type !== 'react')
       throw new DomainError(
@@ -29,11 +31,22 @@ export async function publishCodingSession(
         '组件预览只可发布回 React 作品；其他类型请提交完整作品文件',
       )
     const { files, ...component } = input.component
+    const entry = files.find((file) => file.path === component.path)
+    if (!entry) throw new DomainError('BAD_REQUEST', '工程文件中没有该组件入口')
+    const base = await deps.artifacts.getVersion(artifactId, baseVersion)
+    if (!base) throw new DomainError('NOT_FOUND', '找不到交接的固定版本')
+    const reviewed = readDesignSystemReference(base.source)
+    workspaceComponent = {
+      path: entry.path,
+      exportName: component.exportName,
+      source: entry.content,
+    }
     const [module] = await bundleSelectedComponents({
       files: files.map((file) => ({ ...file, kind: 'source' })),
       components: [component],
     })
     source = `import * as React from 'react';\nconst result = ${module};\nexport default function WorkspacePreview() { return React.createElement(React.Fragment, null, result.css && React.createElement('style', null, result.css), React.createElement(result.component, ${JSON.stringify(component.props)})); }\n`
+    if (reviewed) source = `${designSystemReferenceHeader(reviewed)}\n${source}`
   }
   if (!source) throw new DomainError('BAD_REQUEST', '未提交作品源码')
   const check = deps.checks.check({ type: artifact.type, source })
@@ -43,6 +56,7 @@ export async function publishCodingSession(
     projectId,
     baseVersion,
     source,
+    workspaceComponent,
     author: `${actor}:coding-${sessionId}`,
   })
   return { artifactId, version: version.version, path: `/a/${artifactId}/v/${version.version}` }

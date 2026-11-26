@@ -173,6 +173,7 @@ export class CodingSessions {
       throw new DomainError('BAD_REQUEST', error instanceof Error ? error.message : '选区无效')
     }
     const provenance = readDesignSystemReference(fixed.source)
+    const workspace = await this.artifacts.getWorkspaceComponent(artifactId, version)
     const components: CodingSessionRead['components'] = []
     if (provenance) {
       const system = await this.artifacts.findByPublicId(provenance.id)
@@ -189,9 +190,10 @@ export class CodingSessions {
         )
         const file = draft.files.find((item) => item.kind === 'source' && item.path === entry.path)
         if (!reviewed || !file) throw new DomainError('BAD_REQUEST', '组件未经该版本审阅')
-        components.push({ ...entry, source: file.content })
+        if (!workspace) components.push({ ...entry, source: file.content, origin: 'reviewed' })
       }
     }
-    return { reference, design, components }
+    if (workspace) components.push({ ...workspace, origin: 'workspace' })
+    return { reference, design, components, reviewedSystem: provenance }
   }
 }
