@@ -6,6 +6,7 @@ import {
 } from '@akasha/protocol'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@akasha/ui/sheet'
+import { MessageSquareText } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { selectionForVersion, useSelectionStore } from '@/entities/selection'
 import { useWorkspaceStore } from '@/entities/workspace'
@@ -118,11 +119,13 @@ function InspectorContent({
             />
           ) : null}
 
-          <div className="space-y-2 pt-1">
-            <div className="text-xs font-semibold text-ink-muted">
-              {t('反馈（{count}）', { count: ordered.length })}
+          <div className="space-y-2.5 pt-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-ink-muted">
+                {t('反馈（{count}）', { count: ordered.length })}
+              </span>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className={pageFeedbackIds ? 'grid grid-cols-2 gap-1.5' : 'flex'}>
               {pageFeedbackIds && (
                 <Select value={scope} onValueChange={changeScope}>
                   <SelectTrigger aria-label={t('批注范围')} controlSize="sm">
@@ -147,9 +150,17 @@ function InspectorContent({
             </div>
 
             {ordered.length === 0 && (
-              <p className="py-2 text-xs text-ink-muted">
-                {feedbacks.length ? t('没有符合条件的反馈') : t('暂无反馈')}
-              </p>
+              <div className="flex flex-col items-center gap-1.5 rounded-xl border border-dashed border-border/80 px-4 py-8 text-center">
+                <MessageSquareText size={18} className="text-ink-muted/60" />
+                <p className="text-xs font-medium text-ink">
+                  {feedbacks.length ? t('没有符合条件的反馈') : t('暂无反馈')}
+                </p>
+                {!feedbacks.length && (
+                  <p className="max-w-52 text-[11px] leading-relaxed text-ink-muted">
+                    {t('点击工具栏批注按钮，在画布任意位置点击即可添加。')}
+                  </p>
+                )}
+              </div>
             )}
             {ordered.map((feedback) => (
               <InspectorFeedbackCard

@@ -848,7 +848,13 @@ export function ArtifactWorkspace({
               hitLabel = designLayer.text.trim().slice(0, 40) || undefined
             }
           }
-          hitLabel ??= hit.textPreview?.slice(0, 40) ?? hit.blockId ?? hit.selector?.slice(0, 32)
+          const selectorTag = hit.selector
+            ? /^([a-zA-Z][\w-]*)/.exec(hit.selector.split('>').pop()?.trim() ?? '')?.[1]
+            : undefined
+          hitLabel ??=
+            hit.textPreview?.slice(0, 40) ??
+            (hit.blockId ? `#${hit.blockId}` : undefined) ??
+            (selectorTag ? `<${selectorTag.toLowerCase()}>` : hit.selector?.slice(0, 28))
           const label = hitLabel ? `${board.title} › ${hitLabel}` : board.title
           setAnchoredComment((current) =>
             current && current.placementId === placementId

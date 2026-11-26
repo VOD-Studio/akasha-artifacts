@@ -87,6 +87,11 @@ export const panelMessages = {
   已解决: ['Erledigt', 'تم الحل', 'Resolved'],
   没有符合条件的反馈: ['Kein passendes Feedback', 'لا توجد ملاحظات مطابقة', 'No matching feedback'],
   暂无反馈: ['Noch kein Feedback', 'لا توجد ملاحظات بعد', 'No feedback yet'],
+  '点击工具栏批注按钮，在画布任意位置点击即可添加。': [
+    'Klicke auf das Kommentar-Werkzeug und dann an eine beliebige Stelle der Zeichenfläche.',
+    'اضغط على أداة التعليق في شريط الأدوات، ثم انقر في أي موضع على اللوحة لإضافة تعليق.',
+    'Click the comment tool in the toolbar, then click anywhere on the canvas to add one.',
+  ],
   草稿: ['Entwurf', 'مسودة', 'Draft'],
   仅讨论: ['Nur Diskussion', 'للنقاش فقط', 'Discussion only'],
   'Agent 已处理': ['Vom Agenten bearbeitet', 'عالجه الوكيل', 'Handled by Agent'],

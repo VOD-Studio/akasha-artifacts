@@ -661,8 +661,8 @@ export function ArtifactCanvas({
     }
     const rect = viewportRef.current?.getBoundingClientRect()
     const nextAnchor = {
-      x: Math.round((rect?.left ?? 0) + pendingCommentX + 22),
-      y: Math.round((rect?.top ?? 0) + pendingCommentY - 24),
+      x: Math.round((rect?.left ?? 0) + pendingCommentX + 36),
+      y: Math.round((rect?.top ?? 0) + pendingCommentY - 22),
     }
     const sig = `${nextAnchor.x}:${nextAnchor.y}`
     if (sig === lastReportedCommentAnchor.current) return

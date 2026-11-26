@@ -1,9 +1,7 @@
 import type { ElementRef, Feedback, ReviewRound } from '@akasha/protocol'
-import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
 import { Checkbox } from '@akasha/ui/checkbox'
-import { Textarea } from '@akasha/ui/textarea'
-import { MessageSquareText, Send, Target, X } from 'lucide-react'
+import { ArrowUp, MessageSquareText, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
@@ -58,6 +56,13 @@ export interface AnchoredAnnotationComposerProps {
   onSubmitted?: (feedback: Feedback) => void
 }
 
+function friendlySelectorTag(selector: string): string {
+  const leaf = selector.split('>').pop()?.trim() ?? ''
+  const match = /^([a-zA-Z][\w-]*)/.exec(leaf)
+  if (match) return `<${match[1].toLowerCase()}>`
+  return selector.slice(0, 28)
+}
+
 function targetSummary(
   element: ElementRef | null,
   fallbackLabel: string | undefined,
@@ -68,7 +73,7 @@ function targetSummary(
   if (element.textPreview) return element.textPreview.slice(0, 32)
   if (element.blockId) return `#${element.blockId}`
   if (element.loc) return t('源码 {loc}', { loc: element.loc })
-  if (element.selector) return element.selector.slice(0, 36)
+  if (element.selector) return friendlySelectorTag(element.selector)
   return t('已选元素')
 }
 
@@ -233,16 +238,22 @@ export function AnchoredAnnotationComposer({
 
   const returnHref = `/a/${encodeURIComponent(artifactId)}/v/${targetVersion}${window.location.search}`
 
+  const summary = targetSummary(
+    targetElement,
+    !draft?.body || sameElementTarget(draft.element, target.element) ? target.label : undefined,
+    t,
+  )
+
   return createPortal(
     <dialog
       open
       dir={dir}
       data-testid="anchored-annotation-composer"
       aria-labelledby={headingId}
-      className="fixed z-50 m-0 w-[min(21rem,calc(100vw-24px))] rounded-xl border border-(--canvas-selection-border) bg-surface p-3 text-ink shadow-lg ring-1 ring-(--canvas-selection-tint)"
+      className="fixed z-50 m-0 w-[min(21.5rem,calc(100vw-24px))] rounded-2xl border-[1.5px] border-(--canvas-selection) bg-surface/96 px-3.5 py-2.5 text-ink shadow-(--shadow-modal) backdrop-blur-md"
       style={{
-        left: `clamp(12px, ${target.anchor.x}px, calc(100vw - 22rem))`,
-        top: `clamp(56px, ${target.anchor.y}px, calc(100dvh - 18rem))`,
+        left: `clamp(12px, ${target.anchor.x}px, calc(100vw - 22.5rem))`,
+        top: `clamp(56px, ${target.anchor.y}px, calc(100dvh - 15rem))`,
       }}
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
@@ -261,22 +272,23 @@ export function AnchoredAnnotationComposer({
         }
       }}
     >
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
-          <h2 id={headingId} className="text-xs font-semibold text-ink">
-            {isBoardOnly ? t('画板批注') : t('元素批注')}
-          </h2>
-          {roundId && !wrongVersion && !roundChanged ? (
-            <Badge tone="warning">{t('本轮草稿')}</Badge>
-          ) : (
-            <Badge tone="neutral">v{targetVersion}</Badge>
-          )}
+      <h2 id={headingId} className="sr-only">
+        {isBoardOnly ? t('画板批注') : t('元素批注')}
+      </h2>
+
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1.5 text-xs text-ink-muted">
+          <span className="truncate">{summary}</span>
+          <span className="shrink-0 rounded-full bg-surface-subtle px-1.5 py-0.5 font-mono text-[10px] text-ink-muted tabular-nums">
+            {roundId && !wrongVersion && !roundChanged ? t('本轮草稿') : `v${targetVersion}`}
+          </span>
         </div>
         <Button
           type="button"
           variant="ghost"
           size="sm"
           iconOnly
+          className="size-6 shrink-0 rounded-full text-ink-muted hover:text-ink"
           aria-label={t('关闭批注输入')}
           disabled={busy}
           onClick={onClose}
@@ -285,55 +297,40 @@ export function AnchoredAnnotationComposer({
         </Button>
       </div>
 
-      {targetElement ? (
-        <div className="mb-2 flex items-center gap-1.5 rounded-lg border border-(--canvas-selection-border) bg-(--canvas-selection-tint-soft) px-2.5 py-1.5 text-[11px] text-(--canvas-selection-strong)">
-          <Target size={12} className="shrink-0" />
-          <span className="truncate font-mono font-medium">
-            {targetSummary(
-              targetElement,
-              !draft?.body || sameElementTarget(draft.element, target.element)
-                ? target.label
-                : undefined,
-              t,
-            )}
+      {otherDraft && !draft?.body ? (
+        <div className="mb-1.5 flex items-center justify-between gap-2 rounded-lg bg-surface-subtle/80 px-2 py-1 text-[11px] text-ink-muted">
+          <span className="truncate">{t('另有未发送的批注草稿')}</span>
+          <span className="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              className="cursor-pointer font-medium text-(--canvas-selection-strong) hover:underline"
+              onClick={() => {
+                setDraft(otherDraft)
+                setSendToAgent(otherDraft.sendToAgent)
+                setOtherDraft(null)
+              }}
+            >
+              {t('恢复原草稿')}
+            </button>
+            <button
+              type="button"
+              className="cursor-pointer text-ink-muted hover:text-ink"
+              onClick={() => {
+                writeAnnotationDraft(artifactId, null)
+                setOtherDraft(null)
+              }}
+            >
+              {t('放弃草稿')}
+            </button>
           </span>
         </div>
       ) : null}
 
-      {otherDraft && !draft?.body ? (
-        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-subtle px-2 py-1.5 text-xs text-ink-muted">
-          <span>{t('另有未发送的批注草稿')}</span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setDraft(otherDraft)
-              setSendToAgent(otherDraft.sendToAgent)
-              setOtherDraft(null)
-            }}
-          >
-            {t('恢复原草稿')}
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              writeAnnotationDraft(artifactId, null)
-              setOtherDraft(null)
-            }}
-          >
-            {t('放弃草稿')}
-          </Button>
-        </div>
-      ) : null}
-
       {(wrongVersion || roundChanged) && (
-        <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
+        <div className="mb-1.5 flex flex-wrap items-center gap-2 rounded-lg bg-surface-subtle/80 px-2 py-1 text-xs text-ink-muted">
           {wrongVersion ? (
             <a
-              className="font-medium text-accent underline underline-offset-2"
+              className="font-medium text-(--canvas-selection-strong) underline underline-offset-2"
               href={returnHref}
               onClick={(event) => {
                 if (
@@ -379,62 +376,87 @@ export function AnchoredAnnotationComposer({
         </div>
       )}
 
-      <Textarea
+      <textarea
         ref={textareaRef}
         dir="auto"
         aria-label={t('批注内容')}
-        rows={3}
+        rows={2}
         value={body}
         readOnly={locked}
         onChange={(event) => updateDraft({ body: event.target.value })}
+        onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing) return
+          if (event.key === 'Enter' && !event.shiftKey && !event.altKey) {
+            event.preventDefault()
+            void submit()
+          }
+        }}
         placeholder={t('输入批注')}
+        className="block max-h-36 min-h-12 w-full resize-none border-0 bg-transparent px-0 py-1 text-[13px] leading-relaxed text-ink outline-none caret-(--canvas-selection) placeholder:text-ink-muted/65"
       />
 
       {denied ? (
-        <p role="alert" className="mt-2 text-xs text-destructive">
+        <p role="alert" className="mt-1 text-xs text-destructive">
           {t('没有批注权限')}
         </p>
       ) : null}
 
-      {!denied && notifyAgent ? (
-        <label htmlFor={notifyId} className="mt-2 flex items-center gap-2 text-xs text-ink">
-          <Checkbox
-            id={notifyId}
-            checked={sendToAgent}
-            disabled={locked}
-            onCheckedChange={(checked) => updateDraft({ sendToAgent: checked === true })}
-          />
-          {roundId ? t('随本轮发给 Agent') : t('同时发送给 Agent')}
-        </label>
-      ) : null}
+      <div className="mt-1.5 flex items-center justify-between gap-2 border-t border-border/60 pt-2">
+        {!denied && notifyAgent ? (
+          <label
+            htmlFor={notifyId}
+            className="flex cursor-pointer items-center gap-1.5 text-xs text-ink select-none"
+          >
+            <Checkbox
+              id={notifyId}
+              checked={sendToAgent}
+              disabled={locked}
+              onCheckedChange={(checked) => updateDraft({ sendToAgent: checked === true })}
+            />
+            <span>{roundId ? t('随本轮发给 Agent') : t('同时发送给 Agent')}</span>
+          </label>
+        ) : (
+          <span />
+        )}
 
-      <div className="mt-2.5 flex items-center justify-between gap-2">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          leftIcon={<MessageSquareText size={12} />}
-          disabled={busy}
-          onClick={() => {
-            onClose()
-            onOpenAllDiscussions()
-          }}
-        >
-          {t('查看全部讨论')}
-        </Button>
-        {!denied ? (
+        <div className="flex items-center gap-1">
           <Button
             type="button"
-            variant="primary"
+            variant="ghost"
             size="sm"
-            leftIcon={<Send size={12} />}
-            disabled={locked || !body.trim()}
-            loading={busy}
-            onClick={() => void submit()}
+            iconOnly
+            className="size-7 rounded-lg text-ink-muted hover:text-ink"
+            aria-label={t('查看全部讨论')}
+            title={t('查看全部讨论')}
+            disabled={busy}
+            onClick={() => {
+              onClose()
+              onOpenAllDiscussions()
+            }}
           >
-            {roundId ? t('保存草稿') : t('发送')}
+            <MessageSquareText size={14} />
           </Button>
-        ) : null}
+          {!denied ? (
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              iconOnly={!roundId}
+              aria-label={roundId ? t('保存草稿') : t('发送')}
+              title={roundId ? t('保存草稿') : t('发送')}
+              className={
+                roundId
+                  ? 'h-7 rounded-lg bg-(--canvas-selection) px-2.5 text-xs text-(--canvas-selection-foreground) hover:bg-(--canvas-selection-strong)'
+                  : 'size-7 rounded-full bg-(--canvas-selection) text-(--canvas-selection-foreground) hover:bg-(--canvas-selection-strong)'
+              }
+              disabled={locked || !body.trim()}
+              loading={busy}
+              onClick={() => void submit()}
+            >
+              {roundId ? t('保存草稿') : <ArrowUp size={14} />}
+            </Button>
+          ) : null}
+        </div>
       </div>
     </dialog>,
     document.body,

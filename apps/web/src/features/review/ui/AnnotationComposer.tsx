@@ -2,8 +2,8 @@ import type { ElementRef, Feedback, FeedbackKind, ReviewRound } from '@akasha/pr
 import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
 import { Checkbox } from '@akasha/ui/checkbox'
-import { Textarea } from '@akasha/ui/textarea'
-import { Send, Target, X } from 'lucide-react'
+import { ScrollArea } from '@akasha/ui/scroll-area'
+import { ArrowUp, Target, X } from 'lucide-react'
 import { useId, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
@@ -153,7 +153,7 @@ export function AnnotationComposer({
   }
 
   return (
-    <div className="rounded-12 border border-border bg-surface-subtle/50 p-3">
+    <div className="rounded-xl border border-border/90 bg-surface p-3 shadow-2xs">
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="text-xs font-semibold text-ink">
           {target ? t('元素批注') : t('版本批注')}
@@ -161,19 +161,23 @@ export function AnnotationComposer({
         {canSaveDraft ? (
           <Badge tone="warning">{t('本轮草稿')}</Badge>
         ) : (
-          <Badge tone="neutral" className="font-mono tabular-nums">
+          <span className="rounded-full bg-surface-subtle px-1.5 py-0.5 font-mono text-[10px] text-ink-muted tabular-nums">
             v{targetVersion}
-          </Badge>
+          </span>
         )}
       </div>
 
       {target ? (
-        <div className="mb-2 flex items-center justify-between gap-2 rounded-8 border border-border bg-surface px-2.5 py-1.5 text-xs text-ink">
+        <div className="mb-2 flex items-center justify-between gap-1.5 rounded-lg border border-(--canvas-selection-border) bg-(--canvas-selection-tint-soft) px-2 py-1 text-xs text-(--canvas-selection-strong)">
           <div className="flex min-w-0 items-center gap-1.5">
             <Target size={12} className="shrink-0" />
-            <span className="truncate font-mono font-medium">{elementLabel(target, t)}</span>
+            <span className="truncate font-mono text-[11px] font-medium">
+              {elementLabel(target, t)}
+            </span>
             {target.textPreview && !target.dataPoints && !target.blockId?.startsWith('pr-line:') ? (
-              <span className="truncate text-ink-muted">「{target.textPreview.slice(0, 24)}」</span>
+              <span className="truncate text-[11px] text-ink-muted">
+                「{target.textPreview.slice(0, 24)}」
+              </span>
             ) : null}
           </div>
           <Button
@@ -186,9 +190,9 @@ export function AnnotationComposer({
               clearSelection(artifactId)
               if (draft?.body) changeDraft({ element: null })
             }}
-            className="shrink-0"
+            className="size-5 shrink-0 rounded-full"
           >
-            <X size={12} />
+            <X size={11} />
           </Button>
         </div>
       ) : null}
@@ -198,13 +202,19 @@ export function AnnotationComposer({
           <summary className="cursor-pointer">
             {target.dataPoints.valueLabel} · {t('所选数据点')}
           </summary>
-          <ul className="mt-1 max-h-36 list-disc space-y-1 overflow-auto ps-4">
-            {target.dataPoints.points.map((point) => (
-              <li key={point.id} className="break-words">
-                {point.label || t('（空白）')}：{point.value}
-              </li>
-            ))}
-          </ul>
+          <ScrollArea
+            aria-label={t('所选数据点')}
+            tabIndex={-1}
+            className="mt-1 max-h-36 [--v-scroll-area-padding:0px] [--v-scroll-area-surface:var(--card)]"
+          >
+            <ul className="list-disc space-y-1 ps-4">
+              {target.dataPoints.points.map((point) => (
+                <li key={point.id} className="break-words">
+                  {point.label || t('（空白）')}：{point.value}
+                </li>
+              ))}
+            </ul>
+          </ScrollArea>
         </details>
       )}
 
@@ -212,7 +222,7 @@ export function AnnotationComposer({
         <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
           {wrongVersion && (
             <a
-              className="font-medium text-accent underline underline-offset-2"
+              className="font-medium text-(--canvas-selection-strong) underline underline-offset-2"
               href={`/a/${encodeURIComponent(artifactId)}/v/${targetVersion}${window.location.search}`}
             >
               {t('回 {version} 继续', { version: `v${targetVersion}` })}
@@ -236,7 +246,7 @@ export function AnnotationComposer({
         </div>
       )}
 
-      <Textarea
+      <textarea
         ref={textareaRef}
         dir="auto"
         aria-label={t('批注内容')}
@@ -244,12 +254,23 @@ export function AnnotationComposer({
         value={draftText}
         readOnly={locked}
         onChange={(event) => changeDraft({ body: event.target.value })}
+        onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing) return
+          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault()
+            void handleSubmit('comment')
+          }
+        }}
         placeholder={t('输入批注')}
+        className="block w-full resize-none rounded-lg border border-border/70 bg-surface-subtle/40 px-2.5 py-2 text-[13px] leading-relaxed text-ink outline-none transition-colors caret-(--canvas-selection) placeholder:text-ink-muted/65 focus:border-(--canvas-selection-border) focus:bg-surface"
       />
 
       {denied && <p role="alert">{t('没有批注权限')}</p>}
       {!denied && notifyAgent && (
-        <label htmlFor={notifyId} className="mt-2 flex items-center gap-2 text-xs text-ink">
+        <label
+          htmlFor={notifyId}
+          className="mt-2 flex cursor-pointer items-center gap-1.5 text-xs text-ink select-none"
+        >
           <Checkbox
             id={notifyId}
             checked={draft?.sendToAgent ?? false}
@@ -261,15 +282,15 @@ export function AnnotationComposer({
       )}
 
       {!denied && (
-        <div className="mt-2 flex flex-wrap items-center justify-end gap-1.5">
+        <div className="mt-2.5 flex flex-wrap items-center justify-end gap-1.5">
           {showAgentAction && (
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               disabled={locked}
               loading={pendingKind === 'request_changes'}
               onClick={requestChanges}
-              className="me-auto"
+              className="me-auto h-7 px-2 text-xs text-ink-muted hover:text-ink"
             >
               {t('让 Agent 改这里')}
             </Button>
@@ -278,10 +299,11 @@ export function AnnotationComposer({
           <Button
             variant="primary"
             size="sm"
-            leftIcon={<Send size={12} />}
+            leftIcon={<ArrowUp size={12} />}
             disabled={locked || !draftText.trim()}
             loading={pendingKind === 'comment'}
             onClick={() => void handleSubmit('comment')}
+            className="h-7 rounded-lg bg-(--canvas-selection) px-2.5 text-xs text-(--canvas-selection-foreground) hover:bg-(--canvas-selection-strong)"
           >
             {roundId ? t('保存草稿') : t('发送')}
           </Button>
