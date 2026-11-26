@@ -1,9 +1,9 @@
-import type { MouseEvent, ReactNode, RefObject } from 'react'
+import type { MouseEvent, ReactNode } from 'react'
 import type { CanvasBoard } from '@/entities/artifact'
 import { useMessages } from '@/shared/i18n'
 import type { CanvasBoardEditing } from '../hooks/useCanvasBoardEditing'
 import type { CanvasTextTools } from '../hooks/useInlineCanvasText'
-import type { Point } from '../lib/canvas-camera'
+import { type Point, pointInBoard } from '../lib/canvas-camera'
 import { canvasToolsMessages } from '../toolbar/canvas-tools-messages'
 import { BoardDrawingSurface, type DrawingTool } from './BoardDrawingSurface'
 import { BoardLayoutGuides } from './BoardLayoutGuides'
@@ -21,7 +21,6 @@ interface CanvasBoardSurfaceProps {
   showGuides: boolean
   input: CanvasBoardInput
   textTools?: CanvasTextTools
-  wasPinching: RefObject<boolean>
   onClearElement: () => void
   selectBoard: (id: string, additive?: boolean) => void
   onSelectPoint?: (boardId: string, point: Point) => void
@@ -37,7 +36,6 @@ export function CanvasBoardSurface({
   showGuides,
   input,
   textTools,
-  wasPinching,
   onClearElement,
   selectBoard,
   onSelectPoint,
@@ -47,22 +45,24 @@ export function CanvasBoardSurface({
 }: CanvasBoardSurfaceProps) {
   const { t } = useMessages(canvasToolsMessages)
   const activateContent = (event: MouseEvent<HTMLButtonElement>) => {
-    if (wasPinching.current && event.detail !== 0) return
     if (event.detail === 2) return
     onClearElement()
     selectBoard(board.id, event.shiftKey)
     if (event.detail !== 1 || event.shiftKey || !onSelectPoint) return
-    const point = pointInBoard(board, event)
+    const point = pointInBoard(board, event.currentTarget.getBoundingClientRect(), {
+      x: event.clientX,
+      y: event.clientY,
+    })
     if (point) onSelectPoint(board.id, point)
   }
   const editText = (event: MouseEvent<HTMLButtonElement>) => {
-    if (!textTools || wasPinching.current || (board.type !== 'html' && board.type !== 'react'))
-      return
-    const point = pointInBoard(board, event)
+    if (!textTools || (board.type !== 'html' && board.type !== 'react')) return
+    const anchor = { x: event.clientX, y: event.clientY }
+    const point = pointInBoard(board, event.currentTarget.getBoundingClientRect(), anchor)
     if (!point) return
     event.preventDefault()
     selectBoard(board.id)
-    textTools.pick(board, point, { x: event.clientX, y: event.clientY })
+    textTools.pick(board, point, anchor)
   }
   return (
     <>
@@ -96,6 +96,7 @@ export function CanvasBoardSurface({
             type="button"
             tabIndex={-1}
             aria-label={t('选择画板：{title}', { title: board.title })}
+            data-board-content={board.id}
             className="artifact-canvas-board-hit"
             onClick={activateContent}
             onDoubleClick={editText}
@@ -123,13 +124,4 @@ export function CanvasBoardSurface({
       )}
     </>
   )
-}
-
-function pointInBoard(board: CanvasBoard, event: MouseEvent<HTMLButtonElement>): Point | null {
-  const rect = event.currentTarget.getBoundingClientRect()
-  if (!rect.width || !rect.height) return null
-  return {
-    x: Math.max(0, ((event.clientX - rect.left) * board.width) / rect.width),
-    y: Math.max(0, ((event.clientY - rect.top) * board.height) / rect.height),
-  }
 }

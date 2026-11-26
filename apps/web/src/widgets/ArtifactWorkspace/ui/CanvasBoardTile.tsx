@@ -1,7 +1,6 @@
-import type { MouseEvent, ReactNode } from 'react'
+import type { MouseEvent, PointerEvent, ReactNode } from 'react'
 import type { CanvasBoard, CanvasBounds, CanvasPage } from '@/entities/artifact'
 import { useMessages } from '@/shared/i18n'
-import type { useBoardGesture } from '../hooks/useBoardGesture'
 import type { Camera } from '../lib/canvas-camera'
 import { canvasToolsMessages } from '../toolbar/canvas-tools-messages'
 
@@ -13,7 +12,12 @@ interface CanvasBoardTileProps {
   isSelected: boolean
   primary: boolean
   canDrag: boolean
-  gesture: ReturnType<typeof useBoardGesture>
+  onBeginGesture: (
+    event: PointerEvent<HTMLButtonElement>,
+    id: string,
+    bounds: CanvasBounds,
+    mode: 'move' | 'resize',
+  ) => void
   onFocusTitle: (id: string, title: HTMLButtonElement, bounds: CanvasBounds) => void
   onNavigate: (boardId: string) => void
   onSelectTitle: (id: string, event: MouseEvent<HTMLButtonElement>) => void
@@ -34,7 +38,7 @@ export function CanvasBoardTile({
   isSelected,
   primary,
   canDrag,
-  gesture,
+  onBeginGesture,
   onFocusTitle,
   onNavigate,
   onSelectTitle,
@@ -64,10 +68,9 @@ export function CanvasBoardTile({
           data-board-id={board.id}
           title={board.subtitle ?? board.title}
           data-movable={canDrag ? true : undefined}
-          {...gesture.events}
           onPointerDown={(event) => {
             if (!canDrag || event.shiftKey) return
-            gesture.begin(event, board.id, bounds, 'move')
+            onBeginGesture(event, board.id, bounds, 'move')
           }}
           onFocus={(event) => onFocusTitle(board.id, event.currentTarget, bounds)}
           onKeyDown={(event) => {
@@ -113,8 +116,7 @@ export function CanvasBoardTile({
           tabIndex={-1}
           aria-label={t('拖动调整尺寸：{title}', { title: board.title })}
           title={t('拖动调整尺寸；键盘请使用设置画板')}
-          {...gesture.events}
-          onPointerDown={(event) => gesture.begin(event, board.id, bounds, 'resize')}
+          onPointerDown={(event) => onBeginGesture(event, board.id, bounds, 'resize')}
         />
       ) : null}
     </div>

@@ -10,6 +10,7 @@ import { Button } from '@akasha/ui/button'
 import { ListHighlight } from '@akasha/ui/list-highlight'
 import {
   type MouseEvent,
+  type PointerEvent,
   type ReactNode,
   type Ref,
   type RefObject,
@@ -43,7 +44,7 @@ import type { CanvasTextTools } from '../hooks/useInlineCanvasText'
 import { useOverviewPlayback } from '../hooks/useOverviewPlayback'
 import { useViewportSize } from '../hooks/useViewportSize'
 import { fitSelection } from '../lib/canvas-arrangement'
-import { type Camera, fitCamera, type Point, zoomCamera } from '../lib/canvas-camera'
+import { type Camera, fitCamera, type Point, pointInBoard, zoomCamera } from '../lib/canvas-camera'
 import { indexViewportBoards, MAX_ANIMATED_BOARDS, planViewport } from '../lib/canvas-viewport'
 import type { CanvasPageEditing } from '../navigation/CanvasPageDialog'
 import { CanvasPlaybackMenu } from '../navigation/CanvasPlaybackMenu'
@@ -380,7 +381,7 @@ export function ArtifactCanvas({
     closePresentation: activePresentation ? closePresentation : undefined,
     historyEditing,
     cancelGesture: () => {
-      boardGesture.cancel()
+      cameraInput.cancel()
       marquee.cancel()
     },
     clearSelection: () => {
@@ -425,19 +426,39 @@ export function ArtifactCanvas({
       selectBoards(ids, additive)
     },
   })
-  const { dragging, wheelActive, wasPinching, startPointer, movePointer, endPointer } =
-    useCanvasCameraInput({
-      viewportRef,
-      showOverview,
-      size,
-      invalidAddress,
-      pageId,
-      handActive,
-      wheelLocked: Boolean(
-        drawingDragging || boardGesture.preview?.phase === 'dragging' || marquee.active,
-      ),
-      updateCamera,
-    })
+  const cameraInput = useCanvasCameraInput({
+    viewportRef,
+    showOverview,
+    size,
+    invalidAddress,
+    pageId,
+    handActive,
+    touchEnabled: !drawingTool && !artboardPlacing && !visualEdit?.isPicking,
+    cancelBoardGesture: boardGesture.cancel,
+    moveHeldBoard: (target, pointerId, start) => {
+      if (!(target instanceof HTMLButtonElement) || !boardEditing?.available) return false
+      const id = target.dataset.boardContent
+      if (!id) return false
+      const bounds = layout.bounds.get(id)
+      if (!bounds) return false
+      return boardGesture.beginAt(target, pointerId, start, id, bounds, 'move')
+    },
+    holdContent: (target, anchor) => {
+      const hit = target.closest<HTMLElement>('[data-board-content]')
+      const id = hit?.dataset.boardContent
+      const board = id && viewportIndex.byId.get(id)?.board
+      if (!hit || !board) return false
+      selectBoard(board.id)
+      const point = pointInBoard(board, hit.getBoundingClientRect(), anchor)
+      if (point && isPrototype(board)) textTools?.pick(board, point, anchor)
+      return true
+    },
+    wheelLocked: Boolean(
+      drawingDragging || boardGesture.preview?.phase === 'dragging' || marquee.active,
+    ),
+    updateCamera,
+  })
+  const { dragging, wheelActive } = cameraInput
   const recent = useRef<{ index: typeof viewportIndex; ids: ReadonlySet<string> } | null>(null)
   const plan = useMemo(
     () =>
@@ -503,8 +524,13 @@ export function ArtifactCanvas({
     !artboardPlacing &&
     !visualEdit?.isPicking
 
+  const cancelObjectInput = (event: PointerEvent<HTMLElement>) => {
+    boardGesture.events.onPointerCancel(event)
+    marquee.cancel()
+  }
+
   const setCanvasTool = (next: boolean) => {
-    boardGesture.cancel()
+    cameraInput.cancel()
     marquee.cancel()
     setDrawingTool(null)
     setArtboardPlacing(false)
@@ -515,7 +541,7 @@ export function ArtifactCanvas({
   }
 
   const pauseCanvasTools = () => {
-    boardGesture.cancel()
+    cameraInput.cancel()
     marquee.cancel()
     setDrawingTool(null)
     setArtboardPlacing(false)
@@ -571,14 +597,7 @@ export function ArtifactCanvas({
   }
   const clickBackground = (event: MouseEvent<HTMLElement>) => {
     if (marquee.consumeBackgroundClick()) return
-    if (
-      event.target !== event.currentTarget ||
-      handActive ||
-      wasPinching.current ||
-      drawingTool ||
-      artboardPlacing
-    )
-      return
+    if (event.target !== event.currentTarget || handActive || drawingTool || artboardPlacing) return
     onClearElement()
     selectBoard(null)
   }
@@ -647,26 +666,27 @@ export function ArtifactCanvas({
           data-hand={handActive}
           data-dragging={dragging}
           data-marquee={marquee.box ? 'true' : undefined}
+          onPointerDownCapture={cameraInput.startPointer}
+          onPointerMoveCapture={cameraInput.movePointer}
+          onPointerUpCapture={cameraInput.endPointer}
+          onPointerCancelCapture={cameraInput.endPointer}
+          onLostPointerCaptureCapture={cameraInput.endPointer}
           onPointerDown={(event) => {
-            if (marquee.onPointerDown(event)) return
-            startPointer(event)
+            if (event.pointerType !== 'touch') marquee.onPointerDown(event)
           }}
           onPointerMove={(event) => {
-            if (marquee.onPointerMove(event)) return
-            movePointer(event)
+            boardGesture.events.onPointerMove(event)
+            marquee.onPointerMove(event)
           }}
           onPointerUp={(event) => {
-            if (marquee.onPointerUp(event)) return
-            endPointer(event)
+            boardGesture.events.onPointerUp(event)
+            marquee.onPointerUp(event)
           }}
-          onPointerCancel={(event) => {
-            marquee.cancel()
-            endPointer(event)
-          }}
-          onLostPointerCapture={(event) => {
-            marquee.cancel()
-            endPointer(event)
-          }}
+          onPointerCancel={cancelObjectInput}
+          onLostPointerCapture={cancelObjectInput}
+          onClickCapture={cameraInput.blockClick}
+          onDoubleClickCapture={cameraInput.blockClick}
+          onContextMenuCapture={cameraInput.blockTouchMenu}
           onClick={clickBackground}
         >
           {showOverview &&
@@ -746,7 +766,7 @@ export function ArtifactCanvas({
                     isSelected={tileSelected}
                     primary={selected === board.id}
                     canDrag={Boolean(canDragBoards)}
-                    gesture={boardGesture}
+                    onBeginGesture={boardGesture.begin}
                     onSelectTitle={activateTitle}
                     onFocusTitle={focusTitle}
                     onEnterBoard={
@@ -814,7 +834,6 @@ export function ArtifactCanvas({
                       showGuides={!hiddenGuideBoards.has(board.id)}
                       input={inputFor(board, interactive)}
                       textTools={textTools}
-                      wasPinching={wasPinching}
                       selectBoard={selectBoard}
                       onClearElement={onClearElement}
                       onSelectPoint={detailed ? onSelectPoint : undefined}

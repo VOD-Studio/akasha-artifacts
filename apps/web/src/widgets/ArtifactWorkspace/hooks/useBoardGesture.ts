@@ -125,6 +125,53 @@ export function useBoardGesture(
     setPreview(null)
   }
 
+  const begin = (
+    handle: HTMLButtonElement,
+    pointerId: number,
+    start: Point,
+    boardId: string,
+    bounds: CanvasBounds,
+    mode: GestureStart['mode'],
+  ) => {
+    draggedTitle.current = null
+    if (!layout.page || !editing?.available || active.current) return false
+    const initial = new Map([[boardId, bounds]])
+    if (mode === 'move') {
+      const ids = layout.selection.has(boardId)
+        ? layout.selection
+        : groupMembers(layout.page.boards, boardId)
+      for (const id of ids) {
+        const included = layout.bounds.get(id)
+        if (included) initial.set(id, included)
+      }
+    }
+    handle.setPointerCapture?.(pointerId)
+    const { coordinate } = ARTBOARD_GEOMETRY_LIMITS
+    const minDelta = { x: -Infinity, y: -Infinity }
+    const maxDelta = { x: Infinity, y: Infinity }
+    for (const bounds of initial.values()) {
+      minDelta.x = Math.max(minDelta.x, -coordinate - bounds.x)
+      minDelta.y = Math.max(minDelta.y, -coordinate - bounds.y)
+      maxDelta.x = Math.min(maxDelta.x, coordinate - bounds.x)
+      maxDelta.y = Math.min(maxDelta.y, coordinate - bounds.y)
+    }
+    active.current = {
+      pageId: layout.page.id,
+      boardId,
+      initial,
+      mode,
+      scale: layout.scale,
+      pointerId,
+      handle,
+      start,
+      base: editing.version,
+      moved: false,
+      minDelta,
+      maxDelta,
+    }
+    return true
+  }
+
   return {
     preview:
       preview &&
@@ -132,51 +179,12 @@ export function useBoardGesture(
         ? preview
         : null,
     begin(event: HandleEvent, boardId: string, bounds: CanvasBounds, mode: GestureStart['mode']) {
-      draggedTitle.current = null
-      if (
-        !layout.page ||
-        !editing?.available ||
-        active.current ||
-        event.button !== 0 ||
-        event.isPrimary === false
-      )
-        return
-      const initial = new Map([[boardId, bounds]])
-      if (mode === 'move') {
-        const ids = layout.selection.has(boardId)
-          ? layout.selection
-          : groupMembers(layout.page.boards, boardId)
-        for (const id of ids) {
-          const included = layout.bounds.get(id)
-          if (included) initial.set(id, included)
-        }
-      }
-      event.stopPropagation()
-      event.currentTarget.setPointerCapture?.(event.pointerId)
-      const { coordinate } = ARTBOARD_GEOMETRY_LIMITS
-      const minDelta = { x: -Infinity, y: -Infinity }
-      const maxDelta = { x: Infinity, y: Infinity }
-      for (const bounds of initial.values()) {
-        minDelta.x = Math.max(minDelta.x, -coordinate - bounds.x)
-        minDelta.y = Math.max(minDelta.y, -coordinate - bounds.y)
-        maxDelta.x = Math.min(maxDelta.x, coordinate - bounds.x)
-        maxDelta.y = Math.min(maxDelta.y, coordinate - bounds.y)
-      }
-      active.current = {
-        pageId: layout.page.id,
-        boardId,
-        initial,
-        mode,
-        scale: layout.scale,
-        pointerId: event.pointerId,
-        handle: event.currentTarget,
-        start: { x: event.clientX, y: event.clientY },
-        base: editing.version,
-        moved: false,
-        minDelta,
-        maxDelta,
-      }
+      if (event.button !== 0 || event.isPrimary === false) return
+      const start = { x: event.clientX, y: event.clientY }
+      if (begin(event.currentTarget, event.pointerId, start, boardId, bounds, mode))
+        event.stopPropagation()
     },
+    beginAt: begin,
     cancel,
     consumesClick(event: MouseEvent<HTMLButtonElement>) {
       if (!event.detail || draggedTitle.current !== event.currentTarget) return false
@@ -184,7 +192,7 @@ export function useBoardGesture(
       return true
     },
     events: {
-      onPointerMove(event: HandleEvent) {
+      onPointerMove(event: PointerEvent<HTMLElement>) {
         const drag = active.current
         if (!drag || event.pointerId !== drag.pointerId) return
         const bounds = atPointer(drag, event)
@@ -195,11 +203,11 @@ export function useBoardGesture(
         }
         show(drag, bounds, 'dragging')
       },
-      onPointerUp(event: HandleEvent) {
+      onPointerUp(event: PointerEvent<HTMLElement>) {
         const drag = active.current
         if (!drag || event.pointerId !== drag.pointerId) return
         const bounds = atPointer(drag, event)
-        if (bounds && drag.mode === 'move') draggedTitle.current = event.currentTarget
+        if (bounds && drag.mode === 'move') draggedTitle.current = drag.handle
         if (!bounds || sameBounds(bounds, drag.initial) || !editing) {
           cancel()
           return
@@ -211,10 +219,7 @@ export function useBoardGesture(
           drag.base,
         )
       },
-      onPointerCancel(event: HandleEvent) {
-        if (event.pointerId === active.current?.pointerId) cancel()
-      },
-      onLostPointerCapture(event: HandleEvent) {
+      onPointerCancel(event: PointerEvent<HTMLElement>) {
         if (event.pointerId === active.current?.pointerId) cancel()
       },
     },
