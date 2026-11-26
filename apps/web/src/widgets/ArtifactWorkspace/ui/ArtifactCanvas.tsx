@@ -117,7 +117,7 @@ interface ArtifactCanvasProps {
   onLocationChange: (location: CanvasLocation | null) => void
   onSelectPoint?: (boardId: string, point: Point) => void
   onClearElement: () => void
-  onComment: () => void
+  onComment: (anchor?: { x: number; y: number }) => void
   /** 用该画板的稳定标识打开和制品共用的导出面板。 */
   onExportBoard?: (boardId: string) => void
   exportVersion: VersionSummary
@@ -947,7 +947,26 @@ export function ArtifactCanvas({
                 }
               : undefined
           }
-          onComment={onComment}
+          onComment={() => {
+            const layerRect = layerFocusRef.current?.getBoundingClientRect()
+            if (layerRect && (layerRect.width > 0 || layerRect.height > 0)) {
+              onComment({ x: layerRect.right + 12, y: layerRect.top })
+              return
+            }
+            const titleEl = selected
+              ? Array.from(
+                  viewportRef.current?.querySelectorAll<HTMLButtonElement>(
+                    '.artifact-canvas-board-title',
+                  ) ?? [],
+                ).find((el) => el.dataset.boardId === selected)
+              : undefined
+            const titleRect = titleEl?.getBoundingClientRect()
+            if (titleRect && (titleRect.width > 0 || titleRect.height > 0)) {
+              onComment({ x: titleRect.left, y: titleRect.bottom + 8 })
+              return
+            }
+            onComment(hasSelectedLayer || selected ? { x: 120, y: 120 } : undefined)
+          }}
           history={historyEditing}
           arrangementMenu={
             boardEditing ? (

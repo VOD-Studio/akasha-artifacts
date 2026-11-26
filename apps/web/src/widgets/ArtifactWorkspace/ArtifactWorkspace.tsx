@@ -31,7 +31,12 @@ import { selectionForVersion, syncProjectSelection, useSelectionStore } from '@/
 import { useWorkspaceStore } from '@/entities/workspace'
 import { SplitCodeEditor } from '@/features/code-editor'
 import type { CanvasExportSelection } from '@/features/export-design'
-import { ArtifactReviewPanel, selectActiveRound } from '@/features/review'
+import {
+  AnchoredAnnotationComposer,
+  type AnchoredAnnotationTarget,
+  ArtifactReviewPanel,
+  selectActiveRound,
+} from '@/features/review'
 import { VersionDiffView } from '@/features/version-diff'
 import { useVisualEdit, VisualEditPanel } from '@/features/visual-edit'
 import { getRequestErrorMessage } from '@/shared/api/error'
@@ -136,6 +141,11 @@ export function ArtifactWorkspace({
   const [inspectorReveal, setInspectorReveal] = useState<InspectorReveal | null>(null)
   const [inspectorPage, setInspectorPage] = useState('properties')
   const [layerFocusToken, setLayerFocusToken] = useState(0)
+  const [anchoredComment, setAnchoredComment] = useState<{
+    artifactId: string
+    version: number
+    target: AnchoredAnnotationTarget
+  } | null>(null)
   const clearInspectorReveal = useCallback(() => setInspectorReveal(null), [])
   const latestVersion = useMemo(() => {
     if (versions.length === 0) return version
@@ -650,6 +660,83 @@ export function ArtifactWorkspace({
     useWorkspaceStore.getState().setViewMode('edit')
   }
 
+  const activeAnchoredComment =
+    canComment &&
+    anchoredComment?.artifactId === artifact.publicId &&
+    anchoredComment.version === version.version
+      ? anchoredComment.target
+      : null
+
+  const draftingRound = !access && activeRound?.status === 'drafting' ? activeRound : null
+  const resolveAnchoredElement = (): { element: ElementRef; label?: string } | null => {
+    if (selectedElement) {
+      const label =
+        selectedLayer?.label ??
+        (selectedDesignLayer &&
+        (selectedDesignLayer.kind === 'text' || selectedDesignLayer.kind === 'note')
+          ? selectedDesignLayer.text.slice(0, 40)
+          : undefined) ??
+        selectedElement.textPreview
+      return { element: selectedElement, label }
+    }
+    if (selectedDesignLayer && activeBoard) {
+      const textLabel =
+        selectedDesignLayer.kind === 'text' || selectedDesignLayer.kind === 'note'
+          ? selectedDesignLayer.text.slice(0, 40)
+          : undefined
+      return {
+        element: {
+          ...(activeBoard.scoped ? { boardId: activeBoard.id } : {}),
+          blockId: `${DESIGN_LAYER_BLOCK_PREFIX}${selectedDesignLayer.id}`,
+          ...(textLabel ? { textPreview: textLabel } : {}),
+        },
+        label: textLabel ?? activeBoard.title,
+      }
+    }
+    if (selectedLayer && activeBoard) {
+      return {
+        element: {
+          ...(activeBoard.scoped ? { boardId: activeBoard.id } : {}),
+          selector: selectedLayer.selector,
+          ...(!activeBoard.scoped && selectedLayer.sourceLoc
+            ? { loc: selectedLayer.sourceLoc }
+            : {}),
+          ...(selectedLayer.label ? { textPreview: selectedLayer.label } : {}),
+        },
+        label: selectedLayer.label || activeBoard.title,
+      }
+    }
+    if (inspectedBoardLayout?.scoped) {
+      return {
+        element: { boardId: inspectedBoardLayout.id, blockId: inspectedBoardLayout.id },
+        label: inspectedBoardLayout.title,
+      }
+    }
+    return null
+  }
+  const openAnchoredComment = (anchor?: { x: number; y: number }) => {
+    if (!canComment) {
+      setInspectorTab('review')
+      return
+    }
+    const resolved = resolveAnchoredElement()
+    if (!resolved || !anchor) {
+      if (resolved) handleHighlightElement(resolved.element)
+      setInspectorTab('review')
+      return
+    }
+    handleHighlightElement(resolved.element)
+    setAnchoredComment({
+      artifactId: artifact.publicId,
+      version: version.version,
+      target: {
+        anchor,
+        element: resolved.element,
+        label: resolved.label,
+      },
+    })
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-canvas">
       <main className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
@@ -699,13 +786,7 @@ export function ArtifactWorkspace({
             onLocationChange={setCanvasLocation}
             onSelectPoint={canvas === savedCanvas ? inspection.pickPoint : undefined}
             onClearElement={inspection.clearPoint}
-            onComment={() => {
-              if (canComment && !selectedElement && inspectedBoardLayout?.scoped) {
-                const boardId = inspectedBoardLayout.id
-                handleHighlightElement({ boardId, blockId: boardId })
-              }
-              setInspectorTab('review')
-            }}
+            onComment={openAnchoredComment}
             boardEditing={canEditBoards ? boardEditing : undefined}
             historyEditing={canEditText ? boardEditing : undefined}
             textTools={canEditText ? inlineText.tools : undefined}
@@ -734,7 +815,7 @@ export function ArtifactWorkspace({
                       editing={canEditText ? boardEditing : undefined}
                       textTools={canEditText ? inlineText.tools : undefined}
                       onApplyRuntimeOp={runtimeVisualTarget.applyOp}
-                      onComment={() => setInspectorTab('review')}
+                      onComment={(point) => openAnchoredComment(point)}
                     />
                   )
                 : undefined
@@ -850,6 +931,18 @@ export function ArtifactWorkspace({
           onClose={inlineText.close}
           onSave={inlineText.save}
           onAnnotate={inlineText.annotate}
+        />
+      ) : null}
+      {activeAnchoredComment ? (
+        <AnchoredAnnotationComposer
+          artifactId={artifact.publicId}
+          projectId={artifact.projectId}
+          version={version.version}
+          target={activeAnchoredComment}
+          activeDraftingRound={draftingRound}
+          notifyAgent={!access}
+          onClose={() => setAnchoredComment(null)}
+          onOpenAllDiscussions={() => setInspectorTab('review')}
         />
       ) : null}
     </div>
