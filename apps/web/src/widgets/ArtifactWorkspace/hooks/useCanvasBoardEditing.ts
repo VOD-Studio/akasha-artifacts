@@ -13,7 +13,7 @@ import {
   saveCanvasVersion,
 } from '@/entities/artifact'
 import { notifyHumanVersionEdit } from '@/entities/feedback'
-import { ApiError, getRequestErrorMessage, isResourceUnavailable } from '@/shared/api/error'
+import { ApiError, isResourceUnavailable } from '@/shared/api/error'
 import { isCloudHub } from '@/shared/config/runtime'
 import {
   type CanvasBoardEdit,
@@ -43,7 +43,11 @@ interface PendingEdit {
   source: string
   timeline: Timeline
   status: 'saving' | 'failed'
+  /** 已知中文错误键或冲突诊断；其余失败保留 `errorCause`，由展示层按当前界面语言即时解析。 */
   error?: string
+  errorCause?: unknown
+  retryable?: boolean
+  onSaved?: (saved: Version) => void
 }
 
 /** 只有可写的头版本能开始新操作，失败的草稿须先由用户处理。 */
@@ -66,6 +70,7 @@ export interface CanvasBoardEditing {
   ) => Promise<boolean>
   undo?: () => void
   redo?: () => void
+  retryDraft?: () => void
   dismissDraft: () => void
 }
 
@@ -107,10 +112,17 @@ export function useCanvasBoardEditing({
       (collaborative || live.version.version === edit.base.version)
     if (!canSubmit) {
       inFlight.current = false
-      setPending({ ...edit, status: 'failed', error: '作品已更新，未覆盖新版本。' })
+      setPending({
+        ...edit,
+        status: 'failed',
+        error: '作品已更新，未覆盖新版本。',
+        errorCause: undefined,
+        retryable: false,
+        onSaved,
+      })
       return
     }
-    setPending({ ...edit, status: 'saving', error: undefined })
+    setPending({ ...edit, status: 'saving', error: undefined, errorCause: undefined, onSaved })
     try {
       const saved = await saveCanvasVersion(artifact, edit.base, edit.source)
       query.setQueryData(
@@ -133,15 +145,18 @@ export function useCanvasBoardEditing({
       onSaved?.(saved.version)
       onVersionSaved?.(saved.version)
     } catch (cause) {
+      const conflict = cause instanceof ApiError && cause.status === 409
+      const permanent =
+        conflict || (cause instanceof ApiError && (cause.status === 404 || cause.status === 410))
       setPending({
         ...edit,
         status: 'failed',
-        error:
-          cause instanceof ApiError && cause.status === 409
-            ? cause.message
-            : getRequestErrorMessage(cause, '无法保存改动'),
+        error: conflict ? cause.message : undefined,
+        errorCause: conflict ? undefined : cause,
+        retryable: !permanent,
+        onSaved,
       })
-      if ((cause instanceof ApiError && cause.status === 409) || isResourceUnavailable(cause)) {
+      if (conflict || isResourceUnavailable(cause)) {
         void query.invalidateQueries({ queryKey: artifactKeys.canvas(artifact.publicId) })
       }
     } finally {
@@ -234,6 +249,14 @@ export function useCanvasBoardEditing({
         onSaved,
       )
     },
+    retryDraft:
+      draft?.status === 'failed' && draft.retryable
+        ? () => {
+            if (inFlight.current) return
+            inFlight.current = true
+            void save(draft, draft.onSaved)
+          }
+        : undefined,
     dismissDraft: () => {
       if (inFlight.current) return
       setPending(null)

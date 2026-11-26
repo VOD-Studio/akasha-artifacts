@@ -72,22 +72,26 @@ const messages = {
 /** 保留服务端诊断；已知 HTTP 状态对其他语言给出可读的恢复信息。 */
 export function getRequestErrorMessage(error: unknown, fallback?: string): string {
   const { t, locale } = getMessages(messages)
-  if (error instanceof ApiError && locale !== 'zh-CN') {
-    switch (error.status) {
-      case 401:
-        return t('请先登录')
-      case 403:
-        return t('没有权限执行此操作')
-      case 404:
-        return t('找不到请求的内容')
-      case 409:
-        return t('内容已变更')
-      case 410:
-        return t('内容已不可用')
-      case 429:
-        return t('请求过于频繁')
+  if (error instanceof ApiError) {
+    if (locale !== 'zh-CN') {
+      switch (error.status) {
+        case 401:
+          return t('请先登录')
+        case 403:
+          return t('没有权限执行此操作')
+        case 404:
+          return t('找不到请求的内容')
+        case 409:
+          return t('内容已变更')
+        case 410:
+          return t('内容已不可用')
+        case 429:
+          return t('请求过于频繁')
+      }
+      if (error.status >= 500) return t('服务暂不可用')
+    } else if (error.status === 401 && !/[\u4e00-\u9fff]/.test(error.message)) {
+      return t('请先登录')
     }
-    if (error.status >= 500) return t('服务暂不可用')
   }
   if (error instanceof TypeError && /fetch|network|load failed/i.test(error.message))
     return t('无法连接服务')

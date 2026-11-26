@@ -73,6 +73,7 @@ export const navigationMessages = {
     'Your unsaved changes have been kept (based on {version}).',
   ],
   下载草稿: ['Entwurf herunterladen', 'تنزيل المسودة', 'Download draft'],
+  重试: ['Erneut versuchen', 'إعادة المحاولة', 'Retry'],
   放弃改动: ['Änderungen verwerfen', 'تجاهل التغييرات', 'Discard changes'],
   关闭: ['Schließen', 'إغلاق', 'Close'],
   静态画板: ['Statische Zeichenflächen', 'لوحات رسم ثابتة', 'Static artboards'],

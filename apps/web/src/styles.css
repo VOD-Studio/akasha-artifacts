@@ -883,10 +883,32 @@ body,
   transform: translateX(-50%);
 }
 
+.artifact-canvas-notices {
+  position: absolute;
+  z-index: 5;
+  inset-block-end: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 24px);
+  pointer-events: none;
+}
+
+.artifact-canvas-notices > * {
+  pointer-events: auto;
+}
+
 @media (width < 768px) {
   .artifact-canvas-zoom {
     inset-block-end: 58px;
     max-inline-size: calc(100% - 24px);
+  }
+
+  .artifact-canvas-notices {
+    inset-block-end: 102px;
   }
 }
 

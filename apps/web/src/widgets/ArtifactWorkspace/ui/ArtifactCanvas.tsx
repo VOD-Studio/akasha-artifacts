@@ -10,7 +10,7 @@ import {
 } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { ListHighlight } from '@akasha/ui/list-highlight'
-import { MessageSquare } from 'lucide-react'
+import { Info, MessageSquare, X } from 'lucide-react'
 import {
   type MouseEvent,
   type PointerEvent,
@@ -931,15 +931,6 @@ export function ArtifactCanvas({
               ) : null}
             </div>
           </ListHighlight>
-          {editNotice}
-          {blankNotice ? (
-            <p
-              role="status"
-              className="mt-1 max-w-xs rounded-8 border border-border bg-surface px-3 py-2 text-xs text-ink shadow-xs"
-            >
-              {blankNotice}
-            </p>
-          ) : null}
         </div>
         {/* biome-ignore lint/a11y/useKeyWithClickEvents: 键盘用 Escape 清空同一选区；点击这里只处理空白。 */}
         <section
@@ -1384,6 +1375,30 @@ export function ArtifactCanvas({
             />
           ) : null}
         </section>
+        {editNotice || blankNotice ? (
+          <div className="artifact-canvas-notices">
+            {editNotice}
+            {blankNotice ? (
+              <div
+                role="status"
+                className="flex items-center gap-2 rounded-full border border-ol bg-card/94 py-1.5 ps-3 pe-1.5 text-xs text-ink shadow-(--shadow-float) backdrop-blur-lg"
+              >
+                <Info size={14} className="shrink-0 text-(--canvas-selection)" aria-hidden="true" />
+                <span>{blankNotice}</span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  iconOnly
+                  className="size-6 rounded-full text-ink-muted hover:text-ink"
+                  aria-label={t('关闭')}
+                  onClick={() => setBlankNotice('')}
+                >
+                  <X size={12} aria-hidden="true" />
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <CanvasToolbar
           camera={camera}
           guidesVisible={guideBoard ? !hiddenGuideBoards.has(guideBoard.id) : undefined}

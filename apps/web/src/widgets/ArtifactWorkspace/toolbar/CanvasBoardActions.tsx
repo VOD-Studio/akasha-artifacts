@@ -1,9 +1,10 @@
 import { ARTBOARD_GEOMETRY_LIMITS, type VersionSummary } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@akasha/ui/popover'
-import { Download, Ellipsis, Focus, Play } from 'lucide-react'
+import { AlertCircle, Download, Ellipsis, Focus, Play, RotateCcw } from 'lucide-react'
 import { type MouseEventHandler, useState } from 'react'
 import type { CanvasBoard, CanvasBounds } from '@/entities/artifact'
+import { getRequestErrorMessage } from '@/shared/api/error'
 import { useMessages } from '@/shared/i18n'
 import type { CanvasBoardEditing } from '../hooks/useCanvasBoardEditing'
 import type { CanvasBoardEdit } from '../lib/canvas-board-source'
@@ -204,33 +205,64 @@ export function CanvasBoardActions({
   )
 }
 
-/** 版本冲突时仍可取回未保存源码；不会将失败的候选当成新版本。 */
+/** 版本冲突或鉴权失败时仍可取回未保存源码；不会将失败的候选当成新版本。 */
 export function CanvasBoardEditNotice({ editing }: { editing: CanvasBoardEditing }) {
   const { t } = useMessages(navigationMessages)
   const { draft, inputError } = editing
-  const errorText = useBoardEditError(draft?.error ?? inputError)
+  const rawError =
+    draft?.error ??
+    (draft?.errorCause !== undefined
+      ? getRequestErrorMessage(draft.errorCause, '无法保存改动')
+      : inputError)
+  const errorText = useBoardEditError(rawError)
   if (!draft && !inputError) return null
   if (draft?.status === 'saving') {
     return (
-      <p role="status" className="rounded-md bg-surface px-3 py-2 text-xs text-ink-muted">
-        {t('正在保存…')}
-      </p>
+      <div
+        role="status"
+        className="inline-flex items-center gap-2 rounded-full border border-ol bg-card/92 px-3 py-1.5 text-xs text-ink-muted shadow-(--shadow-float) backdrop-blur-md"
+      >
+        <span
+          aria-hidden="true"
+          className="size-1.5 animate-pulse rounded-full bg-(--canvas-selection)"
+        />
+        <span>{t('正在保存…')}</span>
+      </div>
     )
   }
   return (
     <div
       role="alert"
-      className="max-w-xs space-y-2 rounded-md border border-border bg-surface p-3 text-sm text-ink shadow-sm"
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-ol bg-card/94 px-3 py-2 text-xs text-ink shadow-(--shadow-float) backdrop-blur-lg sm:flex-nowrap"
     >
-      <p>{errorText}</p>
-      {draft ? (
-        <>
-          <p className="text-xs text-ink-muted">
-            {t('未保存的改动已保留（基于 {version}）。', { version: `v${draft.base.version}` })}
-          </p>
+      <div className="flex min-w-0 items-start gap-2">
+        <AlertCircle size={15} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
+        <div className="min-w-0 space-y-0.5">
+          <p className="font-medium leading-4 text-ink">{errorText}</p>
+          {draft ? (
+            <p className="leading-4 text-ink-muted">
+              {t('未保存的改动已保留（基于 {version}）。', { version: `v${draft.base.version}` })}
+            </p>
+          ) : null}
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-1 border-border/70 sm:border-s sm:ps-2">
+        {draft && editing.retryDraft ? (
           <Button
             size="sm"
-            variant="secondary"
+            variant="ghost"
+            className="h-7 gap-1 rounded-lg px-2 text-xs font-medium text-(--canvas-selection-strong) hover:bg-(--canvas-selection-tint)"
+            onClick={editing.retryDraft}
+          >
+            <RotateCcw size={12} aria-hidden="true" />
+            {t('重试')}
+          </Button>
+        ) : null}
+        {draft ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 gap-1 rounded-lg px-2 text-xs text-ink-muted hover:text-ink"
             onClick={() => {
               const url = URL.createObjectURL(
                 new Blob([draft.source], { type: 'application/json' }),
@@ -242,13 +274,19 @@ export function CanvasBoardEditNotice({ editing }: { editing: CanvasBoardEditing
               window.setTimeout(() => URL.revokeObjectURL(url), 1000)
             }}
           >
+            <Download size={12} aria-hidden="true" />
             {t('下载草稿')}
           </Button>
-        </>
-      ) : null}
-      <Button size="sm" variant="ghost" onClick={editing.dismissDraft}>
-        {t(draft ? '放弃改动' : '关闭')}
-      </Button>
+        ) : null}
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 rounded-lg px-2 text-xs text-ink-muted hover:text-ink"
+          onClick={editing.dismissDraft}
+        >
+          {t(draft ? '放弃改动' : '关闭')}
+        </Button>
+      </div>
     </div>
   )
 }
