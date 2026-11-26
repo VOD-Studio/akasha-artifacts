@@ -770,6 +770,7 @@ export function ArtifactWorkspace({
       return
     }
     handleHighlightElement(resolved.element)
+    useWorkspaceStore.getState().setShowComments(true)
     const placementId = crypto.randomUUID()
     let boardPoint: Point | undefined
     if (selectedDesignLayer) {
@@ -803,6 +804,7 @@ export function ArtifactWorkspace({
   const openCommentAtPoint = useCallback(
     (board: CanvasBoard, point: Point, anchor: Point) => {
       if (!canComment) return
+      useWorkspaceStore.getState().setShowComments(true)
       const placementId = crypto.randomUUID()
       const pointRect = { x: Math.round(point.x), y: Math.round(point.y), width: 1, height: 1 }
       const hoveredHit =
@@ -1075,7 +1077,10 @@ export function ArtifactWorkspace({
         notifyAgent={!access}
         threads={threads}
         pageFeedbackIds={pageFeedbackIds}
-        onFocusThread={(feedback) => focusAndRemember(feedback, true)}
+        onFocusThread={(feedback) => {
+          useWorkspaceStore.getState().setShowComments(true)
+          focusAndRemember(feedback, true)
+        }}
         onOpenVersion={onOpenVersion}
       />
       <BoardInspector

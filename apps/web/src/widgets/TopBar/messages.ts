@@ -51,4 +51,17 @@ export const messages = {
   检查器: ['Inspektor', 'المفتّش', 'Inspector'],
   评审: ['Review', 'مراجعة', 'Review'],
   批注: ['Kommentare', 'تعليقات', 'Comments'],
+  显示画布批注: [
+    'Kommentare auf der Zeichenfläche anzeigen',
+    'إظهار التعليقات على المساحة',
+    'Show comments on canvas',
+  ],
+  隐藏画布批注: [
+    'Kommentare auf der Zeichenfläche ausblenden',
+    'إخفاء التعليقات على المساحة',
+    'Hide comments on canvas',
+  ],
+  更多批注选项: ['Weitere Kommentaroptionen', 'خيارات تعليقات إضافية', 'More comment options'],
+  查看全部批注: ['Alle Kommentare anzeigen', 'عرض جميع التعليقات', 'Show all comments'],
+  查看评审面板: ['Review-Bereich anzeigen', 'عرض لوحة المراجعة', 'Show review panel'],
 } as const satisfies Messages

@@ -35,6 +35,8 @@ export interface WorkspaceStoreState {
   commandPaletteOpen: boolean
   /** 两个非模态抽屉互斥；关闭时不清除选区和草稿。 */
   inspectorTab: 'review' | 'inspect' | null
+  /** 控制画布上的批注图钉是否显示；独立于右侧批注与评审抽屉的开合。 */
+  showComments: boolean
   /** 当前打开的作品；`null` 表示在作品库。 */
   artifactViewId: string | null
   viewMode: WorkspaceViewMode
@@ -52,6 +54,8 @@ export interface WorkspaceStoreState {
   setSelectedProjectId: (projectId: string | null) => void
   setCommandPaletteOpen: (open: boolean) => void
   setInspectorTab: (tab: WorkspaceStoreState['inspectorTab']) => void
+  setShowComments: (show: boolean) => void
+  toggleShowComments: () => void
   setViewMode: (mode: WorkspaceViewMode) => void
   setWsStatus: (status: WsConnectionStatus) => void
   setAgentActivity: (projectId: string, record: AgentActivityRecord) => void
@@ -69,6 +73,7 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set) => ({
   selectedProjectId: null,
   commandPaletteOpen: false,
   inspectorTab: null,
+  showComments: true,
   artifactViewId: null,
   viewMode: 'preview',
   wsStatus: 'closed',
@@ -81,11 +86,13 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set) => ({
     set((state) =>
       state.artifactViewId === artifactViewId
         ? state
-        : { artifactViewId, viewMode: 'preview', inspectorTab: null },
+        : { artifactViewId, viewMode: 'preview', inspectorTab: null, showComments: true },
     ),
   setSelectedProjectId: (selectedProjectId) => set({ selectedProjectId }),
   setCommandPaletteOpen: (commandPaletteOpen) => set({ commandPaletteOpen }),
   setInspectorTab: (inspectorTab) => set({ inspectorTab }),
+  setShowComments: (showComments) => set({ showComments }),
+  toggleShowComments: () => set((state) => ({ showComments: !state.showComments })),
   setViewMode: (viewMode) => set({ viewMode }),
   setWsStatus: (wsStatus) => set({ wsStatus }),
   setAgentActivity: (projectId, record) =>

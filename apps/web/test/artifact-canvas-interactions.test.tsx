@@ -5,6 +5,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { expect, it, vi } from 'vitest'
 import { ArtifactWorkspace } from '../src/widgets/ArtifactWorkspace'
 import { patchHtmlElementGeometry } from '../src/widgets/ArtifactWorkspace/lib/html-element-geometry'
+import { TopBar } from '../src/widgets/TopBar'
 import {
   artifact,
   design,
@@ -626,4 +627,69 @@ it('静态 HTML 元素支持画布直接拖移、手柄拉伸与原地所见即�
   } finally {
     vi.stubGlobal('fetch', originalFetch)
   }
+})
+
+it('右上角批注开关控制画布批注图钉显隐，下拉菜单打开全部批注面板', () => {
+  stubResizeObserver()
+  const pinFeedback: Feedback = {
+    id: 'fb-pin-1',
+    artifactId: artifact.publicId,
+    version: 1,
+    kind: 'comment',
+    author: 'reviewer',
+    body: '调整按钮间距',
+    status: 'pending',
+    draft: false,
+    roundId: null,
+    groupId: null,
+    createdAt: '2026-11-26T10:00:00Z',
+    updatedAt: '2026-11-26T10:00:00Z',
+    element: {
+      boardId: 'desktop',
+      blockId: 'desktop',
+      rect: { x: 40, y: 40, width: 1, height: 1 },
+    },
+  }
+  const detail = detailFor()
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={client}>
+      <TopBar
+        artifact={detail.artifact}
+        version={detail.version}
+        versions={[detail.version]}
+        feedbackCount={1}
+        onBackToLibrary={() => {}}
+        onSelectVersion={() => {}}
+      />
+      <ArtifactWorkspace
+        detail={detail}
+        versions={[detail.version]}
+        feedbacks={[pinFeedback]}
+        sandboxOrigin="http://127.0.0.1:24331"
+      />
+    </QueryClientProvider>,
+  )
+
+  // 默认显示画布上的批注图钉，且右侧批注面板未打开
+  expect(screen.getByTestId('annotation-pin-fb-pin-1')).toBeTruthy()
+  expect(screen.queryByRole('dialog', { name: '批注与评审' })).toBeNull()
+
+  // 点击右上角批注主按钮：隐藏画布上的图钉，不打开抽屉
+  const toggleBtn = screen.getByRole('button', { name: '隐藏画布批注' })
+  expect(toggleBtn.getAttribute('aria-pressed')).toBe('true')
+  fireEvent.click(toggleBtn)
+  expect(screen.queryByTestId('annotation-pin-fb-pin-1')).toBeNull()
+  expect(screen.queryByRole('dialog', { name: '批注与评审' })).toBeNull()
+
+  // 再次点击：恢复画布图钉显示
+  const showBtn = screen.getByRole('button', { name: '显示画布批注' })
+  expect(showBtn.getAttribute('aria-pressed')).toBe('false')
+  fireEvent.click(showBtn)
+  expect(screen.getByTestId('annotation-pin-fb-pin-1')).toBeTruthy()
+
+  // 点击右侧下拉箭头 -> 查看全部批注 -> 打开批注与评审面板
+  fireEvent.click(screen.getByRole('button', { name: '更多批注选项' }))
+  fireEvent.click(screen.getByRole('button', { name: /查看全部批注/ }))
+  expect(screen.getByRole('dialog', { name: '批注与评审' })).toBeTruthy()
 })

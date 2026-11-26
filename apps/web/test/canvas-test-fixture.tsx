@@ -184,7 +184,7 @@ export function setupCanvasTest() {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
     useSelectionStore.getState().clearSelection(artifact.publicId)
-    useWorkspaceStore.setState({ inspectorTab: null, viewMode: 'preview' })
+    useWorkspaceStore.setState({ inspectorTab: null, viewMode: 'preview', showComments: true })
     sessionStorage.clear()
   })
 }

@@ -96,6 +96,8 @@ interface ArtifactFrameProps {
   onVisualSelect: (message: Extract<SandboxToShellMessage, { type: 'visual.select' }>) => void
 }
 
+const EMPTY_PINS: readonly Feedback[] = []
+
 interface PendingPreview {
   requestId: string
   version: number
@@ -212,6 +214,7 @@ export function ArtifactFrame({
   const selection = useSelectionStore((s) => selectionForVersion(s, artifactId, versionNumber))
   const selected =
     !playback && selection && belongsToBoard(selection, id, scoped) ? selection : null
+  const showComments = useWorkspaceStore((state) => state.showComments)
   const focusedFeedbackId = useSelectionStore((s) => s.focusedFeedbackId)
   const versionPins = useMemo(
     () => pins.filter((pin) => pin.element && belongsToBoard(pin.element, id, scoped)),
@@ -716,7 +719,7 @@ export function ArtifactFrame({
       {!playback && (
         <ElementOverlay
           selected={selected}
-          pins={versionPins}
+          pins={showComments ? versionPins : EMPTY_PINS}
           livePinRects={livePinRects}
           focusedFeedbackId={focusedFeedbackId}
           hideSelectionBox={hideSelectionBox}

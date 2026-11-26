@@ -78,6 +78,7 @@ export const panelMessages = {
   回复内容: ['Antworttext', 'نص الرد', 'Reply text'],
   批注与评审: ['Kommentare und Review', 'التعليقات والمراجعة', 'Comments and review'],
   '反馈（{count}）': ['Feedback ({count})', 'الملاحظات ({count})', 'Feedback ({count})'],
+  筛选批注: ['Kommentare filtern', 'تصفية التعليقات', 'Filter comments'],
   批注范围: ['Kommentarbereich', 'نطاق التعليقات', 'Comment scope'],
   全部页面: ['Alle Seiten', 'كل الصفحات', 'All pages'],
   当前页面: ['Aktuelle Seite', 'الصفحة الحالية', 'Current page'],

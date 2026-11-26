@@ -933,8 +933,9 @@ body,
   max-height: min(46vh, 20rem);
 }
 
-/* 检查器采用统一的柔和设计蓝强调与克制标签栏，消除突兀黑框与高饱和黑底。 */
-#design-inspector {
+/* 检查器与批注面板采用统一的柔和设计蓝强调与克制标签栏，消除突兀黑框与高饱和黑底。 */
+#design-inspector,
+#artifact-inspector {
   --primary: var(--canvas-selection);
   --primary-foreground: var(--canvas-selection-foreground);
   --ring: var(--canvas-selection);
