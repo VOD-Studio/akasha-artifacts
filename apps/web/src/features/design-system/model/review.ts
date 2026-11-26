@@ -34,7 +34,7 @@ export function importFiles(
   }
 }
 
-/** 保留组件时一并恢复其入口文件，不能产生悬空组件。 */
+/** 保留旧组件会恢复完整入口文件；调用方须在用户确认前说明对同文件其他导出的影响。 */
 export function restoreItem(
   draft: DesignSystemDraft,
   previous: DesignSystemDraft,
@@ -44,10 +44,13 @@ export function restoreItem(
   const file = previous.files.find(
     (entry) => `file:${entry.path}` === key || entry.path === component?.path,
   )
-  const files =
-    file && !draft.files.some((entry) => entry.path === file.path)
-      ? [...draft.files, file]
-      : draft.files
+  let files = draft.files
+  if (file) {
+    const current = files.find((entry) => entry.path === file.path)
+    if (!current) files = [...files, file]
+    else if (current.content !== file.content || current.kind !== file.kind)
+      files = files.map((entry) => (entry === current ? file : entry))
+  }
   return {
     ...draft,
     files,

@@ -35,14 +35,14 @@ const preview = {
 const id = 'DesignSystemReview1234'
 const buildButton = '允许构建并预览所选组件'
 
-function review() {
+function review(draft = base) {
   const saved = vi.fn()
   render(
     <QueryClientProvider client={new QueryClient()}>
       <SystemEditor
         projectId="team"
         sandboxOrigin="http://sandbox.test"
-        baseline={{ id, version: 1, title: 'Team', slug: 'system/team', draft: base }}
+        baseline={{ id, version: 1, title: 'Team', slug: 'system/team', draft }}
         onSaved={saved}
       />
     </QueryClientProvider>,
@@ -134,6 +134,38 @@ it('重选只读取勾选的文件，区分变更和缺失；逐项决定后才�
   fireEvent.change(screen.getByRole('textbox', { name: '颜色' }), { target: { value: '#027' } })
   expect(save.disabled).toBe(true)
   expect(screen.queryByTitle('隔离预览')).toBeNull()
+})
+
+it('同名文件不再导出所选组件时，只有明确恢复整个旧入口才回退其源码', async () => {
+  const oldEntry = 'export function Confirm() { return <button>确认</button> }'
+  const baseline: DesignSystemDraft = {
+    ...base,
+    files: [{ kind: 'source', path: 'Button.tsx', content: oldEntry }, base.files[1]],
+    components: [{ path: 'Button.tsx', exportName: 'Confirm', props: {} }],
+  }
+  const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json(preview))
+  review(baseline)
+  const files = [
+    new File(['export const Cancel = () => null'], 'Button.tsx'),
+    new File(['Revised guidelines'], 'tone.md'),
+  ]
+  fireEvent.change(screen.getByLabelText('选择文件'), { target: { files } })
+  fireEvent.click(screen.getByRole('button', { name: '用所选文件重新同步' }))
+  await screen.findByDisplayValue('Revised guidelines')
+  fireEvent.click(screen.getByRole('button', { name: '移除 Button.tsx#Confirm' }))
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: buildButton }).disabled).toBe(true)
+  fireEvent.click(
+    screen.getByRole('button', { name: /(?:保留旧项|恢复整个旧入口文件).*Button\.tsx#Confirm/ }),
+  )
+  expect(fetcher).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: buildButton }))
+  await openedSandbox('隔离预览')
+  const payload = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))
+  expect(payload.draft.components).toEqual(baseline.components)
+  expect(payload.draft.files).toEqual([
+    baseline.files[0],
+    { ...baseline.files[1], content: 'Revised guidelines' },
+  ])
 })
 
 it('沙盒的运行时错误不计作成功预览，不能发布', async () => {

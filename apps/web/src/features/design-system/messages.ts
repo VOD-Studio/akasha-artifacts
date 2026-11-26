@@ -57,6 +57,16 @@ export const messages = {
   新增: ['Neu', 'جديد', 'Added'],
   缺失: ['Fehlt', 'مفقود', 'Missing'],
   保留旧项: ['Bisherigen Eintrag behalten', 'الاحتفاظ بالعنصر السابق', 'Keep previous item'],
+  恢复整个旧入口文件: [
+    'Alte Eingabedatei vollständig wiederherstellen',
+    'استعادة ملف الإدخال السابق بالكامل',
+    'Restore the entire previous entry file',
+  ],
+  '同一文件中的其他组件也将使用旧源码。': [
+    'Andere Komponenten in derselben Datei verwenden dann ebenfalls den alten Quelltext.',
+    'ستستخدم المكونات الأخرى في الملف نفسه الشيفرة السابقة أيضًا.',
+    'Other components in this file will also use the previous source.',
+  ],
   确认移除: ['Entfernen bestätigen', 'تأكيد الإزالة', 'Confirm removal'],
   组件: ['Komponenten', 'المكونات', 'Components'],
   组件入口: ['Komponentendatei', 'ملف المكون', 'Component entry'],

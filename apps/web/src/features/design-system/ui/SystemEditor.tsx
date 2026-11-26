@@ -54,6 +54,8 @@ export function SystemEditor({ projectId, sandboxOrigin, baseline, onSaved }: Sy
   const missing = baseline ? removedDesignSystemItems(baseline.draft, draft) : []
   const unresolved = missing.some((key) => !confirmed.includes(key))
   const needsBuild = draft.files.some((file) => file.kind === 'source')
+  const restoreLabel = (key: string) =>
+    key.startsWith('component:') ? t('恢复整个旧入口文件') : t('保留旧项')
   const mayPreview =
     !pendingFiles &&
     !!draft.origin.label.trim() &&
@@ -157,13 +159,18 @@ export function SystemEditor({ projectId, sandboxOrigin, baseline, onSaved }: Sy
             {missing.map((key) => (
               <div key={key} className="flex flex-wrap items-center gap-2">
                 <bdi className="break-all">{key}</bdi>
+                {key.startsWith('component:') && (
+                  <span className="text-xs text-ink-muted">
+                    {t('同一文件中的其他组件也将使用旧源码。')}
+                  </span>
+                )}
                 <Button
                   variant="ghost"
                   size="sm"
-                  aria-label={`${t('保留旧项')} ${key}`}
+                  aria-label={`${restoreLabel(key)} ${key}`}
                   onClick={() => change(restoreItem(draft, baseline.draft, key))}
                 >
-                  {t('保留旧项')}
+                  {restoreLabel(key)}
                 </Button>
                 <label
                   htmlFor={`${removalGroup}-${encodeURIComponent(key)}`}
