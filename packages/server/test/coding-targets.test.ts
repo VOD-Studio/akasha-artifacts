@@ -149,5 +149,7 @@ it('作者可用 Web 续接指定会话并发布，访客和其他项目不能�
   expect((await reopened.send(workspace, 'POST', owner)).status).toBe(401)
   const signedInAgain = await reopened.login('owner')
   expect((await reopened.send(workspace, 'POST', signedInAgain)).status).toBe(404)
-  expect((await reopened.send(`${workspace}-publish`, 'POST', signedInAgain, body)).status).toBe(404)
+  expect((await reopened.send(`${workspace}-publish`, 'POST', signedInAgain, body)).status).toBe(
+    404,
+  )
 })
