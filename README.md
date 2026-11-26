@@ -250,6 +250,8 @@ In the library’s system catalog, a Hub administrator can publish an available 
 
 Choose **New design** in the Hub library. Use your team default, select no system, or combine fixed versions and specific component exports. The personal default switch in the catalog affects only your future designs. Generated designs contain the reviewed components and styles, not a link to the latest system. They stay private in the target project until you share them.
 
+On a saved design, select a system component on the canvas or in Layers to inspect its styles or pin a comment. Two systems can use the same button label without sharing styles or comment targets. Choose **Play prototype** to use an interactive component; a design with only static brand guidance has no playback control.
+
 #### Try a candidate with a real deviation
 
 Import this `ConfirmButton.tsx` as a system, review its `ConfirmButton` export with example props `{"children":"Confirm order"}`, and set the brand color to `#123456`:

@@ -3,6 +3,12 @@ import {
   type CanvasLayerStyles,
   DESIGN_LAYER_BLOCK_PREFIX,
 } from '@akasha/protocol'
+import {
+  type CatalogScope,
+  catalogScope,
+  scopedLayerSelector,
+  scopeForElement,
+} from './catalog-scope'
 import { readLayerStyles } from './layer-styles'
 
 const SKIP = 'script, style, link, meta, title, template, noscript, defs'
@@ -37,8 +43,7 @@ function segment(element: Element, index: number): string {
   return `${element.localName.replace(/[^a-zA-Z0-9_-]/g, '\\$&')}:nth-of-type(${index})`
 }
 
-/** 完整结构路径不会被重复 HTML id 或祖先块标识误导。 */
-export function layerSelector(element: Element, root: Element): string {
+function structuralPath(element: Element, root: Element): string {
   const parts: string[] = []
   for (
     let current: Element | null = element;
@@ -56,6 +61,18 @@ export function layerSelector(element: Element, root: Element): string {
     parts.unshift(segment(current, index))
   }
   return parts.length ? `:scope > ${parts.join(' > ')}` : ''
+}
+
+/** 目录组件使用宿主和内容两段路径；不为其他隔离树生成文档选择器。 */
+export function layerSelector(element: Element, root: Element): string {
+  if (root.contains(element)) return structuralPath(element, root)
+  const scope = scopeForElement(element, root)
+  if (!scope) return ''
+  return scopedLayerSelector(
+    scope,
+    structuralPath(scope.host, root),
+    structuralPath(element, scope.content),
+  )
 }
 
 function layerLabel(element: Element): string | undefined {
@@ -76,6 +93,7 @@ function declaredBlock(element: Element) {
 
 /** 只认可节点自身的唯一声明，不把命中子节点提升为父节点的业务身份。 */
 export function uniqueLayerBlock(target: Element, root: Element) {
+  if (!root.contains(target)) return undefined
   const block = declaredBlock(target)
   if (!block || target.closest('[data-ak-dynamic]')) return undefined
   for (const node of root.querySelectorAll('[data-ak-block]')) {
@@ -85,7 +103,11 @@ export function uniqueLayerBlock(target: Element, root: Element) {
 }
 
 /** 只给具备唯一静态标记的节点关联源码；重复判断包括未展示的节点。 */
-export function readCanvasLayers(root: HTMLElement, styleLayerId?: string) {
+export function readCanvasLayers(
+  root: HTMLElement,
+  styleLayerId?: string,
+  observeCatalog?: (shadow: ShadowRoot) => void,
+) {
   const layers: CanvasLayer[] = []
   const locations: Array<{ layer: CanvasLayer; location: string }> = []
   const blocks = new Map<string, { layer: CanvasLayer; count: number }>()
@@ -93,9 +115,16 @@ export function readCanvasLayers(root: HTMLElement, styleLayerId?: string) {
   let visited = 0
   let truncated = false
 
-  function scan(parent: Element, prefix: string, parentId: string | undefined, depth: number) {
+  const scan = (
+    children: Iterable<Element>,
+    prefix: string,
+    parentId: string | undefined,
+    depth: number,
+    scope?: CatalogScope,
+    hostPath = '',
+  ) => {
     const siblings = new Map<string, number>()
-    for (const element of parent.children) {
+    for (const element of children) {
       visited += 1
       if (layers.length >= MAX_LAYERS || visited > MAX_VISITED) {
         truncated = true
@@ -105,21 +134,21 @@ export function readCanvasLayers(root: HTMLElement, styleLayerId?: string) {
       const index = (siblings.get(tag) ?? 0) + 1
       siblings.set(tag, index)
       if (element.matches(SKIP) || element.hasAttribute('hidden')) continue
-      const part = segment(element, index)
-      const path = prefix ? `${prefix} > ${part}` : part
-      const selector = `:scope > ${path}`
+      const path =
+        element === scope?.content ? '' : `${prefix || ':scope'} > ${segment(element, index)}`
+      const selector = scope ? scopedLayerSelector(scope, hostPath, path) : path
       if (depth >= MAX_DEPTH || selector.length > 1024) {
         truncated = true
         continue
       }
-      if (element.hasAttribute('data-ak-renderer')) {
-        scan(element, path, parentId, depth + 1)
+      if (!scope && element.hasAttribute('data-ak-renderer')) {
+        scan(element.children, path, parentId, depth + 1)
         continue
       }
       const id = layerElementId(element)
       if (id === styleLayerId) styles = readLayerStyles(element, root, id)
       const label = layerLabel(element)
-      const designId = readDesignLayerId(element)
+      const designId = scope ? undefined : readDesignLayerId(element)
       const bounds = element.getBoundingClientRect()
       const layer: CanvasLayer = {
         id,
@@ -133,6 +162,10 @@ export function readCanvasLayers(root: HTMLElement, styleLayerId?: string) {
       }
       layers.push(layer)
       if (designId) continue
+      if (scope) {
+        scan(element.children, path, id, depth + 1, scope, hostPath)
+        continue
+      }
       const block = declaredBlock(element)
       if (block && !element.closest('[data-ak-dynamic]') && !blocks.has(block))
         blocks.set(block, { layer, count: 0 })
@@ -140,11 +173,16 @@ export function readCanvasLayers(root: HTMLElement, styleLayerId?: string) {
       if (loc && /^\d{1,8}:\d{1,8}$/.test(loc) && !element.closest('[data-ak-dynamic]')) {
         locations.push({ layer, location: loc })
       }
-      scan(element, path, id, depth + 1)
+      const catalog = catalogScope(element)
+      if (catalog) {
+        observeCatalog?.(catalog.shadow)
+        scan([catalog.content], '', id, depth + 1, catalog, path)
+      }
+      scan(element.children, path, id, depth + 1)
     }
   }
 
-  scan(root, '', undefined, 0)
+  scan(root.children, '', undefined, 0)
   if (locations.length) {
     const counts = new Map<string, number>()
     for (const element of root.querySelectorAll('[data-ak-loc]')) {

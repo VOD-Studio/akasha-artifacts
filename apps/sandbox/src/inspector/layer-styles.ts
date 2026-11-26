@@ -1,4 +1,5 @@
 import { type CanvasLayerStyles, CANVAS_STYLE_LIMITS as LIMIT } from '@akasha/protocol'
+import { scopeForElement } from './catalog-scope'
 
 type Declaration = CanvasLayerStyles['declarations'][number]
 
@@ -171,7 +172,10 @@ export function readLayerStyles(
     layers.push({ element: node, candidates: new Map(), uncertain: new Set() })
     node = node.parentElement
   }
-  if (node !== root || !layers.length) return { ...result, truncated: true }
+  const scope = node === null ? scopeForElement(element, root) : null
+  if ((!scope && node !== root) || !layers.length) return { ...result, truncated: true }
+  // 隔离树内的继承链止于 main；宿主可能供值，但计算值相等不能证明跨树来源。
+  if (scope) result.truncated = true
   const wrapper = layers.findIndex((layer) => layer.element.hasAttribute('data-ak-renderer'))
   if (wrapper >= 0) layers.length = wrapper
   if (!layers.length) return { ...result, truncated: true }
@@ -275,6 +279,11 @@ export function readLayerStyles(
           complete = false
           continue
         }
+        // matches() 没有样式表的宿主上下文；不能把这类选择器当成普通祖先关系解析。
+        if (scope && /:host\b|::slotted\(|::part\(/i.test(text)) {
+          complete = false
+          continue
+        }
         const parts = selectors(text)
         for (const layer of layers) {
           for (const selector of parts) {
@@ -316,17 +325,12 @@ export function readLayerStyles(
     }
   }
 
-  function scanOwner(owner: Element) {
-    if (owner.localName === 'link' && (owner as HTMLLinkElement).relList?.contains('stylesheet')) {
-      complete = false
-    }
-    if (owner.localName !== 'style') return
+  const scanSheet = (sheet: CSSStyleSheet | null, owner?: Element) => {
     try {
-      const sheet = (owner as HTMLStyleElement).sheet
       if (!sheet) complete = false
       else if (
         !sheet.disabled &&
-        mediaMatches(sheet.media?.mediaText ?? owner.getAttribute('media') ?? '')
+        mediaMatches(sheet.media?.mediaText ?? owner?.getAttribute('media') ?? '')
       ) {
         scanRules(sheet.cssRules, 0)
       }
@@ -335,29 +339,46 @@ export function readLayerStyles(
       complete = false
     }
   }
-  // 大 SVG 可有数千个图元。只从文档的表索引辨认所有者，绝不读取作品外的规则。
-  const sheets = doc.styleSheets
-  if (sheets.length > MAX_SHEETS) complete = false
-  let indexed = true
+  const scanOwner = (owner: Element) => {
+    if (owner.localName === 'link' && (owner as HTMLLinkElement).relList?.contains('stylesheet')) {
+      complete = false
+    }
+    if (owner.localName === 'style') scanSheet((owner as HTMLStyleElement).sheet, owner)
+  }
+  // 大 SVG 可有数千个图元。优先用本树的表索引，只读可归给当前作品的规则。
+  const styleRoot = scope?.shadow ?? root
+  const sheets = scope ? scope.shadow.styleSheets : doc.styleSheets
+  const sheetCount = sheets?.length ?? 0
+  if (sheetCount > MAX_SHEETS) complete = false
+  let indexed = !scope || sheetCount > 0
   const owners: Element[] = []
-  for (let i = 0; i < Math.min(sheets.length, MAX_SHEETS); i++) {
+  for (let i = 0; i < Math.min(sheetCount, MAX_SHEETS); i++) {
     const owner = sheets[i].ownerNode
     if (!owner) {
       indexed = false
       break
     }
-    if (owner.nodeType === Node.ELEMENT_NODE && root.contains(owner)) owners.push(owner as Element)
+    if (owner.nodeType === Node.ELEMENT_NODE && styleRoot.contains(owner)) {
+      owners.push(owner as Element)
+    }
   }
   if (indexed) {
     for (const owner of owners) scanOwner(owner)
   } else {
-    const walker = doc.createTreeWalker(root, NodeFilter.SHOW_ELEMENT)
+    const walker = doc.createTreeWalker(styleRoot, NodeFilter.SHOW_ELEMENT)
     for (let i = 0, next = walker.nextNode(); next; next = walker.nextNode(), i++) {
       if (i >= MAX_NODES) {
         complete = false
         break
       }
       scanOwner(next as Element)
+    }
+  }
+  const adopted = scope?.shadow.adoptedStyleSheets
+  if (adopted) {
+    if (sheetCount + adopted.length > MAX_SHEETS) complete = false
+    for (let i = 0; i < Math.min(adopted.length, MAX_SHEETS - sheetCount); i++) {
+      scanSheet(adopted[i])
     }
   }
   if (!complete) return { ...result, truncated: true }

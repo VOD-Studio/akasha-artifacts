@@ -1,4 +1,5 @@
 import type { SandboxBridgeClient } from '../bridge/client'
+import { scopeForElement } from './catalog-scope'
 import { buildElementRef, uniqueStaticSourceLocation } from './index'
 
 /** 可视化直改的选取器：激活后拦截沙盒内的第一次真实点击，把命中元素上报给外壳。 */
@@ -25,14 +26,18 @@ export class SandboxVisualInspector {
 
   private readonly handleClick = (event: MouseEvent) => {
     const root = this.getRoot()
-    const target = event.target
+    const original = event.composedPath()[0]
+    const target =
+      root && original instanceof Element && scopeForElement(original, root)
+        ? original
+        : event.target
     const version = this.getVersion()
     if (
       !event.isTrusted ||
       !(target instanceof Element) ||
       !root ||
       version < 1 ||
-      !root.contains(target) ||
+      (!root.contains(target) && !scopeForElement(target, root)) ||
       target === root ||
       target.hasAttribute('data-ak-renderer')
     )

@@ -153,7 +153,7 @@ export const DATA_POINT_SELECTION_LIMITS = { points: 64, id: 96, label: 240 } as
 /**
  * 元素引用：指向页面中一个元素的定位信息。
  *
- * @remarks 定位优先级 `blockId` > `loc` > `selector` > `textPreview`；四者至少一项非空。
+ * @remarks 一般元素依次尝试 `blockId`、`loc`、`selector`、`textPreview`；固定系统的作用域定位失效时不按文本猜测其他来源。
  */
 export const ElementRefSchema = z
   .object({
@@ -166,7 +166,7 @@ export const ElementRefSchema = z
       .string()
       .regex(/^\d+:\d+(?:-\d+:\d+)?$/, 'loc 须为 line:col 或 line:col-line:col')
       .optional(),
-    // CSS 选择器，相对沙盒文档根
+    // 普通元素使用相对沙盒根的 CSS；固定系统在独立样式树内，由沙盒按来源、版本和内部路径定位。
     selector: z.string().min(1).optional(),
     // 命中时的元素矩形；只用于展示，不参与定位
     rect: ElementRectSchema.optional(),

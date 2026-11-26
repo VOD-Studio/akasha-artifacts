@@ -394,15 +394,7 @@ export function SandboxApp({
   useEffect(() => {
     const root = rootRef.current
     if (!bridge || !root || !supportsPrototype || playbackVersion) return
-    const observer = new MutationObserver(() => {
-      const version = renderedVisualVersionRef.current
-      if (!version || version !== versionRef.current) return
-      const playable = hasPlayableControls(root, { scoped: strictControls })
-      if (lastPlayable.current === playable) return
-      lastPlayable.current = playable
-      bridge.send({ type: 'prototype.availability', version, playable })
-    })
-    observer.observe(root, {
+    const options: MutationObserverInit = {
       subtree: true,
       childList: true,
       attributeFilter: [
@@ -426,7 +418,23 @@ export function SandboxApp({
         'tabindex',
         'type',
       ],
-    })
+    }
+    const update = () => {
+      const version = renderedVisualVersionRef.current
+      if (!version || version !== versionRef.current) return
+      observer.disconnect()
+      observer.observe(root, options)
+      const playable = hasPlayableControls(root, {
+        scoped: strictControls,
+        observeCatalog: (shadow) => observer.observe(shadow, options),
+      })
+      if (lastPlayable.current === playable) return
+      lastPlayable.current = playable
+      bridge.send({ type: 'prototype.availability', version, playable })
+    }
+    const observer = new MutationObserver(update)
+    observer.observe(root, options)
+    update()
     return () => observer.disconnect()
   }, [bridge, playbackVersion, supportsPrototype, strictControls])
 
@@ -434,6 +442,7 @@ export function SandboxApp({
     const root = rootRef.current
     if (!bridge || !root || !layerWatch || playbackVersion) return
     let pending: number | undefined
+    const options = { subtree: true, childList: true, characterData: true, attributes: true }
     const schedule = () => {
       if (pending !== undefined) return
       // 把一次 DOM 更新的多个 mutation 合并，限制动画或图表持续变化时的桥流量。
@@ -441,21 +450,21 @@ export function SandboxApp({
         pending = undefined
         const version = renderedVisualVersionRef.current
         if (!version || version !== versionRef.current) return
+        // 按这次快照重建订阅；已卸载的目录宿主及其内容不再触发后续刷新。
+        observer.disconnect()
+        observer.observe(root, options)
         bridge.send({
           type: 'inspect.layers.snapshot',
           version,
-          ...readCanvasLayers(root, layerWatch.styleLayerId),
+          ...readCanvasLayers(root, layerWatch.styleLayerId, (shadow) =>
+            observer.observe(shadow, options),
+          ),
         })
       }, 100)
     }
     refreshLayers.current = schedule
     const observer = new MutationObserver(schedule)
-    observer.observe(root, {
-      subtree: true,
-      childList: true,
-      characterData: true,
-      attributes: true,
-    })
+    observer.observe(root, options)
     schedule()
     return () => {
       refreshLayers.current = null

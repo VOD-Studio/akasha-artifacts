@@ -1,10 +1,14 @@
 import { composeCatalogBoard, reconcileCatalogCandidate } from '@akasha/kit'
-import { type DesignSystemDraft, readCatalogReferences } from '@akasha/protocol'
+import { type DesignSystemDraft, PROTOCOL_VERSION, readCatalogReferences } from '@akasha/protocol'
 import { fireEvent, type RenderResult, render } from '@testing-library/react/pure'
 import { expect, it } from 'vitest'
 import { builtinEnvironments } from 'vitest/environments'
 import { previewDesignSystem } from '../../../packages/server/src/application/design-systems/review'
 import { brand, buttons } from '../../../packages/server/test/design-systems/brand'
+import type { SandboxBridgeClient } from '../src/bridge/client'
+import { buildElementRef, findElementByRef, SandboxInspector } from '../src/inspector'
+import { readCanvasLayers } from '../src/inspector/layers'
+import { hasPlayableControls } from '../src/prototype/binding'
 import { compileReactArtifact } from '../src/runtime/compiler'
 
 async function reviewed(draft: DesignSystemDraft) {
@@ -82,11 +86,75 @@ it('renders two independently clickable reviewed exports with their own conflict
       return button
     })
     expect(view.container.querySelector('style')).toBeNull()
+    const root = view.container
+    expect(hasPlayableControls(root)).toBe(true)
+    const layers = readCanvasLayers(root).layers.filter((item) => item.tag === 'button')
+    expect(layers.map(({ label }) => label)).toEqual(['Confirm order', 'Confirm order'])
+    const refs = controls.map((button) => buildElementRef(button, root))
+    expect(refs[0].selector).not.toBe(refs[1].selector)
+    const sent: Parameters<SandboxBridgeClient['send']>[0][] = []
+    const inspector = new SandboxInspector(
+      () => root,
+      { send: (message) => sent.push(message) },
+      () => 1,
+    )
+    try {
+      // jsdom 没有布局命中 API；只提供浏览器在 document/ShadowRoot 两层各自报告的元素。
+      for (const [i, button] of controls.entries()) {
+        Object.defineProperty(document, 'elementFromPoint', {
+          configurable: true,
+          value: () => roots[i].host,
+        })
+        Object.defineProperty(roots[i], 'elementFromPoint', {
+          configurable: true,
+          value: () => button,
+        })
+        expect(findElementByRef(root, refs[i])).toBe(button)
+        inspector.inspectAt({
+          v: PROTOCOL_VERSION,
+          nonce: 'inspect',
+          type: 'inspect.at',
+          purpose: 'select',
+          version: 1,
+          requestId: 'pick',
+          x: 2,
+          y: 2,
+        })
+        expect(sent.at(-1)).toMatchObject({
+          type: 'inspect.target',
+          layer: { id: layers[i].id },
+          element: { selector: refs[i].selector },
+        })
+        inspector.highlight({ selector: layers[i].selector }, undefined, {
+          id: layers[i].id,
+          version: 1,
+        })
+        expect(sent.at(-1)).toMatchObject({ type: 'inspect.select', layerId: layers[i].id })
+      }
+      inspector.trackPins(refs.map((element, i) => ({ id: String(i), element })))
+      expect(sent.at(-1)).toMatchObject({
+        type: 'pins.rects',
+        rects: { '0': expect.any(Object), '1': expect.any(Object) },
+      })
+    } finally {
+      inspector.dispose()
+    }
     fireEvent.click(controls[0])
     expect(controls[0].textContent).toBe('Sent from original')
     expect(controls[1].textContent).toBe('Confirm order')
     fireEvent.click(controls[1])
     expect(controls[1].textContent).toBe('Sent from original')
+    const other = roots[1].querySelector('main')
+    if (!other) throw new Error('缺少第二个来源')
+    const secondId = other.dataset.akSystem
+    other.dataset.akSystem = entries[0].id
+    other.dataset.akSystemVersion = String(entries[0].version)
+    expect(findElementByRef(root, refs[0])).toBeNull()
+    other.dataset.akSystem = secondId
+    other.dataset.akSystemVersion = String(entries[1].version)
+    roots[0].host.remove()
+    expect(findElementByRef(root, refs[0])).toBeNull()
+    expect(findElementByRef(root, refs[1])).toBe(controls[1])
   })
 })
 
@@ -111,6 +179,16 @@ it('uses every reviewed export for a whole system and retains a brand-only selec
     expect(guidance.querySelector('h1')?.textContent).toBe('Team identity')
     expect(guidance.textContent).toContain('Keep the wordmark on its own line.')
     expect(guidance.textContent).toContain('use the triangular mark at the start of the page')
+  })
+})
+
+it('does not offer prototype playback for an actual brand-only fixed system', async () => {
+  const { source } = composeCatalogBoard('Identity', [
+    { id: 'TriangleIdentity01', version: 1, snapshot: await reviewed(brand), index: null },
+  ])
+  await renderBoard(source, (view) => {
+    expect(systemRoots(view.container)[0].textContent).toContain('Keep the wordmark')
+    expect(hasPlayableControls(view.container)).toBe(false)
   })
 })
 

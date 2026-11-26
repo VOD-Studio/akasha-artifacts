@@ -1,3 +1,5 @@
+import { catalogScope } from '../inspector/catalog-scope'
+
 const NATIVE_CONTROL = [
   'select',
   'textarea:not([readonly])',
@@ -8,11 +10,7 @@ const ACTION =
   'button, input[type="button"], input[type="submit"], input[type="image"], a, [role="button"][tabindex]'
 const CONTROL = `${NATIVE_CONTROL},${ACTION},input:not([type="hidden"]):not([readonly])`
 
-/** 片段 HTML 不运行作者脚本；只有独立 React 允许把动态绑定的按钮作为旧稿入口。 */
-export function hasPlayableControls(
-  root: HTMLElement,
-  { scoped = false }: { scoped?: boolean } = {},
-): boolean {
+function containsPlayableControl(root: Element, scoped: boolean): boolean {
   for (const element of root.querySelectorAll(CONTROL)) {
     if (element.matches(':disabled, [aria-disabled="true"], audio, video, input[type="hidden"]')) {
       continue
@@ -29,7 +27,33 @@ export function hasPlayableControls(
   return false
 }
 
-function hasNativeAction(element: Element, root: HTMLElement): boolean {
+/** 静态 HTML 维持原来的导航和表单规则，独立 React 额外识别固定系统内的真实交互控件。 */
+export function hasPlayableControls(
+  root: HTMLElement,
+  {
+    scoped = false,
+    observeCatalog,
+  }: { scoped?: boolean; observeCatalog?: (shadow: ShadowRoot) => void } = {},
+): boolean {
+  let playable = containsPlayableControl(root, scoped)
+  if (scoped || (playable && !observeCatalog)) return playable
+  for (const host of root.querySelectorAll('section')) {
+    const scope = catalogScope(host)
+    if (!scope) continue
+    observeCatalog?.(scope.shadow)
+    if (
+      !playable &&
+      !host.closest('[hidden], [inert], [aria-hidden="true"]') &&
+      containsPlayableControl(scope.content, false)
+    ) {
+      if (!observeCatalog) return true
+      playable = true
+    }
+  }
+  return playable
+}
+
+function hasNativeAction(element: Element, root: Element): boolean {
   if (element.matches(NATIVE_CONTROL)) return true
   if (!(element instanceof HTMLButtonElement || element instanceof HTMLInputElement)) return false
   const { type, form } = element
