@@ -145,6 +145,7 @@ export function ArtifactWorkspace({
   const [canvasLocation, setCanvasLocation] = useState<CanvasLocation | null>(null)
   const [inspectorReveal, setInspectorReveal] = useState<InspectorReveal | null>(null)
   const [inspectorPage, setInspectorPage] = useState('properties')
+  const [inspectorAdvancedOpen, setInspectorAdvancedOpen] = useState(false)
   const [layerFocusToken, setLayerFocusToken] = useState(0)
   const [anchoredComment, setAnchoredComment] = useState<{
     placementId: string
@@ -596,7 +597,10 @@ export function ArtifactWorkspace({
   const inspectedBoard = canvasLocation?.boardId ?? inspection.pendingBoardId
   const watchBoard = canvas === savedCanvas ? inspectedBoard : undefined
   const styleLayerId =
-    inspection.open && inspectorPage === 'source' ? inspection.selectedId : undefined
+    inspection.open &&
+    (inspectorPage === 'source' || (inspectorPage === 'properties' && inspectorAdvancedOpen))
+      ? inspection.selectedId
+      : undefined
   const useTweakPreview = canvas === savedCanvas
   const renderBoard = useCallback(
     (
@@ -1087,6 +1091,8 @@ export function ArtifactWorkspace({
         artifact={artifact}
         tab={inspectorPage}
         onTabChange={setInspectorPage}
+        advancedOpen={inspectorAdvancedOpen}
+        onAdvancedOpenChange={setInspectorAdvancedOpen}
         {...inspected}
         onRequestBoard={onRequestBoard}
         onRetryBoard={inspected.canRetryBoard ? onRetryBoard : undefined}

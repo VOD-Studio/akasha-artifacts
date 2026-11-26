@@ -1002,14 +1002,15 @@ body,
 
 #design-inspector .v-select-trigger,
 #design-inspector .v-input-control {
-  --v-input-h: 1.75rem;
+  --v-input-h: 2rem;
 
-  block-size: 1.75rem;
-  min-block-size: 1.75rem;
+  block-size: 2rem;
+  min-block-size: 2rem;
   border-color: transparent;
-  border-radius: 6px;
+  border-radius: 8px;
   background-color: var(--muted);
-  font-size: 12px;
+  padding-inline: 10px;
+  font-size: 13px;
 }
 
 #design-inspector .v-select-trigger:hover,
@@ -1025,23 +1026,23 @@ body,
 }
 
 #design-inspector .v-sheet__body {
-  --v-scroll-area-padding: 10px 18px 20px;
+  --v-scroll-area-padding: 0px;
 }
 
 #design-inspector .v-sheet__header {
-  min-block-size: 42px;
-  justify-content: flex-end;
-  padding: 4px 52px 0 20px;
-  border-bottom: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+  min-block-size: 44px;
+  justify-content: center;
+  padding: 0 48px 0 16px;
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 75%, transparent);
 }
 
 #design-inspector > .v-sheet__close {
-  inset-block-start: 7px;
+  inset-block-start: 8px;
   inset-inline-end: 10px;
 }
 
 #design-inspector .v-tabs {
-  --v-tabs-item-height: 2.375rem;
+  --v-tabs-item-height: 2.75rem;
 }
 
 #design-inspector .v-tabs__list-wrap {
@@ -1049,21 +1050,33 @@ body,
 }
 
 #design-inspector .v-tabs__list {
-  gap: 1.125rem;
+  gap: 1.25rem;
   font-size: 0.8125rem;
 }
 
+#design-inspector .v-tabs__tab {
+  padding-inline: 0;
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+
+#design-inspector .v-tabs__tab:hover:not(:disabled) {
+  color: var(--foreground);
+}
+
 #design-inspector .v-tabs__tab[aria-selected="true"] {
-  color: var(--canvas-selection-strong);
+  color: var(--foreground);
+  font-weight: 600;
 }
 
 #design-inspector .v-tabs__tab:focus-visible {
-  outline: 1.5px solid color-mix(in oklab, var(--canvas-selection) 65%, transparent);
-  outline-offset: -2px;
+  outline: none;
+  border-radius: 0;
+  box-shadow: inset 0 -2px 0 var(--canvas-selection);
 }
 
 #design-inspector .v-tabs__indicator {
-  background-color: var(--canvas-selection);
+  display: none;
 }
 
 #design-inspector .v-tabs__panel {

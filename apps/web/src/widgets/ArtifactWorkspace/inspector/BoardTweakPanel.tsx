@@ -28,11 +28,6 @@ export function BoardTweakPanel({ boardId, tweaks, previews, onApply }: BoardTwe
 
   return (
     <section className="flex flex-col gap-3" aria-label={t('画板参数预览')}>
-      <p className="text-xs text-ink-muted">
-        {onApply
-          ? applyText('仅在此预览。发布新版本后，所选画板才会使用这些值。')
-          : t('仅预览当前画板，不会保存或随作品导出。')}
-      </p>
       {tweaks.map((tweak) => (
         <TweakControl
           key={tweak.id}
@@ -44,17 +39,23 @@ export function BoardTweakPanel({ boardId, tweaks, previews, onApply }: BoardTwe
           onChange={(value) => previews.getState().set(boardId, tweak, value)}
         />
       ))}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
         <Button
           variant="outline"
           size="sm"
+          className="h-8 rounded-[8px] px-3 text-xs"
           disabled={!overrides}
           onClick={() => previews.getState().reset(boardId)}
         >
           {t('重置本板')}
         </Button>
         {onApply && (
-          <Button size="sm" disabled={!overrides} onClick={() => overrides && onApply(overrides)}>
+          <Button
+            size="sm"
+            className="h-8 rounded-[8px] px-3 text-xs"
+            disabled={!overrides}
+            onClick={() => overrides && onApply(overrides)}
+          >
             {applyText('应用参数…')}
           </Button>
         )}
@@ -108,6 +109,7 @@ function TweakControl({ tweak, value, locale, onChange }: TweakControlProps) {
             <Segmented
               block
               size="sm"
+              rounded="md"
               aria-label={label}
               value={currentValue}
               onValueChange={onChange}

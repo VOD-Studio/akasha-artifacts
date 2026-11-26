@@ -464,8 +464,13 @@ it('图层树默认折叠 svg 子树，检查器属性随选中的 HTML 文本�
     },
   })
 
-  expect(within(inspector).getByText('排版与文字')).toBeTruthy()
-  expect(within(inspector).getByText('240 × 36 px')).toBeTruthy()
-  expect(within(inspector).getByRole('spinbutton', { name: '宽度' })).toBeTruthy()
+  expect(within(inspector).getByRole('heading', { name: '文本' })).toBeTruthy()
+  expect(within(inspector).getByRole<HTMLInputElement>('spinbutton', { name: '宽度' }).value).toBe(
+    '240',
+  )
+  expect(within(inspector).getByRole<HTMLInputElement>('spinbutton', { name: '高度' }).value).toBe(
+    '36',
+  )
+  expect(within(inspector).getByRole('button', { name: '高级' })).toBeTruthy()
   expect(await within(inspector).findByRole('button', { name: '编辑文字' })).toBeTruthy()
 })

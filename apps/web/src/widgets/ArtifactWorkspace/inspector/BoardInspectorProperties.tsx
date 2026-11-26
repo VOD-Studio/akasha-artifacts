@@ -2,6 +2,7 @@ import {
   ARTBOARD_GEOMETRY_LIMITS,
   type CanvasElementPresentation,
   type CanvasLayer,
+  type CanvasLayerStyles,
   DEFAULT_ARTBOARD_APPEARANCE,
   DESIGN_LAYER_FONT_SIZES,
   DESIGN_LAYER_FONT_WEIGHTS,
@@ -13,22 +14,28 @@ import {
   type ElementRef,
   type VersionSummary,
 } from '@akasha/protocol'
-import { Tag } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
+import { Segmented } from '@akasha/ui/segmented'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
+import { Skeleton } from '@akasha/ui/skeleton'
 import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, PencilLine } from 'lucide-react'
-import { type FormEvent, useState } from 'react'
+import { useState } from 'react'
 import type { CanvasBoard } from '@/entities/artifact'
 import type { VisualEditTarget } from '@/features/visual-edit'
 import { useMessages } from '@/shared/i18n'
-import { artifactTypeLabel } from '@/shared/lib/format'
 import type { CanvasBoardEditing } from '../hooks/useCanvasBoardEditing'
 import type { CanvasTextTools } from '../hooks/useInlineCanvasText'
 import { updateTailwindTextClasses } from '../lib/canvas-layer-navigation'
 import { cssColorToHex, evaluateColorContrast } from '../lib/color-contrast'
 import { patchHtmlElementGeometry } from '../lib/html-element-geometry'
 import { canvasToolsMessages } from '../toolbar/canvas-tools-messages'
-import { InspectorColorInput, InspectorNumberInput, InspectorRow } from '../ui/inspector-controls'
+import {
+  InspectorColorInput,
+  InspectorNumberInput,
+  InspectorRow,
+  InspectorSection,
+  InspectorValuePill,
+} from '../ui/inspector-controls'
 import { BoardPrintSettings } from './BoardPrintSettings'
 import { DESIGN_LAYER_COLOR_LABELS, DesignLayerLayout, isPaletteColor } from './DesignLayerLayout'
 import { panelMessages } from './messages'
@@ -38,6 +45,9 @@ interface BoardInspectorPropertiesProps {
   pageTitle?: string
   designLayer?: DesignLayer
   runtimeLayer?: CanvasLayer
+  styles?: CanvasLayerStyles
+  advancedOpen?: boolean
+  onAdvancedOpenChange?: (open: boolean) => void
   selectedElement?: ElementRef | null
   sourceLoc?: string
   presentation?: CanvasElementPresentation | null
@@ -59,17 +69,6 @@ interface BoardInspectorPropertiesProps {
     version: number,
   ) => void
 }
-
-const measurements = 'grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1.5 text-xs'
-const term = 'text-ink-muted'
-const sectionTitle = 'text-[11px] font-semibold tracking-wide text-ink-muted uppercase'
-const kindLabels = {
-  text: '文本',
-  note: '便签',
-  rectangle: '矩形',
-  ellipse: '椭圆',
-  stroke: '笔迹',
-} as const
 
 const WEIGHT_LABELS: Record<DesignLayerFontWeight, '常规' | '中等' | '半粗' | '粗体'> = {
   normal: '常规',
@@ -113,12 +112,14 @@ function resolveRuntimeAlign(presentation: CanvasElementPresentation | null | un
   return 'left' as const
 }
 
-/** 根据当前选中的对象（原生图层 / 运行时 HTML 元素 / 画板）动态渲染对应属性区块。 */
+/** 根据当前选中的对象（原生图层 / 运行时 HTML 元素 / 画板）动态渲染全宽模块化属性区块。 */
 export function BoardInspectorProperties({
   board,
-  pageTitle,
   designLayer,
   runtimeLayer,
+  styles,
+  advancedOpen,
+  onAdvancedOpenChange,
   selectedElement,
   sourceLoc,
   presentation,
@@ -132,7 +133,7 @@ export function BoardInspectorProperties({
   readFullSource,
   onHtmlElementSaved,
 }: BoardInspectorPropertiesProps) {
-  const { t, locale } = useMessages(panelMessages)
+  const { t } = useMessages(panelMessages)
   const { t: toolText } = useMessages(canvasToolsMessages)
 
   if (designLayer) {
@@ -166,38 +167,16 @@ export function BoardInspectorProperties({
     }
 
     return (
-      <section aria-label={t('原生图层属性')} className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-2">
-          <p className="min-w-0 truncate text-sm font-medium text-ink">
-            {runtimeLayer?.label || t(kindLabels[designLayer.kind])}
-          </p>
-          <Tag size="sm">{t(kindLabels[designLayer.kind])}</Tag>
-        </div>
-
-        {!editing && (
-          <dl className={measurements}>
-            <dt className={term}>{t('尺寸')}</dt>
-            <dd dir="ltr" className="tabular-nums">
-              {designLayer.width} × {designLayer.height} px
-            </dd>
-            <dt className={term}>{t('位置')}</dt>
-            <dd dir="ltr" className="tabular-nums">
-              {designLayer.x}, {designLayer.y} px
-            </dd>
-            <dt className={term}>{t('颜色')}</dt>
-            <dd dir={customColor ? 'ltr' : undefined}>{layerColorText}</dd>
-          </dl>
-        )}
-
+      <section aria-label={t('原生图层属性')}>
         {textLayer && (editing || canEditText) ? (
-          <div className="space-y-2 border-t border-border/75 pt-3">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className={sectionTitle}>{t('排版与文字')}</h3>
-              {canEditText ? (
+          <InspectorSection
+            title={t('文本')}
+            action={
+              canEditText ? (
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
-                  className="h-7 gap-1 px-2 text-xs"
+                  className="h-7 gap-1 rounded-[7px] px-2 text-xs text-ink-muted hover:text-ink"
                   onClick={(event) => {
                     const rect = event.currentTarget.getBoundingClientRect()
                     onEditText(board, designLayer, { x: rect.left, y: rect.top })
@@ -206,11 +185,32 @@ export function BoardInspectorProperties({
                   <PencilLine size={12} aria-hidden="true" />
                   {t('编辑文字')}
                 </Button>
-              ) : null}
-            </div>
+              ) : undefined
+            }
+          >
             {editing ? (
-              <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-1.5">
+              <>
+                <InspectorRow label={t('字重')}>
+                  <Select
+                    value={currentWeight}
+                    disabled={!editing.available}
+                    onValueChange={(value) =>
+                      applyNativeStyle({ fontWeight: value as DesignLayerFontWeight })
+                    }
+                  >
+                    <SelectTrigger aria-label={t('字重')} controlSize="sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DESIGN_LAYER_FONT_WEIGHTS.map((weight) => (
+                        <SelectItem key={weight} value={weight}>
+                          {toolText(WEIGHT_LABELS[weight])}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </InspectorRow>
+                <InspectorRow label={t('字号')}>
                   <Select
                     value={String(nearestFontSize(currentSize))}
                     disabled={!editing.available}
@@ -230,58 +230,72 @@ export function BoardInspectorProperties({
                       ))}
                     </SelectContent>
                   </Select>
-                  <Select
-                    value={currentWeight}
-                    disabled={!editing.available}
-                    onValueChange={(value) =>
-                      applyNativeStyle({ fontWeight: value as DesignLayerFontWeight })
-                    }
-                  >
-                    <SelectTrigger aria-label={t('字重')} controlSize="sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {DESIGN_LAYER_FONT_WEIGHTS.map((weight) => (
-                        <SelectItem key={weight} value={weight}>
-                          {toolText(WEIGHT_LABELS[weight])}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <InspectorRow label={t('对齐')}>
-                  <div className="grid h-7 grid-cols-3 items-center gap-0.5 rounded-md bg-surface-subtle p-0.5">
-                    {(
-                      [
-                        ['left', '文字左对齐', AlignLeft],
-                        ['center', '文字居中', AlignCenter],
-                        ['right', '文字右对齐', AlignRight],
-                      ] as const
-                    ).map(([align, label, Icon]) => (
-                      <Button
-                        key={align}
-                        size="sm"
-                        variant="ghost"
-                        iconOnly
-                        disabled={!editing.available}
-                        aria-label={toolText(label)}
-                        aria-pressed={currentAlign === align}
-                        className={
-                          currentAlign === align
-                            ? 'h-6 w-full rounded-[5px] bg-surface text-ink shadow-xs'
-                            : 'h-6 w-full rounded-[5px] text-ink-muted hover:text-ink'
-                        }
-                        onClick={() => applyNativeStyle({ textAlign: align })}
-                      >
-                        <Icon size={13} />
-                      </Button>
-                    ))}
-                  </div>
                 </InspectorRow>
-              </div>
+                <InspectorRow label={t('对齐')}>
+                  <Segmented
+                    block
+                    size="sm"
+                    rounded="md"
+                    aria-label={t('对齐')}
+                    disabled={!editing.available}
+                    value={currentAlign}
+                    onValueChange={(align) =>
+                      applyNativeStyle({ textAlign: align as DesignLayerTextAlign })
+                    }
+                    segments={[
+                      {
+                        value: 'left',
+                        label: '',
+                        icon: <AlignLeft size={14} aria-hidden="true" />,
+                        ariaLabel: toolText('文字左对齐'),
+                        title: toolText('文字左对齐'),
+                      },
+                      {
+                        value: 'center',
+                        label: '',
+                        icon: <AlignCenter size={14} aria-hidden="true" />,
+                        ariaLabel: toolText('文字居中'),
+                        title: toolText('文字居中'),
+                      },
+                      {
+                        value: 'right',
+                        label: '',
+                        icon: <AlignRight size={14} aria-hidden="true" />,
+                        ariaLabel: toolText('文字右对齐'),
+                        title: toolText('文字右对齐'),
+                      },
+                    ]}
+                  />
+                </InspectorRow>
+              </>
             ) : null}
-          </div>
+          </InspectorSection>
         ) : null}
+
+        {!editing && (
+          <>
+            <InspectorSection title={t('尺寸')}>
+              <InspectorRow label={t('尺寸')}>
+                <InspectorValuePill>
+                  {designLayer.width} × {designLayer.height} px
+                </InspectorValuePill>
+              </InspectorRow>
+              <InspectorRow label={t('位置')}>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <InspectorValuePill prefix="X">{designLayer.x}</InspectorValuePill>
+                  <InspectorValuePill prefix="Y">{designLayer.y}</InspectorValuePill>
+                </div>
+              </InspectorRow>
+            </InspectorSection>
+            <InspectorSection title={t('外观')}>
+              <InspectorRow label={t('颜色')}>
+                <InspectorValuePill dir={customColor ? 'ltr' : undefined}>
+                  {layerColorText}
+                </InspectorValuePill>
+              </InspectorRow>
+            </InspectorSection>
+          </>
+        )}
 
         {editing && (
           <DesignLayerLayout
@@ -300,6 +314,9 @@ export function BoardInspectorProperties({
       <RuntimeElementProperties
         board={board}
         runtimeLayer={runtimeLayer}
+        styles={styles}
+        advancedOpen={advancedOpen}
+        onAdvancedOpenChange={onAdvancedOpenChange}
         selectedElement={selectedElement ?? null}
         sourceLoc={runtimeLayer?.sourceLoc ?? sourceLoc}
         presentation={presentation ?? null}
@@ -315,34 +332,35 @@ export function BoardInspectorProperties({
 
   const current = boardProperties(board)
   return (
-    <section aria-label={t('画板属性')} className="flex flex-col gap-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          {pageTitle ? <p className="truncate text-[11px] text-ink-muted">{pageTitle}</p> : null}
-          <p className="truncate text-sm font-medium text-ink">{board.title}</p>
-        </div>
-        <Tag size="sm">{artifactTypeLabel(board.type, locale)}</Tag>
-      </div>
+    <section aria-label={t('画板属性')}>
       {!editing && (
-        <dl className={measurements}>
-          <dt className={term}>{t('固有宽高（px）')}</dt>
-          <dd dir="ltr" className="tabular-nums">
-            {current.width} × {current.height}
-          </dd>
-          <dt className={term}>{t('背景')}</dt>
-          <dd dir="ltr" className="inline-flex items-center gap-1.5 font-mono">
-            <span
-              aria-hidden="true"
-              className="inline-block size-3 rounded-xs border border-border"
-              style={{ backgroundColor: current.background }}
-            />
-            {current.background}
-          </dd>
-          <dt className={term}>{t('圆角')}</dt>
-          <dd dir="ltr" className="tabular-nums">
-            {current.cornerRadius} px
-          </dd>
-        </dl>
+        <>
+          <InspectorSection title={t('画板')}>
+            <InspectorRow label={t('尺寸')}>
+              <InspectorValuePill suffix="px">
+                {current.width} × {current.height}
+              </InspectorValuePill>
+            </InspectorRow>
+          </InspectorSection>
+          <InspectorSection title={t('外观')}>
+            <InspectorRow label={t('背景')}>
+              <div
+                dir="ltr"
+                className="flex h-8 items-center gap-2.5 rounded-[8px] bg-surface-subtle px-2 font-mono text-[13px] text-ink"
+              >
+                <span
+                  aria-hidden="true"
+                  className="inline-block size-5 shrink-0 rounded-[5px] border border-black/12 dark:border-white/18"
+                  style={{ backgroundColor: current.background }}
+                />
+                <span>{current.background}</span>
+              </div>
+            </InspectorRow>
+            <InspectorRow label={t('圆角')}>
+              <InspectorValuePill suffix="px">{current.cornerRadius}</InspectorValuePill>
+            </InspectorRow>
+          </InspectorSection>
+        </>
       )}
       {editing && <BoardAppearanceForm boardId={board.id} current={current} editing={editing} />}
       {board.scoped && <BoardPrintSettings board={board} editing={editing} />}
@@ -353,6 +371,9 @@ export function BoardInspectorProperties({
 interface RuntimeElementPropertiesProps {
   board: CanvasBoard
   runtimeLayer?: CanvasLayer
+  styles?: CanvasLayerStyles
+  advancedOpen?: boolean
+  onAdvancedOpenChange?: (open: boolean) => void
   selectedElement: ElementRef | null
   sourceLoc?: string
   presentation: CanvasElementPresentation | null
@@ -372,6 +393,9 @@ interface RuntimeElementPropertiesProps {
 function RuntimeElementProperties({
   board,
   runtimeLayer,
+  styles,
+  advancedOpen,
+  onAdvancedOpenChange,
   selectedElement,
   sourceLoc,
   presentation,
@@ -386,8 +410,6 @@ function RuntimeElementProperties({
   const { t: toolText } = useMessages(canvasToolsMessages)
 
   const tag = runtimeLayer?.tag ?? ''
-  const displayName =
-    runtimeLayer?.label || selectedElement?.textPreview || (tag ? `<${tag}>` : t('图层'))
   const rect = selectedElement?.rect
   const measuredWidth = runtimeLayer?.width ?? (rect ? Math.round(rect.width) : 0)
   const measuredHeight = runtimeLayer?.height ?? (rect ? Math.round(rect.height) : 0)
@@ -412,6 +434,7 @@ function RuntimeElementProperties({
   )
 
   const [sizeDraft, setSizeDraft] = useState<{ width: number; height: number } | null>(null)
+  const [colorPreview, setColorPreview] = useState<string | null>(null)
   const widthValue = sizeDraft?.width ?? measuredWidth
   const heightValue = sizeDraft?.height ?? measuredHeight
   const sizeChanged =
@@ -422,18 +445,31 @@ function RuntimeElementProperties({
     sizeDraft.width >= 1 &&
     sizeDraft.height >= 1
 
-  const submitSize = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!canResizeHtml || !sizeChanged || !sizeDraft || !editing || !sourceLoc || !rect) return
+  const commitSize = async (nextDraft = sizeDraft) => {
+    if (
+      !canResizeHtml ||
+      !nextDraft ||
+      !editing ||
+      !sourceLoc ||
+      !rect ||
+      !Number.isFinite(nextDraft.width) ||
+      !Number.isFinite(nextDraft.height) ||
+      nextDraft.width < 1 ||
+      nextDraft.height < 1 ||
+      (nextDraft.width === measuredWidth && nextDraft.height === measuredHeight)
+    ) {
+      setSizeDraft(null)
+      return
+    }
     const patch = {
-      ...(sizeDraft.width !== measuredWidth ? { width: Math.round(sizeDraft.width) } : {}),
-      ...(sizeDraft.height !== measuredHeight ? { height: Math.round(sizeDraft.height) } : {}),
+      ...(nextDraft.width !== measuredWidth ? { width: Math.round(nextDraft.width) } : {}),
+      ...(nextDraft.height !== measuredHeight ? { height: Math.round(nextDraft.height) } : {}),
     }
     const nextRect: ElementRect = {
       x: rect.x,
       y: rect.y,
-      width: Math.round(sizeDraft.width),
-      height: Math.round(sizeDraft.height),
+      width: Math.round(nextDraft.width),
+      height: Math.round(nextDraft.height),
     }
     if (board.scoped) {
       const ok = await editing.change(
@@ -461,7 +497,7 @@ function RuntimeElementProperties({
   const currentFontWeight = numericWeightToToken(presentation?.fontWeight)
   const currentAlign = resolveRuntimeAlign(presentation)
   const boardBackground = board.appearance?.background ?? DEFAULT_ARTBOARD_APPEARANCE.background
-  const currentColorHex = cssColorToHex(presentation?.color ?? '') ?? '#202733'
+  const currentColorHex = colorPreview ?? cssColorToHex(presentation?.color ?? '') ?? '#202733'
   const contrastBg = presentation?.backgroundColor ?? boardBackground
   const contrast =
     isRuntimeText && presentation?.color
@@ -504,106 +540,48 @@ function RuntimeElementProperties({
     })
   }
 
-  const isEditable = canResizeHtml || canEditRuntime
+  const matchedStyles = runtimeLayer && styles?.layerId === runtimeLayer.id ? styles : undefined
 
   return (
-    <section aria-label={t('运行图层属性')} className="flex flex-col gap-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-ink">
-            <bdi>{displayName}</bdi>
-          </p>
-          <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-ink-muted">
-            {tag ? (
-              <code
-                dir="ltr"
-                className="rounded bg-surface-subtle px-1 py-0.5 font-mono text-[10px]"
-              >
-                &lt;{tag}&gt;
-              </code>
-            ) : null}
-            <span dir="ltr" className="tabular-nums">
-              {measuredWidth} × {measuredHeight} px
-            </span>
-          </div>
+    <section aria-label={t('运行图层属性')}>
+      {canReorder ? (
+        <div className="grid grid-cols-2 gap-1.5 border-b border-border/75 px-4 py-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={!canMoveUp}
+            className="h-7 gap-1 rounded-[7px] text-xs text-ink-muted hover:text-ink"
+            onClick={() => reorder(-1)}
+          >
+            <ArrowUp size={13} aria-hidden="true" />
+            {t('上移一层')}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={!canMoveDown}
+            className="h-7 gap-1 rounded-[7px] text-xs text-ink-muted hover:text-ink"
+            onClick={() => reorder(1)}
+          >
+            <ArrowDown size={13} aria-hidden="true" />
+            {t('下移一层')}
+          </Button>
         </div>
-        <Tag
-          size="sm"
-          className={
-            isEditable ? 'bg-(--canvas-selection-tint) text-(--canvas-selection-strong)' : undefined
-          }
-        >
-          {t(isEditable ? '可编辑' : '只读测量')}
-        </Tag>
-      </div>
-
-      {canResizeHtml ? (
-        <form onSubmit={submitSize} className="space-y-2 border-t border-border/75 pt-3">
-          <h3 className={sectionTitle}>{t('尺寸与定位')}</h3>
-          <div className="grid grid-cols-2 gap-1.5">
-            <InspectorNumberInput
-              prefix="W"
-              label={t('宽度')}
-              min={1}
-              max={ARTBOARD_GEOMETRY_LIMITS.viewport}
-              value={widthValue}
-              onChange={(event) =>
-                setSizeDraft({
-                  width: event.currentTarget.valueAsNumber,
-                  height: heightValue,
-                })
-              }
-            />
-            <InspectorNumberInput
-              prefix="H"
-              label={t('高度')}
-              min={1}
-              max={ARTBOARD_GEOMETRY_LIMITS.viewport}
-              value={heightValue}
-              onChange={(event) =>
-                setSizeDraft({
-                  width: widthValue,
-                  height: event.currentTarget.valueAsNumber,
-                })
-              }
-            />
-          </div>
-          {sizeChanged ? (
-            <div>
-              <Button
-                size="sm"
-                type="submit"
-                className="h-7 rounded-md"
-                loading={editing?.draft?.status === 'saving'}
-              >
-                {t('应用')}
-              </Button>
-            </div>
-          ) : null}
-        </form>
-      ) : null}
-      {!canResizeHtml && rect ? (
-        <dl className={`${measurements} border-t border-border/75 pt-2.5`}>
-          <dt className={term}>{t('位置')}</dt>
-          <dd dir="ltr" className="tabular-nums">
-            {Math.round(rect.x)}, {Math.round(rect.y)} px
-          </dd>
-        </dl>
       ) : null}
 
       {isRuntimeText ? (
-        <div className="space-y-2 border-t border-border/75 pt-3">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className={sectionTitle}>{t('排版与文字')}</h3>
-            {canEditRuntime &&
+        <InspectorSection
+          title={t('文本')}
+          action={
+            canEditRuntime &&
             sourceLoc &&
             visualTarget?.text !== null &&
             visualTarget &&
             onEditSourceText ? (
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
-                className="h-7 gap-1 px-2 text-xs"
+                className="h-7 gap-1 rounded-[7px] px-2 text-xs text-ink-muted hover:text-ink"
                 onClick={(event) => {
                   const box = event.currentTarget.getBoundingClientRect()
                   onEditSourceText(
@@ -619,12 +597,31 @@ function RuntimeElementProperties({
                 <PencilLine size={12} aria-hidden="true" />
                 {t('编辑文字')}
               </Button>
-            ) : null}
-          </div>
-
+            ) : undefined
+          }
+        >
           {canEditRuntime ? (
-            <div className="space-y-2">
-              <div className="grid grid-cols-2 gap-1.5">
+            <>
+              <InspectorRow label={t('字重')}>
+                <Select
+                  value={currentFontWeight}
+                  onValueChange={(value) =>
+                    applyRuntimeStyle({ fontWeight: value as DesignLayerFontWeight })
+                  }
+                >
+                  <SelectTrigger aria-label={t('字重')} controlSize="sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DESIGN_LAYER_FONT_WEIGHTS.map((weight) => (
+                      <SelectItem key={weight} value={weight}>
+                        {toolText(WEIGHT_LABELS[weight])}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </InspectorRow>
+              <InspectorRow label={t('字号')}>
                 <Select
                   value={String(nearestFontSize(currentFontSize))}
                   onValueChange={(value) => {
@@ -643,65 +640,59 @@ function RuntimeElementProperties({
                     ))}
                   </SelectContent>
                 </Select>
-                <Select
-                  value={currentFontWeight}
-                  onValueChange={(value) =>
-                    applyRuntimeStyle({ fontWeight: value as DesignLayerFontWeight })
-                  }
-                >
-                  <SelectTrigger aria-label={t('字重')} controlSize="sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DESIGN_LAYER_FONT_WEIGHTS.map((weight) => (
-                      <SelectItem key={weight} value={weight}>
-                        {toolText(WEIGHT_LABELS[weight])}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              </InspectorRow>
               <InspectorRow label={t('文字颜色')}>
                 <InspectorColorInput
                   label={t('文字颜色')}
                   value={currentColorHex}
-                  onChange={(colorHex) => applyRuntimeStyle({ colorHex })}
+                  onChange={setColorPreview}
+                  onCommit={(colorHex) => {
+                    setColorPreview(null)
+                    applyRuntimeStyle({ colorHex })
+                  }}
                 />
               </InspectorRow>
               <InspectorRow label={t('对齐')}>
-                <div className="grid h-7 grid-cols-3 items-center gap-0.5 rounded-md bg-surface-subtle p-0.5">
-                  {(
-                    [
-                      ['left', '文字左对齐', AlignLeft],
-                      ['center', '文字居中', AlignCenter],
-                      ['right', '文字右对齐', AlignRight],
-                    ] as const
-                  ).map(([align, label, Icon]) => (
-                    <Button
-                      key={align}
-                      size="sm"
-                      variant="ghost"
-                      iconOnly
-                      aria-label={toolText(label)}
-                      aria-pressed={currentAlign === align}
-                      className={
-                        currentAlign === align
-                          ? 'h-6 w-full rounded-[5px] bg-surface text-ink shadow-xs'
-                          : 'h-6 w-full rounded-[5px] text-ink-muted hover:text-ink'
-                      }
-                      onClick={() => applyRuntimeStyle({ textAlign: align })}
-                    >
-                      <Icon size={13} />
-                    </Button>
-                  ))}
-                </div>
+                <Segmented
+                  block
+                  size="sm"
+                  rounded="md"
+                  aria-label={t('对齐')}
+                  value={currentAlign}
+                  onValueChange={(align) =>
+                    applyRuntimeStyle({ textAlign: align as DesignLayerTextAlign })
+                  }
+                  segments={[
+                    {
+                      value: 'left',
+                      label: '',
+                      icon: <AlignLeft size={14} aria-hidden="true" />,
+                      ariaLabel: toolText('文字左对齐'),
+                      title: toolText('文字左对齐'),
+                    },
+                    {
+                      value: 'center',
+                      label: '',
+                      icon: <AlignCenter size={14} aria-hidden="true" />,
+                      ariaLabel: toolText('文字居中'),
+                      title: toolText('文字居中'),
+                    },
+                    {
+                      value: 'right',
+                      label: '',
+                      icon: <AlignRight size={14} aria-hidden="true" />,
+                      ariaLabel: toolText('文字右对齐'),
+                      title: toolText('文字右对齐'),
+                    },
+                  ]}
+                />
               </InspectorRow>
               {contrast ? (
                 <p
-                  className={`rounded-md px-2 py-1 text-[11px] tabular-nums ${
+                  className={`rounded-[8px] px-2.5 py-1.5 text-xs tabular-nums ${
                     contrast.level === 'fail'
                       ? 'bg-destructive/10 font-medium text-destructive'
-                      : 'bg-surface-subtle/75 text-ink-muted'
+                      : 'bg-surface-subtle text-ink-muted'
                   }`}
                 >
                   {toolText('对比度 {ratio} · {level}', {
@@ -710,58 +701,154 @@ function RuntimeElementProperties({
                   })}
                 </p>
               ) : null}
-            </div>
+            </>
           ) : null}
           {!canEditRuntime && presentation ? (
-            <dl className={measurements}>
-              <dt className={term}>{t('字号')}</dt>
-              <dd dir="ltr" className="tabular-nums">
-                {currentFontSize} px · {toolText(WEIGHT_LABELS[currentFontWeight])}
-              </dd>
+            <>
+              <InspectorRow label={t('字重')}>
+                <InspectorValuePill dir={undefined}>
+                  {toolText(WEIGHT_LABELS[currentFontWeight])}
+                </InspectorValuePill>
+              </InspectorRow>
+              <InspectorRow label={t('字号')}>
+                <InspectorValuePill suffix="px">{currentFontSize}</InspectorValuePill>
+              </InspectorRow>
               {presentation.color ? (
-                <>
-                  <dt className={term}>{t('文字颜色')}</dt>
-                  <dd dir="ltr" className="inline-flex items-center gap-1.5 font-mono">
+                <InspectorRow label={t('文字颜色')}>
+                  <div
+                    dir="ltr"
+                    className="flex h-8 items-center gap-2.5 rounded-[8px] bg-surface-subtle px-2 font-mono text-[13px] text-ink uppercase"
+                  >
                     <span
                       aria-hidden="true"
-                      className="inline-block size-3 rounded-xs border border-border"
+                      className="inline-block size-5 shrink-0 rounded-[5px] border border-black/12 dark:border-white/18"
                       style={{ backgroundColor: presentation.color }}
                     />
-                    {currentColorHex}
-                  </dd>
-                </>
+                    <span>{currentColorHex}</span>
+                  </div>
+                </InspectorRow>
               ) : null}
-            </dl>
+            </>
           ) : null}
-        </div>
+        </InspectorSection>
       ) : null}
 
-      {canReorder ? (
-        <div className="space-y-2 border-t border-border/75 pt-3">
-          <h3 className={sectionTitle}>{t('排列顺序')}</h3>
-          <div className="grid grid-cols-2 gap-1.5">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!canMoveUp}
-              className="h-7 gap-1 text-xs"
-              onClick={() => reorder(-1)}
-            >
-              <ArrowUp size={12} aria-hidden="true" />
-              {t('上移一层')}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!canMoveDown}
-              className="h-7 gap-1 text-xs"
-              onClick={() => reorder(1)}
-            >
-              <ArrowDown size={12} aria-hidden="true" />
-              {t('下移一层')}
-            </Button>
+      <InspectorSection title={t('尺寸')}>
+        {canResizeHtml ? (
+          <div className="space-y-2.5">
+            <InspectorRow label={t('宽度')}>
+              <InspectorNumberInput
+                label={t('宽度')}
+                suffix="px"
+                min={1}
+                max={ARTBOARD_GEOMETRY_LIMITS.viewport}
+                value={widthValue}
+                onChange={(event) =>
+                  setSizeDraft({
+                    width: event.currentTarget.valueAsNumber,
+                    height: heightValue,
+                  })
+                }
+                onBlur={() => {
+                  if (sizeChanged) void commitSize()
+                  else setSizeDraft(null)
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    void commitSize()
+                    event.currentTarget.blur()
+                  } else if (event.key === 'Escape') {
+                    setSizeDraft(null)
+                    event.currentTarget.blur()
+                  }
+                }}
+              />
+            </InspectorRow>
+            <InspectorRow label={t('高度')}>
+              <InspectorNumberInput
+                label={t('高度')}
+                suffix="px"
+                min={1}
+                max={ARTBOARD_GEOMETRY_LIMITS.viewport}
+                value={heightValue}
+                onChange={(event) =>
+                  setSizeDraft({
+                    width: widthValue,
+                    height: event.currentTarget.valueAsNumber,
+                  })
+                }
+                onBlur={() => {
+                  if (sizeChanged) void commitSize()
+                  else setSizeDraft(null)
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    void commitSize()
+                    event.currentTarget.blur()
+                  } else if (event.key === 'Escape') {
+                    setSizeDraft(null)
+                    event.currentTarget.blur()
+                  }
+                }}
+              />
+            </InspectorRow>
+            {rect ? (
+              <InspectorRow label={t('位置')}>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <InspectorValuePill prefix="X">{Math.round(rect.x)}</InspectorValuePill>
+                  <InspectorValuePill prefix="Y">{Math.round(rect.y)}</InspectorValuePill>
+                </div>
+              </InspectorRow>
+            ) : null}
           </div>
-        </div>
+        ) : (
+          <>
+            <InspectorRow label={t('尺寸')}>
+              <InspectorValuePill>
+                {measuredWidth} × {measuredHeight} px
+              </InspectorValuePill>
+            </InspectorRow>
+            {rect ? (
+              <InspectorRow label={t('位置')}>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <InspectorValuePill prefix="X">{Math.round(rect.x)}</InspectorValuePill>
+                  <InspectorValuePill prefix="Y">{Math.round(rect.y)}</InspectorValuePill>
+                </div>
+              </InspectorRow>
+            ) : null}
+          </>
+        )}
+      </InspectorSection>
+
+      {runtimeLayer ? (
+        <InspectorSection
+          collapsible
+          open={advancedOpen}
+          onOpenChange={onAdvancedOpenChange}
+          title={t('高级')}
+        >
+          {!matchedStyles ? (
+            <div role="status">
+              <span className="sr-only">{t('正在读取图层样式')}</span>
+              <Skeleton className="h-8 w-full" />
+            </div>
+          ) : null}
+          {matchedStyles && matchedStyles.declarations.length > 0
+            ? matchedStyles.declarations.map(({ property, value, important }, index) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: 计算样式快照可能包含同名属性，按层叠顺序展示。
+                <InspectorRow key={`${property}:${index}`} label={property}>
+                  <InspectorValuePill mono>
+                    {`${value}${important ? ' !important' : ''}`}
+                  </InspectorValuePill>
+                </InspectorRow>
+              ))
+            : null}
+          {matchedStyles && matchedStyles.declarations.length === 0 ? (
+            <p className="text-xs text-ink-muted">{t('没有可归属的样式声明')}</p>
+          ) : null}
+        </InspectorSection>
       ) : null}
     </section>
   )
@@ -795,82 +882,132 @@ function BoardAppearanceForm({ boardId, current, editing }: BoardAppearanceFormP
   const { t } = useMessages(panelMessages)
   const [draft, setDraft] = useState<{ values: Properties; base: VersionSummary } | null>(null)
   const values = draft?.values ?? current
-  const changed =
-    numericFields.some(({ key }) => current[key] !== values[key]) ||
-    current.background !== values.background
   const update = (patch: Partial<Properties>) => {
     setDraft((previous) => ({
       base: previous?.base ?? editing.version,
       values: { ...(previous?.values ?? current), ...patch },
     }))
   }
-  const save = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!draft || !changed || !editing.available) return
-    if (await editing.change({ kind: 'boardProperties', boardId, ...draft.values }, draft.base)) {
-      setDraft((current) => (current === draft ? null : current))
+  const commit = async (nextValues: Properties, base: VersionSummary) => {
+    const valid =
+      Number.isFinite(nextValues.width) &&
+      nextValues.width >= 1 &&
+      nextValues.width <= ARTBOARD_GEOMETRY_LIMITS.viewport &&
+      Number.isFinite(nextValues.height) &&
+      nextValues.height >= 1 &&
+      nextValues.height <= ARTBOARD_GEOMETRY_LIMITS.viewport &&
+      Number.isFinite(nextValues.cornerRadius) &&
+      nextValues.cornerRadius >= 0 &&
+      nextValues.cornerRadius <= ARTBOARD_GEOMETRY_LIMITS.viewport
+    const changed =
+      numericFields.some(({ key }) => current[key] !== nextValues[key]) ||
+      current.background !== nextValues.background
+    if (!valid || !changed || !editing.available) {
+      setDraft(null)
+      return
+    }
+    if (await editing.change({ kind: 'boardProperties', boardId, ...nextValues }, base)) {
+      setDraft(null)
     }
   }
+  const commitDraft = () => {
+    if (!draft) return
+    void commit(draft.values, draft.base)
+  }
   return (
-    <form onSubmit={save} aria-label={t('调整画板属性')} className="border-t border-border/75 pt-3">
-      <h3 className={`${sectionTitle} mb-2.5`}>{t('外观')}</h3>
-      <fieldset disabled={!editing.available} className="flex min-w-0 flex-col gap-2">
-        <InspectorRow label={t('尺寸')}>
-          <div className="grid grid-cols-2 gap-1.5">
+    <form
+      aria-label={t('调整画板属性')}
+      onSubmit={(event) => {
+        event.preventDefault()
+        commitDraft()
+      }}
+    >
+      <fieldset disabled={!editing.available} className="min-w-0">
+        <InspectorSection title={t('画板')}>
+          <InspectorRow label={t('宽度')}>
             <InspectorNumberInput
-              prefix="W"
               label={t('宽度')}
+              suffix="px"
               min={1}
               max={ARTBOARD_GEOMETRY_LIMITS.viewport}
               required
               disabled={!editing.available}
               value={values.width}
               onChange={(event) => update({ width: event.currentTarget.valueAsNumber })}
+              onBlur={commitDraft}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  commitDraft()
+                  event.currentTarget.blur()
+                } else if (event.key === 'Escape') {
+                  setDraft(null)
+                  event.currentTarget.blur()
+                }
+              }}
             />
+          </InspectorRow>
+          <InspectorRow label={t('高度')}>
             <InspectorNumberInput
-              prefix="H"
               label={t('高度')}
+              suffix="px"
               min={1}
               max={ARTBOARD_GEOMETRY_LIMITS.viewport}
               required
               disabled={!editing.available}
               value={values.height}
               onChange={(event) => update({ height: event.currentTarget.valueAsNumber })}
+              onBlur={commitDraft}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  commitDraft()
+                  event.currentTarget.blur()
+                } else if (event.key === 'Escape') {
+                  setDraft(null)
+                  event.currentTarget.blur()
+                }
+              }}
             />
-          </div>
-        </InspectorRow>
-        <InspectorRow label={t('圆角')}>
-          <InspectorNumberInput
-            label={t('圆角')}
-            min={0}
-            max={ARTBOARD_GEOMETRY_LIMITS.viewport}
-            suffix="px"
-            required
-            disabled={!editing.available}
-            value={values.cornerRadius}
-            onChange={(event) => update({ cornerRadius: event.currentTarget.valueAsNumber })}
-          />
-        </InspectorRow>
-        <InspectorRow label={t('背景')}>
-          <InspectorColorInput
-            label={t('背景')}
-            disabled={!editing.available}
-            value={values.background}
-            onChange={(background) => update({ background })}
-          />
-        </InspectorRow>
-        {changed ? (
-          <div className="pt-0.5">
-            <Button
-              size="sm"
-              type="submit"
-              className="h-7 rounded-md"
-              loading={editing.draft?.status === 'saving'}
-            >
-              {t('保存')}
-            </Button>
-          </div>
-        ) : null}
+          </InspectorRow>
+        </InspectorSection>
+        <InspectorSection title={t('外观')}>
+          <InspectorRow label={t('背景')}>
+            <InspectorColorInput
+              label={t('背景')}
+              disabled={!editing.available}
+              value={values.background}
+              onChange={(background) => update({ background })}
+              onCommit={(background) => {
+                const base = draft?.base ?? editing.version
+                void commit({ ...values, background }, base)
+              }}
+            />
+          </InspectorRow>
+          <InspectorRow label={t('圆角')}>
+            <InspectorNumberInput
+              label={t('圆角')}
+              min={0}
+              max={ARTBOARD_GEOMETRY_LIMITS.viewport}
+              suffix="px"
+              required
+              disabled={!editing.available}
+              value={values.cornerRadius}
+              onChange={(event) => update({ cornerRadius: event.currentTarget.valueAsNumber })}
+              onBlur={commitDraft}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  commitDraft()
+                  event.currentTarget.blur()
+                } else if (event.key === 'Escape') {
+                  setDraft(null)
+                  event.currentTarget.blur()
+                }
+              }}
+            />
+          </InspectorRow>
+        </InspectorSection>
       </fieldset>
     </form>
   )

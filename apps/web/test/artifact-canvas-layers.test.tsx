@@ -92,7 +92,7 @@ it('检查器只编排原生图层，同画板选区在发布后重绑，旧基�
   editor.receiveAgentSource(JSON.stringify(afterAlign))
   snapshot(3)
   expect(width().value).toBe('82')
-  fireEvent.click(layer('应用'))
+  fireEvent.blur(width())
   expect(await screen.findByText('作品已更新，未覆盖新版本。')).toBeTruthy()
   expect(JSON.parse(editor.current.version.source).boards[0].designLayers[1].width).toBe(92)
 })

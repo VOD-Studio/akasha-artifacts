@@ -39,6 +39,7 @@ import {
   layoutSelectionIds,
 } from '../lib/canvas-arrangement'
 import type { BoardTweakPreviewStore } from '../model/board-tweak-previews'
+import { InspectorSection } from '../ui/inspector-controls'
 import { BoardInspectorProperties } from './BoardInspectorProperties'
 import { BoardInspectorSource } from './BoardInspectorSource'
 import { BoardInspectorTree } from './BoardInspectorTree'
@@ -93,6 +94,8 @@ interface BoardInspectorProps {
   ) => void
   tab: string
   onTabChange: (tab: string) => void
+  advancedOpen?: boolean
+  onAdvancedOpenChange?: (open: boolean) => void
   layers: { layers: readonly CanvasLayer[]; truncated: boolean; styles?: CanvasLayerStyles } | null
   layersAvailable: boolean
   selectedLayerId?: string
@@ -142,6 +145,8 @@ export function BoardInspector({
   onHtmlElementSaved,
   tab,
   onTabChange,
+  advancedOpen,
+  onAdvancedOpenChange,
   layers,
   layersAvailable,
   selectedLayerId,
@@ -355,225 +360,222 @@ export function BoardInspector({
               {hasTweaksTab && <TabsTrigger value="tweaks">{t('参数')}</TabsTrigger>}
             </TabsList>
           </SheetHeader>
-          <div ref={splitRef} className="flex min-h-0 flex-1 flex-col">
-            <div style={{ height: treeHeight }} className="shrink-0 overflow-hidden">
-              <BoardInspectorTree
-                document={document}
-                location={location}
-                layers={layers}
-                layersAvailable={layersAvailable}
-                selectedLayerId={selectedLayerId}
-                selectedRuntimeIds={selectedRuntimeIds ?? undefined}
-                onSelectLayer={selectLayer}
-                onNavigate={navigate}
-              />
-            </div>
-            <button
-              type="button"
-              aria-label={t('页面、画板与图层')}
-              data-testid="inspector-tree-resizer"
-              data-dragging={resizingTree ? 'true' : undefined}
-              className="group relative z-10 flex h-2 w-full shrink-0 cursor-row-resize touch-none items-center border-0 bg-transparent p-0 outline-none select-none focus-visible:outline-none"
-              onPointerDown={startResizeTree}
-              onDoubleClick={() => setTreeHeight(DEFAULT_TREE_HEIGHT)}
-              onKeyDown={(event) => {
-                if (event.key === 'ArrowUp') {
-                  event.preventDefault()
-                  setTreeHeight((prev) => clampTreeHeight(prev - 24))
-                } else if (event.key === 'ArrowDown') {
-                  event.preventDefault()
-                  setTreeHeight((prev) => clampTreeHeight(prev + 24))
-                }
-              }}
-            >
-              <span
-                aria-hidden="true"
-                className={`block w-full transition-colors ${
-                  resizingTree
-                    ? 'h-0.5 bg-(--canvas-selection)'
-                    : 'h-px bg-border/80 group-hover:h-0.5 group-hover:bg-(--canvas-selection) group-focus-visible:h-0.5 group-focus-visible:bg-(--canvas-selection)'
-                }`}
-              />
-            </button>
-            <SheetBody className="min-h-0 flex-1">
-              <div className="flex min-h-full flex-col gap-3 pt-1">
-                {readOnly && <p className="text-xs text-ink-muted">{readOnlyLabel}</p>}
-                <TabsContent value="properties" className="flex-1">
-                  {board && (
-                    <>
-                      <BoardInspectorProperties
-                        key={
-                          designLayer
-                            ? JSON.stringify([scope, 'design', designLayer.id])
-                            : JSON.stringify([scope, 'runtime', layer?.id, sourceLoc])
-                        }
-                        board={board}
-                        pageTitle={page?.title}
-                        designLayer={designLayer}
-                        runtimeLayer={layer}
-                        selectedElement={
-                          selectedElement &&
-                          (selectedElement.boardId ?? STANDALONE_BOARD_ID) === board.id
-                            ? selectedElement
-                            : null
-                        }
-                        sourceLoc={sourceLoc}
-                        presentation={presentation}
-                        visualTarget={visualTarget}
-                        selectedDesignLayers={selectedDesignLayers}
-                        editing={readOnly || board.source === undefined ? undefined : editing}
-                        elementEditing={readOnly ? undefined : (elementEditing ?? editing)}
-                        onEditText={readOnly ? undefined : onEditText}
-                        onEditSourceText={readOnly ? undefined : onEditSourceText}
-                        onApplyRuntimeOp={readOnly ? undefined : onApplyRuntimeOp}
-                        readFullSource={readFullSource}
-                        onHtmlElementSaved={onHtmlElementSaved}
-                      />
-                      {((layer || designLayer || selectedElement) && canComment) ||
-                      (onHandoff && page && handoffElement) ||
-                      (onAskAgent && page && handoffElement) ? (
-                        <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border/75 pt-3">
-                          {(layer || designLayer || selectedElement) && canComment ? (
-                            <Button variant="outline" size="sm" onClick={() => setDrawer('review')}>
-                              {t('批注')}
-                            </Button>
-                          ) : null}
-                          {onHandoff && page && handoffElement ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                onHandoff(`${page.title} / ${board.title}`, {
-                                  pageId: page.id,
-                                  boardId: board.id,
-                                  element: {
-                                    blockId: handoffElement.blockId,
-                                    selector: handoffElement.selector,
-                                  },
-                                })
-                              }
-                            >
-                              {t('移交对象')}
-                            </Button>
-                          ) : null}
-                          {onAskAgent && page && handoffElement ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                onAskAgent(`${page.title} / ${board.title}`, {
-                                  pageId: page.id,
-                                  boardId: board.id,
-                                  element: {
-                                    blockId: handoffElement.blockId,
-                                    selector: handoffElement.selector,
-                                    loc: handoffElement.loc,
-                                    textPreview: handoffElement.textPreview,
-                                  },
-                                })
-                              }
-                            >
-                              {t('问 Agent')}
-                            </Button>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </>
-                  )}
-                  {!board && (
-                    <div className="flex min-h-48 flex-col items-center justify-center py-8 text-center">
-                      <p className="text-xs font-medium text-ink-muted">
-                        {t('选择画板以查看属性')}
-                      </p>
-                    </div>
-                  )}
-                </TabsContent>
-                <TabsContent value="source" className="space-y-4">
-                  {board && layer && (
-                    <BoardLayerStyles layerId={layer.id} styles={layers?.styles} />
-                  )}
-                  <h3 className="text-xs font-semibold tracking-wide text-ink-muted uppercase">
-                    {t('原始源码')}
-                  </h3>
-                  {sourceReady || designLayer ? (
-                    <BoardInspectorSource
+          <SheetBody className="min-h-0 flex-1">
+            <div ref={splitRef} className="flex min-h-full flex-col">
+              {activeTab !== 'tweaks' ? (
+                <>
+                  <div style={{ height: treeHeight }} className="shrink-0 overflow-hidden">
+                    <BoardInspectorTree
+                      document={document}
+                      location={location}
+                      layers={layers}
+                      layersAvailable={layersAvailable}
+                      selectedLayerId={selectedLayerId}
+                      selectedRuntimeIds={selectedRuntimeIds ?? undefined}
+                      onSelectLayer={selectLayer}
+                      onNavigate={navigate}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={t('页面、画板与图层')}
+                    data-testid="inspector-tree-resizer"
+                    data-dragging={resizingTree ? 'true' : undefined}
+                    className="group relative z-10 flex h-2 w-full shrink-0 cursor-row-resize touch-none items-center border-0 bg-transparent p-0 outline-none select-none focus-visible:outline-none"
+                    onPointerDown={startResizeTree}
+                    onDoubleClick={() => setTreeHeight(DEFAULT_TREE_HEIGHT)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'ArrowUp') {
+                        event.preventDefault()
+                        setTreeHeight((prev) => clampTreeHeight(prev - 24))
+                      } else if (event.key === 'ArrowDown') {
+                        event.preventDefault()
+                        setTreeHeight((prev) => clampTreeHeight(prev + 24))
+                      }
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`block w-full transition-colors ${
+                        resizingTree
+                          ? 'h-0.5 bg-(--canvas-selection)'
+                          : 'h-px bg-border/80 group-hover:h-0.5 group-hover:bg-(--canvas-selection) group-focus-visible:h-0.5 group-focus-visible:bg-(--canvas-selection)'
+                      }`}
+                    />
+                  </button>
+                </>
+              ) : null}
+              {readOnly && (
+                <p className="border-b border-border/75 px-4 py-2 text-xs text-ink-muted">
+                  {readOnlyLabel}
+                </p>
+              )}
+              <TabsContent value="properties" className="flex-1">
+                {board && (
+                  <>
+                    <BoardInspectorProperties
+                      key={
+                        designLayer
+                          ? JSON.stringify([scope, 'design', designLayer.id])
+                          : JSON.stringify([scope, 'runtime', layer?.id, sourceLoc])
+                      }
                       board={board}
-                      version={version}
-                      fullSource={fullSource}
+                      pageTitle={page?.title}
                       designLayer={designLayer}
                       runtimeLayer={layer}
-                      onOpenEditor={!readOnly && followHead ? onOpenEditor : undefined}
+                      styles={layers?.styles}
+                      advancedOpen={advancedOpen}
+                      onAdvancedOpenChange={onAdvancedOpenChange}
+                      selectedElement={
+                        selectedElement &&
+                        (selectedElement.boardId ?? STANDALONE_BOARD_ID) === board.id
+                          ? selectedElement
+                          : null
+                      }
+                      sourceLoc={sourceLoc}
+                      presentation={presentation}
+                      visualTarget={visualTarget}
+                      selectedDesignLayers={selectedDesignLayers}
+                      editing={readOnly || board.source === undefined ? undefined : editing}
+                      elementEditing={readOnly ? undefined : (elementEditing ?? editing)}
+                      onEditText={readOnly ? undefined : onEditText}
+                      onEditSourceText={readOnly ? undefined : onEditSourceText}
+                      onApplyRuntimeOp={readOnly ? undefined : onApplyRuntimeOp}
+                      readFullSource={readFullSource}
+                      onHtmlElementSaved={onHtmlElementSaved}
                     />
-                  ) : (
+                    {((layer || designLayer || selectedElement) && canComment) ||
+                    (onHandoff && page && handoffElement) ||
+                    (onAskAgent && page && handoffElement) ? (
+                      <div className="flex flex-wrap items-center gap-1.5 border-t border-border/75 px-4 py-3">
+                        {(layer || designLayer || selectedElement) && canComment ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 rounded-[8px] px-3 text-xs"
+                            onClick={() => setDrawer('review')}
+                          >
+                            {t('批注')}
+                          </Button>
+                        ) : null}
+                        {onHandoff && page && handoffElement ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 rounded-[8px] px-3 text-xs"
+                            onClick={() =>
+                              onHandoff(`${page.title} / ${board.title}`, {
+                                pageId: page.id,
+                                boardId: board.id,
+                                element: {
+                                  blockId: handoffElement.blockId,
+                                  selector: handoffElement.selector,
+                                },
+                              })
+                            }
+                          >
+                            {t('移交对象')}
+                          </Button>
+                        ) : null}
+                        {onAskAgent && page && handoffElement ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 rounded-[8px] px-3 text-xs"
+                            onClick={() =>
+                              onAskAgent(`${page.title} / ${board.title}`, {
+                                pageId: page.id,
+                                boardId: board.id,
+                                element: {
+                                  blockId: handoffElement.blockId,
+                                  selector: handoffElement.selector,
+                                  loc: handoffElement.loc,
+                                  textPreview: handoffElement.textPreview,
+                                },
+                              })
+                            }
+                          >
+                            {t('问 Agent')}
+                          </Button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </>
+                )}
+                {!board && (
+                  <div className="flex min-h-56 flex-col items-center justify-center px-4 py-10 text-center">
+                    <p className="text-[13px] text-ink-muted">{t('选择画板以查看属性')}</p>
+                  </div>
+                )}
+              </TabsContent>
+              <TabsContent value="source">
+                {board && layer && (
+                  <BoardLayerStyles
+                    layerId={layer.id}
+                    tag={layer.tag}
+                    label={layer.label}
+                    styles={layers?.styles}
+                  />
+                )}
+                {sourceReady || designLayer ? (
+                  <BoardInspectorSource
+                    board={board}
+                    version={version}
+                    fullSource={fullSource}
+                    designLayer={designLayer}
+                    runtimeLayer={layer}
+                    onOpenEditor={!readOnly && followHead ? onOpenEditor : undefined}
+                  />
+                ) : (
+                  <div className="px-4 py-3.5">
                     <InspectorSourceStatus
                       error={usesBoardSource ? boardReadError : sourceError}
                       retry={usesBoardSource ? retryBoard : retrySource}
                     />
+                  </div>
+                )}
+              </TabsContent>
+              {hasTweaksTab && (
+                <TabsContent value="tweaks">
+                  {hasBoardTweaks && board && tweaks && (
+                    <InspectorSection title={t('画板参数')}>
+                      <BoardTweakPanel
+                        key={board.id}
+                        boardId={board.id}
+                        tweaks={tweaks}
+                        previews={tweakPreviews}
+                        onApply={
+                          allowTweakWrite && editing?.available
+                            ? (values) =>
+                                setTweakRequest({ base: version, boardId: board.id, values })
+                            : undefined
+                        }
+                      />
+                    </InspectorSection>
+                  )}
+                  {hasTemplateProps && (
+                    <div className="px-4 py-3.5">
+                      {fullSource !== undefined ? (
+                        <PropsPanel
+                          artifactId={artifact.publicId}
+                          projectId={artifact.projectId}
+                          artifactType={artifact.type}
+                          source={fullSource}
+                          stateSnapshot={
+                            version.version === artifact.headVersion ? stateSnapshot : EMPTY_PROPS
+                          }
+                          readOnly={templateReadOnly}
+                          specOverride={template.data}
+                        />
+                      ) : (
+                        <InspectorSourceStatus error={sourceError} retry={retrySource} />
+                      )}
+                    </div>
                   )}
                 </TabsContent>
-                {hasTweaksTab && (
-                  <TabsContent value="tweaks" className="flex flex-col gap-4">
-                    {hasBoardTweaks && board && tweaks && (
-                      <div className="flex flex-col gap-2">
-                        {hasTemplateProps && (
-                          <h3 className="text-xs font-semibold tracking-wide text-ink-muted uppercase">
-                            {t('画板参数')}
-                          </h3>
-                        )}
-                        <BoardTweakPanel
-                          key={board.id}
-                          boardId={board.id}
-                          tweaks={tweaks}
-                          previews={tweakPreviews}
-                          onApply={
-                            allowTweakWrite && editing?.available
-                              ? (values) =>
-                                  setTweakRequest({ base: version, boardId: board.id, values })
-                              : undefined
-                          }
-                        />
-                      </div>
-                    )}
-                    {hasTemplateProps && (
-                      <div
-                        className={
-                          hasBoardTweaks
-                            ? 'flex flex-col gap-2 border-t border-border/75 pt-4'
-                            : 'flex flex-col gap-2'
-                        }
-                      >
-                        {hasBoardTweaks && (
-                          <h3 className="text-xs font-semibold tracking-wide text-ink-muted uppercase">
-                            {t('模板参数')}
-                          </h3>
-                        )}
-                        {!templateReadOnly && (
-                          <p className="text-xs text-ink-muted">
-                            {t('更改整份作品的运行状态，不会生成版本。')}
-                          </p>
-                        )}
-                        {fullSource !== undefined ? (
-                          <PropsPanel
-                            artifactId={artifact.publicId}
-                            projectId={artifact.projectId}
-                            artifactType={artifact.type}
-                            source={fullSource}
-                            stateSnapshot={
-                              version.version === artifact.headVersion ? stateSnapshot : EMPTY_PROPS
-                            }
-                            readOnly={templateReadOnly}
-                            specOverride={template.data}
-                          />
-                        ) : (
-                          <InspectorSourceStatus error={sourceError} retry={retrySource} />
-                        )}
-                      </div>
-                    )}
-                  </TabsContent>
-                )}
-              </div>
-            </SheetBody>
-          </div>
+              )}
+            </div>
+          </SheetBody>
         </Tabs>
       </SheetContent>
       {open && allowTweakWrite && requestIsCurrent && tweakRequest && editing && (

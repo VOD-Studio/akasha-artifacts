@@ -27,6 +27,8 @@ export const panelMessages = {
   下移一层: ['Nach hinten', 'نقل للأسفل', 'Move later'],
   应用: ['Anwenden', 'تطبيق', 'Apply'],
   外观: ['Darstellung', 'المظهر', 'Appearance'],
+  高级: ['Erweitert', 'متقدم', 'Advanced'],
+  操作: ['Aktionen', 'الإجراءات', 'Actions'],
   批注: ['Kommentar', 'تعليق', 'Comment'],
   移交对象: ['Objekt übergeben', 'تسليم العنصر', 'Hand off object'],
   移交画板: ['Zeichenfläche übergeben', 'تسليم اللوحة', 'Hand off board'],

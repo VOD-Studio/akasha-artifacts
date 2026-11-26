@@ -126,7 +126,7 @@ function PropertyField({
   if (field.type === 'boolean') {
     return (
       <div className="flex items-center justify-between gap-3 py-0.5">
-        <label htmlFor={id} className="min-w-0 cursor-pointer text-xs text-ink">
+        <label htmlFor={id} className="min-w-0 cursor-pointer text-[13px] text-ink">
           {field.label}
         </label>
         <Switch
@@ -147,7 +147,7 @@ function PropertyField({
     // Select 保留空串表示未选择，Schema 的选项值则可能是空串。
     return (
       <div className="grid grid-cols-[minmax(0,1fr)_8.5rem] items-center gap-2">
-        <label htmlFor={id} className="truncate text-xs text-ink">
+        <label htmlFor={id} className="truncate text-[13px] text-ink-muted">
           {field.label}
         </label>
         <Select
@@ -174,10 +174,10 @@ function PropertyField({
   if (field.type === 'number') {
     const value = typeof rawValue === 'number' ? rawValue : Number(rawValue ?? field.min ?? 1)
     return (
-      <div className="space-y-1">
-        <div className="flex items-center justify-between gap-2 text-xs">
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between gap-2 text-[13px]">
           <span className="truncate text-ink">{field.label}</span>
-          <span dir="ltr" className="font-mono text-[11px] tabular-nums text-ink-muted">
+          <span dir="ltr" className="font-mono text-xs tabular-nums text-ink-muted">
             {number(value)}
           </span>
         </div>
@@ -197,7 +197,7 @@ function PropertyField({
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_8.5rem] items-center gap-2">
-      <label htmlFor={id} className="truncate text-xs text-ink">
+      <label htmlFor={id} className="truncate text-[13px] text-ink-muted">
         {field.label}
       </label>
       <Input
@@ -347,18 +347,18 @@ export function PropsPanel({
   const hasOverrides = Object.keys(currentPropsOverlay).length > 0
 
   return (
-    <fieldset disabled={!writable} data-testid="props-panel" className="min-w-0 space-y-2.5">
+    <fieldset disabled={!writable} data-testid="props-panel" className="min-w-0 space-y-3">
       <legend className="sr-only">{t('运行参数')}</legend>
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-ink-muted uppercase">
-          <SlidersHorizontal size={12} aria-hidden />
+        <div className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+          <SlidersHorizontal size={13} className="text-ink-muted" aria-hidden />
           <span aria-hidden>{t('运行参数')}</span>
         </div>
         {writable && hasOverrides ? (
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 px-1.5 text-[11px]"
+            className="h-6 px-1.5 text-xs text-ink-muted hover:text-ink"
             leftIcon={<RotateCcw size={11} />}
             loading={pushMutation.isPending}
             onClick={() => {
@@ -371,7 +371,7 @@ export function PropsPanel({
         ) : null}
       </div>
 
-      <div className="space-y-2.5">
+      <div className="space-y-3">
         {fields.map((field) => {
           const rawValue =
             optimisticValues[field.key] ??

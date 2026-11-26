@@ -48,6 +48,13 @@
     --v-segmented-item-pad: 0.75rem;
   }
 
+  .v-segmented[data-rounded="md"] {
+    --v-segmented-radius: var(--radius-8, 8px);
+    --v-segmented-item-radius: 6px;
+    --v-segmented-indicator-radius: 6px;
+    box-shadow: none;
+  }
+
   .v-segmented[data-rounded="full"] {
     --v-segmented-radius: 9999px;
     --v-segmented-item-radius: 9999px;

@@ -5,7 +5,7 @@ import {
   type VersionSummary,
 } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
-import { ScrollArea } from '@akasha/ui/scroll-area'
+import type { ReactNode } from 'react'
 import type { CanvasBoard } from '@/entities/artifact'
 import { useMessages } from '@/shared/i18n'
 import { panelMessages } from './messages'
@@ -46,7 +46,7 @@ export function BoardInspectorSource({
     runtimeLayer || designLayer ? t('无法定位此图层的源码。以下为{scope}。', { scope }) : scope
 
   return (
-    <div className="flex flex-col gap-2">
+    <section className="flex flex-col gap-2.5 px-4 py-3.5">
       {native && (
         <SourceBlock
           label={
@@ -55,45 +55,93 @@ export function BoardInspectorSource({
               : t('原生图层记录 · {version}', { version: `v${version.version}` })
           }
           source={native}
+          action={
+            onOpenEditor ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 shrink-0 rounded-[7px] px-2.5 text-xs"
+                onClick={onOpenEditor}
+              >
+                {t('编辑整份源码')}
+              </Button>
+            ) : undefined
+          }
         />
       )}
-      {excerpt && <SourceLines excerpt={excerpt} scope={scope} />}
-      {!native && !excerpt && source !== undefined && (
-        <SourceBlock label={fallback} source={source} />
+      {excerpt && (
+        <SourceLines
+          excerpt={excerpt}
+          scope={scope}
+          action={
+            onOpenEditor ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 shrink-0 rounded-[7px] px-2.5 text-xs"
+                onClick={onOpenEditor}
+              >
+                {t('编辑整份源码')}
+              </Button>
+            ) : undefined
+          }
+        />
       )}
-      {onOpenEditor && (
+      {!native && !excerpt && source !== undefined && (
+        <SourceBlock
+          label={fallback}
+          source={source}
+          action={
+            onOpenEditor ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 shrink-0 rounded-[7px] px-2.5 text-xs"
+                onClick={onOpenEditor}
+              >
+                {t('编辑整份源码')}
+              </Button>
+            ) : undefined
+          }
+        />
+      )}
+      {!native && !excerpt && source === undefined && onOpenEditor ? (
         <div>
           <Button
             size="sm"
             variant="outline"
-            className="h-7 rounded-md px-2.5 text-xs"
+            className="h-7 rounded-[7px] px-2.5 text-xs"
             onClick={onOpenEditor}
           >
             {t('编辑整份源码')}
           </Button>
         </div>
-      )}
-    </div>
+      ) : null}
+    </section>
   )
 }
 
-function SourceBlock({ label, source }: { label: string; source: string }) {
+function SourceBlock({
+  label,
+  source,
+  action,
+}: {
+  label: string
+  source: string
+  action?: ReactNode
+}) {
   return (
     <>
-      <p className="text-[11px] text-ink-muted">{label}</p>
-      <ScrollArea
-        orientation="vertical"
-        aria-label={label}
-        tabIndex={-1}
-        className="max-h-64 rounded-lg border border-border/60 bg-surface-subtle/75 [--v-scroll-area-padding:0px] [--v-scroll-area-surface:var(--surface-subtle)]"
+      <div className="flex items-center justify-between gap-2">
+        <p className="min-w-0 truncate text-xs text-ink-muted">{label}</p>
+        {action}
+      </div>
+      <pre
+        dir="ltr"
+        className="w-full font-mono text-[12px] leading-[1.65] whitespace-pre-wrap break-all text-ink"
       >
-        <pre
-          dir="ltr"
-          className="w-full p-2.5 font-mono text-[11px] leading-5 whitespace-pre-wrap break-all text-ink"
-        >
-          <code>{source}</code>
-        </pre>
-      </ScrollArea>
+        <code>{source}</code>
+      </pre>
     </>
   )
 }
@@ -108,55 +156,59 @@ interface SourceExcerpt {
   after: string
 }
 
-function SourceLines({ excerpt, scope }: { excerpt: SourceExcerpt; scope: string }) {
+function SourceLines({
+  excerpt,
+  scope,
+  action,
+}: {
+  excerpt: SourceExcerpt
+  scope: string
+  action?: ReactNode
+}) {
   const { t } = useMessages(panelMessages)
   return (
     <>
-      <p className="text-[11px] text-ink-muted">
-        {t('唯一片段 · {scope}', { scope })} ·{' '}
-        <span>
-          {t('源码位置')}{' '}
-          <bdi dir="ltr">
-            {excerpt.line}:{excerpt.column}
-          </bdi>
-        </span>
-      </p>
-      <ScrollArea
-        orientation="vertical"
-        aria-label={scope}
-        tabIndex={-1}
-        className="max-h-64 rounded-lg border border-border/60 bg-surface-subtle/75 [--v-scroll-area-padding:0px] [--v-scroll-area-surface:var(--surface-subtle)]"
+      <div className="flex items-center justify-between gap-2">
+        <p className="min-w-0 text-xs text-ink-muted">
+          {t('唯一片段 · {scope}', { scope })} ·{' '}
+          <span>
+            {t('源码位置')}{' '}
+            <bdi dir="ltr">
+              {excerpt.line}:{excerpt.column}
+            </bdi>
+          </span>
+        </p>
+        {action}
+      </div>
+      <pre
+        dir="ltr"
+        className="w-full font-mono text-[12px] leading-[1.65] whitespace-pre-wrap break-all text-ink"
       >
-        <pre
-          dir="ltr"
-          className="w-full p-2.5 font-mono text-[11px] leading-5 whitespace-pre-wrap break-all text-ink"
-        >
-          {excerpt.lines.map((text, index) => {
-            const line = excerpt.firstLine + index
-            return (
-              <code className="block" key={line}>
-                <span
-                  aria-hidden="true"
-                  className="me-3 inline-block min-w-6 text-end text-ink-muted"
-                >
-                  {line}
-                </span>
-                {line === excerpt.line ? (
-                  <>
-                    {excerpt.before}
-                    <mark className="rounded bg-(--canvas-selection-tint) px-0.5 text-(--canvas-selection-strong)">
-                      {excerpt.tag}
-                    </mark>
-                    {excerpt.after}
-                  </>
-                ) : (
-                  text || ' '
-                )}
-              </code>
-            )
-          })}
-        </pre>
-      </ScrollArea>
+        {excerpt.lines.map((text, index) => {
+          const line = excerpt.firstLine + index
+          return (
+            <code className="block" key={line}>
+              <span
+                aria-hidden="true"
+                className="me-3 inline-block min-w-5 text-end text-ink-muted/75 select-none"
+              >
+                {line}
+              </span>
+              {line === excerpt.line ? (
+                <>
+                  {excerpt.before}
+                  <mark className="rounded bg-(--canvas-selection-tint) px-0.5 text-(--canvas-selection-strong)">
+                    {excerpt.tag}
+                  </mark>
+                  {excerpt.after}
+                </>
+              ) : (
+                text || ' '
+              )}
+            </code>
+          )
+        })}
+      </pre>
     </>
   )
 }
