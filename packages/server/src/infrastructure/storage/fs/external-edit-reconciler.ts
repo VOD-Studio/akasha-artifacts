@@ -149,6 +149,12 @@ export class ExternalEditReconciler {
       }
       return
     }
+    if (previous.type === 'design-system') {
+      throw new DomainError(
+        'RESOURCE_CONFLICT',
+        '设计系统的磁盘副本已修改，请在审阅面板重新导入；未发布外部改动',
+      )
+    }
 
     // 若本次写入正是监听器针对唯一变更磁盘快照的同步请求，直接放行
     if (
@@ -222,6 +228,12 @@ export class ExternalEditReconciler {
   ): void {
     const existingDiskFiles = this.files.findExistingDiskEntries(artifact)
     if (existingDiskFiles.length === 0) return
+    if (artifact.type === 'design-system') {
+      throw new DomainError(
+        'RESOURCE_CONFLICT',
+        '目标目录内已有未经审阅的设计系统；未发布或覆盖磁盘文件',
+      )
+    }
 
     const entries: Array<{ file: string; source: string }> = []
     for (const file of existingDiskFiles) {

@@ -7,7 +7,11 @@ import {
 } from '@akasha/protocol'
 import { useLocation, useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { useArtifactVersionsQuery, useArtifactWorkspaceQuery } from '@/entities/artifact'
+import {
+  hasVersionSource,
+  useArtifactVersionsQuery,
+  useArtifactWorkspaceQuery,
+} from '@/entities/artifact'
 import { useDaemonStatusQuery } from '@/entities/daemon'
 import { readAnnotationDraft, useArtifactFeedbackQuery } from '@/entities/feedback'
 import { useSelectionStore } from '@/entities/selection'
@@ -20,6 +24,7 @@ import {
   ArtifactTransferDialog,
   type ArtifactTransferTarget,
 } from '@/features/artifact-delivery'
+import { SystemSourceLink, SystemWorkspace } from '@/features/design-system'
 import {
   ArtifactExportDialog,
   type CanvasExportSelection,
@@ -276,6 +281,21 @@ export function ArtifactRouteView({
     if (requestedVersion !== undefined) openVersion()
   }
 
+  if (detail.artifact.type === 'design-system') {
+    return (
+      <SystemWorkspace
+        key={detail.artifact.publicId}
+        detail={detail}
+        versions={versions}
+        fixedVersion={viewingFixedVersion}
+        sandboxOrigin={sandboxOrigin}
+        onBack={backToLibrary}
+        onVersion={openVersion}
+        onOpenArtifact={(publicId) => void navigate({ to: '/a/$publicId', params: { publicId } })}
+      />
+    )
+  }
+
   return (
     <div className="flex h-dvh flex-col bg-canvas text-ink">
       <TopBar
@@ -305,6 +325,9 @@ export function ArtifactRouteView({
         onBackToLibrary={backToLibrary}
         onSelectVersion={openVersion}
       />
+      {detail.artifact.type === 'react' && hasVersionSource(detail.version) && (
+        <SystemSourceLink source={detail.version.source} />
+      )}
       <main className="relative flex min-h-0 min-w-0 flex-1">
         {agent && (
           <AgentConversationPane

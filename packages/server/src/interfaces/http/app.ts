@@ -10,6 +10,7 @@ import { mountArtifactLibraryRoutes } from './routes/artifact-library.js'
 import { mountAuthoringRoutes } from './routes/authoring.js'
 import { mountBrowserSessionRoutes } from './routes/browser-session.js'
 import { mountDaemonRoutes } from './routes/daemon.js'
+import { mountDesignSystemRoutes } from './routes/design-systems.js'
 import { mountFeedbackRoutes } from './routes/feedback.js'
 import { mountProjectRoutes } from './routes/projects.js'
 import { mountReviewRoundRoutes } from './routes/rounds.js'
@@ -97,6 +98,7 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
   const forgetSelection = mountProjectRoutes(app, deps)
   mountStorageRoutes(app, deps)
   mountAuthoringRoutes(app, deps)
+  mountDesignSystemRoutes(app, deps)
   mountArtifactLibraryRoutes(app, deps, forgetSelection)
   mountVisualEditRoutes(app, deps.service)
   mountStateRoutes(app, deps.service)

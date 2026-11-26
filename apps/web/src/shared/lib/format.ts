@@ -3,6 +3,7 @@ import { getMessages, type Locale, type Messages } from '@/shared/i18n'
 
 const messages = {
   设计: ['Design', 'تصميم', 'Design'],
+  设计系统: ['Designsystem', 'نظام التصميم', 'Design system'],
   文档: ['Dokument', 'مستند', 'Document'],
   交付验收: ['Abnahme', 'التحقق من التسليم', 'Delivery review'],
   'PR 走查': ['PR-Durchsicht', 'مراجعة طلب الدمج', 'PR walkthrough'],
@@ -19,6 +20,7 @@ const typeLabels = {
   mermaid: 'Mermaid',
   svg: 'SVG',
   artboard: '设计',
+  'design-system': '设计系统',
   document: '文档',
   verify: '交付验收',
   'pr-walkthrough': 'PR 走查',

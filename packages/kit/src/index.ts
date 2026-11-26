@@ -28,6 +28,11 @@ export function registerBuiltinKitTemplates(): void {
 registerBuiltinKitTemplates()
 
 export {
+  designSystemPreviewSource,
+  generateDesignSystemBoard,
+  parseDesignSystem,
+} from './design-system.js'
+export {
   buildPropsJsonSchema,
   getKitTemplate,
   type KitParseResult,

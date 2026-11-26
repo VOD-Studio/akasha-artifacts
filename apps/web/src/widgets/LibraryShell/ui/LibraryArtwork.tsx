@@ -29,6 +29,7 @@ function previewKey(artifactId: string, version: number) {
 function typeFallbackIcon(type: Artifact['type']) {
   switch (type) {
     case 'artboard':
+    case 'design-system':
       return Layers
     case 'document':
     case 'markdown':
@@ -72,7 +73,7 @@ export function LibraryArtwork({
   const client = useQueryClient()
   const preview = useQuery({
     queryKey: previewKey(publicId, headVersion),
-    enabled: visible && Boolean(navigator.locks),
+    enabled: artifact.type !== 'design-system' && visible && Boolean(navigator.locks),
     retry: false,
     staleTime: Infinity,
     queryFn: async ({ signal }) => {

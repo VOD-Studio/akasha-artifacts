@@ -57,6 +57,9 @@ export class ArtifactLifecycle {
 
   async transferArtifact(id: ArtifactIdentifier, input: ArtifactTransferInput, author: Author) {
     const artifact = await this.resolveArtifact(id)
+    if (artifact.type === 'design-system') {
+      throw new DomainError('FORBIDDEN', '设计系统的来源授权仅限当前项目，请在目标项目重新审阅')
+    }
     if (!(await this.deps.projects.findById(input.targetProjectId))) {
       throw new NotFoundError('目标项目未在当前服务登记')
     }

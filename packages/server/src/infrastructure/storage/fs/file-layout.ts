@@ -23,6 +23,7 @@ export const CANONICAL_ENTRY_FILENAMES: Record<ArtifactType, readonly string[]> 
   svg: ['graphic.svg'],
   document: ['index.html', 'index.json'],
   artboard: ['index.json'],
+  'design-system': ['index.json'],
   verify: ['index.json'],
   'pr-walkthrough': ['index.json'],
   'live-timeline': ['index.json'],
