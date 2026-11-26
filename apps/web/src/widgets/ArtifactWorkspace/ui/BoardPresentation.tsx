@@ -203,6 +203,7 @@ export function BoardPresentation({
         className="artifact-canvas-surface min-h-0 flex-1 overflow-hidden"
       >
         <ScrollArea
+          dir="ltr"
           orientation="both"
           aria-label={t('画板内容')}
           tabIndex={-1}

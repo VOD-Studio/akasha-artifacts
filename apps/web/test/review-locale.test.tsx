@@ -105,6 +105,7 @@ it('阿拉伯语只读评审可查看和筛选讨论，但不提供发送、回�
   expect(screen.getByText('Author’s review question')).toBeTruthy()
   expect(screen.getByText('B')).toBeTruthy()
   expect(screen.queryByRole('button', { name: 'B' })).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'تصفية التعليقات' }))
   expect(screen.getByRole('combobox', { name: 'حالة الحل' })).toBeTruthy()
   expect(screen.queryByRole('textbox')).toBeNull()
   for (const name of ['إرسال', 'رد', 'تحديد كمحلول', 'الموافقة على v1']) {
@@ -133,6 +134,7 @@ it('英语评审抽屉先退出筛选列表，再退出抽屉', async () => {
   openReview(false)
   const drawer = screen.getByRole('dialog', { name: 'Comments and review' })
   expect(drawer.getAttribute('aria-modal')).toBe('false')
+  fireEvent.click(screen.getByRole('button', { name: 'Filter comments' }))
   const filter = screen.getByRole('combobox', { name: 'Resolution status' })
   filter.focus()
   fireEvent.keyDown(filter, { key: 'ArrowDown' })
