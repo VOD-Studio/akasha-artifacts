@@ -426,6 +426,7 @@ export function CanvasToolbar({
                           variant="ghost"
                           size="sm"
                           leftIcon={<DRAWING_TOOLS.rectangle.icon size={14} />}
+                          aria-label={t('绘制矩形')}
                           aria-keyshortcuts="R"
                           title={`${t('绘制矩形')} (R)`}
                           className="artifact-canvas-menu-item w-full"
@@ -442,6 +443,7 @@ export function CanvasToolbar({
                           variant="ghost"
                           size="sm"
                           leftIcon={<DRAWING_TOOLS.ellipse.icon size={14} />}
+                          aria-label={t('绘制椭圆')}
                           aria-keyshortcuts="O"
                           title={`${t('绘制椭圆')} (O)`}
                           className="artifact-canvas-menu-item w-full"
