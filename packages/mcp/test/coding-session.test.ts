@@ -266,3 +266,73 @@ it('Web 整稿发布保留真实的工程入口，但不把历史设计系统实
   expect(replaced.components).toEqual([])
   expect((await v2.client.read()).components).toEqual(base.components)
 })
+
+it.each(['withdraw', 'move'] as const)(
+  '历史系统不可用仍能读当前快照，不交付其他项目的组件文件：%s',
+  async (change) => {
+    const { connection, reference, send } = await setup()
+    const original = new CodingSessionClient(connection)
+    const first = await original.read()
+    if (!first.reviewedSystem) throw new Error('缺少测试设计系统')
+    const entry = {
+      path: 'app/Pay.tsx',
+      exportName: 'Pay',
+      source: 'export function Pay() {return <button>工程结账</button>}',
+    }
+    await original.publish({
+      component: {
+        path: entry.path,
+        exportName: entry.exportName,
+        props: {},
+        files: [{ path: entry.path, content: entry.source }],
+      },
+    })
+    const connect = async (projectId: string, version: number) => {
+      const url = `/api/v1/projects/${projectId}/coding-sessions`
+      const response = await send(url, {
+        reference: { ...reference, projectId, version },
+        label: '接收工程',
+      })
+      expect(response.status).toBe(201)
+      const grant = CodingSessionGrantSchema.parse(await response.json())
+      return {
+        client: new CodingSessionClient({ ...connection, projectId, ...grant }),
+        web: `${url}/${grant.id}/workspace`,
+      }
+    }
+    const bound = await connect('one', 2)
+    const fixed = (await bound.client.read()).design.source
+    const projectId = change === 'move' ? 'two' : 'one'
+    if (change === 'withdraw') {
+      expect(
+        (await send(`/api/v1/artifacts/${first.reviewedSystem.id}`, {}, undefined, 'DELETE')).ok,
+      ).toBe(true)
+    } else {
+      expect(
+        (
+          await send(`/api/v1/artifacts/${reference.artifactId}/transfer`, {
+            kind: 'move',
+            targetProjectId: projectId,
+          })
+        ).ok,
+      ).toBe(true)
+      await expect(bound.client.read()).rejects.toThrow(/404|所选项目/)
+    }
+    const opened = await connect(projectId, 2)
+    const expected = {
+      design: { source: fixed, version: 2 },
+      components: [{ ...entry, origin: 'workspace' }],
+      reviewedSystem: null,
+    }
+    expect(await opened.client.read()).toMatchObject(expected)
+    const page = await send((change === 'withdraw' ? bound : opened).web, {})
+    expect(page.status).toBe(200)
+    expect(await page.json()).toMatchObject({ snapshot: expected })
+    const withoutEntry = await (await connect(projectId, 1)).client.read()
+    expect(withoutEntry).toMatchObject({
+      design: { source: first.design.source },
+      components: [],
+      reviewedSystem: null,
+    })
+  },
+)

@@ -48,6 +48,7 @@ const componentSource = z.object({
 export interface CodingSessionRead {
   reference: z.infer<typeof ArtifactHandoffReferenceSchema>
   design: HandoffDesign
+  /** 来源不在当前项目、已撤下或不可核验时为空，不影响读取作品自己的固定版本。 */
   reviewedSystem: DesignSystemReference | null
   /** 仅含可核实为此版本实现的入口；整稿仍有历史来源时也可能为空。 */
   components: z.infer<typeof componentSource>[]

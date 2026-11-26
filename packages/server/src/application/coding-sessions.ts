@@ -172,42 +172,47 @@ export class CodingSessions {
     } catch (error) {
       throw new DomainError('BAD_REQUEST', error instanceof Error ? error.message : '选区无效')
     }
-    const provenance = readDesignSystemReference(fixed.source)
     const workspace = await this.artifacts.getWorkspaceComponent(artifactId, version)
-    const components: CodingSessionRead['components'] = []
-    if (provenance) {
-      const system = await this.artifacts.findByPublicId(provenance.id)
-      if (system?.type !== 'design-system' || system.projectId !== projectId)
-        throw new DomainError('NOT_FOUND', '组件来源不在当前项目')
-      const source = await this.artifacts.getVersion(system.publicId, provenance.version)
-      const parsed = source && parseDesignSystem(source.source)
-      if (!parsed?.ok || parsed.data.sourceVersion !== provenance.sourceVersion)
-        throw new DomainError('NOT_FOUND', '组件来源固定版本不可用')
-      const { draft } = parsed.data
-      let single: number | null = null
-      for (const entry of provenance.components) {
-        const index = draft.components.findIndex(
-          (item) => item.path === entry.path && item.exportName === entry.exportName,
-        )
-        const file = draft.files.find((item) => item.kind === 'source' && item.path === entry.path)
-        if (index < 0 || !file) throw new DomainError('BAD_REQUEST', '组件未经该版本审阅')
-        if (provenance.components.length === 1) single = index
-        if (!workspace) components.push({ ...entry, source: file.content, origin: 'reviewed' })
-      }
-      // 引用头只证明历史来源；只有原审阅快照能生成的整稿，才可把原文件作为当前实现交接。
-      if (
-        components.length &&
-        fixed.source !==
-          generateDesignSystemBoard(
-            parsed.data,
-            { id: system.publicId, version: provenance.version },
-            single,
-          )
-      ) {
-        components.length = 0
-      }
+    const snapshot: CodingSessionRead = {
+      reference,
+      design,
+      components: workspace ? [{ ...workspace, origin: 'workspace' }] : [],
+      reviewedSystem: null,
     }
-    if (workspace) components.push({ ...workspace, origin: 'workspace' })
-    return { reference, design, components, reviewedSystem: provenance }
+    const provenance = readDesignSystemReference(fixed.source)
+    if (!provenance) return snapshot
+
+    // 当前作品已经鉴权。历史系统另行验证；不能因为来源撤下而剥夺对本版源码的访问。
+    const system = await this.artifacts.findByPublicId(provenance.id)
+    if (system?.type !== 'design-system' || system.projectId !== projectId) return snapshot
+    const source = await this.artifacts.getVersion(system.publicId, provenance.version)
+    const parsed = source && parseDesignSystem(source.source)
+    if (!parsed?.ok || parsed.data.sourceVersion !== provenance.sourceVersion) return snapshot
+
+    const { draft } = parsed.data
+    let single: number | null = null
+    const reviewed: CodingSessionRead['components'] = []
+    for (const entry of provenance.components) {
+      const index = draft.components.findIndex(
+        (item) => item.path === entry.path && item.exportName === entry.exportName,
+      )
+      const file = draft.files.find((item) => item.kind === 'source' && item.path === entry.path)
+      if (index < 0 || !file) return snapshot
+      if (provenance.components.length === 1) single = index
+      if (!workspace) reviewed.push({ ...entry, source: file.content, origin: 'reviewed' })
+    }
+    snapshot.reviewedSystem = provenance
+    // 引用头只证明历史来源；只有原审阅快照能生成的整稿，才可把原文件作为当前实现交接。
+    if (
+      reviewed.length &&
+      fixed.source ===
+        generateDesignSystemBoard(
+          parsed.data,
+          { id: system.publicId, version: provenance.version },
+          single,
+        )
+    )
+      snapshot.components = reviewed
+    return snapshot
   }
 }
