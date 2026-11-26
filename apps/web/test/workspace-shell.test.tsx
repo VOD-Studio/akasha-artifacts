@@ -332,7 +332,10 @@ it('移动作品后原编辑器保留未保存源码和撤销历史，目标项�
     if (path === `${endpoint}/transfer` && init?.method === 'POST') {
       expect(JSON.parse(String(init.body))).toEqual({ kind: 'move', targetProjectId: target.id })
       const artifact = { ...detail.artifact, projectId: target.id }
-      responses.set(endpoint, { ...client.getQueryData<ArtifactWorkspaceDetail>(artifactKeys.canvas(publicId)), artifact })
+      responses.set(endpoint, {
+        ...client.getQueryData<ArtifactWorkspaceDetail>(artifactKeys.canvas(publicId)),
+        artifact,
+      })
       moved = true
       return Response.json({ artifact })
     }
