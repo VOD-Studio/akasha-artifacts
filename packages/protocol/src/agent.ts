@@ -17,6 +17,7 @@ export const AgentMessageInputSchema = z
     tweakApplication: ArtboardTweakApplicationSchema.optional(),
   })
   .strict()
+export type AgentMessageInput = z.infer<typeof AgentMessageInputSchema>
 
 export const AgentDesignInputSchema = AgentMessageInputSchema.pick({
   message: true,
