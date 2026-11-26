@@ -139,7 +139,7 @@ function resolveToolbarBox(
   const estimatedWidth = Math.min(380, availableWidth)
   const maxLeft = Math.max(minLeft, maxRight - estimatedWidth)
   const left = Math.max(minLeft, Math.min(anchor.rect.x, maxLeft))
-  const topAbove = anchor.rect.y - 46
+  const topAbove = anchor.rect.y - 40
   const maxTop = Math.max(56, viewportHeight - 96)
   const top =
     topAbove >= 56
@@ -360,7 +360,7 @@ export function SelectionToolbar({
             else applyRuntimeStyle({ fontSize })
           }}
         >
-          <SelectTrigger controlSize="sm" aria-label={t('字号')} className="w-20">
+          <SelectTrigger controlSize="sm" aria-label={t('字号')} className="w-[4.25rem]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -379,7 +379,7 @@ export function SelectionToolbar({
             else applyRuntimeStyle({ fontWeight })
           }}
         >
-          <SelectTrigger controlSize="sm" aria-label={t('字重')} className="w-22">
+          <SelectTrigger controlSize="sm" aria-label={t('字重')} className="w-[4.5rem]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -417,15 +417,15 @@ export function SelectionToolbar({
           <Button
             size="sm"
             variant="ghost"
+            iconOnly
             aria-label={colorControlLabel}
             title={colorControlLabel}
           >
             <span
               aria-hidden="true"
-              className="inline-block size-3.5 rounded-full border border-border"
+              className="inline-block size-3.5 rounded-sm border border-black/15 shadow-2xs"
               style={{ backgroundColor: activeSwatchColor }}
             />
-            <span className="text-xs">{colorControlLabel}</span>
           </Button>
         </PopoverTrigger>
         <PopoverContent side="top" className="w-56 space-y-2 p-2.5" aria-label={colorControlLabel}>
@@ -517,7 +517,9 @@ export function SelectionToolbar({
         <Button
           size="sm"
           variant="ghost"
-          leftIcon={<PencilLine size={14} />}
+          iconOnly
+          aria-label={t('编辑文字')}
+          title={t('编辑文字')}
           onClick={(event) => {
             const rect = event.currentTarget.getBoundingClientRect()
             if (isNativeText && designLayer) {
@@ -534,7 +536,7 @@ export function SelectionToolbar({
             }
           }}
         >
-          {t('编辑文字')}
+          <PencilLine size={13} />
         </Button>
       ) : null}
 
@@ -545,7 +547,7 @@ export function SelectionToolbar({
         <output
           data-testid="selection-contrast-hint"
           aria-live="polite"
-          className={`rounded px-1.5 py-1 text-xs tabular-nums ${
+          className={`rounded-md px-1.5 py-0.5 text-[11px] leading-tight tabular-nums ${
             contrast.level === 'fail'
               ? 'bg-destructive/10 font-medium text-destructive'
               : 'bg-surface-subtle text-ink-muted'
@@ -581,7 +583,7 @@ export function SelectionToolbar({
                 else applyRuntimeStyle({ textAlign: align })
               }}
             >
-              <Icon size={14} />
+              <Icon size={13} />
             </Button>
           ))}
         </fieldset>
@@ -598,7 +600,7 @@ export function SelectionToolbar({
             aria-pressed={Boolean(designLayer?.flipX)}
             onClick={() => anchor.onFlip('horizontal')}
           >
-            <FlipHorizontal2 size={14} />
+            <FlipHorizontal2 size={13} />
           </Button>
           <Button
             size="sm"
@@ -609,7 +611,7 @@ export function SelectionToolbar({
             aria-pressed={Boolean(designLayer?.flipY)}
             onClick={() => anchor.onFlip('vertical')}
           >
-            <FlipVertical2 size={14} />
+            <FlipVertical2 size={13} />
           </Button>
         </div>
       ) : null}
@@ -625,7 +627,7 @@ export function SelectionToolbar({
             title={`${t('上移一层')} (Alt+↑)`}
             onClick={() => anchor.onReorderFlow(-1)}
           >
-            <ArrowUp size={14} />
+            <ArrowUp size={13} />
           </Button>
           <Button
             size="sm"
@@ -636,23 +638,30 @@ export function SelectionToolbar({
             title={`${t('下移一层')} (Alt+↓)`}
             onClick={() => anchor.onReorderFlow(1)}
           >
-            <ArrowDown size={14} />
+            <ArrowDown size={13} />
           </Button>
         </div>
       ) : null}
 
       {showComment ? (
-        <Button
-          size="sm"
-          variant="ghost"
-          leftIcon={<MessageCircle size={14} />}
-          onClick={(event) => {
-            const rect = event.currentTarget.getBoundingClientRect()
-            onComment({ x: rect.left, y: rect.bottom + 8 })
-          }}
-        >
-          {t('批注')}
-        </Button>
+        <>
+          {showEditText || isText || showColor || showFlip || showFlowReorder ? (
+            <span aria-hidden="true" className="mx-0.5 h-3.5 w-px shrink-0 bg-border/80" />
+          ) : null}
+          <Button
+            size="sm"
+            variant="ghost"
+            iconOnly
+            aria-label={t('批注')}
+            title={t('批注')}
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect()
+              onComment({ x: rect.left, y: rect.bottom + 8 })
+            }}
+          >
+            <MessageCircle size={13} />
+          </Button>
+        </>
       ) : null}
     </div>
   )

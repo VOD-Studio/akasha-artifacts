@@ -646,19 +646,43 @@ body,
   position: absolute;
   z-index: 4;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   width: max-content;
   max-width: calc(100% - 24px);
   border: 1px solid var(--ol);
-  border-radius: var(--radius-12, 12px);
-  padding: 4px 6px;
-  background: color-mix(in oklab, var(--card) 86%, transparent);
+  border-radius: 10px;
+  padding: 3px;
+  background: color-mix(in oklab, var(--card) 92%, transparent);
   color: var(--foreground);
   box-shadow: var(--shadow-float);
   backdrop-filter: blur(18px) saturate(1.65);
   -webkit-backdrop-filter: blur(18px) saturate(1.65);
+}
+
+.artifact-canvas-selection-toolbar .v-button {
+  block-size: 1.625rem;
+  border-radius: 7px;
+  padding-inline: 6px;
+}
+
+.artifact-canvas-selection-toolbar .v-button[data-icon-only="true"] {
+  inline-size: 1.625rem;
+  padding-inline: 0;
+}
+
+.artifact-canvas-selection-toolbar .v-button[aria-pressed="true"] {
+  background-color: var(--canvas-selection-tint);
+  color: var(--canvas-selection-strong);
+}
+
+.artifact-canvas-selection-toolbar .v-select__trigger {
+  block-size: 1.625rem;
+  min-block-size: 1.625rem;
+  border-radius: 7px;
+  padding-inline: 6px;
+  font-size: 12px;
 }
 
 .artifact-canvas-board-title:focus-visible,
