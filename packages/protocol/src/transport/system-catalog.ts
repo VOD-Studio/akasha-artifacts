@@ -45,8 +45,11 @@ export const CatalogSelectionSchema = DesignSystemGenerateInputSchema.pick({
 })
 export type CatalogSelection = z.infer<typeof CatalogSelectionSchema>
 
+/** 与审阅来源端点一致，限制整个 UTF-8 JSON 请求体，而不是文件字符数。 */
+export const CATALOG_REQUEST_BYTES = 24 * 1024 * 1024
+
 /** 省略 selections 才继承个人偏好；空数组显式创建不使用系统的设计。 */
-export const CatalogGenerateInputSchema = DesignSystemGenerateInputSchema.pick({
+export const CatalogPreviewInputSchema = DesignSystemGenerateInputSchema.pick({
   slug: true,
   title: true,
 }).extend({
@@ -58,6 +61,11 @@ export const CatalogGenerateInputSchema = DesignSystemGenerateInputSchema.pick({
       '不能重复选用同一系统版本',
     )
     .optional(),
+})
+
+/** 不传候选源码时直接从固定内容起稿；提供候选时须先校验，再写不可变版本。 */
+export const CatalogGenerateInputSchema = CatalogPreviewInputSchema.extend({
+  candidateSource: z.string().max(CATALOG_REQUEST_BYTES).optional(),
 })
 export type CatalogGenerateInput = z.infer<typeof CatalogGenerateInputSchema>
 
@@ -85,7 +93,29 @@ export function readCatalogReferences(source: string): DesignSystemReference[] |
   }
 }
 
+/** 基准只包含本次选用的已审阅产物，不创建版本，不授予原系统访问权限。 */
+export const CatalogPreviewSchema = z.object({ source: z.string(), references: referencesSchema })
+
+/** 修正定位到具体固定来源，组件修正还指明文件和导出，避免混淆同名按钮。 */
+export const CatalogCorrectionSchema = z.object({
+  kind: z.enum(['component', 'guidance']),
+  ...DesignSystemReferenceSchema.pick({ id: true, version: true }).shape,
+  component: DesignSystemGenerateInputSchema.shape.component,
+})
+export type CatalogCorrection = z.infer<typeof CatalogCorrectionSchema>
+
+/** 无法安全区分作者修改和受管代码时，不生成版本；行号相对于原候选。 */
+export const CatalogRecoverySchema = z.object({
+  kind: z.literal('manual-review'),
+  reason: z.enum(['structure', 'reference', 'instance']),
+  line: z.number().int().positive(),
+  references: referencesSchema,
+  actions: z.tuple([z.literal('edit-source'), z.literal('regenerate')]),
+})
+export type CatalogRecovery = z.infer<typeof CatalogRecoverySchema>
+
 /** 已写入独立版本的成品及其实际使用的固定来源。 */
 export const CatalogGenerateOutputSchema = DesignSystemWriteOutputSchema.extend({
   references: referencesSchema,
+  corrections: z.array(CatalogCorrectionSchema),
 })

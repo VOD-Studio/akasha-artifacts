@@ -1,6 +1,7 @@
 import {
   type CatalogGenerateInput,
   CatalogGenerateOutputSchema,
+  CatalogPreviewSchema,
   SystemCatalogSchema,
   type SystemPublicationAction,
 } from '@akasha/protocol'
@@ -50,6 +51,19 @@ export function updateDefaultPreference(projectId: string, inheritDefault: boole
 export async function generateCatalogDesign(projectId: string, input: CatalogGenerateInput) {
   return CatalogGenerateOutputSchema.parse(
     await requestJson<unknown>(`${catalogPath(projectId)}/generate`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  )
+}
+
+/** 只读取当前授权固定版本对应的起稿基准，不创建作品，不提交候选代码。 */
+export async function previewCatalogDesign(
+  projectId: string,
+  input: Omit<CatalogGenerateInput, 'candidateSource'>,
+) {
+  return CatalogPreviewSchema.parse(
+    await requestJson<unknown>(`${catalogPath(projectId)}/preview`, {
       method: 'POST',
       body: JSON.stringify(input),
     }),

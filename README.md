@@ -250,6 +250,23 @@ In the library’s system catalog, a Hub administrator can publish an available 
 
 Choose **New design** in the Hub library. Use your team default, select no system, or combine fixed versions and specific component exports. The personal default switch in the catalog affects only your future designs. Generated designs contain the reviewed components and styles, not a link to the latest system. They stay private in the target project until you share them.
 
+#### Try a candidate with a real deviation
+
+Import this `ConfirmButton.tsx` as a system, review its `ConfirmButton` export with example props `{"children":"Confirm order"}`, and set the brand color to `#123456`:
+
+```tsx
+import { useState } from 'react'
+
+export function ConfirmButton({ children }: { children: string }) {
+  const [sent, setSent] = useState(false)
+  return <button onClick={() => setSent(true)}>{sent ? 'Order sent' : children}</button>
+}
+```
+
+In **New design**, select that fixed version and component. Load its baseline into the candidate editor, or import your candidate file. For the sample, change `Order sent` to `Wrong implementation`, change the model color to `#abcdef`, and change the instance label `Confirm order` to `Place order`. Create the design. The correction report identifies the component and guidance that were restored. Open the saved design: the board uses its reviewed color, and the button reads **Place order** until you press it and see **Order sent**.
+
+To try manual recovery, append `export const custom = true` to the candidate. Creation stops without writing a version. Jump to the reported line and revise the candidate, or explicitly generate from the fixed versions instead. The Hub never executes candidate source during this check.
+
 ---
 
 ## Development

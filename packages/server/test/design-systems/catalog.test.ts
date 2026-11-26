@@ -184,3 +184,57 @@ it('两名成员继承固定基础，关闭只影响本人；同名组件按来�
   )
   expect(await reopened.json()).toMatchObject({ version: { source: saved.version.source } })
 })
+
+it('真实起稿纠正被替换的组件和规范，同时保留候选的标题与业务文案；结构不明时不写入', async () => {
+  const { hub, member, owner, publish } = await setupCatalog()
+  const draft = buttons('#114488')
+  draft.files.push({ kind: 'guidelines', path: 'manual.md', content: 'A'.repeat(70 * 1024) })
+  draft.origin.label = '/home/owner/private-checkout'
+  const id = await publish(draft)
+  await hub.send(`${owner.catalog}/${id}/1/members`, 'PUT', owner.cookie, { logins: ['member'] })
+  const component = { path: 'src/Button.tsx', exportName: 'ConfirmButton' }
+  const input = { title: 'Checkout', slug: 'checkout', selections: [{ id, version: 1, component }] }
+  const baseline = await hub.send(`${member.catalog}/preview`, 'POST', member.cookie, input)
+  expect(baseline.status).toBe(200)
+  const { source } = z.object({ source: z.string() }).parse(await baseline.json())
+  expect(source).not.toContain('/home/owner/private-checkout')
+  const candidateSource = source
+    .replace('Sent from original', 'Wrong implementation')
+    .replace('"color":"#123456"', '"color":"#abcdef"')
+    .replace('Confirm order', 'Place order')
+    .replace('"Checkout"', '"My checkout"')
+  const generate = (value: string, slug: string) =>
+    hub.send(`${member.catalog}/generate`, 'POST', member.cookie, {
+      ...input,
+      slug,
+      candidateSource: value,
+    })
+  const result = await generate(candidateSource, 'corrected')
+  expect(result.status).toBe(201)
+  const saved = await result.json()
+  expect(saved.corrections).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ kind: 'component', id, version: 1, component }),
+      expect.objectContaining({ kind: 'guidance', id, version: 1 }),
+    ]),
+  )
+  const design = DesignSystemWriteOutputSchema.parse(saved)
+  expect(design.version.source).toContain('Sent from original')
+  expect(design.version.source).toContain('"color":"#123456"')
+  expect(design.version.source).toContain('My checkout')
+  expect(design.version.source).toContain('Place order')
+  expect(design.version.source).not.toContain('Wrong implementation')
+  const manual = await generate(`${candidateSource}\nexport const custom = true`, 'manual')
+  expect(manual.status).toBe(400)
+  expect(await manual.json()).toMatchObject({
+    error: {
+      details: {
+        kind: 'manual-review',
+        line: expect.any(Number),
+        actions: ['edit-source', 'regenerate'],
+      },
+    },
+  })
+  const list = await (await hub.send('/api/v1/artifacts', 'GET', member.cookie)).json()
+  expect(list.artifacts.map((artifact: { slug: string }) => artifact.slug)).not.toContain('manual')
+})

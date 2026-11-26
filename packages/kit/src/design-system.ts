@@ -4,6 +4,7 @@ import type {
   DesignSystemSnapshot,
 } from '@akasha/protocol'
 import { DesignSystemSnapshotSchema, designSystemReferenceHeader } from '@akasha/protocol'
+import { componentFence } from './catalog-regions.js'
 import type { KitParseResult } from './registry.js'
 
 const mimeTypes: Record<string, string> = {
@@ -27,12 +28,14 @@ export function parseDesignSystem(source: string): KitParseResult<DesignSystemSn
   }
 }
 
+type BoardFormat = 'standalone' | { system: number; title: string }
+
 function renderReviewedSource(
   draft: DesignSystemDraft,
   sourceVersion: string,
   modules: readonly string[],
   reference: Pick<DesignSystemReference, 'id' | 'version'> | undefined,
-  format: 'standalone' | 'closure',
+  format: BoardFormat,
 ) {
   const assets = draft.files
     .filter((file) => file.kind === 'font' || file.kind === 'logo')
@@ -56,7 +59,7 @@ function renderReviewedSource(
     .join('\n')
   const model = {
     ...draft.guidance,
-    origin: draft.origin.label,
+    origin: format === 'standalone' ? draft.origin.label : format.title,
     sourceVersion,
     components: draft.components,
     logos: assets.filter((asset) => asset.kind === 'logo').map(({ path, url }) => ({ path, url })),
@@ -68,11 +71,23 @@ function renderReviewedSource(
     (format === 'standalone' ? "import * as React from 'react';\n" : '(() => {\n') +
     'const reviewed = [\n'
   const compiledRanges: [number, number][] = []
-  for (const module of modules) {
+  for (const [index, module] of modules.entries()) {
+    if (format !== 'standalone')
+      previewSource += `${componentFence(format.system, index, 'begin')}\n`
     compiledRanges.push([previewSource.length, previewSource.length + module.length])
-    previewSource += `${module},\n`
+    previewSource += module
+    if (format !== 'standalone') previewSource += `\n${componentFence(format.system, index, 'end')}`
+    previewSource += ',\n'
   }
-  previewSource += `];\nconst model = ${JSON.stringify(model)};\nconst reference = ${JSON.stringify(reference ?? null)};
+  previewSource += '];\nconst model = '
+  const modelStart = previewSource.length
+  previewSource += JSON.stringify(model)
+  const modelEnd = previewSource.length
+  previewSource += ';\nconst reference = '
+  const referenceStart = previewSource.length
+  previewSource += JSON.stringify(reference ?? null)
+  const referenceEnd = previewSource.length
+  previewSource += `;
 ${format === 'standalone' ? 'export default' : 'return'} function DesignSystemBoard() {
   const h = React.createElement;
   const style = {display:'grid', alignContent:'start', justifyItems:'start', gap:model.spacing, padding:model.spacing, color:model.color, fontFamily:model.fontFamily || undefined};
@@ -84,8 +99,8 @@ ${format === 'standalone' ? 'export default' : 'return'} function DesignSystemBo
     ...model.components.map((item,i) => h('div',{key:i, 'data-ak-component':item.path+'#'+item.exportName},h(reviewed[i].component,item.props)))
   );
 }\n`
-  if (format === 'closure') previewSource += '})()'
-  return { previewSource, compiledRanges }
+  if (format !== 'standalone') previewSource += '})()'
+  return { previewSource, compiledRanges, modelStart, modelEnd, referenceStart, referenceEnd }
 }
 
 /** 返回沙盒 React Artifact 源码；组件表来自静态编译产物，不从名称仿制组件。 */
@@ -95,7 +110,14 @@ export function designSystemPreviewSource(
   modules: readonly string[],
   reference?: { id: string; version: number },
 ) {
-  return renderReviewedSource(draft, sourceVersion, modules, reference, 'standalone')
+  const { previewSource, compiledRanges } = renderReviewedSource(
+    draft,
+    sourceVersion,
+    modules,
+    reference,
+    'standalone',
+  )
+  return { previewSource, compiledRanges }
 }
 
 /** 只复制固定快照注明的闭包区间；不解析、改写或重新编译用户模块。 */
@@ -103,7 +125,7 @@ export function renderFixedSelection(
   snapshot: DesignSystemSnapshot,
   identity: Pick<DesignSystemReference, 'id' | 'version'>,
   index: number | null,
-  format: 'standalone' | 'closure',
+  format: BoardFormat,
 ) {
   if (index !== null && (!Number.isInteger(index) || !snapshot.draft.components[index]))
     throw new RangeError('该固定版本不包含所选组件')
@@ -117,14 +139,14 @@ export function renderFixedSelection(
     sourceVersion: snapshot.sourceVersion,
     components: selected.map(({ path, exportName }) => ({ path, exportName })),
   }
-  const { previewSource: source } = renderReviewedSource(
+  const { previewSource: source, ...offsets } = renderReviewedSource(
     { ...snapshot.draft, components: selected },
     snapshot.sourceVersion,
     modules,
     identity,
     format,
   )
-  return { source, reference }
+  return { source, reference, ...offsets }
 }
 
 /** 更换的只有可信入口；固定版本内的组件代码、样式和品牌资源不变。 */

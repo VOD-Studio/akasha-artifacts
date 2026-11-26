@@ -1,6 +1,59 @@
 import type { Messages } from '@/shared/i18n'
 
 export const messages = {
+  候选稿源码: ['Quelltext des Entwurfs', 'الشيفرة المصدرية للمسودة', 'Candidate source'],
+  移除候选稿: ['Entwurf entfernen', 'إزالة المسودة', 'Remove candidate'],
+  导入候选稿: ['Entwurf importieren', 'استيراد مسودة', 'Import candidate'],
+  载入所选版本基准: [
+    'Vorlage der gewählten Versionen laden',
+    'تحميل خط الأساس للإصدارات المختارة',
+    'Load selected version baseline',
+  ],
+  替换当前候选稿: [
+    'Aktuellen Entwurf ersetzen',
+    'استبدال المسودة الحالية',
+    'Replace current candidate',
+  ],
+  保留当前候选稿: [
+    'Aktuellen Entwurf behalten',
+    'الاحتفاظ بالمسودة الحالية',
+    'Keep current candidate',
+  ],
+  放弃候选稿并切换项目: [
+    'Entwurf verwerfen und Projekt wechseln',
+    'تجاهل المسودة وتبديل المشروع',
+    'Discard candidate and switch project',
+  ],
+  无法载入候选稿: [
+    'Entwurf konnte nicht geladen werden',
+    'تعذر تحميل المسودة',
+    'Could not load candidate',
+  ],
+  定位并编辑: ['Zur Zeile und bearbeiten', 'الانتقال إلى السطر وتعديله', 'Go to line and edit'],
+  按固定版本重新生成: [
+    'Aus festen Versionen neu erstellen',
+    'إعادة الإنشاء من الإصدارات المحددة',
+    'Regenerate from pinned versions',
+  ],
+  '第 {line} 行': ['Zeile {line}', 'السطر {line}', 'Line {line}'],
+  候选稿结构已变更: [
+    'Entwurfsstruktur geändert',
+    'تغيرت بنية المسودة',
+    'Candidate structure changed',
+  ],
+  固定来源不匹配: [
+    'Feste Quellen stimmen nicht überein',
+    'المصادر المحددة غير متطابقة',
+    'Pinned sources do not match',
+  ],
+  组件实例不匹配: [
+    'Komponenteninstanz stimmt nicht überein',
+    'مثيل المكوّن غير مطابق',
+    'Component instance does not match',
+  ],
+  已恢复组件: ['Komponente wiederhergestellt', 'تمت استعادة المكوّن', 'Component restored'],
+  已恢复规范: ['Richtlinien wiederhergestellt', 'تمت استعادة الإرشادات', 'Guidance restored'],
+  打开修正版: ['Korrigierte Fassung öffnen', 'فتح النسخة المصححة', 'Open corrected design'],
   新建设计: ['Neuer Entwurf', 'تصميم جديد', 'New design'],
   设计名称: ['Entwurfsname', 'اسم التصميم', 'Design name'],
   创建: ['Erstellen', 'إنشاء', 'Create'],

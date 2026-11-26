@@ -250,6 +250,23 @@ Hub 管理员可在作品库的系统目录中把有权选用的固定版本发�
 
 在 Hub 作品库选择「新建设计」，可沿用团队默认、本次不使用系统，或组合多个固定版本与指定的组件导出。系统目录中的个人默认开关只影响本人以后新建的设计。成品保存已审阅的组件和样式，不跟随系统最新版；分享前仅在目标项目内私人可见。
 
+#### 验证一份偏离系统的候选稿
+
+导入下列 `ConfirmButton.tsx`，审阅组件导出 `ConfirmButton`，将示例属性设为 `{"children":"Confirm order"}`，品牌色设为 `#123456`：
+
+```tsx
+import { useState } from 'react'
+
+export function ConfirmButton({ children }: { children: string }) {
+  const [sent, setSent] = useState(false)
+  return <button onClick={() => setSent(true)}>{sent ? 'Order sent' : children}</button>
+}
+```
+
+在「新建设计」中选择该固定版本和组件，载入基准源码，或导入自己的候选文件。要复现偏差，将 `Order sent` 改成 `Wrong implementation`，把模型颜色改成 `#abcdef`，再将实例文案 `Confirm order` 改成 `Place order`。创建后可以查看恢复了哪个组件、哪套规范。打开保存的设计：按钮保留 **Place order**，画板恢复审阅时的品牌色，点击按钮显示 **Order sent**。
+
+要验证人工恢复，在候选末尾添加 `export const custom = true`。此时不会写入版本。可跳到报告的行修改候选并重新提交，或明确选择改用固定版本重新生成。Hub 核对时不执行候选源码。
+
 ---
 
 ## 本地开发

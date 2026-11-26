@@ -28,6 +28,8 @@ export function registerBuiltinKitTemplates(): void {
 registerBuiltinKitTemplates()
 
 export { composeCatalogBoard } from './catalog-board.js'
+export { type CatalogReconciliation, reconcileCatalogCandidate } from './catalog-reconcile.js'
+export type { CatalogBoardSource } from './catalog-regions.js'
 export {
   designSystemPreviewSource,
   generateDesignSystemBoard,

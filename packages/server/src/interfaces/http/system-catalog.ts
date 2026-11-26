@@ -1,5 +1,7 @@
 import {
+  CATALOG_REQUEST_BYTES,
   CatalogGenerateInputSchema,
+  CatalogPreviewInputSchema,
   PublicIdSchema,
   SystemMembersSchema,
   SystemPreferenceSchema,
@@ -43,7 +45,16 @@ export function mountSystemCatalog(
     }
     return c.json({ error: { code: 'INTERNAL_ERROR', message: '无法读取系统目录' } }, 500)
   })
-  routes.use(`${root}/*`, bodyLimit({ maxSize: 64 * 1024, onError: invalid }))
+  const smallBody = bodyLimit({ maxSize: 64 * 1024, onError: invalid })
+  const candidateBody = bodyLimit({
+    maxSize: CATALOG_REQUEST_BYTES,
+    onError: (c) => c.json({ error: { code: 'BAD_REQUEST', message: '候选稿超过请求上限' } }, 413),
+  })
+  routes.use(`${root}/*`, (c, next) =>
+    c.req.method === 'POST' && c.req.path.endsWith('/generate')
+      ? candidateBody(c, next)
+      : smallBody(c, next),
+  )
   routes.use(`${root}/*`, async (c, next) => {
     const principal = await auth.authenticate(c.req.raw)
     const projectId = c.req.param('projectId')
@@ -64,6 +75,15 @@ export function mountSystemCatalog(
     const { inheritDefault } = await parseJsonBody(c.req.raw, SystemPreferenceSchema)
     await catalog.members.setInheritDefault(c.get('principal').userId, inheritDefault)
     return c.json({ inheritDefault })
+  })
+  routes.post(`${root}/preview`, async (c) => {
+    const input = await parseJsonBody(c.req.raw, CatalogPreviewInputSchema)
+    const { source, references } = await catalog.prepare(
+      c.req.param('projectId'),
+      c.get('principal').userId,
+      input,
+    )
+    return c.json({ source, references })
   })
   routes.post(`${root}/generate`, async (c) => {
     const principal = c.get('principal')

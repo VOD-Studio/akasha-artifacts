@@ -1,4 +1,4 @@
-import { composeCatalogBoard, parseDesignSystem } from '@akasha/kit'
+import { composeCatalogBoard, parseDesignSystem, reconcileCatalogCandidate } from '@akasha/kit'
 import type {
   Author,
   CatalogGenerateInput,
@@ -6,6 +6,7 @@ import type {
   CatalogSystem,
   SystemPublicationAction,
 } from '@akasha/protocol'
+import { CATALOG_REQUEST_BYTES } from '@akasha/protocol'
 import { DomainError, NotFoundError } from '../../domain/errors.js'
 import type { ArtifactRepository } from '../../domain/ports.js'
 import type { NamedSystemPin, NamedSystemRepository } from '../../domain/team-systems.js'
@@ -97,7 +98,11 @@ export class SystemCatalog {
     return { items, inheritDefault }
   }
 
-  async generate(projectId: string, userId: string, author: Author, input: CatalogGenerateInput) {
+  async prepare(
+    projectId: string,
+    userId: string,
+    input: Omit<CatalogGenerateInput, 'candidateSource'>,
+  ) {
     const { pins, releases, inheritDefault } = await this.candidates(projectId, userId)
     const selections: readonly CatalogSelection[] =
       input.selections ??
@@ -114,18 +119,48 @@ export class SystemCatalog {
           )
         : null
       if (index === -1) throw new DomainError('BAD_REQUEST', '找不到此版本的组件，请从目录重新选择')
-      systems.push({ id, version, snapshot, index })
+      systems.push({ id, version, title: fixed.title, snapshot, index })
     }
-    const { source, references } = composeCatalogBoard(input.title, systems)
+    const expected = composeCatalogBoard(input.title, systems)
+    // 小稿即使按每个 UTF-16 单元转义为六个字节也放得下，避免为计数再复制整份源码。
+    if (
+      expected.source.length * 6 + 64 * 1024 > CATALOG_REQUEST_BYTES &&
+      Buffer.byteLength(JSON.stringify({ ...input, candidateSource: expected.source })) >
+        CATALOG_REQUEST_BYTES
+    )
+      throw new DomainError('BAD_REQUEST', '固定版本组合超过候选稿上限，请减少所选组件')
+    return expected
+  }
+
+  async generate(projectId: string, userId: string, author: Author, input: CatalogGenerateInput) {
+    const { candidateSource, ...plan } = input
+    const expected = await this.prepare(projectId, userId, plan)
+    const checked =
+      candidateSource === undefined
+        ? { ok: true as const, source: expected.source, corrections: [] }
+        : reconcileCatalogCandidate(expected, candidateSource)
+    if (!checked.ok) {
+      throw new DomainError(
+        'BAD_REQUEST',
+        '无法安全修正此处。请修改候选稿，或使用所选固定版本重新生成。',
+        {
+          kind: 'manual-review',
+          reason: checked.reason,
+          line: checked.line,
+          references: expected.references,
+          actions: ['edit-source', 'regenerate'],
+        },
+      )
+    }
     const saved = await this.publisher.publish({
       projectId,
       slug: input.slug,
       title: input.title,
       type: 'react',
-      source,
+      source: checked.source,
       author,
       createOnly: true,
     })
-    return { ...saved, references }
+    return { ...saved, references: expected.references, corrections: checked.corrections }
   }
 }
