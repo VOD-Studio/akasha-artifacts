@@ -51,6 +51,7 @@ import { useSelectedVisualTarget } from './hooks/useSelectedVisualTarget'
 import { BoardInspector, type BoardInspectorHandoff } from './inspector/BoardInspector'
 import { BoardResources } from './model/board-resources'
 import { createBoardTweakPreviewStore } from './model/board-tweak-previews'
+import { CanvasBoardEditNotice } from './toolbar/CanvasBoardActions'
 import { SelectionToolbar } from './toolbar/SelectionToolbar'
 import { ArtifactCanvas, type InspectorReveal } from './ui/ArtifactCanvas'
 import { ArtifactFrame, type BoardFramePurpose, type FrameConnection } from './ui/ArtifactFrame'
@@ -802,6 +803,11 @@ export function ArtifactWorkspace({
             onComment={openAnchoredComment}
             boardEditing={canEditBoards ? boardEditing : undefined}
             historyEditing={canEditText ? boardEditing : undefined}
+            editNotice={
+              boardEditing.draft || (canEditText && boardEditing.inputError) ? (
+                <CanvasBoardEditNotice editing={boardEditing} />
+              ) : null
+            }
             textTools={canEditText ? inlineText.tools : undefined}
             pageEditing={
               canEditBoards && !boardEditing.draft && !boardEditing.busy

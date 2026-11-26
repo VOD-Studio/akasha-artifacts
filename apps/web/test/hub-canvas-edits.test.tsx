@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type { ArtifactWorkspaceDetail } from '@akasha/protocol'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
 import {
@@ -84,4 +85,55 @@ it('作品可见不等于可共编；Hub 未明确授予编辑或收回权限后
   view.update(workspace(reader))
   expect(settings()).toBeNull()
   expect(screen.getByTitle('画板内容：宽屏首页')).toBeTruthy()
+})
+
+it('提交时降权后仍可下载本人的草稿，但不能再改画布或重试写入', async () => {
+  vi.stubGlobal('__AKASHA_CONFIG__', { hub: true })
+  vi.stubGlobal('WebSocket', undefined)
+  const saves: string[] = []
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+    if (url !== `/api/v1/artifacts/${artifact.publicId}/canvas-edits`) return Response.json({})
+    saves.push(JSON.parse(String(init?.body)).source)
+    return Response.json({ error: { code: 'FORBIDDEN', message: '当前作品只读' } }, { status: 403 })
+  })
+  const withAccess = (hubCanEditCanvas: boolean) =>
+    ({ ...detailFor(), hubCanEditCanvas }) satisfies ArtifactWorkspaceDetail
+  const view = showWorkspace(withAccess(true))
+  fireEvent.click(screen.getByRole('button', { name: '设置画板：宽屏首页' }))
+  fireEvent.change(screen.getByRole('spinbutton', { name: '宽度' }), { target: { value: '872' } })
+  fireEvent.click(screen.getByRole('button', { name: '应用' }))
+  await screen.findByRole('alert')
+  view.update(workspace(withAccess(false)))
+  expect(screen.queryByRole('button', { name: '设置画板：宽屏首页' })).toBeNull()
+  const alert = screen.getByRole('alert')
+  const createUrl = vi.fn((_blob: Blob) => 'blob:https://hub.example/recovered')
+  vi.stubGlobal(
+    'URL',
+    class extends URL {
+      static createObjectURL = createUrl
+      static revokeObjectURL = vi.fn()
+    },
+  )
+  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+  vi.useFakeTimers()
+  try {
+    fireEvent.click(within(alert).getByRole('button', { name: '下载草稿' }))
+    vi.advanceTimersByTime(1000)
+  } finally {
+    vi.useRealTimers()
+  }
+  expect(click).toHaveBeenCalledOnce()
+  const reader = new FileReader()
+  const loaded = new Promise<string>((resolve) => {
+    reader.onload = () => resolve(String(reader.result))
+  })
+  const blob = createUrl.mock.calls[0]?.[0]
+  if (!blob) throw new Error('未生成草稿下载文件')
+  reader.readAsText(blob)
+  const downloaded = await loaded
+  expect(saves).toEqual([downloaded])
+  expect(JSON.parse(downloaded).boards[0].viewport.width).toBe(872)
+  fireEvent.click(within(alert).getByRole('button', { name: '放弃改动' }))
+  expect(screen.queryByRole('alert')).toBeNull()
+  expect(screen.queryByRole('button', { name: '设置画板：宽屏首页' })).toBeNull()
 })

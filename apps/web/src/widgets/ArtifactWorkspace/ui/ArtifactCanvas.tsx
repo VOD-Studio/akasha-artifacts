@@ -51,11 +51,7 @@ import type { CanvasPageEditing } from '../navigation/CanvasPageDialog'
 import { CanvasPlaybackMenu } from '../navigation/CanvasPlaybackMenu'
 import { PageNavigator } from '../navigation/PageNavigator'
 import { CanvasArrangeMenu } from '../toolbar/CanvasArrangeMenu'
-import {
-  CanvasBoardActions,
-  CanvasBoardEditNotice,
-  CanvasBoardQuickActions,
-} from '../toolbar/CanvasBoardActions'
+import { CanvasBoardActions, CanvasBoardQuickActions } from '../toolbar/CanvasBoardActions'
 import { CanvasToolbar } from '../toolbar/CanvasControls'
 import { canvasToolsMessages } from '../toolbar/canvas-tools-messages'
 import type { BoardFramePurpose } from './ArtifactFrame'
@@ -114,6 +110,8 @@ interface ArtifactCanvasProps {
   boardEditing?: CanvasBoardEditing
   /** 同一份版本历史也可供单板 HTML 或 React 的文字直改使用。 */
   historyEditing?: CanvasBoardEditing
+  /** 先前提交的本地草稿可在降为只读后取回，不授予撤销或写入权限。 */
+  editNotice?: ReactNode
   /** 缺省时双击不启用文字直改，原型仍只从播放入口进入。 */
   textTools?: CanvasTextTools
   /** 抽屉选板后定位；换工具不消费尚不可见的请求。 */
@@ -192,6 +190,7 @@ export function ArtifactCanvas({
   pageEditing,
   boardEditing,
   historyEditing = boardEditing,
+  editNotice,
   textTools,
   reveal,
   onRevealHandled,
@@ -651,7 +650,7 @@ export function ArtifactCanvas({
               ) : null}
             </div>
           </ListHighlight>
-          {historyEditing ? <CanvasBoardEditNotice editing={historyEditing} /> : null}
+          {editNotice}
           {blankNotice ? (
             <p
               role="status"
