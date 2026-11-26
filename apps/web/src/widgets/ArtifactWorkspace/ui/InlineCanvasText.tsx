@@ -194,12 +194,25 @@ export function InlineCanvasText({
       fontWeight = style?.fontWeight ?? 400
       textAlign = style?.textAlign ?? 'left'
     }
-    const paddingY = isNote ? Math.max(6, 8 * scale) : Math.max(2, 2.5 * scale)
-    const paddingX = isNote ? Math.max(8, 10 * scale) : Math.max(4, 5 * scale)
-    const minWidth = isSource ? Math.max(120, canvasBox.width + 20) : Math.max(96, canvasBox.width)
+    let paddingY = Math.max(2, 2.5 * scale)
+    let paddingX = Math.max(4, 5 * scale)
+    if (isNote) {
+      paddingY = Math.max(6, 8 * scale)
+      paddingX = Math.max(8, 10 * scale)
+    } else if (isSource) {
+      paddingY = 0
+      paddingX = 0
+    }
+    const singleLineSource = isSource && !text.includes('\n') && canvasBox.height <= fontSize * 1.65
+    const lineHeight = singleLineSource
+      ? Math.max(1.05, Math.min(1.38, canvasBox.height / fontSize))
+      : 1.32
+    const minWidth = isSource
+      ? Math.max(96, Math.ceil(canvasBox.width + fontSize * 1.15))
+      : Math.max(96, canvasBox.width)
     const maxViewportWidth = canvasBox.viewportWidth
       ? Math.max(160, canvasBox.viewportWidth - 24)
-      : 480
+      : 560
     const boxWidth = Math.min(maxViewportWidth, minWidth)
     const boxLeft = canvasBox.viewportWidth
       ? Math.max(12, Math.min(canvasBox.x, canvasBox.viewportWidth - boxWidth - 12))
@@ -219,7 +232,7 @@ export function InlineCanvasText({
           left: boxLeft,
           top: canvasBox.y,
           width: boxWidth,
-          minHeight: Math.max(24, canvasBox.height),
+          minHeight: Math.max(20, canvasBox.height),
         }}
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
@@ -238,7 +251,7 @@ export function InlineCanvasText({
           data-filled={text.length > 0 || isSource ? 'true' : undefined}
           style={{
             backgroundColor: boxBackground,
-            borderRadius: isNote ? Math.max(4, 5 * scale) : undefined,
+            borderRadius: isNote ? Math.max(4, 5 * scale) : 3,
             paddingBlock: paddingY,
             paddingInline: paddingX,
           }}
@@ -255,11 +268,11 @@ export function InlineCanvasText({
             className="block w-full resize-none overflow-hidden border-0 bg-transparent p-0 outline-none caret-(--canvas-selection) placeholder:text-ink-muted/55"
             style={{
               color: foreground,
-              fontFamily: 'system-ui, sans-serif',
+              fontFamily: 'inherit',
               fontSize,
               fontWeight,
               textAlign,
-              lineHeight: 1.35,
+              lineHeight,
               minHeight: Math.max(18, canvasBox.height - paddingY * 2),
             }}
             onChange={(event) => {

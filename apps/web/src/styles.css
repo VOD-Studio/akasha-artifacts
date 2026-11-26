@@ -643,6 +643,10 @@ body,
 }
 
 .artifact-canvas-selection-toolbar {
+  --primary: var(--canvas-selection);
+  --primary-foreground: var(--canvas-selection-foreground);
+  --ring: var(--canvas-selection);
+
   position: absolute;
   z-index: 4;
   display: flex;
@@ -677,11 +681,14 @@ body,
   color: var(--canvas-selection-strong);
 }
 
-.artifact-canvas-selection-toolbar .v-select__trigger {
+.artifact-canvas-selection-toolbar .v-select-trigger {
+  --v-input-h: 1.625rem;
+
   block-size: 1.625rem;
   min-block-size: 1.625rem;
   border-radius: 7px;
   padding-inline: 6px;
+  gap: 2px;
   font-size: 12px;
 }
 

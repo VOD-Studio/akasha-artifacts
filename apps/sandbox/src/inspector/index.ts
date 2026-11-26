@@ -68,7 +68,7 @@ function readElementPresentation(
       backgroundColor = bg
       break
     }
-    if (current === root) break
+    if (current === root.ownerDocument.documentElement) break
   }
   backgroundColor ??= 'rgb(255, 255, 255)'
   const parsedSize = Number.parseFloat(computed.fontSize)

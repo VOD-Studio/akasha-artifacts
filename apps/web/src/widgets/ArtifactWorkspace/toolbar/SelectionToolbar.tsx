@@ -360,7 +360,11 @@ export function SelectionToolbar({
             else applyRuntimeStyle({ fontSize })
           }}
         >
-          <SelectTrigger controlSize="sm" aria-label={t('字号')} className="w-[4.25rem]">
+          <SelectTrigger
+            controlSize="sm"
+            aria-label={t('字号')}
+            className="w-[4.875rem] tabular-nums"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -379,7 +383,7 @@ export function SelectionToolbar({
             else applyRuntimeStyle({ fontWeight })
           }}
         >
-          <SelectTrigger controlSize="sm" aria-label={t('字重')} className="w-[4.5rem]">
+          <SelectTrigger controlSize="sm" aria-label={t('字重')} className="w-[4.75rem]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -428,47 +432,88 @@ export function SelectionToolbar({
             />
           </Button>
         </PopoverTrigger>
-        <PopoverContent side="top" className="w-56 space-y-2 p-2.5" aria-label={colorControlLabel}>
-          <div className="flex flex-wrap gap-1">
+        <PopoverContent
+          side="top"
+          sideOffset={8}
+          className="w-56 space-y-2.5 rounded-xl border border-ol bg-popover/96 p-2.5 shadow-(--shadow-float) backdrop-blur-lg"
+          aria-label={colorControlLabel}
+        >
+          <div className="flex items-center justify-between gap-1">
             {DESIGN_LAYER_COLORS.map((key: DesignLayerPaletteColor) => {
               const swatch = DESIGN_LAYER_PALETTE[key]
               const preview = isNativeShape ? swatch.surface : swatch.foreground
-              const selected = designLayer?.color === key
+              const selected =
+                designLayer?.color === key ||
+                normalizedSwatchHex.toLowerCase() === preview.toLowerCase()
+              const label = t(DESIGN_LAYER_COLOR_LABELS[key])
               return (
-                <Button
+                <button
                   key={key}
-                  size="sm"
-                  variant={selected ? 'secondary' : 'ghost'}
+                  type="button"
+                  aria-label={label}
+                  title={label}
                   aria-pressed={selected}
+                  className={`inline-flex size-7 items-center justify-center rounded-full transition-transform hover:scale-105 focus-visible:outline-2 focus-visible:outline-(--canvas-selection) ${
+                    selected
+                      ? 'ring-2 ring-(--canvas-selection) ring-offset-2 ring-offset-popover'
+                      : 'ring-1 ring-border/70'
+                  }`}
                   onClick={() => applyColorChoice(key)}
                 >
                   <span
                     aria-hidden="true"
-                    className="inline-block size-3 rounded-full border border-border"
+                    className="size-5 rounded-full border border-black/10"
                     style={{ backgroundColor: preview }}
                   />
-                  <span>{t(DESIGN_LAYER_COLOR_LABELS[key])}</span>
-                </Button>
+                </button>
               )
             })}
           </div>
           <form className="flex items-center gap-1.5" onSubmit={submitCustomHex}>
+            <label className="relative inline-flex size-7 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-border">
+              <span className="sr-only">{colorControlLabel}</span>
+              <input
+                type="color"
+                className="absolute inset-0 size-full cursor-pointer opacity-0"
+                value={HEX_COLOR.test(hexDraft.trim()) ? hexDraft.trim() : normalizedSwatchHex}
+                onChange={(event) => {
+                  const next = event.currentTarget.value
+                  setHexDraft(next)
+                  applyColorChoice(next.toLowerCase() as DesignLayerColor)
+                }}
+              />
+              <span
+                aria-hidden="true"
+                className="size-full"
+                style={{
+                  backgroundColor: HEX_COLOR.test(hexDraft.trim())
+                    ? hexDraft.trim()
+                    : normalizedSwatchHex,
+                }}
+              />
+            </label>
             <Input
               type="text"
               controlSize="sm"
               dir="ltr"
               aria-label={t('自定义颜色')}
               placeholder="#202733"
+              className="h-7 flex-1 font-mono text-xs"
               value={hexDraft}
               onChange={(event) => setHexDraft(event.target.value)}
             />
-            <Button size="sm" type="submit" disabled={!HEX_COLOR.test(hexDraft.trim())}>
+            <Button
+              size="sm"
+              type="submit"
+              disabled={!HEX_COLOR.test(hexDraft.trim())}
+              className="h-7 shrink-0 rounded-lg bg-(--canvas-selection) px-2.5 text-xs text-(--canvas-selection-foreground) hover:bg-(--canvas-selection-strong)"
+            >
               {t('应用')}
             </Button>
           </form>
           {draftContrast ? (
             <p
-              className={`rounded px-1.5 py-0.5 text-xs tabular-nums ${
+              className={`rounded-md px-2 py-1 text-[11px] tabular-nums ${
                 draftContrast.level === 'fail'
                   ? 'bg-destructive/10 font-medium text-destructive'
                   : 'bg-surface-subtle text-ink-muted'

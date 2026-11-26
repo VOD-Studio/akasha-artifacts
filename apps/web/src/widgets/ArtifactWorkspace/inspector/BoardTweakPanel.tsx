@@ -1,9 +1,10 @@
 import type { ArtboardTweak, ArtboardTweakValues } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
-import { Checkbox } from '@akasha/ui/checkbox'
 import { Field } from '@akasha/ui/field'
 import { Input } from '@akasha/ui/input'
+import { Segmented } from '@akasha/ui/segmented'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
+import { Switch } from '@akasha/ui/switch'
 import { useState } from 'react'
 import { useStore } from 'zustand'
 import { useMessages } from '@/shared/i18n'
@@ -99,13 +100,29 @@ function TweakControl({ tweak, value, locale, onChange }: TweakControlProps) {
           onChange={onChange}
         />
       )
-    case 'enum':
+    case 'enum': {
+      const currentValue = typeof value === 'string' ? value : tweak.default
+      if (tweak.options.length <= 4) {
+        return (
+          <div className="space-y-1.5">
+            <span className="block text-xs font-medium text-ink">{label}</span>
+            <Segmented
+              block
+              size="sm"
+              aria-label={label}
+              value={currentValue}
+              onValueChange={onChange}
+              segments={tweak.options.map((option) => ({
+                value: option.value,
+                label: localizedLabel(option, locale),
+              }))}
+            />
+          </div>
+        )
+      }
       return (
         <Field label={label}>
-          <Select
-            value={typeof value === 'string' ? value : tweak.default}
-            onValueChange={onChange}
-          >
+          <Select value={currentValue} onValueChange={onChange}>
             <SelectTrigger controlSize="sm">
               <SelectValue />
             </SelectTrigger>
@@ -119,23 +136,45 @@ function TweakControl({ tweak, value, locale, onChange }: TweakControlProps) {
           </Select>
         </Field>
       )
+    }
     case 'boolean':
       return (
-        <Field label={label}>
-          <Checkbox checked={value === true} onCheckedChange={(next) => onChange(next === true)} />
-        </Field>
+        <div className="flex items-center justify-between gap-3 py-0.5">
+          <span className="text-xs font-medium text-ink">{label}</span>
+          <Switch
+            size="sm"
+            aria-label={label}
+            checked={value === true}
+            onCheckedChange={(next) => onChange(next === true)}
+          />
+        </div>
       )
-    case 'color':
+    case 'color': {
+      const currentColor = typeof value === 'string' ? value : tweak.default
       return (
         <Field label={label}>
-          <Input
-            type="color"
-            controlSize="sm"
-            value={typeof value === 'string' ? value : tweak.default}
-            onChange={(event) => onChange(event.target.value)}
-          />
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-surface-subtle px-2 py-1">
+            <label className="relative inline-flex size-5 shrink-0 cursor-pointer overflow-hidden rounded border border-black/10">
+              <span className="sr-only">{label}</span>
+              <input
+                type="color"
+                className="absolute inset-0 size-full cursor-pointer opacity-0"
+                value={currentColor}
+                onChange={(event) => onChange(event.target.value)}
+              />
+              <span
+                aria-hidden="true"
+                className="size-full"
+                style={{ backgroundColor: currentColor }}
+              />
+            </label>
+            <span dir="ltr" className="font-mono text-xs text-ink uppercase">
+              {currentColor}
+            </span>
+          </div>
         </Field>
       )
+    }
   }
 }
 
