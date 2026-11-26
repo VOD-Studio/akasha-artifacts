@@ -1,8 +1,9 @@
 import { DropdownMenuItem } from '@akasha/ui/dropdown-menu'
-import { Maximize, Minimize } from 'lucide-react'
+import { Maximize, Minimize, MonitorDown } from 'lucide-react'
 import { useSyncExternalStore } from 'react'
 import { toast } from 'sonner'
 import { useMessages } from '@/shared/i18n'
+import { useInstallPrompt } from '@/shared/platform/install'
 import { messages } from '../messages'
 
 function subscribeFullscreen(notify: () => void) {
@@ -26,6 +27,7 @@ function fullscreenState() {
 export function HostDisplayItems() {
   const { t } = useMessages(messages)
   const display = useSyncExternalStore(subscribeFullscreen, fullscreenState, () => null)
+  const install = useInstallPrompt()
   const toggleFullscreen = async () => {
     try {
       if (display === 'fullscreen') await document.exitFullscreen()
@@ -34,11 +36,22 @@ export function HostDisplayItems() {
       toast.error(t('无法切换全屏'))
     }
   }
-  if (!display) return null
   return (
-    <DropdownMenuItem onSelect={() => void toggleFullscreen()}>
-      {display === 'fullscreen' ? <Minimize size={14} /> : <Maximize size={14} />}
-      {t(display === 'fullscreen' ? '退出全屏' : '全屏查看')}
-    </DropdownMenuItem>
+    <>
+      {display && (
+        <DropdownMenuItem onSelect={() => void toggleFullscreen()}>
+          {display === 'fullscreen' ? <Minimize size={14} /> : <Maximize size={14} />}
+          {t(display === 'fullscreen' ? '退出全屏' : '全屏查看')}
+        </DropdownMenuItem>
+      )}
+      {install && (
+        <DropdownMenuItem
+          onSelect={() => void install().catch(() => toast.error(t('无法打开安装提示')))}
+        >
+          <MonitorDown size={14} />
+          {t('安装 Akasha')}
+        </DropdownMenuItem>
+      )}
+    </>
   )
 }

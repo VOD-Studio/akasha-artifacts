@@ -20,6 +20,12 @@ export const messages = {
     'تعذّر تغيير وضع ملء الشاشة',
     'Could not change full-screen mode',
   ],
+  '安装 Akasha': ['Akasha installieren', 'تثبيت Akasha', 'Install Akasha'],
+  无法打开安装提示: [
+    'Installation konnte nicht geöffnet werden',
+    'تعذّر فتح مطالبة التثبيت',
+    'Could not open the installation prompt',
+  ],
   取消收藏: ['Aus Favoriten entfernen', 'إزالة من المفضلة', 'Remove from favorites'],
   收藏: ['Zu Favoriten hinzufügen', 'إضافة إلى المفضلة', 'Add to favorites'],
   重命名: ['Umbenennen', 'إعادة التسمية', 'Rename'],

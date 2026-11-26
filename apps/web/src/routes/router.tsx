@@ -22,6 +22,7 @@ import { hubArtifactPath } from '@/shared/config/hub-artifact'
 import { isCloudHub } from '@/shared/config/runtime'
 import { useMessages } from '@/shared/i18n'
 import { useVisualViewport } from '@/shared/overlay/useVisualViewport'
+import { InstallProvider } from '@/shared/platform/install'
 import { LibraryShell } from '@/widgets/LibraryShell'
 import { ArtifactRouteView } from './ArtifactRouteView'
 import { ConnectionNotice } from './ConnectionNotice'
@@ -40,7 +41,9 @@ function RootLayout() {
   const openArtifact = (to: string) => void navigate({ to })
   return (
     <UiLocaleProvider locale={locale}>
-      <Outlet />
+      <InstallProvider>
+        <Outlet />
+      </InstallProvider>
       {isWorkspace && <ArtifactCommandPalette onNavigate={openArtifact} />}
       <ConnectionNotice />
       <Toaster

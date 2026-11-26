@@ -7,23 +7,45 @@ import {
 } from '@akasha/ui/dropdown-menu'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
+import { InstallProvider } from '../src/shared/platform/install'
 import { HostDisplayItems } from '../src/widgets/TopBar/ui/HostDisplayItems'
 
 afterEach(cleanup)
 
 function renderMenu() {
   render(
-    <DropdownMenu>
-      <DropdownMenuTrigger>打开作品菜单</DropdownMenuTrigger>
-      <DropdownMenuContent>
-        <DropdownMenuItem>查看</DropdownMenuItem>
-        <HostDisplayItems />
-      </DropdownMenuContent>
-    </DropdownMenu>,
+    <InstallProvider>
+      <DropdownMenu>
+        <DropdownMenuTrigger>打开作品菜单</DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem>查看</DropdownMenuItem>
+          <HostDisplayItems />
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </InstallProvider>,
   )
   return () =>
     fireEvent.keyDown(screen.getByRole('button', { name: '打开作品菜单' }), { key: 'Enter' })
 }
+
+it('没有宿主能力时保留作品操作；只在收到安装邀请后展示安装，取消后不重复提示', async () => {
+  const open = renderMenu()
+  open()
+  await screen.findByRole('menuitem', { name: '查看' })
+  expect(screen.queryByRole('menuitem', { name: '全屏查看' })).toBeNull()
+  expect(screen.queryByRole('menuitem', { name: '安装 Akasha' })).toBeNull()
+  const prompt = vi.fn().mockResolvedValue({ outcome: 'dismissed' })
+  act(() => {
+    window.dispatchEvent(
+      Object.assign(new Event('beforeinstallprompt', { cancelable: true }), { prompt }),
+    )
+  })
+  fireEvent.click(await screen.findByRole('menuitem', { name: '安装 Akasha' }))
+  expect(prompt).toHaveBeenCalledOnce()
+  open()
+  await screen.findByRole('menuitem', { name: '查看' })
+  expect(screen.queryByRole('menuitem', { name: '安装 Akasha' })).toBeNull()
+})
 
 it('宿主拒绝全屏时不假装已进入，从系统退出时作品菜单同步恢复', async () => {
   const root = document.documentElement
