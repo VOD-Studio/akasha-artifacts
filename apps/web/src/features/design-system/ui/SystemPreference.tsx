@@ -1,5 +1,6 @@
 import { Checkbox } from '@akasha/ui/checkbox'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useId } from 'react'
 import { useMessages } from '@/shared/i18n'
 import { updateDefaultPreference } from '../api/catalog'
 import { messages } from '../messages'
@@ -13,6 +14,7 @@ export function SystemPreference({
   inheritDefault: boolean
 }) {
   const { t } = useMessages(messages)
+  const checkboxId = useId()
   const cache = useQueryClient()
   const save = useMutation({
     mutationFn: (value: boolean) => updateDefaultPreference(projectId, value),
@@ -20,8 +22,9 @@ export function SystemPreference({
   })
   return (
     <div>
-      <label className="flex items-center gap-2">
+      <label htmlFor={checkboxId} className="flex items-center gap-2">
         <Checkbox
+          id={checkboxId}
           checked={inheritDefault}
           disabled={save.isPending}
           onCheckedChange={(checked) => save.mutate(checked === true)}

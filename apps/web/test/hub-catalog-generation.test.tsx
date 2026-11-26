@@ -116,7 +116,7 @@ it.each(['使用个人设置', '本次不使用系统', '选择系统版本'])(
       fireEvent.click(await screen.findByRole('option', { name: mode }))
     }
     if (mode === '选择系统版本') {
-      fireEvent.click(form.getByRole('checkbox', { name: new RegExp(first) }))
+      fireEvent.click(form.getByText(new RegExp(first)))
       fireEvent.click(form.getByRole('checkbox', { name: new RegExp(second) }))
       fireEvent.click(form.getByRole('combobox', { name: new RegExp(first) }))
       fireEvent.click(await screen.findByRole('option', { name: 'ui/Brand.tsx#Brand' }))
@@ -145,7 +145,7 @@ it('成员改变继承偏好后关闭重开目录，仍显示已保存的选择'
   fireEvent.click(await screen.findByRole('button', { name: '系统目录' }))
   const toggle = await screen.findByRole('checkbox', { name: '继承团队默认' })
   expect(toggle.getAttribute('aria-checked')).toBe('true')
-  fireEvent.click(toggle)
+  fireEvent.click(screen.getByText('继承团队默认'))
   await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('false'))
   fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())

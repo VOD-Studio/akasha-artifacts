@@ -2,6 +2,7 @@ import type { CatalogSelection, CatalogSystem } from '@akasha/protocol'
 import { Checkbox } from '@akasha/ui/checkbox'
 import { Field } from '@akasha/ui/field'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
+import { useId } from 'react'
 import { useMessages } from '@/shared/i18n'
 import { messages } from '../messages'
 import { componentKey } from '../model/review'
@@ -15,6 +16,7 @@ interface CatalogSelectionsProps {
 /** 用系统 ID 与固定版本寻址；同名系统或同名导出不会互相覆盖。 */
 export function CatalogSelections({ items, selections, onChange }: CatalogSelectionsProps) {
   const { t } = useMessages(messages)
+  const listId = useId()
   if (items.length === 0) return <p>{t('无可用系统版本')}</p>
   return (
     <fieldset className="space-y-3">
@@ -25,6 +27,7 @@ export function CatalogSelections({ items, selections, onChange }: CatalogSelect
         )
         const selected = selections[index]
         const label = `${item.title} · ${item.id} · v${item.version}`
+        const checkboxId = `${listId}-${item.id}-${item.version}`
         const setComponent = (value: string) => {
           const component = item.components.find((entry) => componentKey(entry) === value)
           onChange(
@@ -37,8 +40,9 @@ export function CatalogSelections({ items, selections, onChange }: CatalogSelect
         }
         return (
           <div key={`${item.id}:${item.version}`} className="space-y-2">
-            <label className="flex items-center gap-2">
+            <label htmlFor={checkboxId} className="flex items-center gap-2">
               <Checkbox
+                id={checkboxId}
                 checked={!!selected}
                 disabled={!selected && selections.length >= 8}
                 onCheckedChange={(checked) =>
