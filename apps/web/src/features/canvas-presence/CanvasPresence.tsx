@@ -32,7 +32,7 @@ export function CanvasPresence({ artifactId, pageId, viewportRef, camera }: Canv
   }, [camera])
   useEffect(() => {
     const viewport = viewportRef.current
-    if (!viewport) return
+    if (!viewport || typeof WebSocket !== 'function') return
     const connection = openCursorChannel(
       artifactId,
       pageId,

@@ -74,7 +74,7 @@ function openHub(
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
   let role: Access = options.role ?? 'view'
   const request = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-    const { pathname } = new URL(String(input), window.location.origin)
+    const { pathname, searchParams } = new URL(String(input), window.location.origin)
     if (pathname === sessionUrl) return Response.json(options.signedOut ? { user: null } : signedIn)
     if (pathname === acceptUrl)
       return options.acceptStatus
@@ -82,9 +82,17 @@ function openHub(
         : Response.json({ artifactId: artifact.publicId })
     if (pathname === endpoint) {
       if (role === 'revoked') return new Response(null, { status: 404 })
-      if (role === 'owner-only') return Response.json({ ...detail, hubRestricted: true })
+      const canvas =
+        searchParams.get('view') === 'canvas'
+          ? {
+              hubCanEditCanvas:
+                !searchParams.has('version') && (role === 'edit' || role === 'owner-only'),
+            }
+          : {}
+      if (role === 'owner-only') return Response.json({ ...detail, ...canvas, hubRestricted: true })
       return Response.json({
         ...detail,
+        ...canvas,
         access: { role, expiresAt: new Date(Date.now() + 60_000).toISOString() },
       })
     }
