@@ -34,6 +34,10 @@ export interface ArtifactDetailResponse {
   access?: ArtifactSharedAccess
   /** 受控作品的所有者预览也保留在 Hub，不探测本机副本。 */
   hubRestricted?: true
+  /** 当前会话能否写入此作品；缺省时按兼容旧响应处理。 */
+  canWrite?: boolean
+  /** 当前会话能否发表、回复或处理批注；缺省时按兼容旧响应处理。 */
+  canComment?: boolean
 }
 
 /** 签发分享链接；普通定位链接不经过这个接口。 */

@@ -236,7 +236,9 @@ export function ArtifactRouteView({
   }
   const openHandoff = (label: string, scope?: HandoffScope) =>
     setHandoffTarget({ label, reference: getHandoffReference(detail, scope) })
-  const canTalkToAgent = !cloudHub && !shareAccess
+  const canWrite = detail.canWrite !== false
+  const canComment = detail.canComment !== false
+  const canTalkToAgent = !cloudHub && !shareAccess && canWrite
   const agent =
     canTalkToAgent && agentPanel?.artifactId === detail.artifact.publicId ? agentPanel : null
 
@@ -305,6 +307,8 @@ export function ArtifactRouteView({
         versions={versions}
         fixedVersion={viewingFixedVersion}
         shareAccess={shareAccess}
+        canWrite={canWrite}
+        canComment={canComment}
         onShare={cloudHub && !shareAccess ? openShare : undefined}
         onTransfer={
           shareAccess

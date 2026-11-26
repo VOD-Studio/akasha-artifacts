@@ -42,6 +42,17 @@ export const messages = {
   仅查看: ['Nur ansehen', 'عرض فقط', 'Can view'],
   可编辑: ['Darf bearbeiten', 'يمكنه التحرير', 'Can edit'],
   可批注: ['Darf kommentieren', 'يمكنه التعليق', 'Can comment'],
+  只读: ['Schreibgeschützt', 'للقراءة فقط', 'Read-only'],
+  '当前会话未授权写入，请通过 akasha open 打开': [
+    'Diese Sitzung darf nicht schreiben. Bitte über akasha open öffnen.',
+    'هذه الجلسة غير مخوّلة بالكتابة؛ افتحها عبر akasha open.',
+    'This session cannot write. Open it via akasha open.',
+  ],
+  当前账户没有编辑权限: [
+    'Dieses Konto hat keine Bearbeitungsrechte.',
+    'لا يملك هذا الحساب صلاحية التعديل.',
+    'This account does not have edit permission.',
+  ],
   返回作品库: ['Zur Bibliothek', 'العودة إلى المكتبة', 'Back to library'],
   'Agent 正在修改': ['Agent bearbeitet das Werk', 'الوكيل يحرّر العمل', 'Agent is editing'],
   返回画布: ['Zur Leinwand', 'العودة إلى مساحة الرسم', 'Back to canvas'],

@@ -320,6 +320,26 @@ describe('Cloud Hub 身份与制品权限', () => {
       })
     }
     expect((await send(`/api/v1/artifacts/${open.artifact.publicId}`)).status).toBe(200)
+    expect(await (await send(`/api/v1/artifacts/${open.artifact.publicId}`)).json()).toMatchObject({
+      canWrite: false,
+      canComment: false,
+    })
+    expect(
+      await (
+        await send(`/api/v1/artifacts/${open.artifact.publicId}`, { headers: { cookie: bob } })
+      ).json(),
+    ).toMatchObject({
+      canWrite: false,
+      canComment: true,
+    })
+    expect(
+      await (
+        await send(`/api/v1/artifacts/${open.artifact.publicId}`, { headers: { cookie: alice } })
+      ).json(),
+    ).toMatchObject({
+      canWrite: true,
+      canComment: true,
+    })
     expect(
       (await send(`/api/v1/artifacts/${team.artifact.publicId}`, { headers: { cookie: eve } }))
         .status,

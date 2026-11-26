@@ -63,6 +63,18 @@ export function mountDaemonGuard(app: Hono, sec: HttpSecurityConfig, scopedTools
   })
 }
 
+/** 检查请求是否携带有效的本机写凭证；未配置令牌时视为已授权。 */
+export function hasLocalWriteAuth(request: Request, security?: HttpSecurityConfig): boolean {
+  if (!security?.token) return true
+  const origin = request.headers.get('Origin')
+  if (origin && security.allowedOrigins && !security.allowedOrigins.includes(origin)) {
+    return false
+  }
+  if (request.headers.get('Authorization') === `Bearer ${security.token}`) return true
+  const cookieName = security.cookieName ?? 'akasha_session'
+  return parseCookies(request.headers.get('Cookie') ?? undefined)[cookieName] === security.token
+}
+
 /** 浏览器读取 Agent 会话也须有本机凭证，并通过同源校验。 */
 export function authorizeAgentSessionRead(
   request: Request,

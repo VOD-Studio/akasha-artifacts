@@ -66,6 +66,8 @@ interface BoardInspectorProps {
   document: CanvasDocument
   location: CanvasLocation | null
   readOnly: boolean
+  /** 说明只读成因，便于在未授权会话或只读身份下前置给出明确提示。 */
+  readOnlyReason?: 'historical' | 'local-auth' | 'permission' | 'shared'
   /** 分享编辑者能保存版本，但作品模板的状态流仍归作品所有者。 */
   templateReadOnly: boolean
   tweakPreviews: BoardTweakPreviewStore
@@ -127,6 +129,7 @@ export function BoardInspector({
   document,
   location,
   readOnly,
+  readOnlyReason,
   templateReadOnly,
   tweakPreviews,
   onOpenEditor,
@@ -256,7 +259,14 @@ export function BoardInspector({
   const designLayer = board?.designLayers?.find(
     (item) => `${DESIGN_LAYER_BLOCK_PREFIX}${item.id}` === selectedBlock,
   )
-  const readOnlyLabel = version.version === artifact.headVersion ? t('只读') : t('历史版本 · 只读')
+  let readOnlyLabel = t('只读')
+  if (readOnlyReason === 'historical' || version.version !== artifact.headVersion) {
+    readOnlyLabel = t('历史版本 · 只读')
+  } else if (readOnlyReason === 'local-auth') {
+    readOnlyLabel = t('只读 · 缺少本机会话凭证，请通过 akasha open 打开')
+  } else if (readOnlyReason === 'permission') {
+    readOnlyLabel = t('只读 · 无编辑权限')
+  }
   const [extraLayers, setExtraLayers] = useState<(LayoutSelection & { scope: string }) | null>(null)
   const scope = JSON.stringify([artifact.publicId, board?.id])
   const activeDesignSelection: LayoutSelection = {

@@ -51,6 +51,7 @@ interface ArtifactTitleMenuProps {
   onTransfer?: (kind: ArtifactTransferInput['kind']) => void
   onWithdrawn?: () => void
   canEdit?: boolean
+  canFavorite?: boolean
   shared?: boolean
   onQuickJump: () => void
 }
@@ -67,12 +68,14 @@ export function ArtifactTitleMenu({
   onTransfer,
   onWithdrawn,
   canEdit = true,
+  canFavorite,
   shared = false,
   onQuickJump,
 }: ArtifactTitleMenuProps) {
   const { t, dir } = useMessages(messages)
   const { publicId, title } = artifact
   const reload = useReloadArtifactMutation(publicId, artifact.projectId)
+  const showFavorite = canFavorite ?? !shared
   const favorites = useArtifactFavoritesQuery()
   const setFavorite = useSetArtifactFavoriteMutation(publicId)
   const isFavorite = favorites.data?.includes(publicId) ?? false
@@ -148,7 +151,7 @@ export function ArtifactTitleMenu({
             {t('复制链接')}
           </DropdownMenuItem>
           <HostDisplayItems />
-          {!shared && favorites.data ? (
+          {showFavorite && favorites.data ? (
             <DropdownMenuItem disabled={setFavorite.isPending} onSelect={toggleFavorite}>
               <Star size={14} />
               {isFavorite ? t('取消收藏') : t('收藏')}

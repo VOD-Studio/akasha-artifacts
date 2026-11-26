@@ -136,10 +136,21 @@ export function ArtifactWorkspace({
 }: ArtifactWorkspaceProps) {
   const { access, artifact, version, state } = detail
   const queryClient = useQueryClient()
+  const sessionCanWrite = detail.canWrite !== false
   const shareCanEdit = !access || (access.role === 'edit' && fixedVersion === undefined)
   const canWriteVersion =
-    shareCanEdit && fixedVersion === undefined && version.version === artifact.headVersion
-  const canComment = access?.role !== 'view'
+    sessionCanWrite &&
+    shareCanEdit &&
+    fixedVersion === undefined &&
+    version.version === artifact.headVersion
+  const canComment = access?.role !== 'view' && detail.canComment !== false
+  let readOnlyReason: 'historical' | 'local-auth' | 'permission' | 'shared' | undefined
+  if (!canWriteVersion) {
+    if (version.version !== artifact.headVersion) readOnlyReason = 'historical'
+    else if (access) readOnlyReason = 'shared'
+    else if (!isCloudHub()) readOnlyReason = 'local-auth'
+    else readOnlyReason = 'permission'
+  }
   const rounds = roundsOverride ?? detail.rounds
   const [liveEdit, setLiveEdit] = useState<{ version: number; source: string } | null>(null)
   const [canvasLocation, setCanvasLocation] = useState<CanvasLocation | null>(null)
@@ -272,9 +283,9 @@ export function ArtifactWorkspace({
   }, [inspectorOpen, cancelVisual])
 
   const lastSyncedSelectionRef = useRef<string | null>(null)
-  // 终端只同步当前头版本的选区；读历史不改终端上下文。
+  // 终端只同步当前可写头版本的选区；读历史或无写权限时不发无效同步请求。
   useEffect(() => {
-    if (access || fixedVersion !== undefined) return
+    if (access || fixedVersion !== undefined || !sessionCanWrite) return
     const sig = JSON.stringify({
       projectId: artifact.projectId,
       artifactId: artifact.publicId,
@@ -289,7 +300,14 @@ export function ArtifactWorkspace({
       })
     }, 150)
     return () => clearTimeout(timer)
-  }, [access, artifact.projectId, artifact.publicId, fixedVersion, selectedElement])
+  }, [
+    access,
+    artifact.projectId,
+    artifact.publicId,
+    fixedVersion,
+    selectedElement,
+    sessionCanWrite,
+  ])
 
   const savedIndex = detail.canvas
   const definition = detail.canvas === undefined ? detail.version.source : detail.canvas
@@ -1106,6 +1124,7 @@ export function ArtifactWorkspace({
         document={savedCanvas}
         location={canvasLocation}
         readOnly={!canWriteVersion}
+        readOnlyReason={readOnlyReason}
         templateReadOnly={Boolean(access) || !canWriteVersion}
         tweakPreviews={tweakPreviews}
         onOpenEditor={canWriteVersion ? openCodeEditor : undefined}

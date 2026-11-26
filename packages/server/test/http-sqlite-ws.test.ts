@@ -817,4 +817,57 @@ describe('WebSocket realtime catch-up, project routing, resync, and long-poll aw
     expect(result.items).toHaveLength(1)
     expect(result.items[0]?.body).toBe('通过')
   })
+
+  it('本机读接口按会话凭证如实返回 canWrite、canComment 与 canManage，前置识别无写权限', async () => {
+    const srv = await startNodeServer({ dbPath: ':memory:', port: 0 })
+    closers.push(srv.close)
+
+    const { artifact } = await srv.service.publish({
+      slug: 'artboard/perm-check',
+      title: '权限前置检查',
+      type: 'artboard',
+      source: JSON.stringify({
+        boards: [{ id: 'home', title: '首页', html: '<h1>首页</h1>' }],
+      }),
+      author: 'agent:claude',
+    })
+    const path = `${srv.baseUrl}/api/v1/artifacts/${artifact.publicId}`
+
+    expect(await (await fetch(path)).json()).toMatchObject({
+      canWrite: false,
+      canComment: false,
+    })
+    expect(await (await fetch(`${path}?view=canvas`)).json()).toMatchObject({
+      canWrite: false,
+      canComment: false,
+    })
+    expect(await (await fetch(`${path}/management`)).json()).toEqual({ canManage: false })
+
+    const cookieHeaders = { Cookie: `akasha_session=${srv.token}` }
+    expect(
+      await (await fetch(`${path}?view=canvas`, { headers: cookieHeaders })).json(),
+    ).toMatchObject({
+      canWrite: true,
+      canComment: true,
+    })
+    expect(await (await fetch(`${path}/management`, { headers: cookieHeaders })).json()).toEqual({
+      canManage: true,
+    })
+
+    const bearerHeaders = { Authorization: `Bearer ${srv.token}` }
+    expect(await (await fetch(path, { headers: bearerHeaders })).json()).toMatchObject({
+      canWrite: true,
+      canComment: true,
+    })
+    expect(
+      await (
+        await fetch(`${path}?view=canvas`, {
+          headers: { ...cookieHeaders, Origin: 'https://evil.example' },
+        })
+      ).json(),
+    ).toMatchObject({
+      canWrite: false,
+      canComment: false,
+    })
+  })
 })

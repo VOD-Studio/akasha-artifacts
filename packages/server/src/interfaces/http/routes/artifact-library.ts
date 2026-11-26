@@ -4,6 +4,8 @@ import { z } from 'zod'
 import type { ArtifactService } from '../../../application/artifact-service.js'
 import { DomainError } from '../../../domain/errors.js'
 import type { ArtifactRepository } from '../../../domain/ports.js'
+import { hasLocalWriteAuth } from '../daemon-guard.js'
+import type { HttpSecurityConfig } from '../dependencies.js'
 import { parseJsonBody } from '../request-body.js'
 
 interface LibraryRoutes {
@@ -20,6 +22,7 @@ interface LibraryRoutes {
     | 'transferArtifact'
   >
   artifacts: Pick<ArtifactRepository, 'lifecycle' | 'listByProject'>
+  security?: HttpSecurityConfig
 }
 
 export function mountArtifactLibraryRoutes(
@@ -42,12 +45,16 @@ export function mountArtifactLibraryRoutes(
       throw new DomainError('BAD_REQUEST', 'version 参数必须为正整数')
     }
     const input = { id, projectId, version }
+    const canWrite = hasLocalWriteAuth(c.req.raw, deps.security)
+    const permissions = { canWrite, canComment: canWrite }
     if (c.req.query('view') === 'canvas') {
-      return c.json(await deps.service.getWorkspace(input), 200, {
+      return c.json({ ...(await deps.service.getWorkspace(input)), ...permissions }, 200, {
         'Cache-Control': 'private, no-store',
       })
     }
-    return c.json(await deps.service.getArtifact(input))
+    return c.json({ ...(await deps.service.getArtifact(input)), ...permissions }, 200, {
+      'Cache-Control': 'private, no-store',
+    })
   })
 
   app.get('/api/v1/artifacts/:id/boards', async (c) => {
@@ -84,7 +91,9 @@ export function mountArtifactLibraryRoutes(
 
   app.get('/api/v1/artifacts/:id/management', async (c) => {
     await deps.service.resolveArtifact(c.req.param('id'), c.req.query('projectId'))
-    return c.json({ canManage: true }, 200, { 'Cache-Control': 'private, no-store' })
+    return c.json({ canManage: hasLocalWriteAuth(c.req.raw, deps.security) }, 200, {
+      'Cache-Control': 'private, no-store',
+    })
   })
 
   app.patch('/api/v1/artifacts/:id/metadata', async (c) => {

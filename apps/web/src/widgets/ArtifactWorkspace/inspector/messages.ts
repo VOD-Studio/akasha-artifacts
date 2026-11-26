@@ -7,6 +7,16 @@ export const panelMessages = {
     'إصدار سابق · للقراءة فقط',
     'Historical version · read-only',
   ],
+  '只读 · 缺少本机会话凭证，请通过 akasha open 打开': [
+    'Schreibgeschützt · Lokale Sitzung fehlt, bitte über akasha open öffnen',
+    'للقراءة فقط · تفتقد الجلسة المحلية للبيانات، افتح عبر akasha open',
+    'Read-only · Missing local session, open via akasha open',
+  ],
+  '只读 · 无编辑权限': [
+    'Schreibgeschützt · Keine Bearbeitungsrechte',
+    'للقراءة فقط · لا توجد صلاحية تعديل',
+    'Read-only · No edit permission',
+  ],
   检查器: ['Inspektor', 'الفاحص', 'Inspector'],
   检查器选项: ['Inspektoroptionen', 'خيارات الفاحص', 'Inspector options'],
   属性: ['Eigenschaften', 'الخصائص', 'Properties'],

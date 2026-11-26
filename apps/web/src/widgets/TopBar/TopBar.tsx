@@ -4,6 +4,7 @@ import type {
   ArtifactTransferInput,
   VersionSummary,
 } from '@akasha/protocol'
+import { Badge } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
 import { ArrowLeft, PanelLeft, Share2 } from 'lucide-react'
 import type { Ref } from 'react'
@@ -12,6 +13,7 @@ import { useWorkspaceStore, type WorkspaceViewMode } from '@/entities/workspace'
 import { HubAccountButton } from '@/features/hub'
 import { VersionTimeline } from '@/features/version-timeline'
 import { AkashaMark } from '@/shared/brand'
+import { isCloudHub } from '@/shared/config/runtime'
 import { LanguageMenu, useMessages } from '@/shared/i18n'
 import { ThemeToggle } from '@/shared/theme'
 import { messages } from './messages'
@@ -36,6 +38,10 @@ export interface TopBarProps {
   agentToggleRef?: Ref<HTMLButtonElement>
   onToggleAgent?: () => void
   shareAccess?: ArtifactSharedAccess
+  /** 当前会话能否写入此作品；缺省时按可写兼容旧调用方。 */
+  canWrite?: boolean
+  /** 当前会话能否发表批注或写入用户态偏好（如收藏）；缺省时按允许兼容。 */
+  canComment?: boolean
   onShare?: () => void
   onTransfer?: (kind: ArtifactTransferInput['kind']) => void
   onSelectVersion: (version?: number) => void
@@ -62,6 +68,8 @@ export function TopBar({
   agentToggleRef,
   onToggleAgent,
   shareAccess,
+  canWrite = true,
+  canComment = true,
   onShare,
   onTransfer,
   onSelectVersion,
@@ -76,7 +84,13 @@ export function TopBar({
   const canManage = !shareAccess && management.isSuccess && management.data.canManage
 
   const editing = !shareAccess && agentActivity?.state === 'editing'
-  const statusLabel = shareAccess ? t(getShareRole(shareAccess, fixedVersion)) : undefined
+  const readOnlySession = !shareAccess && !canWrite
+  let statusLabel: string | undefined
+  if (shareAccess) statusLabel = t(getShareRole(shareAccess, fixedVersion))
+  else if (readOnlySession) statusLabel = t('只读')
+  const readOnlyHint = isCloudHub()
+    ? t('当前账户没有编辑权限')
+    : t('当前会话未授权写入，请通过 akasha open 打开')
 
   const showTool = (mode: WorkspaceViewMode) => setViewMode(mode)
   const showCanvas = () => showTool('preview')
@@ -107,7 +121,11 @@ export function TopBar({
           onWithdrawn={shareAccess ? undefined : onBackToLibrary}
           shared={Boolean(shareAccess)}
           canManage={canManage}
-          canEdit={!shareAccess || (shareAccess.role === 'edit' && fixedVersion === undefined)}
+          canFavorite={!shareAccess && canComment}
+          canEdit={
+            canWrite &&
+            (!shareAccess || (shareAccess.role === 'edit' && fixedVersion === undefined))
+          }
           onQuickJump={openQuickJump}
         />
         <VersionTimeline
@@ -115,9 +133,14 @@ export function TopBar({
           activeVersion={version.version}
           headVersion={artifact.headVersion}
           versions={versions}
-          canRevert={!shareAccess}
+          canRevert={canWrite && !shareAccess}
           onSelectVersion={onSelectVersion}
         />
+        {readOnlySession ? (
+          <Badge tone="neutral" title={readOnlyHint} className="ms-1 hidden sm:inline-flex">
+            {t('只读')}
+          </Badge>
+        ) : null}
       </div>
 
       <div className="ms-auto flex max-w-full flex-wrap items-center justify-end gap-1">
