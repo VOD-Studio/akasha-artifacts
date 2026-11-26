@@ -43,7 +43,7 @@ export function InspectorSection({
 
   if (collapsible) {
     return (
-      <section aria-label={ariaLabel} className="border-b border-border/75 last:border-b-0">
+      <section aria-label={ariaLabel} className="border-b border-border/75">
         <button
           type="button"
           aria-expanded={isOpen}
@@ -65,10 +65,7 @@ export function InspectorSection({
   }
 
   return (
-    <section
-      aria-label={ariaLabel}
-      className="border-b border-border/75 px-4 py-3.5 last:border-b-0"
-    >
+    <section aria-label={ariaLabel} className="border-b border-border/75 px-4 py-3.5">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h3 className="text-[13px] font-semibold text-ink">{title}</h3>
         {action}
