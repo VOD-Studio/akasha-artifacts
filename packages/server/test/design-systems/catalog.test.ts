@@ -1,4 +1,5 @@
 import {
+  CatalogGenerateOutputSchema,
   type DesignSystemDraft,
   DesignSystemPreviewOutputSchema,
   DesignSystemWriteOutputSchema,
@@ -211,19 +212,18 @@ it('真实起稿纠正被替换的组件和规范，同时保留候选的标题�
     })
   const result = await generate(candidateSource, 'corrected')
   expect(result.status).toBe(201)
-  const saved = await result.json()
+  const saved = CatalogGenerateOutputSchema.parse(await result.json())
   expect(saved.corrections).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ kind: 'component', id, version: 1, component }),
       expect.objectContaining({ kind: 'guidance', id, version: 1 }),
     ]),
   )
-  const design = DesignSystemWriteOutputSchema.parse(saved)
-  expect(design.version.source).toContain('Sent from original')
-  expect(design.version.source).toContain('"color":"#123456"')
-  expect(design.version.source).toContain('My checkout')
-  expect(design.version.source).toContain('Place order')
-  expect(design.version.source).not.toContain('Wrong implementation')
+  expect(saved.version.source).toContain('Sent from original')
+  expect(saved.version.source).toContain('"color":"#123456"')
+  expect(saved.version.source).toContain('My checkout')
+  expect(saved.version.source).toContain('Place order')
+  expect(saved.version.source).not.toContain('Wrong implementation')
   const manual = await generate(`${candidateSource}\nexport const custom = true`, 'manual')
   expect(manual.status).toBe(400)
   expect(await manual.json()).toMatchObject({
@@ -235,6 +235,9 @@ it('真实起稿纠正被替换的组件和规范，同时保留候选的标题�
       },
     },
   })
-  const list = await (await hub.send('/api/v1/artifacts', 'GET', member.cookie)).json()
-  expect(list.artifacts.map((artifact: { slug: string }) => artifact.slug)).not.toContain('manual')
+  const response = await hub.send('/api/v1/artifacts', 'GET', member.cookie)
+  const list = z
+    .object({ artifacts: z.array(z.object({ slug: z.string() })) })
+    .parse(await response.json())
+  expect(list.artifacts.map(({ slug }) => slug)).not.toContain('manual')
 })
