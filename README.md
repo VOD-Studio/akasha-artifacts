@@ -215,6 +215,33 @@ The default scope is `private`, isolated by user and artifact. `shared` is reada
 | `artifact_await_feedback` | M2        | Long-poll wait (up to 50s) for browser feedback in harnesses without async hook wakeup.                               |
 | `artifact_record_verdict` | M2        | Sync terminal-spoken choices or Pass/Reject/Waive verdicts back onto the artifact's active review round.              |
 
+### Resume a coding session
+
+To select a live target, run `akasha coding connect --label checkout` in the local checkout and leave the terminal open. In a remote checkout (including a browser IDE terminal) run `akasha login --hub <origin>` and `akasha coding connect --hub <origin> --project-id <id> --label checkout`. On the artifact choose **Hand off to agent → Refresh targets → Hand off to checkout**. The waiting terminal receives the pinned design; reopening the dialog for that selection lets you resume the same session. The Hub never starts a process on either machine.
+
+Choose **Open coding workspace** to return to that exact bound session in the browser. The bookmark contains only a project and session ID: the server checks your author login again. Inspect the pinned selection and component sources or edit the artifact source and publish. The preview link opens the new immutable version. Browser edits do not modify checkout files; use the authorized terminal for repository changes.
+
+In the project checkout, save the JSON object from **Hand off to Agent** as `handoff.json`. The following commands use the returned session ID, never a token:
+
+```sh
+akasha coding connect --handoff handoff.json --label checkout
+akasha coding read --session <id>
+claude mcp add --scope local --transport stdio akasha-design -- akasha coding mcp --session <id>
+```
+
+In Claude Code in that checkout, call `coding_session_read`. For a self-hosted Hub, first run `akasha login --hub <origin>` and add `--hub <origin> --project-id <id>` to `connect`. The Hub verifies ownership. Session credentials stay outside the checkout under `AKASHA_HOME`; the session expires after eight hours.
+
+Edit a component in the checkout, then publish its named export and explicit dependencies. Akasha bundles only these files and returns a pinned preview link. For a complete artifact source file omit `--export` and dependencies. A stale session returns HTTP 409 without replacing the newer version.
+
+```sh
+akasha coding publish --session <id> --file src/Button.tsx --export ConfirmButton --props '{"children":"Confirm"}' src/button.css
+```
+
+A new handoff pinned to the published version returns the editable entry file in `components` with `origin: "workspace"`. If the artifact came from a reviewed design system, `reviewedSystem` still points to that system’s original version, fingerprint, paths and exports. It does not mark your changes as reviewed.
+
+Editing only the generated preview's example props in the web workspace preserves the project entry. Replacing the implementation can keep the original design-system link; if the current component cannot be verified, the handoff returns the artifact source without substituting an older component file.
+If the source system is withdrawn or the artifact moves to another project, the artifact and any project entry saved with that version remain available. The recipient does not receive component files from the old system.
+
 ---
 
 ## Development

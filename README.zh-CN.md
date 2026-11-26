@@ -215,6 +215,33 @@ await window.akasha.storage.delete('layout')
 | `artifact_await_feedback` | M2     | 在无异步 Hook 唤醒的客户端中长轮询等待浏览器反馈（单次最长 50 秒）。                     |
 | `artifact_record_verdict` | M2     | 将用户在终端口头表达的选择或 Pass/Reject/Waive 验收裁决回写至对应评审轮次。              |
 
+### 续接编码会话
+
+要选择正在等待的目标，在本机工程执行 `akasha coding connect --label checkout` 并保持终端打开。在远端工程（包括 Web IDE 的终端）中先运行 `akasha login --hub <origin>`，再运行 `akasha coding connect --hub <origin> --project-id <id> --label checkout`。打开作品的「移交给 Agent → 刷新目标 → 移交到 checkout」。终端会收到固定设计；以相同选区重新打开对话框可续接同一会话。Hub 不在任一机器上启动进程。
+
+点击「打开编码工作区」可在浏览器回到刚绑定的会话。书签只含项目和会话 ID，每次打开都要验证作者身份。可检查固定选区、组件来源，编辑作品源码并发布；预览链接打开新版本。浏览器不会改写工程文件，需要修改代码库时使用已授权终端。
+
+在项目目录中，把「移交给 Agent」的 JSON 对象保存为 `handoff.json`。以下命令使用签入返回的会话 ID，不传令牌：
+
+```sh
+akasha coding connect --handoff handoff.json --label checkout
+akasha coding read --session <id>
+claude mcp add --scope local --transport stdio akasha-design -- akasha coding mcp --session <id>
+```
+
+在此项目打开 Claude Code，调用 `coding_session_read`。自托管 Hub 先运行 `akasha login --hub <origin>`，再给 `connect` 加 `--hub <origin> --project-id <id>`；Hub 检查项目所有权。会话凭据存放在项目外的 `AKASHA_HOME` 中，八小时后过期。
+
+在工程中改好组件，按导出名称和显式依赖发布；只打包所列文件，成功后返回固定预览链接。已有完整作品源码时省略 `--export` 和依赖文件。头版本已变化时返回 HTTP 409，不会覆盖较新的版本。
+
+```sh
+akasha coding publish --session <id> --file src/Button.tsx --export ConfirmButton --props '{"children":"确认"}' src/button.css
+```
+
+把回传后的版本再次移交给编码会话，`components` 会返回可编辑的工程入口源码，并标记 `origin: "workspace"`。若作品来自已审阅设计系统，`reviewedSystem` 仍指向当时的系统版本、指纹、路径和导出名，不代表工程改动已通过审阅。
+
+在 Web 中只修改生成预览的示例属性，会保留工程入口。替换整稿实现后，原设计系统链接仍可用；若无法从该版本确认当前组件，交接只返回作品源码，不会用旧组件文件代替。
+若来源系统已撤下，或作品被移至另一个项目，仍可交接作品及该版本保存的工程入口；接收方不会得到原系统的组件文件。
+
 ---
 
 ## 本地开发

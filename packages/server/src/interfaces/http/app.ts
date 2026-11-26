@@ -9,6 +9,7 @@ import { parseJsonBody } from './request-body.js'
 import { mountArtifactLibraryRoutes } from './routes/artifact-library.js'
 import { mountAuthoringRoutes } from './routes/authoring.js'
 import { mountBrowserSessionRoutes } from './routes/browser-session.js'
+import { mountCodingSessionRoutes } from './routes/coding-sessions.js'
 import { mountDaemonRoutes } from './routes/daemon.js'
 import { mountDesignSystemRoutes } from './routes/design-systems.js'
 import { mountFeedbackRoutes } from './routes/feedback.js'
@@ -94,6 +95,7 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
     })
   }
 
+  if (deps.artifactStorage) mountCodingSessionRoutes(app, deps, deps.artifactStorage)
   mountDaemonRoutes(app, deps)
   const forgetSelection = mountProjectRoutes(app, deps)
   mountStorageRoutes(app, deps)

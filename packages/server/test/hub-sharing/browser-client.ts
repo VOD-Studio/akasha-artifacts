@@ -82,5 +82,5 @@ export function browserClient(fetchRequest: (request: Request) => Promise<Respon
     if (!cookie) throw new Error('普通链接未创建分享凭据')
     return { url, cookie }
   }
-  return { send, login, publish, invite, accept, link }
+  return { send, login, publish, invite, accept, link, fetchRequest }
 }

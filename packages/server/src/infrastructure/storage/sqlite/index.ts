@@ -35,6 +35,7 @@ import type {
   ReceiptRepository,
   RoundRepository,
   StateRepository,
+  WorkspaceComponent,
 } from '../../../domain/ports.js'
 import { annotationStatements, createSqlAnnotationRepository } from '../annotation-records.js'
 import { rethrowArtifactStoreError } from '../artifact-conflict.js'
@@ -49,6 +50,11 @@ import {
   createSqlBoardProjectionRepository,
 } from '../board-projections.js'
 import type { SqlStatement } from '../cloud/types.js'
+import {
+  insertWorkspaceComponent,
+  selectWorkspaceComponent,
+  workspaceComponentTable,
+} from '../workspace-component.js'
 import { createSqliteArtifactStorage } from './artifact-kv.js'
 import { migrateFeedbackAudience } from './feedback-migration.js'
 
@@ -177,6 +183,7 @@ export class SqliteStorage {
     this.db.exec('PRAGMA busy_timeout = 5000;')
     runInTx(this.db, () => {
       this.db.exec(SCHEMA_SQL)
+      this.db.exec(workspaceComponentTable)
       this.db.exec(artifactLifecycleTable)
       for (const [sql] of boardProjectionSchema) this.db.exec(sql)
       for (const [sql] of annotationStatements) this.db.exec(sql)
@@ -400,7 +407,11 @@ export class SqliteArtifactRepository implements ArtifactRepository {
     for (const [sql, ...params] of statements) this.db.prepare(sql).run(...params)
   }
 
-  private insertVersionSync(version: Readonly<Version>, type?: ArtifactType): void {
+  private insertVersionSync(
+    version: Readonly<Version>,
+    type?: ArtifactType,
+    component?: WorkspaceComponent,
+  ): void {
     this.db
       .prepare(
         `INSERT INTO versions (artifact_id, version, parent_version, author, title, source, created_at)
@@ -415,6 +426,14 @@ export class SqliteArtifactRepository implements ArtifactRepository {
         version.source,
         version.createdAt,
       )
+    if (component) {
+      const [sql, ...args] = insertWorkspaceComponent(
+        version.artifactId,
+        version.version,
+        component,
+      )
+      this.db.prepare(sql).run(...args)
+    }
     if (type === 'artboard') {
       this.writeBoardProjection(
         boardProjectionStatements(
@@ -429,10 +448,14 @@ export class SqliteArtifactRepository implements ArtifactRepository {
   /**
    * 在单个同步事务内写入版本与制品元数据，后续校验失败时不会遗留孤儿版本。
    */
-  saveArtifactWithVersionSync(artifact: Artifact, version?: Readonly<Version>): void {
+  saveArtifactWithVersionSync(
+    artifact: Artifact,
+    version?: Readonly<Version>,
+    component?: WorkspaceComponent,
+  ): void {
     runInTx(this.db, () => {
       if (version) {
-        this.insertVersionSync(version, artifact.type)
+        this.insertVersionSync(version, artifact.type, component)
       }
       this.upsertArtifactSync(artifact)
     })
@@ -512,9 +535,25 @@ export class SqliteArtifactRepository implements ArtifactRepository {
     return row ? mapArtifact(row) : undefined
   }
 
-  async appendVersion(version: Readonly<Version>, type?: ArtifactType): Promise<void> {
-    if (type === 'artboard') runInTx(this.db, () => this.insertVersionSync(version, type))
+  async appendVersion(
+    version: Readonly<Version>,
+    type?: ArtifactType,
+    component?: WorkspaceComponent,
+  ): Promise<void> {
+    if (component || type === 'artboard')
+      runInTx(this.db, () => this.insertVersionSync(version, type, component))
     else this.insertVersionSync(version)
+  }
+
+  async getWorkspaceComponent(artifactId: PublicId, version: number) {
+    const row = this.db.prepare(selectWorkspaceComponent).get(artifactId, version)
+    return (
+      row && {
+        path: String(row.path),
+        exportName: String(row.exportName),
+        source: String(row.source),
+      }
+    )
   }
 
   async getVersions(artifactId: PublicId): Promise<readonly Readonly<Version>[]> {

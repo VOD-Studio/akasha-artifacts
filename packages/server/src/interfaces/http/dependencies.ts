@@ -54,6 +54,8 @@ export interface HttpAppDeps {
   security?: HttpSecurityConfig
   // 省略时制品存储接口返回 404
   artifactStorage?: ArtifactStorageRepository
+  // 只在专用会话凭证通过后按当前 Hub 目录核实项目所有者。
+  codingOwnerActive?: (project: string) => Promise<boolean>
   // 从请求解析制品存储的调用方身份；null 表示未登录。省略时视为本地单一用户
   storagePrincipal?: (request: Request) => Promise<string | null>
   // 收藏保留用户意愿，但列出时仍须检查当前权限；本地只验证制品仍存在。

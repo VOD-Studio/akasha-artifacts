@@ -174,6 +174,22 @@ export function mountHubGuard(
     const principal = await auth.authenticate(request)
     const defaultProject = principal ? `${hubProjectPrefix(principal)}default` : undefined
     const projectQuery = url.searchParams.get('projectId') ?? undefined
+    const coding =
+      /^\/api\/v1\/projects\/([^/]+)\/coding-sessions(?:\/(targets)|\/[a-f0-9-]{36}\/(read|poll|publish|bind|workspace|workspace-publish))?$/.exec(
+        path,
+      )
+    if (coding && method === 'POST') {
+      const action = coding[2] ?? coding[3]
+      if (action === 'read' || action === 'poll' || action === 'publish') return core.fetch(request)
+      if (!principal || !ownsHubProject(principal, decodeSegment(coding[1])))
+        return forbidden(c, principal)
+      if (action)
+        return principal.kind === 'session' ? core.fetch(request) : forbidden(c, principal)
+      if (principal.kind !== 'cli') return forbidden(c, principal)
+      const forwarded = new Request(request)
+      forwarded.headers.set('x-akasha-cli-expiry', String(auth.cliExpiry(principal)))
+      return core.fetch(forwarded)
+    }
 
     if (path === '/api/v1/withdrawn-artifacts' && read) {
       if (principal?.kind !== 'session' || !principal.member) return forbidden(c, principal)

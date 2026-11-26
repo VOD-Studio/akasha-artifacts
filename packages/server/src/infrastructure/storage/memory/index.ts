@@ -32,6 +32,7 @@ import type {
   ReceiptRepository,
   RoundRepository,
   StateRepository,
+  WorkspaceComponent,
 } from '../../../domain/ports.js'
 
 const ALPHANUM = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
@@ -105,6 +106,7 @@ export class InMemoryArtifactRepository implements ArtifactRepository {
   private readonly artifacts = new Map<PublicId, Artifact>()
   private readonly slugIndex = new Map<string, PublicId>()
   private readonly versions = new Map<PublicId, Readonly<Version>[]>()
+  private readonly workspaceComponents = new WeakMap<Readonly<Version>, WorkspaceComponent>()
   private readonly withdrawals = new Map<PublicId, { at: string | null; generation: number }>()
 
   private readonly projections = new Map<PublicId, Map<number, ArtboardProjection | null>>()
@@ -239,13 +241,18 @@ export class InMemoryArtifactRepository implements ArtifactRepository {
     return items
   }
 
-  async appendVersion(version: Readonly<Version>, type?: ArtifactType): Promise<void> {
+  async appendVersion(
+    version: Readonly<Version>,
+    type?: ArtifactType,
+    component?: WorkspaceComponent,
+  ): Promise<void> {
     const list = this.versions.get(version.artifactId) ?? []
     if (list.some((v) => v.version === version.version)) {
       throw new Error(`Artifact "${version.artifactId}" 已存在重复版本 v${version.version}`)
     }
     list.push(version)
     this.versions.set(version.artifactId, list)
+    if (component) this.workspaceComponents.set(version, component)
     if (type === 'artboard') {
       await this.boardProjections.save(
         version.artifactId,
@@ -253,6 +260,11 @@ export class InMemoryArtifactRepository implements ArtifactRepository {
         projectArtboard(version.source, version.version),
       )
     }
+  }
+
+  async getWorkspaceComponent(artifactId: PublicId, version: number) {
+    const fixed = await this.getVersion(artifactId, version)
+    return fixed && this.workspaceComponents.get(fixed)
   }
 
   async getVersions(artifactId: PublicId): Promise<readonly Readonly<Version>[]> {

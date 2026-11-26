@@ -90,6 +90,7 @@ export function createHubContainer(options: HubContainerOptions) {
         realtime.publish({ type: 'agent.activity', ...input }, { projectId: input.projectId }),
     },
     artifactStorage: options.artifactStorage,
+    codingOwnerActive: auth.codingOwnerActive,
     storagePrincipal: async (request) => (await auth.authenticate(request))?.userId ?? null,
     filterVisibleFavorites: async (request, candidates) =>
       access.listVisible(candidates, await auth.authenticate(request)),

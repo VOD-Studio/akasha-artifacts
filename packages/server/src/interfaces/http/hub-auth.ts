@@ -99,6 +99,10 @@ export interface HubAuth extends HubIdentityAuthority {
   mount(app: Hono): void
   /** 凭会话 cookie 或 Bearer 令牌识别调用方；Bearer 只接受 cli 凭证。 */
   authenticate(request: Request): Promise<HubPrincipal | undefined>
+  /** 保留签入凭据本身的有效期；衍生会话不得延长它。 */
+  cliExpiry(principal: HubPrincipal): number
+  /** 由项目命名空间确定的所有者必须仍有 CLI 成员资格。 */
+  codingOwnerActive(projectId: string): Promise<boolean>
   /** 正常只返回当前代数；`revocation` 只用于给已经订阅的连接发送无内容的失效通知。 */
   readShare(
     request: Request,
@@ -212,6 +216,7 @@ export function createHubAuth(
     }
   }
 
+  const expiries = new WeakMap<HubPrincipal, number>()
   const authenticate = async (request: Request): Promise<HubPrincipal | undefined> => {
     const bearer = request.headers.get('authorization')
     const credential = await verify(
@@ -219,7 +224,9 @@ export function createHubAuth(
     )
     if (credential?.kind !== 'cli' && credential?.kind !== 'session') return
     if ((credential.kind === 'cli') !== Boolean(bearer)) return
-    return directory.authenticate(credential.userId, credential.kind)
+    const principal = await directory.authenticate(credential.userId, credential.kind)
+    if (principal?.kind === 'cli') expiries.set(principal, credential.exp * 1000)
+    return principal
   }
 
   const readShare = async (request: Request, artifactId: string, mode?: 'revocation') => {
@@ -380,6 +387,11 @@ export function createHubAuth(
     ...directory.authority,
     mount,
     authenticate,
+    cliExpiry: (principal) => expiries.get(principal) ?? 0,
+    async codingOwnerActive(projectId) {
+      const id = /^github-(\d+):/.exec(projectId)?.[1]
+      return !!id && !!(await directory.authenticate(id, 'cli'))?.member
+    },
     readShare,
     createShare,
     sealReceipt,

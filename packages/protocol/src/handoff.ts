@@ -1,12 +1,33 @@
 import {
   ARTIFACT_DEFAULT_VIEWPORT,
-  type Artifact,
-  type ArtifactHandoffReference,
+  type ArtboardBoard,
   canvasIds,
   parseArtboard,
   STANDALONE_BOARD_ID,
-  type Version,
-} from '@akasha/protocol'
+} from './artboard/model.js'
+import type { Artifact, Version } from './domain.js'
+import type { ArtifactHandoffReference } from './transport/mcp.js'
+
+/** 已解析的固定快照；画板标识用于跨端定位，选区仍携带原始指认证据。 */
+export interface HandoffDesign {
+  artifactId: string
+  projectId: string
+  type: Artifact['type']
+  slug: string
+  version: number
+  title: string
+  source: string
+  structure: {
+    pages: { id: string; title: string; includeSharedBoards: boolean }[]
+    boards: Pick<
+      ArtboardBoard,
+      'id' | 'title' | 'pageId' | 'viewport' | 'position' | 'designLayers'
+    >[]
+    flows: { from: string; to: string; label?: string }[]
+  }
+  selection: Pick<ArtifactHandoffReference, 'pageId' | 'boardId' | 'element'> | null
+  note: string
+}
 
 function outline(artifact: Artifact, version: Version) {
   const parsed = artifact.type === 'artboard' ? parseArtboard(version.source) : null
@@ -65,7 +86,7 @@ export function describeHandoff(
   artifact: Artifact,
   version: Version,
   reference: ArtifactHandoffReference,
-) {
+): HandoffDesign {
   const { pageId, boardId, element } = reference
   const structure = outline(artifact, version)
   const page = pageId === undefined ? undefined : structure.pages.find((item) => item.id === pageId)

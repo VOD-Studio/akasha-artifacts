@@ -19,6 +19,7 @@ import type {
   ReceiptRepository,
   RoundRepository,
   StateRepository,
+  WorkspaceComponent,
 } from '../../../domain/ports.js'
 import { annotationStatements, createSqlAnnotationRepository } from '../annotation-records.js'
 import { rethrowArtifactStoreError } from '../artifact-conflict.js'
@@ -33,6 +34,11 @@ import {
   boardProjectionStatements,
   createSqlBoardProjectionRepository,
 } from '../board-projections.js'
+import {
+  insertWorkspaceComponent,
+  selectWorkspaceComponent,
+  workspaceComponentTable,
+} from '../workspace-component.js'
 import { createSqlHubSharingRepository } from './hub-sharing/repository.js'
 import { hubSharingSchema } from './hub-sharing/schema.js'
 import { schema } from './schema.js'
@@ -94,6 +100,7 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
     .batch(
       [
         ...schema,
+        [workspaceComponentTable],
         ...boardProjectionSchema,
         [artifactLifecycleTable],
         ...annotationStatements,
@@ -216,7 +223,7 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
             projectId,
           ),
     // 先写对象再写表行，表行指向的对象一定已经存在
-    async appendVersion(version, type) {
+    async appendVersion(version, type, component) {
       await ready
       let key: string | null = null
       if (blobs) {
@@ -241,7 +248,15 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
           insert,
           ...boardProjectionStatements(version.artifactId, version.version, projection),
         ])
+      } else if (component) {
+        await driver.batch([
+          insert,
+          insertWorkspaceComponent(version.artifactId, version.version, component),
+        ])
       } else await driver.execute(insert)
+    },
+    getWorkspaceComponent(id, version) {
+      return first<WorkspaceComponent>(selectWorkspaceComponent, id, version)
     },
     async getVersions(artifactId) {
       const rows = await query<VersionRow>(
