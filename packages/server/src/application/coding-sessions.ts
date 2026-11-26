@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
-import { parseDesignSystem } from '@akasha/kit'
+import { generateDesignSystemBoard, parseDesignSystem } from '@akasha/kit'
 import {
   type ArtifactHandoffReference,
   type CodingSessionRead,
@@ -184,13 +184,27 @@ export class CodingSessions {
       if (!parsed?.ok || parsed.data.sourceVersion !== provenance.sourceVersion)
         throw new DomainError('NOT_FOUND', '组件来源固定版本不可用')
       const { draft } = parsed.data
+      let single: number | null = null
       for (const entry of provenance.components) {
-        const reviewed = draft.components.some(
+        const index = draft.components.findIndex(
           (item) => item.path === entry.path && item.exportName === entry.exportName,
         )
         const file = draft.files.find((item) => item.kind === 'source' && item.path === entry.path)
-        if (!reviewed || !file) throw new DomainError('BAD_REQUEST', '组件未经该版本审阅')
+        if (index < 0 || !file) throw new DomainError('BAD_REQUEST', '组件未经该版本审阅')
+        if (provenance.components.length === 1) single = index
         if (!workspace) components.push({ ...entry, source: file.content, origin: 'reviewed' })
+      }
+      // 引用头只证明历史来源；只有原审阅快照能生成的整稿，才可把原文件作为当前实现交接。
+      if (
+        components.length &&
+        fixed.source !==
+          generateDesignSystemBoard(
+            parsed.data,
+            { id: system.publicId, version: provenance.version },
+            single,
+          )
+      ) {
+        components.length = 0
       }
     }
     if (workspace) components.push({ ...workspace, origin: 'workspace' })

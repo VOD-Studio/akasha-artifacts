@@ -239,6 +239,8 @@ akasha coding publish --session <id> --file src/Button.tsx --export ConfirmButto
 
 A new handoff pinned to the published version returns the editable entry file in `components` with `origin: "workspace"`. If the artifact came from a reviewed design system, `reviewedSystem` still points to that system’s original version, fingerprint, paths and exports. It does not mark your changes as reviewed.
 
+Editing only the generated preview's example props in the web workspace preserves the project entry. Replacing the implementation can keep the original design-system link; if the current component cannot be verified, the handoff returns the artifact source without substituting an older component file.
+
 ---
 
 ## Development

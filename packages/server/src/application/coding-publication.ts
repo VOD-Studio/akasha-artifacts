@@ -8,6 +8,7 @@ import { DomainError } from '../domain/errors.js'
 import type { ArtifactRepository, WorkspaceComponent } from '../domain/ports.js'
 import type { ArtifactService } from './artifact-service.js'
 import type { CheckService } from './check-service.js'
+import { renderCodingComponent, retainsCodingComponent } from './coding-component-preview.js'
 import { bundleSelectedComponents } from './design-systems/bundle.js'
 
 /** 只编译显式提交的工程文件；共用版本写锁按原交接基线提交，冲突不重试。 */
@@ -45,8 +46,14 @@ export async function publishCodingSession(
       files: files.map((file) => ({ ...file, kind: 'source' })),
       components: [component],
     })
-    source = `import * as React from 'react';\nconst result = ${module};\nexport default function WorkspacePreview() { return React.createElement(React.Fragment, null, result.css && React.createElement('style', null, result.css), React.createElement(result.component, ${JSON.stringify(component.props)})); }\n`
+    source = renderCodingComponent(module, component.props)
     if (reviewed) source = `${designSystemReferenceHeader(reviewed)}\n${source}`
+  } else if (source && artifact.type === 'react') {
+    const entry = await deps.artifacts.getWorkspaceComponent(artifactId, baseVersion)
+    if (entry) {
+      const base = await deps.artifacts.getVersion(artifactId, baseVersion)
+      if (base && retainsCodingComponent(base.source, source)) workspaceComponent = entry
+    }
   }
   if (!source) throw new DomainError('BAD_REQUEST', '未提交作品源码')
   const check = deps.checks.check({ type: artifact.type, source })

@@ -214,3 +214,55 @@ it('重新交接工程回传版本时区分当前实现与原审阅来源', asyn
     reviewedSystem: reviewed,
   })
 })
+
+it('Web 整稿发布保留真实的工程入口，但不把历史设计系统实现当成当前源码', async () => {
+  const { connection, reference, send } = await setup()
+  const open = async (version: number) => {
+    const response = await send('/api/v1/projects/one/coding-sessions', {
+      reference: { ...reference, version },
+      label: '复查工程稿',
+    })
+    expect(response.status).toBe(201)
+    const grant = CodingSessionGrantSchema.parse(await response.json())
+    return { id: grant.id, client: new CodingSessionClient({ ...connection, ...grant }) }
+  }
+  const publishWeb = async (id: string, source: string) => {
+    const result = await send(`/api/v1/projects/one/coding-sessions/${id}/workspace-publish`, {
+      source,
+    })
+    expect(result.status).toBe(201)
+  }
+  const original = new CodingSessionClient(connection)
+  const path = 'app/Pay.tsx'
+  const entry = {
+    path,
+    exportName: 'Pay',
+    source:
+      'export function Pay({label}) { return <button data-mode="engineering">{label}</button> }',
+  }
+  await original.publish({
+    component: {
+      path,
+      exportName: entry.exportName,
+      props: { label: '旧文案' },
+      files: [{ path, content: entry.source }],
+    },
+  })
+  const v2 = await open(2)
+  const base = await v2.client.read()
+  const edited = base.design.source.replace('"旧文案"', '"确认付款"')
+  expect(edited).not.toBe(base.design.source)
+  await publishWeb(v2.id, edited)
+  const v3 = await open(3)
+  const after = await v3.client.read()
+  expect(after.design.source).toBe(edited)
+  expect(after.reviewedSystem).toEqual(base.reviewedSystem)
+  expect(after.components).toEqual([{ ...entry, origin: 'workspace' }])
+  const manual = `${edited.split('\n', 1)[0]}\nexport default function NewPage(){return <p>已更换实现</p>}`
+  await publishWeb(v3.id, manual)
+  const replaced = await (await open(4)).client.read()
+  expect(replaced.design.source).toBe(manual)
+  expect(replaced.reviewedSystem).toEqual(base.reviewedSystem)
+  expect(replaced.components).toEqual([])
+  expect((await v2.client.read()).components).toEqual(base.components)
+})

@@ -49,6 +49,7 @@ export interface CodingSessionRead {
   reference: z.infer<typeof ArtifactHandoffReferenceSchema>
   design: HandoffDesign
   reviewedSystem: DesignSystemReference | null
+  /** 仅含可核实为此版本实现的入口；整稿仍有历史来源时也可能为空。 */
   components: z.infer<typeof componentSource>[]
 }
 
