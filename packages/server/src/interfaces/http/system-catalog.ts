@@ -1,4 +1,4 @@
-import { PublicIdSchema, SystemMembersSchema } from '@akasha/protocol'
+import { PublicIdSchema, SystemMembersSchema, SystemPublicationInputSchema } from '@akasha/protocol'
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import type { SystemCatalog } from '../../application/design-systems/catalog.js'
@@ -21,7 +21,9 @@ export function mountSystemCatalog(
   const root = '/api/v1/projects/:projectId/system-catalog'
   routes.onError((error, c) => {
     if (error instanceof DomainError) {
-      const response = { error: { code: error.code, message: error.message, details: error.details } }
+      const response = {
+        error: { code: error.code, message: error.message, details: error.details },
+      }
       switch (error.code) {
         case 'BAD_REQUEST':
           return c.json(response, 400)
@@ -52,6 +54,17 @@ export function mountSystemCatalog(
   routes.get(root, async (c) =>
     c.json(await catalog.list(c.req.param('projectId'), c.get('principal').userId)),
   )
+  routes.put(`${root}/:id/:version/publication`, async (c) => {
+    const principal = c.get('principal')
+    if (!auth.isAdministrator(principal))
+      throw new DomainError('FORBIDDEN', '只有 Hub 管理员可管理团队系统')
+    const { projectId, id, version } = c.req.param()
+    if (!PublicIdSchema.safeParse(id).success || !/^[1-9]\d*$/.test(version))
+      throw new NotFoundError('未找到请求的资源')
+    const { action } = await parseJsonBody(c.req.raw, SystemPublicationInputSchema)
+    await catalog.changePublication(projectId, principal.userId, id, Number(version), action)
+    return c.json({ ok: true })
+  })
   const members = `${root}/:id/:version/members` as const
   routes.on(['GET', 'PUT'], members, async (c) => {
     const { projectId, id, version } = c.req.param()

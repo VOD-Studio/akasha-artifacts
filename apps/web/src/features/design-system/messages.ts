@@ -1,13 +1,39 @@
 import type { Messages } from '@/shared/i18n'
 
 export const messages = {
+  系统目录: ['Systemkatalog', 'دليل الأنظمة', 'System catalog'],
+  团队默认: ['Teamstandard', 'الخيار الافتراضي للفريق', 'Team default'],
+  发布到团队: ['Für das Team veröffentlichen', 'نشر للفريق', 'Publish to team'],
+  已发布到团队: ['Für das Team veröffentlicht', 'تم النشر للفريق', 'Published to team'],
+  设为默认: ['Als Standard festlegen', 'تعيين كافتراضي', 'Set as default'],
+  撤销默认: ['Standard aufheben', 'إلغاء التعيين كافتراضي', 'Clear default'],
+  撤回: ['Zurückziehen', 'سحب النشر', 'Withdraw'],
+  无可用系统版本: [
+    'Keine Systemversion verfügbar',
+    'لا توجد إصدارات متاحة',
+    'No system versions available',
+  ],
+  无法读取系统目录: [
+    'Systemkatalog nicht verfügbar',
+    'تعذرت قراءة دليل الأنظمة',
+    'Could not load the system catalog',
+  ],
+  未能更新发布状态: [
+    'Veröffentlichungsstatus nicht aktualisiert',
+    'تعذّر تحديث حالة النشر',
+    'Could not update publication',
+  ],
   共享此版本: ['Diese Version teilen', 'مشاركة هذا الإصدار', 'Share this version'],
-  仅自己: ['Nur ich', 'أنا فقط', 'Only me'],
+  尚未点名共享: [
+    'Keine persönlichen Freigaben',
+    'لم تتم المشاركة مع أعضاء محددين',
+    'No named members',
+  ],
   'GitHub 登录名': ['GitHub-Anmeldenamen', 'أسماء تسجيل الدخول إلى GitHub', 'GitHub logins'],
-  '每行一名当前成员，最多 32 名。留空后保存即可设为仅自己。': [
-    'Ein aktuelles Mitglied pro Zeile, höchstens 32. Leer speichern für privaten Zugriff.',
-    'أدخل اسم عضو حالي في كل سطر، حتى 32 عضوًا. احفظ القائمة فارغة لتقتصر المشاركة عليك.',
-    'One current member per line, up to 32. Save an empty list to make this version private.',
+  '每行一名当前成员，最多 32 名。清空后保存会移除此版本的点名授权。': [
+    'Ein aktuelles Mitglied pro Zeile, höchstens 32. Eine leere Liste entzieht die persönlichen Freigaben für diese Version.',
+    'أدخل اسم عضو حالي في كل سطر، حتى 32 عضوًا. حفظ قائمة فارغة يلغي الأذونات الفردية لهذا الإصدار.',
+    'One current member per line, up to 32. Saving an empty list removes named grants for this version.',
   ],
   保存名单: ['Liste speichern', 'حفظ القائمة', 'Save list'],
   无法读取名单: ['Liste konnte nicht geladen werden', 'تعذرت قراءة القائمة', 'Could not load list'],

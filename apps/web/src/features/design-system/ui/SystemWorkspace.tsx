@@ -20,6 +20,7 @@ import { componentKey } from '../model/review'
 import { AssetReview } from './AssetReview'
 import { GenerateArtboard } from './GenerateArtboard'
 import { GuidanceFields } from './GuidanceFields'
+import { OwnerVersionPublication } from './PublicationControls'
 import { type SystemBaseline, SystemEditor } from './SystemEditor'
 import { SystemPreview } from './SystemPreview'
 import { VersionMembers } from './VersionMembers'
@@ -169,6 +170,14 @@ export function SystemWorkspace({
             {isCloudHub() && canManage && (
               <VersionMembers
                 key={`${artifact.projectId}:${artifact.publicId}:${version.version}`}
+                projectId={artifact.projectId}
+                id={artifact.publicId}
+                version={version.version}
+              />
+            )}
+            {isCloudHub() && canManage && fixedVersion !== undefined && (
+              <OwnerVersionPublication
+                key={`publication:${artifact.projectId}:${artifact.publicId}:${version.version}`}
                 projectId={artifact.projectId}
                 id={artifact.publicId}
                 version={version.version}

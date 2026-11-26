@@ -78,8 +78,10 @@ it('Hub 所有者读取、替换并清空正在查看的固定版本名单；失
     .mockResolvedValueOnce(new Response(null, { status: 400 }))
     .mockResolvedValueOnce(Response.json({ logins: ['ada', 'lin'] }))
     .mockResolvedValueOnce(Response.json({ logins: [] }))
+  const cache = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  cache.setQueryData(['hub-session'], { user: { member: true, admin: false } })
   render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <QueryClientProvider client={cache}>
       <SystemWorkspace
         detail={{
           ...detail,
@@ -118,9 +120,51 @@ it('Hub 所有者读取、替换并清空正在查看的固定版本名单；失
   fireEvent.change(input, { target: { value: '' } })
   await waitFor(() => expect((save as HTMLButtonElement).disabled).toBe(false))
   fireEvent.click(save)
-  await screen.findByText('仅自己')
+  await screen.findByText('尚未点名共享')
   expect(fetcher).toHaveBeenLastCalledWith(
     path,
     expect.objectContaining({ method: 'PUT', body: JSON.stringify({ logins: [] }) }),
+  )
+})
+
+it('管理员从本人来源工作区发布未在目录列出的历史版本', async () => {
+  window.__AKASHA_CONFIG__ = { hub: true }
+  const detail = detailFor(2, JSON.stringify(snapshot))
+  const calls: string[] = []
+  const path = `/api/v1/projects/project-canvas/system-catalog/${detail.artifact.publicId}/2/publication`
+  const fetcher = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = String(input)
+    calls.push(url)
+    if (url.includes('/management')) return Response.json({ canManage: true })
+    if (url.endsWith('/members')) return Response.json({ logins: [] })
+    if (url.endsWith('/auth/session')) return Response.json({ user: { member: true, admin: true } })
+    if (url.endsWith('/system-catalog')) return Response.json({ items: [] })
+    if (url === path && init?.method === 'PUT') return Response.json({ ok: true })
+    return new Response(null, { status: 404 })
+  })
+  const cache = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={cache}>
+      <SystemWorkspace
+        detail={{
+          ...detail,
+          artifact: { ...detail.artifact, headVersion: 3, type: 'design-system' },
+        }}
+        fixedVersion={2}
+        versions={[]}
+        sandboxOrigin="http://sandbox.test"
+        onBack={vi.fn()}
+        onVersion={vi.fn()}
+        onOpenArtifact={vi.fn()}
+      />
+    </QueryClientProvider>,
+  )
+  fireEvent.click(await screen.findByRole('button', { name: '发布到团队' }))
+  await waitFor(() =>
+    expect(calls.filter((url) => url.endsWith('/system-catalog'))).toHaveLength(2),
+  )
+  expect(fetcher).toHaveBeenCalledWith(
+    path,
+    expect.objectContaining({ method: 'PUT', body: '{"action":"publish"}' }),
   )
 })

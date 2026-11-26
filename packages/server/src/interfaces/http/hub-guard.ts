@@ -135,7 +135,18 @@ function rewrite(
  */
 export function mountHubGuard(
   app: Hono,
-  { core, auth, access, sharing, catalog, workspace, repositories, origin, clock, ids }: HubGuardOptions,
+  {
+    core,
+    auth,
+    access,
+    sharing,
+    catalog,
+    workspace,
+    repositories,
+    origin,
+    clock,
+    ids,
+  }: HubGuardOptions,
 ) {
   app.use('*', async (c, next) => {
     if (
@@ -273,6 +284,14 @@ export function mountHubGuard(
       if (designSystem[2] === 'preview') return core.fetch(request)
       const body = await readJson(request)
       if (!body) return invalid(c)
+      if (
+        designSystem[2] === 'generate' &&
+        typeof body.id === 'string' &&
+        typeof body.version === 'number'
+      ) {
+        const pin = await catalog.pin(decodeSegment(designSystem[1]), body.id, body.version)
+        if (pin && (await catalog.members.publication(pin))?.withdrawn) return hidden(c)
+      }
       return core.fetch(rewrite(request, url, { ...body, author: hubAuthor(principal) }))
     }
 

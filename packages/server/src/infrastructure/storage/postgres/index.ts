@@ -7,7 +7,12 @@ export interface PostgresStorageOptions {
   blobs?: VersionBlobs
 }
 
-const locks: Record<SqlWriteLock, number> = { schema: 1, rounds: 2, feedbacks: 3 }
+const locks: Record<SqlWriteLock, number> = {
+  schema: 1,
+  rounds: 2,
+  feedbacks: 3,
+  systemPublications: 4,
+}
 const lockNamespace = 0x414b4153
 
 function toPostgres([sql, ...values]: SqlStatement) {

@@ -244,7 +244,9 @@ If the source system is withdrawn or the artifact moves to another project, the 
 
 ### Share a reviewed system on the Hub
 
-Open a version of your design system and enter the GitHub logins of the members who may use that version. Save an empty list to make it private again. This grants access to the fixed component catalog, not the source project, raw files, or later versions. The local daemon has no team directory.
+Open a version of your design system and enter the GitHub logins of the members who may use that version. Save an empty list to remove all named grants. This grants access to the fixed component catalog, not the source project, raw files, or later versions. The local daemon has no team directory.
+
+In the library’s system catalog, a Hub administrator can publish an available fixed version to the team, make it the default, clear the default, or withdraw the version. To nominate a private version for publication, share it with the administrator first. Publishing does not grant access to the original artifact. Withdrawal removes the version from new selections, not from designs already saved.
 
 ---
 

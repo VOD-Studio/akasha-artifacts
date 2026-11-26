@@ -34,7 +34,10 @@ export function VersionMembers({ projectId, id, version }: VersionMembersProps) 
     setFailed(false)
     try {
       await cache.cancelQueries({ queryKey, exact: true })
-      const logins = draft.split('\n').map((line) => line.trim()).filter(Boolean)
+      const logins = draft
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
       const updated = await replaceVersionMembers(projectId, id, version, logins)
       cache.setQueryData(queryKey, updated)
       setDraft(null)
@@ -46,18 +49,25 @@ export function VersionMembers({ projectId, id, version }: VersionMembersProps) 
   }
   return (
     <fieldset className="space-y-2 border-t border-border pt-3" disabled={busy}>
-      <legend className="font-medium">{t('共享此版本')} · v{version}</legend>
+      <legend className="font-medium">
+        {t('共享此版本')} · v{version}
+      </legend>
       {members.isPending && <p role="status">{t('正在读取')}</p>}
       {members.isError && (
         <div role="alert">
           {t('无法读取名单')}{' '}
-          <Button variant="outline" onClick={() => void members.refetch()}>{t('重试')}</Button>
+          <Button variant="outline" onClick={() => void members.refetch()}>
+            {t('重试')}
+          </Button>
         </div>
       )}
       {members.isSuccess && (
         <>
-          {members.data.logins.length === 0 && <p role="status">{t('仅自己')}</p>}
-          <Field label={t('GitHub 登录名')} hint={t('每行一名当前成员，最多 32 名。留空后保存即可设为仅自己。')}>
+          {members.data.logins.length === 0 && <p role="status">{t('尚未点名共享')}</p>}
+          <Field
+            label={t('GitHub 登录名')}
+            hint={t('每行一名当前成员，最多 32 名。清空后保存会移除此版本的点名授权。')}
+          >
             <Textarea
               dir="ltr"
               spellCheck={false}
@@ -70,7 +80,11 @@ export function VersionMembers({ projectId, id, version }: VersionMembersProps) 
             />
           </Field>
           {failed && <p role="alert">{t('未保存。请检查成员登录名后重试。')}</p>}
-          <Button loading={busy} disabled={draft === null || draft === stored} onClick={() => void save()}>
+          <Button
+            loading={busy}
+            disabled={draft === null || draft === stored}
+            onClick={() => void save()}
+          >
             {t('保存名单')}
           </Button>
         </>

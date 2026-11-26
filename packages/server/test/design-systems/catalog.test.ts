@@ -65,3 +65,64 @@ it('固定版点名共享只公开组件目录，组织身份和源项目均由 
   expect((await hub.send(path, 'PUT', owner.cookie, { logins: [] })).ok).toBe(true)
   expect(await catalog()).toMatchObject({ items: [] })
 })
+
+it('管理员从可用版本发布团队基础；默认与撤回对两名成员及旧生成入口立即生效', async () => {
+  const { hub, owner, member, admin, publish } = await setupCatalog()
+  const id = await publish()
+  const target = `${admin.catalog}/${id}/1/publication`
+  const action = (value: string) => hub.send(target, 'PUT', admin.cookie, { action: value })
+  expect((await action('publish')).status).toBe(404)
+  expect(
+    (
+      await hub.send(`${owner.catalog}/${id}/1/members`, 'PUT', owner.cookie, {
+        logins: ['admin'],
+      })
+    ).ok,
+  ).toBe(true)
+  expect(
+    (
+      await hub.send(`${owner.catalog}/${id}/1/publication`, 'PUT', owner.cookie, {
+        action: 'default',
+        admin: true,
+      })
+    ).status,
+  ).toBe(403)
+  expect((await action('publish')).ok).toBe(true)
+  expect((await action('default')).ok).toBe(true)
+  const generated = await hub.send(`${owner.path}/design-systems/generate`, 'POST', owner.cookie, {
+    id,
+    version: 1,
+    slug: 'saved-design',
+    title: 'Saved design',
+  })
+  const saved = DesignSystemWriteOutputSchema.parse(await generated.json())
+  const second = await hub.open()
+  for (const account of [owner, member]) {
+    const response = await second.send(account.catalog, 'GET', account.cookie)
+    expect(await response.json()).toMatchObject({
+      items: [{ id, version: 1, publication: 'team', isDefault: true }],
+    })
+  }
+  expect((await second.send(`/api/v1/artifacts/${id}`, 'GET', member.cookie)).status).toBe(404)
+  expect((await action('withdraw')).ok).toBe(true)
+  for (const account of [owner, member]) {
+    const response = await second.send(account.catalog, 'GET', account.cookie)
+    expect(await response.json()).toMatchObject({ items: [] })
+  }
+  const savedDetail = await second.send(
+    `/api/v1/artifacts/${saved.artifact.publicId}`,
+    'GET',
+    owner.cookie,
+  )
+  expect(await savedDetail.json()).toMatchObject({ version: { source: saved.version.source } })
+  expect(
+    (
+      await second.send(`${owner.path}/design-systems/generate`, 'POST', owner.cookie, {
+        id,
+        version: 1,
+        slug: 'retired',
+        title: 'Retired',
+      })
+    ).status,
+  ).toBe(404)
+})
