@@ -240,7 +240,7 @@ function isReady(entry: Entry): entry is Entry & { preview: AgentReferencePrevie
 /** 项目或会话变化时同步隔离草稿；空项目不接收文件，恢复授权也不复用旧预览。 */
 export function useReferenceDraft(projectId: string, sessionId?: string): ReferenceDraft {
   const draft = useMemo(() => createDraft(projectId, sessionId), [projectId, sessionId])
-  useLayoutEffect(draft.activate, [draft])
+  useLayoutEffect(() => draft.activate(), [draft])
   const entries = useSyncExternalStore(draft.subscribe, draft.snapshot, draft.snapshot)
   return {
     entries,
@@ -250,7 +250,8 @@ export function useReferenceDraft(projectId: string, sessionId?: string): Refere
       return entries !== draft.snapshot() || !entries.every(isReady)
     },
     get selection() {
-      if (!entries.length || entries !== draft.snapshot() || !entries.every(isReady)) return
+      if (!entries.length || entries !== draft.snapshot() || !entries.every(isReady))
+        return undefined
       return { draftId: draft.draftId(), ids: entries.map(({ preview }) => preview.id) }
     },
     add: draft.add,
