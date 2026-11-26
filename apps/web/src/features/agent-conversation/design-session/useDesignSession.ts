@@ -59,8 +59,7 @@ export function useDesignSession(open: boolean) {
       query.state.data?.turns.at(-1)?.status === 'running' ? 1000 : false,
   })
   const send = useMutation({
-    mutationFn: (input: { projectId: string; message: string }) =>
-      startAgentDesign(input.projectId, input.message),
+    mutationFn: startAgentDesign,
     onSuccess(session: AgentConversation) {
       const next = { id: session.id, projectId: session.projectId }
       cache.setQueryData(['agent-design-session', session.id], session)

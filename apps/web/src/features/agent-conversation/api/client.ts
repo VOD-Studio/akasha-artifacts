@@ -2,6 +2,7 @@ import type {
   AgentConnection,
   AgentConversation,
   AgentConversationStatus,
+  AgentDesignInput,
   ArtboardTweakApplication,
   ArtifactHandoffReference,
 } from '@akasha/protocol'
@@ -51,10 +52,10 @@ export async function fetchAgentConnections(signal?: AbortSignal) {
  *
  * @returns 受理后的会话；用其 `id` 读取同一会话的进度，而不是重发消息。
  */
-export async function startAgentDesign(projectId: string, message: string) {
+export async function startAgentDesign(input: AgentDesignInput) {
   return requestJson<AgentConversation>('/api/v1/agent/design', {
     method: 'POST',
-    body: JSON.stringify({ projectId, message }),
+    body: JSON.stringify(input),
   })
 }
 

@@ -1,5 +1,6 @@
 import type { DesignSystemDraft } from '@akasha/protocol'
 import { getMessages } from '@/shared/i18n'
+import { readContent } from '@/shared/lib/selected-file'
 import { messages } from '../messages'
 
 type SourceFile = DesignSystemDraft['files'][number]
@@ -31,19 +32,6 @@ export function fileChoices(files: FileList): FileChoice[] {
     choices.push({ path, file, kind })
   }
   return choices
-}
-
-function readContent(file: File, binary: boolean) {
-  const { promise, resolve, reject } = Promise.withResolvers<string>()
-  const reader = new FileReader()
-  reader.onerror = () => reject(reader.error)
-  reader.onload = () => {
-    const value = String(reader.result)
-    resolve(binary ? value.slice(value.indexOf(',') + 1) : value)
-  }
-  if (binary) reader.readAsDataURL(file)
-  else reader.readAsText(file)
-  return promise
 }
 
 /** 用户授权某一批文件后才读取；整批成功才交给草稿，不写磁盘或连接远端。 */

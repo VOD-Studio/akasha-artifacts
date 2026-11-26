@@ -25,6 +25,7 @@ export const AgentDesignInputSchema = AgentMessageInputSchema.pick({
   /** 本机显式授权 Codex 接收设计任务的项目。 */
   projectId: z.string().min(1).max(1024),
 })
+export type AgentDesignInput = z.infer<typeof AgentDesignInputSchema>
 
 /** 工具没有可由模型填写的目标、版本或参数，全部由该轮网页授权决定。 */
 export const ApplyRequestedTweaksInputSchema = z.strictObject({})

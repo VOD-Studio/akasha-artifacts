@@ -10,6 +10,8 @@ import { artifactKeys } from '@/entities/artifact'
 import { ApiError, getRequestErrorMessage } from '@/shared/api/error'
 import { useMessages } from '@/shared/i18n'
 import { useAgentDraft } from '../model/agent-draft'
+import { ReferenceComposer } from '../references/ReferenceComposer'
+import { useReferenceDraft } from '../references/useReferenceDraft'
 import { AgentTurnList } from '../ui/AgentTurnList'
 import { messages } from './messages'
 import { useDesignSession } from './useDesignSession'
@@ -69,15 +71,16 @@ export function CreateDesignDialog({
   const [agent, setAgent] = useState<'codex' | ''>(attempt ? 'codex' : '')
   const [message, setMessage] = useAgentDraft('new-design')
   const project = projects.find((entry) => entry.id === projectId)
-  const connection = connections.isSuccess
-    ? connections.data.connections.find((entry) => entry.projectId === projectId)
-    : undefined
+  const connection = connections.data?.connections.find((entry) => entry.projectId === projectId)
+  const referenceProject = project && !accessDenied && connection ? project.id : ''
+  const references = useReferenceDraft(referenceProject)
   const locked = Boolean(attempt) || send.isPending
   useEffect(() => {
     onResumableChange?.(locked)
   }, [locked, onResumableChange])
   const canSend =
     !locked &&
+    !references.blocked &&
     !!project &&
     connections.isSuccess &&
     agent === 'codex' &&
@@ -98,12 +101,15 @@ export function CreateDesignDialog({
   const clearAttempt = () => {
     forgetAttempt()
     setAgent('')
+    references.invalidate()
   }
 
   const openPublished = () => {
     if (!published) return
     if (message.trim() === turn?.message) setMessage('')
-    clearAttempt()
+    references.reset()
+    forgetAttempt()
+    setAgent('')
     void cache.invalidateQueries({ queryKey: artifactKeys.lists })
     onOpenArtifact(published)
   }
@@ -147,7 +153,16 @@ export function CreateDesignDialog({
         className="space-y-3 text-sm"
         onSubmit={(event) => {
           event.preventDefault()
-          if (canSend) send.mutate({ projectId, message: message.trim() })
+          const selection = references.selection
+          if (!canSend || references.blocked || (references.entries.length && !selection)) return
+          send.mutate(
+            { projectId, message: message.trim(), references: selection },
+            {
+              onError: (error) => {
+                if (error instanceof ApiError && error.status === 409) references.invalidate()
+              },
+            },
+          )
         }}
       >
         <div className="grid gap-2 sm:grid-cols-2">
@@ -203,6 +218,9 @@ export function CreateDesignDialog({
             onChange={editBrief}
           />
         </Field>
+        {referenceProject && agent === 'codex' && !attempt && (
+          <ReferenceComposer key={referenceProject} draft={references} disabled={locked} />
+        )}
         {send.error && (
           <p role="alert">
             {t('提交失败：{reason}', { reason: getRequestErrorMessage(send.error) })}
