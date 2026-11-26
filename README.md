@@ -227,6 +227,12 @@ claude mcp add --scope local --transport stdio akasha-design -- akasha coding mc
 
 In Claude Code in that checkout, call `coding_session_read`. For a self-hosted Hub, first run `akasha login --hub <origin>` and add `--hub <origin> --project-id <id>` to `connect`. The Hub verifies ownership. Session credentials stay outside the checkout under `AKASHA_HOME`; the session expires after eight hours.
 
+Edit a component in the checkout, then publish its named export and explicit dependencies. Akasha bundles only these files and returns a pinned preview link. For a complete artifact source file omit `--export` and dependencies. A stale session returns HTTP 409 without replacing the newer version.
+
+```sh
+akasha coding publish --session <id> --file src/Button.tsx --export ConfirmButton --props '{"children":"Confirm"}' src/button.css
+```
+
 ---
 
 ## Development

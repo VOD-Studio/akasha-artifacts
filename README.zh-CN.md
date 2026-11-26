@@ -227,6 +227,12 @@ claude mcp add --scope local --transport stdio akasha-design -- akasha coding mc
 
 在此项目打开 Claude Code，调用 `coding_session_read`。自托管 Hub 先运行 `akasha login --hub <origin>`，再给 `connect` 加 `--hub <origin> --project-id <id>`；Hub 检查项目所有权。会话凭据存放在项目外的 `AKASHA_HOME` 中，八小时后过期。
 
+在工程中改好组件，按导出名称和显式依赖发布；只打包所列文件，成功后返回固定预览链接。已有完整作品源码时省略 `--export` 和依赖文件。头版本已变化时返回 HTTP 409，不会覆盖较新的版本。
+
+```sh
+akasha coding publish --session <id> --file src/Button.tsx --export ConfirmButton --props '{"children":"确认"}' src/button.css
+```
+
 ---
 
 ## 本地开发

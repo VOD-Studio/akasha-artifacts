@@ -21,7 +21,7 @@ interface Session {
 const digest = (value: string) => createHash('sha256').update(value).digest('hex')
 const namespace = (project: string) => JSON.stringify(['coding-sessions', project])
 
-/** 签入只建立可恢复的设计读取权，不启动项目进程。每次读取重新检查作品与系统归属。 */
+/** 会话固定项目、作品与基线；读取与发布都不会启动项目进程。 */
 export class CodingSessions {
   constructor(
     private readonly store: ArtifactStorageRepository,
@@ -55,11 +55,16 @@ export class CodingSessions {
     return { id, token, expiresAt }
   }
 
-  async read(project: string, id: string, token: string) {
+  async authorize(project: string, id: string, token: string) {
     const { records } = await this.active(project)
-    const session = records.find((entry) => entry.id === id && entry.digest === digest(token))
+    const hash = digest(token)
+    const session = records.find((entry) => entry.id === id && entry.digest === hash)
     if (!session) throw new DomainError('UNAUTHORIZED', '会话凭证无效或已过期')
-    return this.snapshot(session.reference)
+    return session.reference
+  }
+
+  async read(project: string, id: string, token: string) {
+    return this.snapshot(await this.authorize(project, id, token))
   }
 
   private async snapshot(reference: ArtifactHandoffReference): Promise<CodingSessionRead> {

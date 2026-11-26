@@ -123,7 +123,7 @@ function printHelp(): void {
   login    登录团队 Cloud Hub（akasha login --hub <origin>）
   mcp      启动 stdio MCP Server（本地目标自动拉起并复用 Daemon）
   agent    授权本机 Codex 接收设计请求（akasha agent connect --project <路径>）
-  coding   连接工程编码会话并读取固定设计（akasha coding connect|read|mcp）
+  coding   从工程读取并发布固定设计（akasha coding connect|read|publish|mcp）
   status   查看运行中 Daemon 的状态与端口
   stop     平滑停止整机 Daemon
   logs     查看 Daemon 运行日志（支持 --project <id>）
@@ -201,7 +201,7 @@ export async function runCli(argv: string[]): Promise<number> {
     }
 
     case 'coding':
-      return runCodingCommand(positional[0], strFlag)
+      return runCodingCommand(positional[0], strFlag, positional.slice(1))
 
     case 'agent':
       return runAgentCommand({

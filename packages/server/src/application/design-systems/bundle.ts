@@ -14,7 +14,9 @@ const sourceLoaders = new Map<string, Loader>([
 const runtimeModules: Record<string, true> = { react: true, 'react/jsx-runtime': true }
 
 /** 只在内存命名空间解析导入；无论缺文件、未知包或绝对路径，均无宿主解析回退。 */
-export async function bundleSelectedComponents(draft: DesignSystemDraft) {
+export async function bundleSelectedComponents(
+  draft: Pick<DesignSystemDraft, 'files' | 'components'>,
+) {
   const selected = new Map(draft.files.map((file) => [file.path, file]))
   const entries = draft.components.map(
     ({ path: entryPath, exportName }) =>

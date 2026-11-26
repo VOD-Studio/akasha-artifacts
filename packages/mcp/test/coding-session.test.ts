@@ -96,3 +96,38 @@ it('续接同一编码会话只读冻结选区与已审阅组件实现', async (
     new CodingSessionClient({ ...connection, token: 'expired' }).read(),
   ).rejects.toThrow()
 })
+
+it('将工程组件发布为同一作品的新版本并拒绝旧基线覆盖', async () => {
+  const { connection, server, reference, board, component } = await setup()
+  const workspace = new CodingSessionClient(connection)
+  const read = await workspace.read()
+  const implementation = read.components[0]
+  if (!implementation) throw new Error('缺少结账组件')
+  const input = {
+    component: {
+      ...component,
+      props: { children: '确定订单' },
+      files: [
+        {
+          path: component.path,
+          content: implementation.source.replace('Sent from original', 'Order submitted'),
+        },
+        { path: 'src/button.css', content: '.triangle-action { color:rebeccapurple }' },
+      ],
+    },
+  }
+  const published = await workspace.publish(input)
+  expect(published).toMatchObject({ artifactId: reference.artifactId, version: 2 })
+  const fixed = async (version: number) =>
+    (
+      await fetch(`${server.baseUrl}/api/v1/artifacts/${reference.artifactId}?version=${version}`)
+    ).json()
+  const result = await fixed(2)
+  expect(result.version.parentVersion).toBe(1)
+  expect(result.version.source).toContain('Order submitted')
+  expect(result.version.source).toContain('rebeccapurple')
+  expect(result.version.source).toContain('export default function')
+  expect((await fixed(1)).version.source).toBe(board.version.source)
+  await expect(workspace.publish(input)).rejects.toThrow(/409|冲突/)
+  expect((await fixed(2)).artifact.headVersion).toBe(2)
+})

@@ -43,7 +43,9 @@ export function mountDaemonGuard(app: Hono, sec: HttpSecurityConfig, scopedTools
     }
     const scopedTool =
       (scopedTools && c.req.path.startsWith(`${LOCAL_AGENT_TOOL_PATH}/`)) ||
-      /^\/api\/v1\/projects\/[^/]+\/coding-sessions\/[a-f0-9-]{36}\/read$/.test(c.req.path)
+      /^\/api\/v1\/projects\/[^/]+\/coding-sessions\/[a-f0-9-]{36}\/(?:read|publish)$/.test(
+        c.req.path,
+      )
     if (!scopedTool && (isMutation || c.req.path === '/api/v1/withdrawn-artifacts') && sec.token) {
       const auth = c.req.header('authorization')
       const bearerOk = auth === `Bearer ${sec.token}`

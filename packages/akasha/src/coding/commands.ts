@@ -11,10 +11,13 @@ import { ensureDaemon } from '../daemon/lifecycle.js'
 import { resolveAkashaHome } from '../daemon/state.js'
 import { parseHubOrigin, readHubLogin } from '../hub/login.js'
 
+import { readCodingPublication } from './publication.js'
+
 /** 签入需要作者凭证，其他动作仅从项目外的私有文件恢复已授权的会话。 */
 export async function runCodingCommand(
   action: string | undefined,
   flag: (key: string) => string | undefined,
+  dependencies: string[],
 ) {
   const home = resolveAkashaHome(flag('home'))
   const workspace = await fs.realpath(flag('project') ?? process.cwd())
@@ -68,7 +71,8 @@ export async function runCodingCommand(
     console.log(`会话 ${grant.id} · ${projectId} · 有效至 ${grant.expiresAt}`)
     return 0
   }
-  if (action !== 'read' && action !== 'mcp') throw new Error('用法：akasha coding connect|read|mcp')
+  if (action !== 'read' && action !== 'mcp' && action !== 'publish')
+    throw new Error('用法：akasha coding connect|read|publish|mcp')
   const id = CodingSessionIdSchema.parse(flag('session'))
   const saved = JSON.parse(await fs.readFile(path.join(sessions, `${id}.json`), 'utf8'))
   const grant = CodingSessionGrantSchema.parse(saved)
@@ -81,6 +85,9 @@ export async function runCodingCommand(
     projectId: saved.projectId,
   })
   if (action === 'mcp') await runCodingSessionMcp(client)
-  else console.log(JSON.stringify(await client.read(), null, 2))
+  else if (action === 'publish') {
+    const result = await client.publish(await readCodingPublication(workspace, flag, dependencies))
+    console.log(`已发布 v${result.version}：${new URL(result.path, saved.origin)}`)
+  } else console.log(JSON.stringify(await client.read(), null, 2))
   return 0
 }
