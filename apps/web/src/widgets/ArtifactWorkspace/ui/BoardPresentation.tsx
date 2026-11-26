@@ -4,7 +4,9 @@ import { type MouseEventHandler, type ReactNode, useLayoutEffect, useRef, useSta
 import type { CanvasBoard } from '@/entities/artifact'
 import { useMessages } from '@/shared/i18n'
 import { useViewportSize } from '../hooks/useViewportSize'
+import { type Point, pointInBoard } from '../lib/canvas-camera'
 import { navigationMessages } from '../navigation/board-navigation-messages'
+import { canvasToolsMessages } from '../toolbar/canvas-tools-messages'
 
 interface BoardPresentationProps {
   board: CanvasBoard
@@ -12,6 +14,7 @@ interface BoardPresentationProps {
   playback?: boolean
   onPlay?: MouseEventHandler<HTMLButtonElement>
   onExport?: () => void
+  onPickText?: (point: Point, anchor: Point) => void
   onClose: () => void
   children: ReactNode
 }
@@ -38,10 +41,15 @@ export function BoardPresentation({
   playback = false,
   onPlay,
   onExport,
+  onPickText,
   onClose,
   children,
 }: BoardPresentationProps) {
   const { t, number, dir } = useMessages(navigationMessages)
+  const { t: toolLabel } = useMessages(canvasToolsMessages)
+  const [pickingText, setPickingText] = useState(false)
+  const editTrigger = useRef<HTMLButtonElement>(null)
+  const pickSurface = useRef<HTMLButtonElement>(null)
   const backRef = useRef<HTMLButtonElement>(null)
   const scrollRef = useRef<HTMLElement>(null)
   const size = useViewportSize(scrollRef, visible)
@@ -54,33 +62,61 @@ export function BoardPresentation({
   useLayoutEffect(() => {
     backRef.current?.focus({ preventScroll: true })
   }, [])
+  useLayoutEffect(() => {
+    if (pickingText) pickSurface.current?.focus({ preventScroll: true })
+  }, [pickingText])
 
   return (
     <section
       dir={dir}
       hidden={!visible}
       aria-label={t(playback ? '交互预览' : '画板查看')}
-      className={visible ? 'flex min-h-0 min-w-0 flex-1 flex-col bg-canvas' : 'hidden'}
+      className={
+        visible
+          ? 'flex min-h-0 min-w-0 flex-1 flex-col bg-canvas max-md:fixed max-md:inset-0 max-md:z-30 max-md:pt-[env(safe-area-inset-top)] max-md:pb-[env(safe-area-inset-bottom)]'
+          : 'hidden'
+      }
     >
       <header className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/80 bg-surface/92 px-3 py-1 backdrop-blur-md">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 max-w-full items-center gap-2">
           <Button
             ref={backRef}
             variant="ghost"
             size="sm"
+            className="shrink-0"
             leftIcon={<ArrowLeft size={15} className="rtl:rotate-180" />}
             onClick={onClose}
           >
             {t(playback ? '退出预览' : '返回总览')}
           </Button>
           <span aria-hidden="true" className="h-4 w-px bg-border" />
-          <h2 dir="auto" className="min-w-0 break-words text-sm font-semibold text-ink">
+          <h2
+            dir="auto"
+            title={board.title}
+            className="min-w-0 truncate text-sm font-semibold text-ink"
+          >
             {board.title}
           </h2>
         </div>
         {!playback && (
-          <div className="flex min-w-0 flex-wrap items-center gap-1">
-            <fieldset className="flex min-w-0 flex-wrap items-center gap-1">
+          <div className="flex min-w-0 max-w-full items-center gap-1 overflow-x-auto p-1">
+            {onPickText && (
+              <Button
+                ref={editTrigger}
+                variant={pickingText ? 'secondary' : 'ghost'}
+                size="sm"
+                aria-pressed={pickingText}
+                onClick={() => setPickingText(!pickingText)}
+              >
+                {toolLabel('编辑文字')}
+              </Button>
+            )}
+            {pickingText && onPickText && (
+              <span role="status" className="shrink-0 text-xs text-ink-muted">
+                {toolLabel('选择要编辑的文字')}
+              </span>
+            )}
+            <fieldset className="flex shrink-0 items-center gap-1">
               <legend className="sr-only">{t('画板缩放')}</legend>
               <Button
                 variant={zoom === 'fit' ? 'secondary' : 'ghost'}
@@ -166,9 +202,9 @@ export function BoardPresentation({
         aria-label={t('画板内容')}
         className="artifact-canvas-surface min-h-0 flex-1 overflow-auto overscroll-contain"
       >
-        <div className="flex min-h-full min-w-max p-6">
+        <div className="flex min-h-full min-w-max p-3">
           <div
-            className="artifact-canvas-board-clip relative m-auto shrink-0"
+            className="relative m-auto shrink-0 overflow-hidden bg-white shadow-xs outline outline-border"
             style={{
               width: board.width * scale,
               height: board.height * scale,
@@ -181,6 +217,32 @@ export function BoardPresentation({
             >
               {children}
             </div>
+            {!playback && pickingText && onPickText && (
+              <button
+                ref={pickSurface}
+                type="button"
+                aria-label={toolLabel('选择要编辑的文字')}
+                className="absolute inset-0 touch-manipulation cursor-text bg-transparent focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                onKeyDown={(event) => {
+                  if (event.key !== 'Escape') return
+                  event.stopPropagation()
+                  setPickingText(false)
+                  editTrigger.current?.focus({ preventScroll: true })
+                }}
+                onClick={(event) => {
+                  const rect = event.currentTarget.getBoundingClientRect()
+                  const anchor =
+                    event.detail === 0
+                      ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+                      : { x: event.clientX, y: event.clientY }
+                  const point = pointInBoard(board, rect, anchor)
+                  if (!point) return
+                  setPickingText(false)
+                  editTrigger.current?.focus({ preventScroll: true })
+                  onPickText(point, anchor)
+                }}
+              />
+            )}
           </div>
         </div>
       </section>

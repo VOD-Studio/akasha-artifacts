@@ -15,7 +15,11 @@ function lookupBoard(document: CanvasDocument, target: Target | null) {
 }
 
 /** 试玩可以叠在聚焦之上；两者都不更改总览的选板、页面或相机。 */
-export function useBoardPresentation(document: CanvasDocument, visible: boolean) {
+export function useBoardPresentation(
+  document: CanvasDocument,
+  visible: boolean,
+  focusOverviewBoard: (boardId: string) => void,
+) {
   const [focus, setFocus] = useState<Target | null>(null)
   const [play, setPlay] = useState<Target | null>(null)
   const focusTrigger = useRef<HTMLButtonElement | null>(null)
@@ -50,6 +54,7 @@ export function useBoardPresentation(document: CanvasDocument, visible: boolean)
       setPlay(target)
     },
     closeFocus() {
+      if (!focusTrigger.current?.isConnected && focused) focusOverviewBoard(focused.id)
       setFocus(null)
     },
     closePlay() {

@@ -7,7 +7,14 @@ import {
   type VersionSummary,
 } from '@akasha/protocol'
 import { useCallback, useRef, useState } from 'react'
-import type { CanvasBoard } from '@/entities/artifact'
+import {
+  type CanvasBoard,
+  type CanvasTextTarget,
+  canvasTextDraftKey,
+  discardCanvasTextDraft,
+  readCanvasTextDraft,
+  writeCanvasTextDraft,
+} from '@/entities/artifact'
 import { fetchVisualEditTarget, previewVisualEdit } from '@/features/visual-edit'
 import type { ShellOutgoingPayload } from '@/shared/bridge/host'
 import type { Point } from '../lib/canvas-camera'
@@ -30,8 +37,7 @@ export interface CanvasTextTools {
 
 /** 一个已定位的编辑或只读提示，保留打开时的版本和外壳定位。 */
 export type CanvasTextDraft = { anchor: Point } & (
-  | { kind: 'create' | 'native'; boardId: string; base: VersionSummary; layer: DesignTextLayer }
-  | { kind: 'source'; boardId?: string; base: VersionSummary; loc: string; text: string }
+  | (CanvasTextTarget & { base: VersionSummary; restoredText?: string })
   | { kind: 'readOnly'; element: ElementRef; message: string }
 )
 
@@ -46,6 +52,7 @@ interface TextEditingInput {
   artifact: Artifact
   version: VersionSummary
   enabled: boolean
+  shareExpiresAt?: string
   activeBoardId?: string
   editing: CanvasBoardEditing
   readBoard: (board: CanvasBoard) => CanvasBoard | undefined
@@ -55,8 +62,20 @@ interface TextEditingInput {
 
 /** 只处理最新一次双击请求；用户输入始终以打开时的快照为基准。 */
 export function useInlineCanvasText(input: TextEditingInput) {
-  const [draft, setDraft] = useState<CanvasTextDraft | null>(null)
+  const draftKey = (base: VersionSummary) =>
+    canvasTextDraftKey(input.artifact.projectId, base, input.shareExpiresAt)
+  const [draft, setDraft] = useState<CanvasTextDraft | null>(() => {
+    const saved = input.enabled && readCanvasTextDraft(draftKey(input.version))
+    if (!saved) return null
+    return {
+      ...saved.target,
+      base: input.version,
+      restoredText: saved.value,
+      anchor: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+    }
+  })
   const pending = useRef<Request | null>(null)
+  const remembered = useRef<{ draft: CanvasTextDraft; value: string } | null>(null)
   const latest = useRef({ ...input, draft })
   latest.current = { ...input, draft }
 
@@ -176,9 +195,22 @@ export function useInlineCanvasText(input: TextEditingInput) {
 
   return {
     tools,
-    draft,
+    draft: input.enabled ? draft : null,
+    initialText:
+      draft && remembered.current?.draft === draft ? remembered.current.value : undefined,
     onTextTarget,
-    close: () => setDraft(null),
+    remember(text: string) {
+      if (!draft || draft.kind === 'readOnly' || !input.enabled) return
+      remembered.current = { draft, value: text }
+      const key = draftKey(draft.base)
+      const original = draft.kind === 'source' ? draft.text : draft.layer.text
+      if (text === original) discardCanvasTextDraft(key)
+      else writeCanvasTextDraft(key, draft, text)
+    },
+    close() {
+      if (draft && draft.kind !== 'readOnly') discardCanvasTextDraft(draftKey(draft.base))
+      setDraft(null)
+    },
     annotate(element: ElementRef) {
       input.annotate(element)
       setDraft(null)
@@ -187,6 +219,8 @@ export function useInlineCanvasText(input: TextEditingInput) {
       if (!draft || draft.kind === 'readOnly') return
       if (!input.editing.available) throw new Error('当前无法保存文字，输入已保留。')
       const { base } = draft
+      const key = draftKey(base)
+      const clearSavedText = () => discardCanvasTextDraft(key)
       let staged: boolean
       if (draft.kind === 'source') {
         const { source } = await previewVisualEdit(base.artifactId, {
@@ -198,16 +232,18 @@ export function useInlineCanvasText(input: TextEditingInput) {
         const live = latest.current
         if (live.draft !== draft || !live.enabled || live.artifact.publicId !== base.artifactId)
           return
-        staged = await live.editing.replaceSource(source, base)
+        staged = await live.editing.replaceSource(source, base, clearSavedText)
       } else if (draft.kind === 'native') {
         staged = await input.editing.change(
           { kind: 'layerText', boardId: draft.boardId, layerId: draft.layer.id, text },
           base,
+          clearSavedText,
         )
       } else {
         staged = await input.editing.change(
           { kind: 'layerCreate', boardId: draft.boardId, layer: { ...draft.layer, text } },
           base,
+          clearSavedText,
         )
       }
       if (!staged) throw new Error('无法保存文字，请处理画布上的提示后重试。')

@@ -11,6 +11,15 @@ interface Size {
   height: number
 }
 
+/** 将外壳触点换算为画板固有像素；未完成布局的命中区不可编辑。 */
+export function pointInBoard(board: Size, rect: DOMRect, anchor: Point): Point | null {
+  if (!rect.width || !rect.height) return null
+  return {
+    x: Math.max(0, ((anchor.x - rect.left) * board.width) / rect.width),
+    y: Math.max(0, ((anchor.y - rect.top) * board.height) / rect.height),
+  }
+}
+
 /**
  * 画布相机：描述画布相对视口的平移与缩放。
  *

@@ -1,7 +1,6 @@
 import { Button } from '@akasha/ui/button'
 import { Skeleton } from '@akasha/ui/skeleton'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { clearAnnotationDrafts } from '@/entities/feedback'
 import { hubSessionOptions } from '@/entities/hub-session'
 import { ApiError, getRequestErrorMessage, isResourceUnavailable } from '@/shared/api/error'
 import { isCloudHub } from '@/shared/config/runtime'
@@ -9,6 +8,7 @@ import { LanguageMenu, useMessages } from '@/shared/i18n'
 import { acceptInvitation } from '../api/invitations'
 import { HubAccountButton } from '../HubActions'
 import { messages } from '../messages'
+import { clearHubDrafts } from '../model/clearHubDrafts'
 
 interface HubInvitationPageProps {
   invitationId: string
@@ -60,7 +60,7 @@ export function HubInvitationPage({ invitationId, onAccepted }: HubInvitationPag
         )}
         {showActions && needsLogin && (
           <Button asChild size="sm">
-            <a href={loginPath} onClick={clearAnnotationDrafts}>
+            <a href={loginPath} onClick={clearHubDrafts}>
               {t('使用 GitHub 登录')}
             </a>
           </Button>
