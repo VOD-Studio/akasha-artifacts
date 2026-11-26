@@ -1,12 +1,14 @@
 import { fireEvent, render } from '@testing-library/react/pure'
-import { expect, it } from 'vitest'
+import { beforeAll, expect, it } from 'vitest'
 import { builtinEnvironments } from 'vitest/environments'
 import { createMemoryContainer } from '../../../packages/server/src/app/create-memory-container'
 import { buttons } from '../../../packages/server/test/design-systems/brand'
 import { compileReactArtifact } from '../src/runtime/compiler'
 
-it('runs the published button and its selected stylesheet in the sandbox renderer', async () => {
-  // HTTP、固定版本和数据库由 publication 集成用例覆盖；渲染用例不依赖监听端口。
+let published: { source: string; systemId: string }
+
+// esbuild 的输入须属于 Node 的字节类型；先发布再安装 DOM，避免跨 realm 误判。
+beforeAll(async () => {
   const { service } = createMemoryContainer()
   const draft = buttons('#1458ab')
   const review = await service.designSystems.preview('original', { draft, buildApproved: true })
@@ -33,24 +35,25 @@ it('runs the published button and its selected stylesheet in the sandbox rendere
     },
     'human:local',
   )
+  published = { source: board.version.source, systemId: system.artifact.publicId }
   const dom = await builtinEnvironments.jsdom.setup(globalThis, {})
+  return () => dom.teardown(globalThis)
+})
+
+it('runs the published button and its selected stylesheet in the sandbox renderer', async () => {
+  const Board = await compileReactArtifact(published.source)
+  const view = render(<Board />)
   try {
-    const Board = await compileReactArtifact(board.version.source)
-    const view = render(<Board />)
-    try {
-      const button = view.getByRole('button', { name: 'Confirm order' })
-      expect(getComputedStyle(button).backgroundColor).toBe('rgb(20, 88, 171)')
-      expect(button.closest('main')?.dataset.akSystem).toBe(system.artifact.publicId)
-      expect(button.closest('[data-ak-component]')?.getAttribute('data-ak-component')).toBe(
-        'src/Button.tsx#ConfirmButton',
-      )
-      fireEvent.click(button)
-      expect(button.textContent).toBe('Sent from original')
-      expect(view.queryByText('Private badge implementation')).toBeNull()
-    } finally {
-      view.unmount()
-    }
+    const button = view.getByRole('button', { name: 'Confirm order' })
+    expect(getComputedStyle(button).backgroundColor).toBe('rgb(20, 88, 171)')
+    expect(button.closest('main')?.dataset.akSystem).toBe(published.systemId)
+    expect(button.closest('[data-ak-component]')?.getAttribute('data-ak-component')).toBe(
+      'src/Button.tsx#ConfirmButton',
+    )
+    fireEvent.click(button)
+    expect(button.textContent).toBe('Sent from original')
+    expect(view.queryByText('Private badge implementation')).toBeNull()
   } finally {
-    await dom.teardown(globalThis)
+    view.unmount()
   }
 })
