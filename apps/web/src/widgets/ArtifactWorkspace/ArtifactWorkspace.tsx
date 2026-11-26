@@ -14,6 +14,7 @@ import {
   type VersionSummary,
 } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
+import { ScrollArea } from '@akasha/ui/scroll-area'
 import { useQueryClient } from '@tanstack/react-query'
 import { type Ref, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -1043,18 +1044,23 @@ export function ArtifactWorkspace({
           ) : null}
 
           {viewMode === 'source' ? (
-            <div className="h-full w-full overflow-auto bg-surface p-4">
+            <ScrollArea
+              orientation="both"
+              aria-label={artifact.title}
+              tabIndex={-1}
+              className="h-full w-full bg-surface [--v-scroll-area-padding:16px] [--v-scroll-area-surface:var(--surface)]"
+            >
               {fullVersion ? (
                 <pre
                   dir="ltr"
-                  className="rounded-xl border border-border bg-surface-subtle p-4 font-mono text-xs leading-6 text-ink"
+                  className="w-max min-w-full rounded-xl border border-border bg-surface-subtle p-4 font-mono text-xs leading-6 text-ink"
                 >
                   <code>{fullVersion.source}</code>
                 </pre>
               ) : (
                 <SourceStatus error={sourceRead.error} retry={() => void sourceRead.refetch()} />
               )}
-            </div>
+            </ScrollArea>
           ) : null}
         </div>
       </main>
@@ -1090,7 +1096,18 @@ export function ArtifactWorkspace({
         followHead={followsEditableHead}
         canComment={canComment}
         editing={canEditBoards ? boardEditing : undefined}
+        elementEditing={canEditText ? boardEditing : undefined}
         onEditText={canEditBoards && boardEditing.available ? inlineText.tools.edit : undefined}
+        onEditSourceText={
+          canEditText && boardEditing.available ? inlineText.tools.editSource : undefined
+        }
+        selectedElement={canvas === savedCanvas ? selectedElement : null}
+        sourceLoc={canvas === savedCanvas ? activeSourceLoc : undefined}
+        presentation={canvas === savedCanvas ? inspection.presentation : null}
+        visualTarget={canvas === savedCanvas ? runtimeVisualTarget.target : null}
+        onApplyRuntimeOp={canvas === savedCanvas ? runtimeVisualTarget.applyOp : undefined}
+        readFullSource={readFullSource}
+        onHtmlElementSaved={inspection.preserveSourceSelection}
         layers={watchBoard ? inspection.layers : null}
         selectedLayerId={inspection.selectedId}
         layersAvailable={canvas === savedCanvas}

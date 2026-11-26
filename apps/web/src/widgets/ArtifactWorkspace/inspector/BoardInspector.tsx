@@ -2,9 +2,13 @@ import {
   type ArtboardTweakValues,
   type Artifact,
   type ArtifactHandoffReference,
+  type CanvasElementPresentation,
   type CanvasLayer,
   type CanvasLayerStyles,
   DESIGN_LAYER_BLOCK_PREFIX,
+  type EditOp,
+  type ElementRect,
+  type ElementRef,
   STANDALONE_BOARD_ID,
   type VersionSummary,
 } from '@akasha/protocol'
@@ -24,6 +28,7 @@ import {
 import { selectionForVersion, useSelectionStore } from '@/entities/selection'
 import { useWorkspaceStore } from '@/entities/workspace'
 import { extractPropFieldsFromSpec, PropsPanel } from '@/features/props-panel'
+import type { VisualEditTarget } from '@/features/visual-edit'
 import { getRequestErrorMessage, isResourceUnavailable } from '@/shared/api/error'
 import { useMessages } from '@/shared/i18n'
 import type { CanvasBoardEditing } from '../hooks/useCanvasBoardEditing'
@@ -69,8 +74,23 @@ interface BoardInspectorProps {
   canComment?: boolean
   /** 缺省时仍可读取图层源码；只为可改的头版本提供布局编辑器。 */
   editing?: CanvasBoardEditing
+  /** 静态 HTML/React 元素直改使用的编辑控制器（单板 HTML 同样可用）。 */
+  elementEditing?: CanvasBoardEditing
   /** 只有可写的头版本可从图层属性打开就地文字编辑。 */
   onEditText?: CanvasTextTools['edit']
+  onEditSourceText?: CanvasTextTools['editSource']
+  selectedElement?: ElementRef | null
+  sourceLoc?: string
+  presentation?: CanvasElementPresentation | null
+  visualTarget?: VisualEditTarget | null
+  onApplyRuntimeOp?: (op: EditOp) => Promise<boolean>
+  readFullSource?: () => Promise<string | null | undefined>
+  onHtmlElementSaved?: (
+    boardId: string,
+    loc: string,
+    rect: ElementRect | undefined,
+    version: number,
+  ) => void
   tab: string
   onTabChange: (tab: string) => void
   layers: { layers: readonly CanvasLayer[]; truncated: boolean; styles?: CanvasLayerStyles } | null
@@ -107,7 +127,16 @@ export function BoardInspector({
   followHead,
   canComment = true,
   editing,
+  elementEditing,
   onEditText,
+  onEditSourceText,
+  selectedElement,
+  sourceLoc,
+  presentation,
+  visualTarget,
+  onApplyRuntimeOp,
+  readFullSource,
+  onHtmlElementSaved,
   tab,
   onTabChange,
   layers,
@@ -161,13 +190,15 @@ export function BoardInspector({
     return () => onRequestBoard(undefined)
   }, [inspectorBoardId, onRequestBoard])
   const tweaks = layersAvailable ? loaded?.tweaks : undefined
+  const hasBoardTweaks = Boolean(board && tweaks && tweaks.length > 0)
   const template = useArtifactSpecQuery(artifact.type, open)
   const hasTemplateProps = useMemo(
     () => extractPropFieldsFromSpec(template.data).length > 0,
     [template.data],
   )
-  const unavailableTab =
-    (tab === 'tweaks' && !tweaks?.length) || (tab === 'template' && !hasTemplateProps)
+  const hasTweaksTab = hasBoardTweaks || hasTemplateProps
+  const normalizedTab = tab === 'template' ? 'tweaks' : tab
+  const activeTab = normalizedTab === 'tweaks' && !hasTweaksTab ? 'properties' : normalizedTab
   const usesBoardSource = Boolean(board?.scoped && !board.generated)
   const inline = hasVersionSource(version) ? version.source : undefined
   const sourceRead = useArtifactSourceQuery(
@@ -175,7 +206,8 @@ export function BoardInspector({
     version.version,
     open &&
       inline === undefined &&
-      ((tab === 'template' && hasTemplateProps) || (tab === 'source' && !usesBoardSource)),
+      ((activeTab === 'tweaks' && hasTemplateProps) ||
+        (activeTab === 'source' && !usesBoardSource)),
   )
   const fullSource = inline ?? sourceRead.data?.source
   const sourceReady = usesBoardSource ? board?.source !== undefined : fullSource !== undefined
@@ -287,33 +319,48 @@ export function BoardInspector({
               onNavigate={navigate}
             />
             {readOnly && <p className="text-xs text-ink-muted">{readOnlyLabel}</p>}
-            <Tabs dir={dir} value={unavailableTab ? 'properties' : tab} onValueChange={onTabChange}>
+            <Tabs dir={dir} value={activeTab} onValueChange={onTabChange}>
               <TabsList aria-label={t('检查器选项')}>
                 <TabsTrigger value="properties">{t('属性')}</TabsTrigger>
                 <TabsTrigger value="source">{t('源码')}</TabsTrigger>
-                {Boolean(tweaks?.length) && (
-                  <TabsTrigger value="tweaks">{t('画板参数')}</TabsTrigger>
-                )}
-                {hasTemplateProps && <TabsTrigger value="template">{t('模板参数')}</TabsTrigger>}
+                {hasTweaksTab && <TabsTrigger value="tweaks">{t('参数')}</TabsTrigger>}
               </TabsList>
-              <TabsContent value="properties" className="pt-3">
+              <TabsContent value="properties" className="pt-2">
                 {board && (
                   <>
                     <BoardInspectorProperties
-                      key={JSON.stringify([scope, designLayer?.id])}
+                      key={
+                        designLayer
+                          ? JSON.stringify([scope, 'design', designLayer.id])
+                          : JSON.stringify([scope, 'runtime', layer?.id, sourceLoc])
+                      }
                       board={board}
                       pageTitle={page?.title}
                       designLayer={designLayer}
                       runtimeLayer={layer}
+                      selectedElement={
+                        selectedElement &&
+                        (selectedElement.boardId ?? STANDALONE_BOARD_ID) === board.id
+                          ? selectedElement
+                          : null
+                      }
+                      sourceLoc={sourceLoc}
+                      presentation={presentation}
+                      visualTarget={visualTarget}
                       selectedDesignLayers={selectedDesignLayers}
                       editing={readOnly || board.source === undefined ? undefined : editing}
+                      elementEditing={readOnly ? undefined : (elementEditing ?? editing)}
                       onEditText={readOnly ? undefined : onEditText}
+                      onEditSourceText={readOnly ? undefined : onEditSourceText}
+                      onApplyRuntimeOp={readOnly ? undefined : onApplyRuntimeOp}
+                      readFullSource={readFullSource}
+                      onHtmlElementSaved={onHtmlElementSaved}
                     />
-                    {((layer || designLayer) && canComment) ||
+                    {((layer || designLayer || selectedElement) && canComment) ||
                     (onHandoff && page) ||
                     (onAskAgent && page && handoffElement) ? (
-                      <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border pt-3">
-                        {(layer || designLayer) && canComment ? (
+                      <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border/75 pt-3">
+                        {(layer || designLayer || selectedElement) && canComment ? (
                           <Button variant="outline" size="sm" onClick={() => setDrawer('review')}>
                             {t('批注')}
                           </Button>
@@ -364,9 +411,11 @@ export function BoardInspector({
                 )}
                 {!board && <p className="py-2 text-sm text-ink-muted">{t('选择画板以查看属性')}</p>}
               </TabsContent>
-              <TabsContent value="source" className="space-y-4 pt-3">
+              <TabsContent value="source" className="space-y-4 pt-2">
                 {board && layer && <BoardLayerStyles layerId={layer.id} styles={layers?.styles} />}
-                <h3 className="text-sm font-medium">{t('原始源码')}</h3>
+                <h3 className="text-xs font-semibold tracking-wide text-ink-muted uppercase">
+                  {t('原始源码')}
+                </h3>
                 {sourceReady || designLayer ? (
                   <BoardInspectorSource
                     board={board}
@@ -383,42 +432,63 @@ export function BoardInspector({
                   />
                 )}
               </TabsContent>
-              {board && tweaks && tweaks.length > 0 && (
-                <TabsContent value="tweaks" className="pt-3">
-                  <BoardTweakPanel
-                    key={board.id}
-                    boardId={board.id}
-                    tweaks={tweaks}
-                    previews={tweakPreviews}
-                    onApply={
-                      allowTweakWrite && editing?.available
-                        ? (values) => setTweakRequest({ base: version, boardId: board.id, values })
-                        : undefined
-                    }
-                  />
-                </TabsContent>
-              )}
-              {hasTemplateProps && (
-                <TabsContent value="template" className="flex flex-col gap-2 pt-3">
-                  {!templateReadOnly && (
-                    <p className="text-xs text-ink-muted">
-                      {t('更改整份作品的运行状态，不会生成版本。')}
-                    </p>
+              {hasTweaksTab && (
+                <TabsContent value="tweaks" className="flex flex-col gap-4 pt-2">
+                  {hasBoardTweaks && board && tweaks && (
+                    <div className="flex flex-col gap-2">
+                      {hasTemplateProps && (
+                        <h3 className="text-xs font-semibold tracking-wide text-ink-muted uppercase">
+                          {t('画板参数')}
+                        </h3>
+                      )}
+                      <BoardTweakPanel
+                        key={board.id}
+                        boardId={board.id}
+                        tweaks={tweaks}
+                        previews={tweakPreviews}
+                        onApply={
+                          allowTweakWrite && editing?.available
+                            ? (values) =>
+                                setTweakRequest({ base: version, boardId: board.id, values })
+                            : undefined
+                        }
+                      />
+                    </div>
                   )}
-                  {fullSource !== undefined ? (
-                    <PropsPanel
-                      artifactId={artifact.publicId}
-                      projectId={artifact.projectId}
-                      artifactType={artifact.type}
-                      source={fullSource}
-                      stateSnapshot={
-                        version.version === artifact.headVersion ? stateSnapshot : EMPTY_PROPS
+                  {hasTemplateProps && (
+                    <div
+                      className={
+                        hasBoardTweaks
+                          ? 'flex flex-col gap-2 border-t border-border/75 pt-4'
+                          : 'flex flex-col gap-2'
                       }
-                      readOnly={templateReadOnly}
-                      specOverride={template.data}
-                    />
-                  ) : (
-                    <InspectorSourceStatus error={sourceError} retry={retrySource} />
+                    >
+                      {hasBoardTweaks && (
+                        <h3 className="text-xs font-semibold tracking-wide text-ink-muted uppercase">
+                          {t('模板参数')}
+                        </h3>
+                      )}
+                      {!templateReadOnly && (
+                        <p className="text-xs text-ink-muted">
+                          {t('更改整份作品的运行状态，不会生成版本。')}
+                        </p>
+                      )}
+                      {fullSource !== undefined ? (
+                        <PropsPanel
+                          artifactId={artifact.publicId}
+                          projectId={artifact.projectId}
+                          artifactType={artifact.type}
+                          source={fullSource}
+                          stateSnapshot={
+                            version.version === artifact.headVersion ? stateSnapshot : EMPTY_PROPS
+                          }
+                          readOnly={templateReadOnly}
+                          specOverride={template.data}
+                        />
+                      ) : (
+                        <InspectorSourceStatus error={sourceError} retry={retrySource} />
+                      )}
+                    </div>
                   )}
                 </TabsContent>
               )}

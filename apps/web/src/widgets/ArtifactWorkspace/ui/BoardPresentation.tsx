@@ -1,4 +1,5 @@
 import { Button } from '@akasha/ui/button'
+import { ScrollArea } from '@akasha/ui/scroll-area'
 import { ArrowLeft, Download, Minus, Play, Plus } from 'lucide-react'
 import { type MouseEventHandler, type ReactNode, useLayoutEffect, useRef, useState } from 'react'
 import type { CanvasBoard } from '@/entities/artifact'
@@ -51,7 +52,7 @@ export function BoardPresentation({
   const editTrigger = useRef<HTMLButtonElement>(null)
   const pickSurface = useRef<HTMLButtonElement>(null)
   const backRef = useRef<HTMLButtonElement>(null)
-  const scrollRef = useRef<HTMLElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const size = useViewportSize(scrollRef, visible)
   const [zoom, setZoom] = useState<'fit' | 'fill' | number>('fit')
   const widthScale = Math.max(1, size.width - VIEWPORT_PADDING) / board.width
@@ -99,7 +100,7 @@ export function BoardPresentation({
           </h2>
         </div>
         {!playback && (
-          <div className="flex min-w-0 max-w-full items-center gap-1 overflow-x-auto p-1">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1 p-1">
             {onPickText && (
               <Button
                 ref={editTrigger}
@@ -196,56 +197,62 @@ export function BoardPresentation({
           </div>
         )}
       </header>
-      <section
+      <div
         ref={scrollRef}
         dir="ltr"
-        aria-label={t('画板内容')}
-        className="artifact-canvas-surface min-h-0 flex-1 overflow-auto overscroll-contain"
+        className="artifact-canvas-surface min-h-0 flex-1 overflow-hidden"
       >
-        <div className="flex min-h-full min-w-max p-3">
-          <div
-            className="relative m-auto shrink-0 overflow-hidden bg-white shadow-xs outline outline-border"
-            style={{
-              width: board.width * scale,
-              height: board.height * scale,
-              borderRadius: board.cornerRadius && board.cornerRadius * scale,
-            }}
-          >
+        <ScrollArea
+          orientation="both"
+          aria-label={t('画板内容')}
+          tabIndex={-1}
+          className="h-full w-full overscroll-contain [--v-scroll-area-padding:0px]"
+        >
+          <div className="flex min-h-full min-w-max p-3">
             <div
-              className="absolute top-0 left-0 origin-top-left"
-              style={{ width: board.width, height: board.height, transform: `scale(${scale})` }}
+              className="relative m-auto shrink-0 overflow-hidden bg-white shadow-xs outline outline-border"
+              style={{
+                width: board.width * scale,
+                height: board.height * scale,
+                borderRadius: board.cornerRadius && board.cornerRadius * scale,
+              }}
             >
-              {children}
+              <div
+                className="absolute top-0 left-0 origin-top-left"
+                style={{ width: board.width, height: board.height, transform: `scale(${scale})` }}
+              >
+                {children}
+              </div>
+              {!playback && pickingText && onPickText && (
+                <button
+                  ref={pickSurface}
+                  type="button"
+                  aria-label={toolLabel('选择要编辑的文字')}
+                  className="absolute inset-0 touch-manipulation cursor-text bg-transparent focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Escape') return
+                    event.stopPropagation()
+                    setPickingText(false)
+                    editTrigger.current?.focus({ preventScroll: true })
+                  }}
+                  onClick={(event) => {
+                    const rect = event.currentTarget.getBoundingClientRect()
+                    const anchor =
+                      event.detail === 0
+                        ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+                        : { x: event.clientX, y: event.clientY }
+                    const point = pointInBoard(board, rect, anchor)
+                    if (!point) return
+                    setPickingText(false)
+                    editTrigger.current?.focus({ preventScroll: true })
+                    onPickText(point, anchor)
+                  }}
+                />
+              )}
             </div>
-            {!playback && pickingText && onPickText && (
-              <button
-                ref={pickSurface}
-                type="button"
-                aria-label={toolLabel('选择要编辑的文字')}
-                className="absolute inset-0 touch-manipulation cursor-text bg-transparent focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
-                onKeyDown={(event) => {
-                  if (event.key !== 'Escape') return
-                  event.stopPropagation()
-                  setPickingText(false)
-                  editTrigger.current?.focus({ preventScroll: true })
-                }}
-                onClick={(event) => {
-                  const rect = event.currentTarget.getBoundingClientRect()
-                  const anchor =
-                    event.detail === 0
-                      ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
-                      : { x: event.clientX, y: event.clientY }
-                  const point = pointInBoard(board, rect, anchor)
-                  if (!point) return
-                  setPickingText(false)
-                  editTrigger.current?.focus({ preventScroll: true })
-                  onPickText(point, anchor)
-                }}
-              />
-            )}
           </div>
-        </div>
-      </section>
+        </ScrollArea>
+      </div>
     </section>
   )
 }

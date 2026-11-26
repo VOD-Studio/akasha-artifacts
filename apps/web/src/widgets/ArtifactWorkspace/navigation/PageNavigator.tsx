@@ -9,6 +9,7 @@ import {
 import { SearchInput } from '@akasha/ui/input'
 import { ListHighlight, ListHighlightItem } from '@akasha/ui/list-highlight'
 import { Popover, PopoverContent, PopoverTrigger } from '@akasha/ui/popover'
+import { ScrollArea } from '@akasha/ui/scroll-area'
 import {
   Check,
   ChevronDown,
@@ -222,7 +223,11 @@ export function PageNavigator({
           />
         </div>
         <ListHighlight>
-          <div className="artifact-canvas-nav-results">
+          <ScrollArea
+            aria-label={t('页面与画板')}
+            tabIndex={-1}
+            className="artifact-canvas-nav-results [--v-scroll-area-padding:6px] [--v-scroll-area-surface:var(--popover)]"
+          >
             {results.length === 0 && (
               <p className="px-2.5 py-4 text-center text-xs text-ink-muted">
                 {t('没有匹配的页面或画板')}
@@ -286,7 +291,7 @@ export function PageNavigator({
                 </fieldset>
               )
             })}
-          </div>
+          </ScrollArea>
         </ListHighlight>
         {pageEditing && (
           <div className="border-t border-border/70 p-1.5">

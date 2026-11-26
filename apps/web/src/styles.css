@@ -931,8 +931,43 @@ body,
 .artifact-canvas-nav-results {
   min-height: 0;
   max-height: min(46vh, 20rem);
-  overflow: auto;
-  padding: 6px;
+}
+
+/* 检查器采用统一的柔和设计蓝强调与克制标签栏，消除突兀黑框与高饱和黑底。 */
+#design-inspector {
+  --primary: var(--canvas-selection);
+  --primary-foreground: var(--canvas-selection-foreground);
+  --ring: var(--canvas-selection);
+}
+
+#design-inspector .v-tabs {
+  --v-tabs-item-height: 2.125rem;
+}
+
+#design-inspector .v-tabs__list-wrap {
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+}
+
+#design-inspector .v-tabs__list {
+  gap: 1.125rem;
+  font-size: 0.8125rem;
+}
+
+#design-inspector .v-tabs__tab[aria-selected="true"] {
+  color: var(--canvas-selection-strong);
+}
+
+#design-inspector .v-tabs__tab:focus-visible {
+  outline: 1.5px solid color-mix(in oklab, var(--canvas-selection) 65%, transparent);
+  outline-offset: -2px;
+}
+
+#design-inspector .v-tabs__indicator {
+  background-color: var(--canvas-selection);
+}
+
+#design-inspector .v-tabs__panel {
+  margin-block-start: 0.625rem;
 }
 
 .artifact-canvas-nav-page-row {

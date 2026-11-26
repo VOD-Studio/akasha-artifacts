@@ -89,7 +89,7 @@ it('参数确认绑定打开时的版本；协作者发布新版后不能把旧�
   fireEvent.click(screen.getByRole('button', { name: '封面' }))
   act(() => useWorkspaceStore.getState().setInspectorTab('inspect'))
   const panel = within(screen.getByRole('dialog', { name: '检查器' }))
-  fireEvent.keyDown(panel.getByRole('tab', { name: '画板参数' }), { key: 'Enter' })
+  fireEvent.keyDown(panel.getByRole('tab', { name: '参数' }), { key: 'Enter' })
   fireEvent.change(panel.getByRole('spinbutton', { name: '速度' }), { target: { value: '5' } })
   fireEvent.click(panel.getByRole('button', { name: '应用参数…' }))
   expect(await screen.findByRole('button', { name: '发布新版本' })).toBeTruthy()
@@ -124,7 +124,7 @@ it.each(['分享编辑访客', '固定头版本'] as const)(
     fireEvent.click(screen.getByRole('button', { name: '封面' }))
     act(() => useWorkspaceStore.getState().setInspectorTab('inspect'))
     const inspector = within(screen.getByRole('dialog', { name: '检查器' }))
-    fireEvent.keyDown(inspector.getByRole('tab', { name: '画板参数' }), { key: 'Enter' })
+    fireEvent.keyDown(inspector.getByRole('tab', { name: '参数' }), { key: 'Enter' })
     const speed = inspector.getByRole('spinbutton', { name: '速度' })
     fireEvent.change(speed, { target: { value: '7' } })
     expect(speed).toHaveProperty('value', '7')
@@ -146,7 +146,7 @@ it('仅查看的分享链接允许读画板源码，不暴露保存或整稿编�
   const inspector = within(screen.getByRole('dialog', { name: '检查器' }))
   expect(inspector.getByText('1440 × 900')).toBeTruthy()
   expect(inspector.queryByRole('button', { name: '保存' })).toBeNull()
-  expect(inspector.queryByRole('tab', { name: '画板参数' })).toBeNull()
+  expect(inspector.queryByRole('tab', { name: '参数' })).toBeNull()
   fireEvent.keyDown(inspector.getByRole('tab', { name: '源码' }), { key: 'Enter' })
   expect(inspector.getByText('画板源码')).toBeTruthy()
   expect(inspector.getByText('<h1>桌面预约</h1>')).toBeTruthy()
@@ -366,4 +366,93 @@ it('新版到达时将同板稳定块重绑到新节点，不捡起占用旧选�
   const reopened = screen.getByRole('dialog', { name: '检查器' })
   expect(within(reopened).getByRole('button', { name: '新版手机预约', pressed: true })).toBeTruthy()
   expect(within(reopened).getByRole('button', { name: '占旧路径', pressed: false })).toBeTruthy()
+})
+
+it('图层树默认折叠 svg 子树，检查器属性随选中的 HTML 文本元素动态切换', async () => {
+  stubResizeObserver()
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input)
+    if (url.includes('/visual-edit?')) {
+      return Response.json({
+        target: {
+          tagName: 'h1',
+          text: '桌面预约',
+          className: 'text-2xl font-bold',
+          order: null,
+        },
+      })
+    }
+    return Response.json({})
+  })
+  showWorkspace(detailFor())
+  const desktop = sandbox(screen.getByTitle<HTMLIFrameElement>('画板内容：宽屏首页'))
+  desktop.receive({ type: 'ready' })
+  fireEvent.click(screen.getByRole('button', { name: '宽屏首页' }))
+  act(() => useWorkspaceStore.getState().setInspectorTab('inspect'))
+  const inspector = screen.getByRole('dialog', { name: '检查器' })
+
+  desktop.receive({
+    type: 'inspect.layers.snapshot',
+    version: 1,
+    truncated: false,
+    layers: [
+      { id: 'svg-root', tag: 'svg', selector: 'svg', label: '<svg>', width: 120, height: 120 },
+      {
+        id: 'svg-rect',
+        parentId: 'svg-root',
+        tag: 'rect',
+        selector: 'svg > rect',
+        label: '<rect>',
+        width: 40,
+        height: 40,
+      },
+      {
+        id: 'heading-1',
+        tag: 'h1',
+        selector: 'h1',
+        sourceLoc: '1:1',
+        label: '桌面预约',
+        width: 240,
+        height: 36,
+      },
+    ],
+  })
+
+  const svgSummary = within(inspector).getByText('<svg> · 1 个子图层')
+  const svgDetails = svgSummary.closest('details')
+  expect(svgDetails?.open).toBe(false)
+
+  // 未选元素时展示画板外观属性，不展示元素排版区块
+  expect(within(inspector).getByText('外观')).toBeTruthy()
+  expect(within(inspector).queryByText('排版与文字')).toBeNull()
+
+  // 选中 HTML 标题元素并收到沙盒样式后，动态切为元素排版属性
+  fireEvent.click(within(inspector).getByRole('button', { name: '桌面预约' }))
+  desktop.receive({
+    type: 'inspect.select',
+    reason: 'sync',
+    version: 1,
+    layerId: 'heading-1',
+    layerSelector: 'h1',
+    element: {
+      boardId: 'desktop',
+      selector: 'h1',
+      loc: '1:1',
+      textPreview: '桌面预约',
+      rect: { x: 24, y: 18, width: 240, height: 36 },
+    },
+    presentation: {
+      isText: true,
+      fontSize: 24,
+      fontWeight: 700,
+      color: '#111827',
+      backgroundColor: '#ffffff',
+      textAlign: 'left',
+    },
+  })
+
+  expect(within(inspector).getByText('排版与文字')).toBeTruthy()
+  expect(within(inspector).getByText('240 × 36 px')).toBeTruthy()
+  expect(within(inspector).getByRole('spinbutton', { name: '宽度' })).toBeTruthy()
+  expect(await within(inspector).findByRole('button', { name: '编辑文字' })).toBeTruthy()
 })

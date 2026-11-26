@@ -6,6 +6,7 @@ import {
 } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Field } from '@akasha/ui/field'
+import { ScrollArea } from '@akasha/ui/scroll-area'
 import { Textarea } from '@akasha/ui/textarea'
 import {
   type CSSProperties,
@@ -328,7 +329,7 @@ export function InlineCanvasText({
       open
       ref={panel}
       aria-labelledby={`${id}-heading`}
-      className="canvas-text-editor fixed z-50 m-0 overflow-y-auto rounded-lg border border-border bg-surface p-3 text-ink shadow-lg"
+      className="canvas-text-editor fixed z-50 m-0 overflow-hidden rounded-lg border border-border bg-surface p-0 text-ink shadow-lg"
       style={
         {
           '--anchor-x': `${draft.anchor.x}px`,
@@ -343,65 +344,71 @@ export function InlineCanvasText({
         }
       }}
     >
-      <h2 id={`${id}-heading`} className="mb-2 text-sm font-semibold">
-        {title}
-      </h2>
-      {draft.kind === 'readOnly' ? (
-        <>
-          <p className="mb-3 text-sm text-ink-muted">{diagnostic(draft.message)}</p>
-          <div className="flex justify-end gap-1">
-            <Button size="sm" variant="ghost" onClick={onClose}>
-              {t('关闭')}
-            </Button>
-            <Button size="sm" onClick={() => onAnnotate(draft.element)}>
-              {t('批注')}
-            </Button>
-          </div>
-        </>
-      ) : (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault()
-            void submit()
-          }}
-          className="space-y-2"
-        >
-          <Field label={<span className="sr-only">{t('文字')}</span>} error={diagnostic(error)}>
-            <Textarea
-              ref={target}
-              dir="auto"
-              rows={3}
-              variant="outline"
-              className="resize-y"
-              maxLength={draft.kind === 'source' ? undefined : 8000}
-              value={text}
-              onChange={(event) => {
-                const next = event.currentTarget.value
-                setText(next)
-                onInput(next)
-              }}
-              onKeyDown={(event) => {
-                if (
-                  event.key !== 'Enter' ||
-                  (!event.metaKey && !event.ctrlKey) ||
-                  event.nativeEvent.isComposing
-                )
-                  return
-                event.preventDefault()
-                void submit()
-              }}
-            />
-          </Field>
-          <div className="flex justify-end gap-1">
-            <Button size="sm" variant="ghost" disabled={busy} onClick={onClose}>
-              {t('取消')}
-            </Button>
-            <Button type="submit" size="sm" disabled={!canSave} loading={busy}>
-              {t('保存')}
-            </Button>
-          </div>
-        </form>
-      )}
+      <ScrollArea
+        aria-labelledby={`${id}-heading`}
+        tabIndex={-1}
+        className="max-h-[min(70dvh,28rem)] [--v-scroll-area-padding:12px] [--v-scroll-area-surface:var(--surface)]"
+      >
+        <h2 id={`${id}-heading`} className="mb-2 text-sm font-semibold">
+          {title}
+        </h2>
+        {draft.kind === 'readOnly' ? (
+          <>
+            <p className="mb-3 text-sm text-ink-muted">{diagnostic(draft.message)}</p>
+            <div className="flex justify-end gap-1">
+              <Button size="sm" variant="ghost" onClick={onClose}>
+                {t('关闭')}
+              </Button>
+              <Button size="sm" onClick={() => onAnnotate(draft.element)}>
+                {t('批注')}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault()
+              void submit()
+            }}
+            className="space-y-2"
+          >
+            <Field label={<span className="sr-only">{t('文字')}</span>} error={diagnostic(error)}>
+              <Textarea
+                ref={target}
+                dir="auto"
+                rows={3}
+                variant="outline"
+                className="resize-y"
+                maxLength={draft.kind === 'source' ? undefined : 8000}
+                value={text}
+                onChange={(event) => {
+                  const next = event.currentTarget.value
+                  setText(next)
+                  onInput(next)
+                }}
+                onKeyDown={(event) => {
+                  if (
+                    event.key !== 'Enter' ||
+                    (!event.metaKey && !event.ctrlKey) ||
+                    event.nativeEvent.isComposing
+                  )
+                    return
+                  event.preventDefault()
+                  void submit()
+                }}
+              />
+            </Field>
+            <div className="flex justify-end gap-1">
+              <Button size="sm" variant="ghost" disabled={busy} onClick={onClose}>
+                {t('取消')}
+              </Button>
+              <Button type="submit" size="sm" disabled={!canSave} loading={busy}>
+                {t('保存')}
+              </Button>
+            </div>
+          </form>
+        )}
+      </ScrollArea>
     </dialog>,
     document.body,
   )

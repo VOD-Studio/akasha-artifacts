@@ -11,6 +11,7 @@ import {
   type StateStreamSnapshot,
   type VersionSummary,
 } from '@akasha/protocol'
+import { ScrollArea } from '@akasha/ui/scroll-area'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from 'zustand'
 import type { CanvasBoard, LoadedCanvasBoard } from '@/entities/artifact'
@@ -724,9 +725,11 @@ export function ArtifactFrame({
         />
       )}
       {error?.version === versionNumber && (
-        <div
+        <ScrollArea
           dir={dir}
-          className="pointer-events-auto absolute inset-x-0 bottom-0 z-20 max-h-full overflow-auto p-2"
+          aria-label={t('画板内容')}
+          tabIndex={-1}
+          className="pointer-events-auto absolute inset-x-0 bottom-0 z-20 max-h-full [--v-scroll-area-padding:8px]"
         >
           {playback && (
             <p role="alert" className="rounded border border-border bg-surface p-3 text-sm">
@@ -753,7 +756,7 @@ export function ArtifactFrame({
               }
             />
           )}
-        </div>
+        </ScrollArea>
       )}
     </div>
   )

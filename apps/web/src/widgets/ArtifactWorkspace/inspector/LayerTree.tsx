@@ -146,19 +146,35 @@ export function LayerTree({ layers, selectedId, selectedIds, onSelect }: LayerTr
   )
 }
 
+const VECTOR_CONTAINER_TAGS = new Set([
+  'svg',
+  'g',
+  'defs',
+  'clippath',
+  'mask',
+  'pattern',
+  'symbol',
+  'marker',
+])
+
 function LayerNode({ layer, groups, opened, selectedId, selectedIds, onSelect }: LayerNodeProps) {
   const { t } = useMessages(panelMessages)
   const label = layer.label || `<${layer.tag}>`
   const selected = selectedId === layer.id || Boolean(selectedIds?.has(layer.id))
   const children = groups.get(layer.id)
+  const autoOpen = !layer.parentId && !VECTOR_CONTAINER_TAGS.has(layer.tag.toLowerCase())
   const button = (
     <Button
       size="sm"
-      variant={selected ? 'secondary' : 'ghost'}
+      variant="ghost"
       aria-pressed={selected}
       data-layer-id={layer.id}
       data-primary={selectedId === layer.id || undefined}
-      className="h-7 w-full min-w-0 justify-start rounded-8"
+      className={
+        selected
+          ? 'h-6.5 w-full min-w-0 justify-start rounded-lg bg-(--canvas-selection-tint) px-2 text-xs font-medium text-(--canvas-selection-strong) hover:bg-(--canvas-selection-tint)'
+          : 'h-6.5 w-full min-w-0 justify-start rounded-lg px-2 text-xs text-ink-muted hover:text-ink'
+      }
       onClick={(event) => onSelect(layer, event.shiftKey)}
     >
       <bdi className="truncate">{label}</bdi>
@@ -167,11 +183,11 @@ function LayerNode({ layer, groups, opened, selectedId, selectedIds, onSelect }:
   return (
     <li className="min-w-0">
       {children?.length ? (
-        <details open={!layer.parentId || opened.has(layer.id) || undefined}>
-          <summary className="cursor-pointer truncate rounded-8 px-2 py-1 text-xs text-ink-muted transition-colors hover:bg-surface-subtle hover:text-ink">
+        <details open={autoOpen || opened.has(layer.id) || undefined}>
+          <summary className="cursor-pointer truncate rounded-lg px-2 py-1 text-xs text-ink-muted transition-colors hover:bg-surface-subtle hover:text-ink">
             {t('{label} · {count} 个子图层', { label, count: children.length })}
           </summary>
-          <div className="ms-2 border-s border-border ps-2">
+          <div className="ms-2 border-s border-border/75 ps-2">
             {button}
             <ul>
               {children.map((child) => (

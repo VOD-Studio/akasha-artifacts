@@ -5,6 +5,7 @@ import {
   type VersionSummary,
 } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
+import { ScrollArea } from '@akasha/ui/scroll-area'
 import type { CanvasBoard } from '@/entities/artifact'
 import { useMessages } from '@/shared/i18n'
 import { panelMessages } from './messages'
@@ -75,9 +76,16 @@ function SourceBlock({ label, source }: { label: string; source: string }) {
   return (
     <>
       <p className="text-xs text-ink-muted">{label}</p>
-      <pre dir="ltr" className="max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs leading-5">
-        <code>{source}</code>
-      </pre>
+      <ScrollArea
+        orientation="both"
+        aria-label={label}
+        tabIndex={-1}
+        className="max-h-72 rounded-lg border border-border/70 bg-surface-subtle [--v-scroll-area-padding:0px] [--v-scroll-area-surface:var(--surface-subtle)]"
+      >
+        <pre dir="ltr" className="w-max min-w-full p-3 font-mono text-xs leading-5 text-ink">
+          <code>{source}</code>
+        </pre>
+      </ScrollArea>
     </>
   )
 }
@@ -105,30 +113,39 @@ function SourceLines({ excerpt, scope }: { excerpt: SourceExcerpt; scope: string
           </bdi>
         </span>
       </p>
-      <pre dir="ltr" className="max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs leading-5">
-        {excerpt.lines.map((text, index) => {
-          const line = excerpt.firstLine + index
-          return (
-            <code className="block" key={line}>
-              <span
-                aria-hidden="true"
-                className="me-3 inline-block min-w-6 text-end text-ink-muted"
-              >
-                {line}
-              </span>
-              {line === excerpt.line ? (
-                <>
-                  {excerpt.before}
-                  <mark className="rounded bg-accent/20 text-inherit">{excerpt.tag}</mark>
-                  {excerpt.after}
-                </>
-              ) : (
-                text || ' '
-              )}
-            </code>
-          )
-        })}
-      </pre>
+      <ScrollArea
+        orientation="both"
+        aria-label={scope}
+        tabIndex={-1}
+        className="max-h-72 rounded-lg border border-border/70 bg-surface-subtle [--v-scroll-area-padding:0px] [--v-scroll-area-surface:var(--surface-subtle)]"
+      >
+        <pre dir="ltr" className="w-max min-w-full p-3 font-mono text-xs leading-5 text-ink">
+          {excerpt.lines.map((text, index) => {
+            const line = excerpt.firstLine + index
+            return (
+              <code className="block" key={line}>
+                <span
+                  aria-hidden="true"
+                  className="me-3 inline-block min-w-6 text-end text-ink-muted"
+                >
+                  {line}
+                </span>
+                {line === excerpt.line ? (
+                  <>
+                    {excerpt.before}
+                    <mark className="rounded bg-(--canvas-selection-tint) px-0.5 text-(--canvas-selection-strong)">
+                      {excerpt.tag}
+                    </mark>
+                    {excerpt.after}
+                  </>
+                ) : (
+                  text || ' '
+                )}
+              </code>
+            )
+          })}
+        </pre>
+      </ScrollArea>
     </>
   )
 }
