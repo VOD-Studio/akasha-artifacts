@@ -348,12 +348,14 @@ export class SandboxInspector {
     if (!root) return
     const hit = resolveHitElement(inspectPoint(root, message.x, message.y), root)
     const picking = message.purpose === 'select'
+    const textEditing = message.purpose === 'text'
+    const hovering = message.purpose === 'hover'
     if (picking) {
       this.selectedEl = hit
       this.ensureViewportListeners()
     }
-    const selector = picking && hit ? layerSelector(hit, root) : undefined
-    const presentation = picking && hit ? readElementPresentation(hit, root) : undefined
+    const selector = !textEditing && hit ? layerSelector(hit, root) : undefined
+    const presentation = !hovering && hit ? readElementPresentation(hit, root) : undefined
     this.bridge.send({
       type: 'inspect.target',
       purpose: message.purpose,
@@ -363,7 +365,7 @@ export class SandboxInspector {
       ...(hit && selector && selector.length <= 1024
         ? { layer: { id: layerElementId(hit), selector, blockId: uniqueLayerBlock(hit, root) } }
         : {}),
-      loc: hit && !picking ? uniqueStaticSourceLocation(hit, root) : undefined,
+      loc: hit && !hovering ? uniqueStaticSourceLocation(hit, root) : undefined,
       ...(presentation ? { presentation } : {}),
     })
   }

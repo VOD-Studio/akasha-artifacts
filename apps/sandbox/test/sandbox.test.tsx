@@ -601,6 +601,34 @@ describe('apps/sandbox 运行时与安全边界', () => {
       textPreview: '纯 HTML 段落',
     })
 
+    // hover 命中只回传目标几何与选择器，不采集样式也不覆写当前选中节点
+    const hoverRequestId = `hover-${posted.length}`
+    hitTest.mockReturnValueOnce(htmlPara)
+    act(() =>
+      dispatchFromHost({
+        v: PROTOCOL_VERSION,
+        nonce,
+        type: 'inspect.at',
+        purpose: 'hover',
+        x: 15,
+        y: 25,
+        requestId: hoverRequestId,
+        version: 2,
+      }),
+    )
+    const hoverTarget = posted.findLast(
+      ({ data }) => data.type === 'inspect.target' && data.requestId === hoverRequestId,
+    )
+    expect(hoverTarget?.data).toMatchObject({
+      type: 'inspect.target',
+      purpose: 'hover',
+      element: { loc: '2:3', textPreview: '纯 HTML 段落' },
+    })
+    if (hoverTarget?.data.type === 'inspect.target') {
+      expect(hoverTarget.data.presentation).toBeUndefined()
+      expect(hoverTarget.data.loc).toBeUndefined()
+    }
+
     // 仅含 textPreview 的 highlight 指令也能通过最终降级定位命中目标节点
     const prevCount = posted.length
     act(() => {
