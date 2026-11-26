@@ -6,8 +6,8 @@ import { EditOpSchema, ElementRectSchema, ElementRefSchema, JsonPatchOpSchema } 
 import { ArtifactTypeSchema, PROTOCOL_VERSION } from '../primitives.js'
 import { ArtifactStorageOperationSchema } from '../storage.js'
 
-/** 常驻总览画板位图的最大边长（像素）；不限制用户导出。 */
-export const CANVAS_PREVIEW_MAX_EDGE = 256
+/** 常驻总览画板位图的最大边长（像素）；兼顾鸟瞰清晰度与内存占用，不限制用户导出。 */
+export const CANVAS_PREVIEW_MAX_EDGE = 768
 
 const LayerIdSchema = z.string().min(1).max(1024)
 
