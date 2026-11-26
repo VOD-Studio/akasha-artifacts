@@ -162,7 +162,7 @@ it('收到受理响应前关闭并重开，继续跟踪同一个会话且不重�
   if (!close) throw new Error('未找到关闭按钮')
   fireEvent.click(close)
   await waitFor(() => expect(screen.queryByRole('dialog', { name: '新建设计' })).toBeNull())
-  fireEvent.click(screen.getByRole('button', { name: '新建设计' }))
+  fireEvent.click(screen.getByRole('button', { name: '继续设计会话' }))
   await screen.findByRole('dialog', { name: '新建设计' })
   act(() => finish(Response.json(session, { status: 202 })))
   await screen.findByRole('log', { name: 'Agent 会话记录' })

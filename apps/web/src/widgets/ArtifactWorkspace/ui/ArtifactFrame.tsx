@@ -475,7 +475,10 @@ export function ArtifactFrame({
           }
           break
         case 'inspect.target':
-          if (!isolated && message.version === activeVersion) {
+          if (
+            message.version === activeVersion &&
+            (!isolated || (!playback && message.purpose === 'text'))
+          ) {
             const element = message.element
               ? bindSandboxReference(message.element, latest.current.board)
               : null

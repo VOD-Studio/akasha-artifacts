@@ -2,7 +2,7 @@ import type { ElementRef } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Field } from '@akasha/ui/field'
 import { Textarea } from '@akasha/ui/textarea'
-import { useEffect, useId, useRef, useState } from 'react'
+import { type CSSProperties, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useMessages } from '@/shared/i18n'
 import type { CanvasTextDraft } from '../hooks/useInlineCanvasText'
@@ -11,6 +11,9 @@ import { canvasToolsMessages } from '../toolbar/canvas-tools-messages'
 interface InlineTextProps {
   /** 源码文字、原生文字和只读提示共用同一个画布锚点。 */
   draft: CanvasTextDraft
+  initialText?: string
+  /** 未提交文字按原版本暂存；主动取消才丢弃。 */
+  onInput: (text: string) => void
   /** 只有在收到真正的保存候选后才关闭；请求失败时保留输入。 */
   onSave: (text: string) => Promise<void>
   /** 仅关闭编辑，不回写源码。 */
@@ -31,7 +34,14 @@ function draftTitle(draft: CanvasTextDraft) {
 }
 
 /** 就地输入不启动试玩；焦点在输入框内时由浏览器处理文本快捷键。 */
-export function InlineCanvasText({ draft, onSave, onClose, onAnnotate }: InlineTextProps) {
+export function InlineCanvasText({
+  draft,
+  initialText,
+  onInput,
+  onSave,
+  onClose,
+  onAnnotate,
+}: InlineTextProps) {
   const { t } = useMessages(canvasToolsMessages)
   const diagnostic = (message: string) => {
     switch (message) {
@@ -46,7 +56,9 @@ export function InlineCanvasText({ draft, onSave, onClose, onAnnotate }: InlineT
     }
   }
   const initial = draftText(draft)
-  const [text, setText] = useState(initial)
+  const [text, setText] = useState(
+    draft.kind === 'readOnly' ? '' : (initialText ?? draft.restoredText ?? initial),
+  )
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const target = useRef<HTMLTextAreaElement>(null)
@@ -89,11 +101,13 @@ export function InlineCanvasText({ draft, onSave, onClose, onAnnotate }: InlineT
       open
       ref={panel}
       aria-labelledby={`${id}-heading`}
-      className="fixed z-50 m-0 w-[min(18rem,calc(100vw-24px))] rounded-lg border border-border bg-surface p-3 text-ink shadow-lg"
-      style={{
-        left: `clamp(12px, ${draft.anchor.x}px, calc(100vw - 19rem))`,
-        top: `clamp(12px, ${draft.anchor.y}px, calc(100dvh - 15rem))`,
-      }}
+      className="canvas-text-editor fixed z-50 m-0 overflow-y-auto rounded-lg border border-border bg-surface p-3 text-ink shadow-lg"
+      style={
+        {
+          '--anchor-x': `${draft.anchor.x}px`,
+          '--anchor-y': `${draft.anchor.y}px`,
+        } as CSSProperties
+      }
       onKeyDown={(event) => {
         if (event.nativeEvent.isComposing) return
         if (event.key === 'Escape' && !busy) {
@@ -134,7 +148,11 @@ export function InlineCanvasText({ draft, onSave, onClose, onAnnotate }: InlineT
               className="resize-y"
               maxLength={draft.kind === 'source' ? undefined : 8000}
               value={text}
-              onChange={(event) => setText(event.target.value)}
+              onChange={(event) => {
+                const next = event.currentTarget.value
+                setText(next)
+                onInput(next)
+              }}
               onKeyDown={(event) => {
                 if (
                   event.key !== 'Enter' ||

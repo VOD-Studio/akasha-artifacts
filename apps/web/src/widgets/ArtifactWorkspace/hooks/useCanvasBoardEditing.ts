@@ -52,7 +52,11 @@ export interface CanvasBoardEditing {
   inputError: string
   available: boolean
   busy: boolean
-  change: (command: CanvasBoardEdit, base?: VersionSummary) => Promise<boolean>
+  change: (
+    command: CanvasBoardEdit,
+    base?: VersionSummary,
+    onSaved?: (saved: Version) => void,
+  ) => Promise<boolean>
   /** 返回是否暂存；只有真实发布成功才调用 `onSaved`，完整源码仍计入同一撤销历史。 */
   replaceSource: (
     source: string,
@@ -214,8 +218,8 @@ export function useCanvasBoardEditing({
     busy: reading || draft?.status === 'saving',
     undo: available && timeline.past.length ? () => replay(false) : undefined,
     redo: available && timeline.future.length ? () => replay(true) : undefined,
-    change: (command, base = version) =>
-      stage(base, (full) => editCanvasBoards(full.source, full.version, command)),
+    change: (command, base = version, onSaved) =>
+      stage(base, (full) => editCanvasBoards(full.source, full.version, command), onSaved),
     replaceSource: (source, base, onSaved) => {
       return stage(
         base,

@@ -152,6 +152,11 @@ export const canvasToolsMessages = {
   高度: ['Höhe', 'الارتفاع', 'Height'],
   此处只读: ['Schreibgeschützt', 'للقراءة فقط', 'Read-only here'],
   编辑文字: ['Text bearbeiten', 'تعديل النص', 'Edit text'],
+  选择要编辑的文字: [
+    'Zu bearbeitenden Text auswählen',
+    'اختر النص المراد تعديله',
+    'Select text to edit',
+  ],
   '无法保存文字，输入仍保留。': [
     'Text konnte nicht gespeichert werden. Die Eingabe bleibt erhalten.',
     'تعذّر حفظ النص. لم تُفقد الكتابة.',

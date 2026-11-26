@@ -104,7 +104,7 @@ export function AgentConversationPane({
       id="artifact-agent-conversation"
       aria-label={t('Agent 对话')}
       hidden={!open}
-      className="absolute inset-0 z-20 flex min-h-0 flex-col border-border bg-surface text-sm lg:static lg:w-92 lg:shrink-0 lg:border-e xl:w-104"
+      className="workspace-conversation absolute inset-0 z-20 flex min-h-0 flex-col border-border bg-surface text-sm lg:static lg:w-92 lg:shrink-0 lg:border-e xl:w-104"
     >
       <header className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-border/80 px-3.5 py-1.5">
         <h2 ref={heading} tabIndex={-1} className="text-sm font-semibold outline-hidden">

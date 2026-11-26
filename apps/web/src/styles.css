@@ -12,6 +12,10 @@
 
 /* 放在根节点，让挂到 body 的菜单和对话框与工作区共用配色。 */
 :root {
+  --ak-visible-top: 0px;
+  --ak-visible-left: 0px;
+  --ak-visible-width: 100vw;
+  --ak-visible-height: 100dvh;
   --neutral-11: light-dark(#6c6861, #9e9a92);
   --neutral-12: light-dark(#1c1b19, #f2f0ec);
   --material-page: light-dark(#f5f4f0, #141413);
@@ -34,6 +38,53 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+}
+
+.canvas-text-editor {
+  left: clamp(12px, var(--anchor-x), calc(100vw - 19rem));
+  top: clamp(12px, var(--anchor-y), calc(100dvh - 15rem));
+  inline-size: min(18rem, calc(100vw - 24px));
+  block-size: fit-content;
+  max-block-size: calc(100dvh - 24px);
+}
+
+/* 键盘会缩小可视视口，不一定改变布局视口；只移动输入层，画布留在原处。 */
+@media (width < 48rem), (pointer: coarse) {
+  .canvas-text-editor,
+  .design-entry-dialog {
+    left: calc(var(--ak-visible-left) + 12px);
+    right: calc(100% - var(--ak-visible-left) - var(--ak-visible-width) + 12px);
+    top: calc(var(--ak-visible-top) + 12px);
+    bottom: calc(100% - var(--ak-visible-top) - var(--ak-visible-height) + 12px);
+    max-block-size: calc(var(--ak-visible-height) - 24px);
+    margin: auto;
+  }
+
+  .canvas-text-editor {
+    inline-size: min(22rem, calc(var(--ak-visible-width) - 24px));
+    margin-block-end: 0;
+  }
+
+  .design-entry-dialog {
+    inline-size: min(var(--v-dialog-width), calc(var(--ak-visible-width) - 24px));
+    overflow-y: auto;
+  }
+
+  :is(.workspace-conversation, .design-entry-dialog, .canvas-text-editor) textarea {
+    font-size: 1rem;
+  }
+}
+
+@media (width < 64rem) {
+  .workspace-conversation {
+    /* main 从可换行的顶栏下沿开始；取它与可视视口的交集，不盖住返回按钮。 */
+    top: max(0px, calc(var(--ak-visible-top) + 100% - 100dvh));
+    bottom: max(0px, calc(100dvh - var(--ak-visible-top) - var(--ak-visible-height)));
+    left: var(--ak-visible-left);
+    right: auto;
+    inline-size: min(100%, var(--ak-visible-width));
+    overflow-y: auto;
+  }
 }
 
 /* 作品库滚动区：铺满视口，顶部交由粘性磨砂顶栏承接，避免默认顶部渐隐遮住玻璃透色。 */

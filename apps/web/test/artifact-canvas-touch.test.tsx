@@ -1,0 +1,242 @@
+// @vitest-environment jsdom
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { expect, it, vi } from 'vitest'
+import {
+  design,
+  detailFor,
+  sandbox,
+  setupCanvasTest,
+  showEditableWorkspace,
+  showWorkspace,
+  stubResizeObserver,
+} from './canvas-test-fixture'
+
+setupCanvasTest()
+
+function touch(target: Element, type: string, id: number, x: number, y: number, time = 0) {
+  const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y })
+  Object.defineProperties(event, {
+    pointerId: { value: id },
+    pointerType: { value: 'touch' },
+    isPrimary: { value: id === 1 },
+    timeStamp: { value: time },
+  })
+  fireEvent(target, event)
+}
+
+it('第二指接管标题拖动，以两指中点缩放；抬指尾段不选择或保存画板', () => {
+  const editor = showEditableWorkspace(
+    detailFor(
+      1,
+      JSON.stringify({
+        ...design,
+        boards: design.boards.map((board) =>
+          board.id === 'mobile' ? { ...board, position: { x: 80, y: 90 } } : board,
+        ),
+      }),
+    ),
+  )
+  const canvas = screen.getByRole('region', { name: '画布' })
+  vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue(new DOMRect(30, 20, 2400, 2100))
+  const title = screen.getByRole('button', { name: '宽屏首页' })
+  const hit = screen.getByRole('button', { name: '选择画板：手机首页' })
+  const board = title.closest<HTMLElement>('.artifact-canvas-board')
+  if (!board) throw new Error('缺少画板')
+  const left = Number.parseFloat(board.style.left)
+  const top = Number.parseFloat(board.style.top)
+  touch(title, 'pointerdown', 1, 120, 110)
+  touch(title, 'pointermove', 1, 130, 120)
+  expect(Number.parseFloat(board.style.left)).toBe(left + 10)
+  touch(hit, 'pointerdown', 2, 230, 120)
+  expect(Number.parseFloat(board.style.left)).toBe(left)
+  touch(canvas, 'pointermove', 2, 330, 120)
+  expect(screen.getByLabelText('画布缩放比例').textContent).toBe('200%')
+  expect(Number.parseFloat(board.style.left)).toBe(2 * left - 100)
+  expect(Number.parseFloat(board.style.top)).toBe(2 * top - 100)
+  touch(canvas, 'pointerup', 2, 330, 120)
+  touch(title, 'pointermove', 1, 80, 70)
+  touch(title, 'pointerup', 1, 80, 70)
+  fireEvent.click(hit, { detail: 1 })
+  expect(screen.getByRole('button', { name: '手机首页' }).getAttribute('aria-pressed')).toBe(
+    'false',
+  )
+  expect(editor.submittedVersion).toBeUndefined()
+  touch(hit, 'pointerdown', 1, 80, 70)
+  touch(hit, 'pointerup', 1, 80, 70)
+  fireEvent.click(hit, { detail: 1 })
+  expect(screen.getByRole('button', { name: '手机首页' }).getAttribute('aria-pressed')).toBe('true')
+})
+
+it.each(['pointercancel', 'lostpointercapture'])(
+  '%s 放弃拖板；下一次触摸拖动只发布一次',
+  async (cancel) => {
+    const editor = showEditableWorkspace(detailFor())
+    const title = screen.getByRole('button', { name: '宽屏首页' })
+    const board = title.closest<HTMLElement>('.artifact-canvas-board')
+    if (!board) throw new Error('缺少画板')
+    const left = Number.parseFloat(board.style.left)
+    touch(title, 'pointerdown', 1, 10, 20)
+    touch(title, 'pointermove', 1, 50, 40)
+    expect(Number.parseFloat(board.style.left)).toBe(left + 40)
+    touch(title, cancel, 1, 50, 40)
+    touch(title, 'pointerup', 1, 50, 40)
+    expect(Number.parseFloat(board.style.left)).toBe(left)
+    expect(editor.submittedVersion).toBeUndefined()
+    const content = screen.getByRole('button', { name: '选择画板：宽屏首页' })
+    touch(content, 'pointerdown', 1, 10, 20, 100)
+    touch(content, 'pointermove', 1, 40, 32, 800)
+    expect(Number.parseFloat(board.style.left)).toBe(left + 30)
+    expect(editor.submittedVersion).toBeUndefined()
+    touch(content, 'pointerup', 1, 40, 32, 900)
+    await waitFor(() => expect(editor.current.version.version).toBe(2))
+    expect(JSON.parse(editor.current.version.source).boards[0].position).toEqual({ x: 30, y: 12 })
+  },
+)
+
+it('从空白处起手也能双指平移，两指取消后单指滑动不框选或修改作品', () => {
+  const editor = showEditableWorkspace(detailFor())
+  const canvas = screen.getByRole('region', { name: '画布' })
+  const title = screen.getByRole('button', { name: '宽屏首页' })
+  const board = title.closest<HTMLElement>('.artifact-canvas-board')
+  if (!board) throw new Error('缺少画板')
+  const left = Number.parseFloat(board.style.left)
+  const top = Number.parseFloat(board.style.top)
+  touch(canvas, 'pointerdown', 1, 100, 100)
+  touch(canvas, 'pointerdown', 2, 200, 100)
+  touch(canvas, 'pointermove', 1, 120, 120)
+  touch(canvas, 'pointermove', 2, 220, 120)
+  expect(Number.parseFloat(board.style.left)).toBeCloseTo(left + 20)
+  expect(Number.parseFloat(board.style.top)).toBeCloseTo(top + 20)
+  expect(screen.getByLabelText('画布缩放比例').textContent).toBe('100%')
+  touch(canvas, 'pointercancel', 1, 120, 120)
+  touch(canvas, 'lostpointercapture', 2, 220, 120)
+  touch(canvas, 'pointerdown', 1, 80, 80)
+  touch(canvas, 'pointermove', 1, 130, 90)
+  touch(canvas, 'pointerup', 1, 130, 90)
+  expect(Number.parseFloat(board.style.left)).toBeCloseTo(left + 70)
+  expect(screen.queryByTestId('canvas-marquee')).toBeNull()
+  expect(editor.submittedVersion).toBeUndefined()
+})
+
+const detailWithNote = () =>
+  detailFor(
+    1,
+    JSON.stringify({
+      ...design,
+      boards: design.boards.map((board) =>
+        board.id === 'mobile'
+          ? {
+              ...board,
+              designLayers: [
+                { id: 'note', kind: 'note', x: 10, y: 20, width: 100, height: 50, text: '预约' },
+              ],
+            }
+          : board,
+      ),
+    }),
+  )
+
+it('总览长按文字不依赖双击，末尾的点击不会发出第二次选点', () => {
+  stubResizeObserver()
+  const editor = showEditableWorkspace(detailWithNote())
+  const hit = screen.getByRole('button', { name: '选择画板：手机首页' })
+  vi.spyOn(hit, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 100, 195, 422))
+  const frame = sandbox(screen.getByTitle('画板内容：手机首页'))
+  frame.receive({ type: 'ready' })
+  touch(hit, 'pointerdown', 1, 119, 130, 100)
+  touch(hit, 'pointermove', 1, 120, 130, 220)
+  touch(hit, 'pointerup', 1, 120, 130, 800)
+  fireEvent.click(hit, { clientX: 120, clientY: 130, detail: 1 })
+  const picks = frame.post.mock.calls.flatMap(([message]) =>
+    message.type === 'inspect.at' ? [message] : [],
+  )
+  expect(picks).toEqual([expect.objectContaining({ purpose: 'text', x: 40, y: 60, version: 1 })])
+  frame.receive({
+    type: 'inspect.target',
+    purpose: 'text',
+    version: 1,
+    requestId: picks[0].requestId,
+    element: { blockId: 'design-layer:note', selector: 'aside', textPreview: '预约' },
+  })
+  expect(screen.getByRole<HTMLTextAreaElement>('textbox', { name: '文字' }).value).toBe('预约')
+  expect(editor.submittedVersion).toBeUndefined()
+})
+
+it('展开另一张画板后点选文字、提交版本，再回到原来的选区、倍率和焦点', async () => {
+  stubResizeObserver()
+  const editor = showEditableWorkspace(detailWithNote())
+  const desktop = screen.getByRole('button', { name: '宽屏首页' })
+  fireEvent.click(desktop)
+  const zoom = screen.getByLabelText('画布缩放比例').textContent
+  const expand = screen.getByRole('button', { name: '展开画板：手机首页' })
+  fireEvent.click(expand)
+  const focus = within(screen.getByRole('region', { name: '画板查看' }))
+  const frame = sandbox(focus.getByTitle('画板内容：手机首页'))
+  frame.receive({ type: 'ready' })
+  fireEvent.click(focus.getByRole('button', { name: '编辑文字' }))
+  const hit = focus.getByRole('button', { name: '选择要编辑的文字' })
+  vi.spyOn(hit, 'getBoundingClientRect').mockReturnValue(new DOMRect(20, 80, 195, 422))
+  touch(hit, 'pointerdown', 1, 35, 100)
+  touch(hit, 'pointerup', 1, 35, 100)
+  fireEvent.click(hit, { clientX: 35, clientY: 100, detail: 1 })
+  const request = frame.post.mock.calls.find(([message]) => message.type === 'inspect.at')?.[0]
+  expect(request).toMatchObject({ purpose: 'text', x: 30, y: 40, version: 1 })
+  frame.receive({
+    type: 'inspect.target',
+    purpose: 'text',
+    version: 1,
+    requestId: request.requestId,
+    element: { blockId: 'design-layer:note', selector: 'aside', textPreview: '预约' },
+  })
+  const dialog = within(screen.getByRole('dialog', { name: '编辑文字' }))
+  fireEvent.change(dialog.getByRole('textbox', { name: '文字' }), { target: { value: '改期' } })
+  fireEvent.click(dialog.getByRole('button', { name: '保存' }))
+  await waitFor(() => expect(editor.current.version.version).toBe(2))
+  expect(JSON.parse(editor.current.version.source).boards[1].designLayers[0].text).toBe('改期')
+  fireEvent.click(focus.getByRole('button', { name: '返回总览' }))
+  expect(desktop.getAttribute('aria-pressed')).toBe('true')
+  expect(screen.getByLabelText('画布缩放比例').textContent).toBe(zoom)
+  expect(document.activeElement).toBe(expand)
+})
+
+it('绘图工具仅让第一指落笔，另一指不能在邻板创建图层或取消正在绘制的笔画', async () => {
+  stubResizeObserver()
+  const editor = showEditableWorkspace(detailFor())
+  fireEvent.click(screen.getByRole('button', { name: '形状' }))
+  fireEvent.click(screen.getByRole('button', { name: '绘制矩形' }))
+  const drawing = screen.getByRole('button', { name: '在宽屏首页绘制矩形' })
+  const other = screen.getByRole('button', { name: '在手机首页绘制矩形' })
+  vi.spyOn(drawing, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 1440, 900))
+  vi.spyOn(other, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 390, 844))
+  touch(drawing, 'pointerdown', 1, 20, 10)
+  touch(other, 'pointerdown', 2, 30, 30)
+  touch(other, 'pointerup', 2, 40, 40)
+  touch(drawing, 'pointermove', 1, 90, 60)
+  touch(drawing, 'pointerup', 1, 90, 60)
+  await waitFor(() => expect(editor.current.version.version).toBe(2))
+  const [desktop, mobile] = JSON.parse(editor.current.version.source).boards
+  expect(desktop.designLayers).toEqual([
+    expect.objectContaining({ kind: 'rectangle', x: 20, y: 10, width: 70, height: 50 }),
+  ])
+  expect(mobile.designLayers).toBeUndefined()
+})
+
+it('查看者可以从画布展开画板，但展开态没有文字写入口', () => {
+  showWorkspace({
+    ...detailWithNote(),
+    access: { role: 'view', expiresAt: '2099-01-01T00:00:00Z' },
+  })
+  const expand = screen.getByRole('button', { name: '展开画板：手机首页' })
+  fireEvent.click(expand)
+  const focus = within(screen.getByRole('region', { name: '画板查看' }))
+  expect(focus.queryByRole('button', { name: '编辑文字' })).toBeNull()
+  fireEvent.click(focus.getByRole('button', { name: '返回总览' }))
+  expect(document.activeElement).toBe(expand)
+})
+
+it('从单板直链退出时焦点回到目标标题，不依赖打开它的按钮', () => {
+  showEditableWorkspace(detailWithNote(), 'page=reserve&board=mobile&play=1')
+  const focus = within(screen.getByRole('region', { name: '画板查看' }))
+  fireEvent.click(focus.getByRole('button', { name: '返回总览' }))
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: '手机首页' }))
+})
