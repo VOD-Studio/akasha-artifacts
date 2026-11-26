@@ -65,14 +65,18 @@ export function VersionTimeline({
     <DropdownMenu dir={dir}>
       <DropdownMenuTrigger asChild>
         <Button
-          variant="ghost"
+          variant={isHistorical ? 'secondary' : 'ghost'}
           size="sm"
+          className="font-mono text-xs text-ink-muted tabular-nums hover:text-ink"
           aria-label={t('版本历史，当前 {version}', { version: `v${activeVersion}` })}
           title={
             isHistorical ? t('历史版本 {version}', { version: `v${activeVersion}` }) : t('版本历史')
           }
-          rightIcon={<ChevronDown size={12} />}
+          rightIcon={<ChevronDown size={12} className="disclosure-chevron" />}
         >
+          {isHistorical ? (
+            <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-warning" />
+          ) : null}
           <bdi dir="ltr">v{activeVersion}</bdi>
         </Button>
       </DropdownMenuTrigger>

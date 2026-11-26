@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { buildBladeClipKeyframes, ThemeToggle } from '../src/widgets/LibraryShell/ui/ThemeToggle'
+import { buildBladeClipKeyframes, ThemeToggle } from '../src/shared/theme'
 
 afterEach(() => {
   cleanup()

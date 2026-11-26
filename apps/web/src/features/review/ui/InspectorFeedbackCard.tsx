@@ -133,8 +133,8 @@ export function InspectorFeedbackCard({
       ref={isFocused ? focusedCard : undefined}
       aria-current={isFocused || undefined}
       data-testid={`feedback-item-${fb.id}`}
-      className={`rounded-xl border p-2.5 text-xs transition ${
-        fb.draft ? 'border-dashed border-amber-300 bg-amber-50/50' : 'border-border bg-surface'
+      className={`rounded-12 border p-3 text-xs transition-colors ${
+        fb.draft ? 'border-dashed border-warning/45 bg-warning/10' : 'border-border bg-surface'
       } ${isFocused ? 'ring-2 ring-ring' : ''}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-1.5">

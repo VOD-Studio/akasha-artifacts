@@ -133,7 +133,7 @@ export function ArtifactTitleMenu({
               <span dir="auto" className="truncate font-semibold">
                 {title}
               </span>
-              <ChevronDown size={14} className="shrink-0 text-ink-muted" />
+              <ChevronDown size={14} className="disclosure-chevron shrink-0 text-ink-muted" />
             </Button>
           </DropdownMenuTrigger>
         </h1>

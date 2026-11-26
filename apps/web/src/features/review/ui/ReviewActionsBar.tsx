@@ -124,7 +124,7 @@ export function ReviewActionsBar({
           <Button
             variant="outline"
             size="sm"
-            leftIcon={<CheckCircle2 size={13} className="text-emerald-600" />}
+            leftIcon={<CheckCircle2 size={13} className="text-success" />}
             disabled={submitFeedback.isPending}
             loading={submitFeedback.isPending && feedbackKind === 'approve'}
             onClick={() => void sendVerdictAction('approve')}
@@ -135,7 +135,7 @@ export function ReviewActionsBar({
           <Button
             variant="outline"
             size="sm"
-            leftIcon={<XCircle size={13} className="text-amber-600" />}
+            leftIcon={<XCircle size={13} className="text-warning" />}
             disabled={submitFeedback.isPending}
             loading={submitFeedback.isPending && feedbackKind === 'request_changes'}
             onClick={() => void sendVerdictAction('request_changes')}
@@ -147,7 +147,7 @@ export function ReviewActionsBar({
       )}
 
       {activeRound && activeRound.groups.length > 0 ? (
-        <div className="space-y-2 rounded-xl border border-border bg-surface-subtle p-2.5">
+        <div className="space-y-2 rounded-12 border border-border bg-surface-subtle/60 p-2.5">
           <div className="flex items-center justify-between gap-2 text-xs">
             <span className="font-semibold text-ink">{t('本轮评审项')}</span>
             <Badge tone={roundStatusTone(activeRound.status)}>
@@ -162,7 +162,7 @@ export function ReviewActionsBar({
               <div
                 key={group.id}
                 data-testid={`review-group-${group.id}`}
-                className="rounded-lg border border-border bg-surface p-2 text-xs"
+                className="rounded-8 border border-border bg-surface p-2.5 text-xs"
               >
                 <div className="mb-1.5 flex items-center justify-between gap-1">
                   <span className="font-medium text-ink">{group.title}</span>

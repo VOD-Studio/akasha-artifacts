@@ -102,7 +102,7 @@ export function CanvasBoardTile({
             <span className="ms-2 text-[10px] opacity-75">{t('推荐')}</span>
           ) : null}
         </button>
-        {actions}
+        <div className="artifact-canvas-board-actions">{actions}</div>
       </div>
       {children}
       {overflow}

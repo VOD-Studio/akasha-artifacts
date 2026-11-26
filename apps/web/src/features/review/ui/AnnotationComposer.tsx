@@ -153,7 +153,7 @@ export function AnnotationComposer({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-3">
+    <div className="rounded-12 border border-border bg-surface-subtle/50 p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="text-xs font-semibold text-ink">
           {target ? t('元素批注') : t('版本批注')}
@@ -161,12 +161,14 @@ export function AnnotationComposer({
         {canSaveDraft ? (
           <Badge tone="warning">{t('本轮草稿')}</Badge>
         ) : (
-          <Badge tone="neutral">v{targetVersion}</Badge>
+          <Badge tone="neutral" className="font-mono tabular-nums">
+            v{targetVersion}
+          </Badge>
         )}
       </div>
 
       {target ? (
-        <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-border bg-selected px-2.5 py-1.5 text-[11px] text-selected-foreground">
+        <div className="mb-2 flex items-center justify-between gap-2 rounded-8 border border-border bg-surface px-2.5 py-1.5 text-xs text-ink">
           <div className="flex min-w-0 items-center gap-1.5">
             <Target size={12} className="shrink-0" />
             <span className="truncate font-mono font-medium">{elementLabel(target, t)}</span>

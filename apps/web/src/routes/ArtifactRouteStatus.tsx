@@ -13,15 +13,18 @@ export function OpeningArtifact() {
   return (
     <div className="flex h-dvh flex-col bg-canvas" role="status" aria-busy="true">
       <span className="sr-only">{t('正在打开…')}</span>
-      <div className="flex min-h-13 shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4">
-        <div className="flex min-w-0 max-w-1/2 items-center gap-2">
-          <AkashaMark size={20} loading />
-          <Skeleton className="h-6 w-40" />
+      <div className="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b border-border/80 bg-surface/92 px-3.5">
+        <div className="flex min-w-0 max-w-1/2 items-center gap-2.5">
+          <AkashaMark size={18} loading className="text-ink" />
+          <Skeleton className="h-5 w-36 rounded-8" />
         </div>
-        <Skeleton className="h-6 w-20" />
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-6 w-14 rounded-full" />
+          <Skeleton className="h-6 w-16 rounded-full" />
+        </div>
       </div>
-      <div className="flex flex-1 items-center justify-center p-8">
-        <Skeleton className="h-2/3 w-full max-w-2xl rounded-lg" />
+      <div className="artifact-canvas-surface flex flex-1 items-center justify-center p-8">
+        <AkashaMark size={28} loading className="text-ink/70" />
       </div>
     </div>
   )

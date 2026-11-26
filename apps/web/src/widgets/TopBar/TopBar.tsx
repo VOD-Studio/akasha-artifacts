@@ -13,6 +13,7 @@ import { HubAccountButton } from '@/features/hub'
 import { VersionTimeline } from '@/features/version-timeline'
 import { AkashaMark } from '@/shared/brand'
 import { LanguageMenu, useMessages } from '@/shared/i18n'
+import { ThemeToggle } from '@/shared/theme'
 import { messages } from './messages'
 import { ArtifactTitleMenu } from './ui/ArtifactTitleMenu'
 import { WorkspacePanelButtons } from './ui/WorkspacePanelButtons'
@@ -79,8 +80,8 @@ export function TopBar({
   const openQuickJump = () => setCommandPaletteOpen(true)
 
   return (
-    <header className="flex min-h-13 shrink-0 flex-wrap items-center justify-between gap-x-2 border-b border-border bg-surface px-2 py-1 sm:px-4">
-      <div className="flex min-w-0 flex-1 basis-40 items-center gap-1 sm:gap-2">
+    <header className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-x-2 border-b border-border/80 bg-surface/92 px-2.5 py-1 backdrop-blur-md sm:px-3.5">
+      <div className="flex min-w-0 flex-1 basis-40 items-center gap-1">
         <Button
           variant="ghost"
           size="sm"
@@ -91,6 +92,7 @@ export function TopBar({
         >
           <ArrowLeft size={16} className="rtl:rotate-180" />
         </Button>
+        <span aria-hidden="true" className="mx-0.5 hidden h-4 w-px bg-border sm:inline-block" />
         <ArtifactTitleMenu
           artifact={artifact}
           fixedVersion={fixedVersion}
@@ -115,19 +117,19 @@ export function TopBar({
         />
       </div>
 
-      <div className="ms-auto flex max-w-full flex-wrap items-center justify-end gap-1 sm:gap-2">
+      <div className="ms-auto flex max-w-full flex-wrap items-center justify-end gap-1">
         {editing ? (
           <span
             role="status"
             title={agentActivity.summary}
-            className="hidden items-center gap-1.5 text-xs text-ink-muted sm:flex"
+            className="me-1 hidden items-center gap-1.5 rounded-full bg-surface-subtle px-2.5 py-1 text-xs text-ink-muted sm:flex"
           >
-            <AkashaMark size={14} loading className="text-ink" />
+            <AkashaMark size={13} loading className="text-ink" />
             {t('Agent 正在修改')}
           </span>
         ) : null}
         {viewMode !== 'preview' ? (
-          <Button variant="ghost" size="sm" onClick={showCanvas}>
+          <Button variant="secondary" size="sm" onClick={showCanvas}>
             {t('返回画布')}
           </Button>
         ) : null}
@@ -136,7 +138,7 @@ export function TopBar({
             ref={agentToggleRef}
             variant={agentOpen ? 'secondary' : 'ghost'}
             size="sm"
-            leftIcon={<PanelLeft size={16} className="rtl:-scale-x-100" />}
+            leftIcon={<PanelLeft size={15} className="rtl:-scale-x-100" />}
             aria-label={t('Agent 对话')}
             title={t('Agent 对话')}
             aria-expanded={agentOpen}
@@ -148,10 +150,18 @@ export function TopBar({
         ) : null}
         <WorkspacePanelButtons feedbackCount={feedbackCount} hasActiveRound={hasActiveRound} />
         {canManage && onShare && (
-          <Button size="sm" leftIcon={<Share2 size={14} />} title={t('分享')} onClick={onShare}>
+          <Button
+            size="sm"
+            className="ms-0.5"
+            leftIcon={<Share2 size={14} />}
+            title={t('分享')}
+            onClick={onShare}
+          >
             <span className="sr-only sm:not-sr-only">{t('分享')}</span>
           </Button>
         )}
+        <span aria-hidden="true" className="mx-0.5 hidden h-4 w-px bg-border sm:inline-block" />
+        <ThemeToggle />
         <LanguageMenu />
         <HubAccountButton />
       </div>

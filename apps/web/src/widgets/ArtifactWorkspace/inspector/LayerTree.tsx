@@ -158,7 +158,7 @@ function LayerNode({ layer, groups, opened, selectedId, selectedIds, onSelect }:
       aria-pressed={selected}
       data-layer-id={layer.id}
       data-primary={selectedId === layer.id || undefined}
-      className="w-full min-w-0 justify-start"
+      className="h-7 w-full min-w-0 justify-start rounded-8"
       onClick={(event) => onSelect(layer, event.shiftKey)}
     >
       <bdi className="truncate">{label}</bdi>
@@ -168,10 +168,10 @@ function LayerNode({ layer, groups, opened, selectedId, selectedIds, onSelect }:
     <li className="min-w-0">
       {children?.length ? (
         <details open={!layer.parentId || opened.has(layer.id) || undefined}>
-          <summary className="cursor-pointer truncate rounded px-2 py-1 text-xs text-ink-muted">
+          <summary className="cursor-pointer truncate rounded-8 px-2 py-1 text-xs text-ink-muted transition-colors hover:bg-surface-subtle hover:text-ink">
             {t('{label} · {count} 个子图层', { label, count: children.length })}
           </summary>
-          <div className="ml-2 border-s border-border ps-2">
+          <div className="ms-2 border-s border-border ps-2">
             {button}
             <ul>
               {children.map((child) => (

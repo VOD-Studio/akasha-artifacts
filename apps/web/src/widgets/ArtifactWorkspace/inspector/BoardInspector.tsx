@@ -268,7 +268,7 @@ export function BoardInspector({
         size="sm"
         aria-describedby={undefined}
         onInteractOutside={(event) => event.preventDefault()}
-        className="top-13 bottom-0 overflow-hidden"
+        className="top-15 bottom-3 overflow-hidden"
       >
         <SheetHeader>
           <SheetTitle>{t('检查器')}</SheetTitle>
@@ -309,57 +309,56 @@ export function BoardInspector({
                       editing={readOnly || board.source === undefined ? undefined : editing}
                       onEditText={readOnly ? undefined : onEditText}
                     />
-                    {(layer || designLayer) && canComment ? (
-                      <Button
-                        className="mt-3"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setDrawer('review')}
-                      >
-                        {t('批注')}
-                      </Button>
-                    ) : null}
-                    {onHandoff && page ? (
-                      <Button
-                        className="mt-3 ms-1"
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          onHandoff(`${page.title} / ${board.title}`, {
-                            pageId: page.id,
-                            boardId: board.id,
-                            element: handoffElement
-                              ? {
+                    {((layer || designLayer) && canComment) ||
+                    (onHandoff && page) ||
+                    (onAskAgent && page && handoffElement) ? (
+                      <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border pt-3">
+                        {(layer || designLayer) && canComment ? (
+                          <Button variant="outline" size="sm" onClick={() => setDrawer('review')}>
+                            {t('批注')}
+                          </Button>
+                        ) : null}
+                        {onHandoff && page ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              onHandoff(`${page.title} / ${board.title}`, {
+                                pageId: page.id,
+                                boardId: board.id,
+                                element: handoffElement
+                                  ? {
+                                      blockId: handoffElement.blockId,
+                                      selector: handoffElement.selector,
+                                    }
+                                  : undefined,
+                              })
+                            }
+                          >
+                            {handoffElement ? t('移交对象') : t('移交画板')}
+                          </Button>
+                        ) : null}
+                        {onAskAgent && page && handoffElement ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              onAskAgent(`${page.title} / ${board.title}`, {
+                                pageId: page.id,
+                                boardId: board.id,
+                                element: {
                                   blockId: handoffElement.blockId,
                                   selector: handoffElement.selector,
-                                }
-                              : undefined,
-                          })
-                        }
-                      >
-                        {handoffElement ? t('移交对象') : t('移交画板')}
-                      </Button>
-                    ) : null}
-                    {onAskAgent && page && handoffElement ? (
-                      <Button
-                        className="mt-3 ms-1"
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          onAskAgent(`${page.title} / ${board.title}`, {
-                            pageId: page.id,
-                            boardId: board.id,
-                            element: {
-                              blockId: handoffElement.blockId,
-                              selector: handoffElement.selector,
-                              loc: handoffElement.loc,
-                              textPreview: handoffElement.textPreview,
-                            },
-                          })
-                        }
-                      >
-                        {t('问 Agent')}
-                      </Button>
+                                  loc: handoffElement.loc,
+                                  textPreview: handoffElement.textPreview,
+                                },
+                              })
+                            }
+                          >
+                            {t('问 Agent')}
+                          </Button>
+                        ) : null}
+                      </div>
                     ) : null}
                   </>
                 )}

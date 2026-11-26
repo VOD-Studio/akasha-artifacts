@@ -60,9 +60,9 @@ export function BoardPresentation({
       dir={dir}
       hidden={!visible}
       aria-label={t(playback ? '交互预览' : '画板查看')}
-      className={visible ? 'flex min-h-0 min-w-0 flex-1 flex-col bg-muted' : 'hidden'}
+      className={visible ? 'flex min-h-0 min-w-0 flex-1 flex-col bg-canvas' : 'hidden'}
     >
-      <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-surface p-2">
+      <header className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/80 bg-surface/92 px-3 py-1 backdrop-blur-md">
         <div className="flex min-w-0 items-center gap-2">
           <Button
             ref={backRef}
@@ -73,7 +73,8 @@ export function BoardPresentation({
           >
             {t(playback ? '退出预览' : '返回总览')}
           </Button>
-          <h2 dir="auto" className="min-w-0 break-words text-sm font-medium">
+          <span aria-hidden="true" className="h-4 w-px bg-border" />
+          <h2 dir="auto" className="min-w-0 break-words text-sm font-semibold text-ink">
             {board.title}
           </h2>
         </div>
@@ -82,7 +83,7 @@ export function BoardPresentation({
             <fieldset className="flex min-w-0 flex-wrap items-center gap-1">
               <legend className="sr-only">{t('画板缩放')}</legend>
               <Button
-                variant="ghost"
+                variant={zoom === 'fit' ? 'secondary' : 'ghost'}
                 size="sm"
                 aria-pressed={zoom === 'fit'}
                 onClick={() => setZoom('fit')}
@@ -90,13 +91,14 @@ export function BoardPresentation({
                 {t('适应窗口')}
               </Button>
               <Button
-                variant="ghost"
+                variant={zoom === 'fill' ? 'secondary' : 'ghost'}
                 size="sm"
                 aria-pressed={zoom === 'fill'}
                 onClick={() => setZoom('fill')}
               >
                 {t('填充宽度')}
               </Button>
+              <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-border" />
               <Button
                 variant="ghost"
                 size="sm"
@@ -113,7 +115,10 @@ export function BoardPresentation({
                 aria-label={t('实际大小')}
                 onClick={() => setZoom(1)}
               >
-                <output aria-label={t('画板缩放比例')}>
+                <output
+                  aria-label={t('画板缩放比例')}
+                  className="min-w-10 text-center font-mono text-xs tabular-nums"
+                >
                   {number(scale, { style: 'percent', maximumFractionDigits: 1 })}
                 </output>
               </Button>
@@ -128,11 +133,14 @@ export function BoardPresentation({
                 <Plus size={15} />
               </Button>
             </fieldset>
+            {onExport || onPlay ? (
+              <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-border" />
+            ) : null}
             {onExport && (
               <Button
                 variant="ghost"
                 size="sm"
-                leftIcon={<Download size={15} />}
+                leftIcon={<Download size={14} />}
                 onClick={onExport}
               >
                 {t('导出画板')}
@@ -142,7 +150,7 @@ export function BoardPresentation({
               <Button
                 variant="primary"
                 size="sm"
-                leftIcon={<Play size={15} />}
+                leftIcon={<Play size={14} />}
                 aria-label={t('播放原型：{title}', { title: board.title })}
                 onClick={onPlay}
               >
@@ -156,11 +164,11 @@ export function BoardPresentation({
         ref={scrollRef}
         dir="ltr"
         aria-label={t('画板内容')}
-        className="min-h-0 flex-1 overflow-auto overscroll-contain"
+        className="artifact-canvas-surface min-h-0 flex-1 overflow-auto overscroll-contain"
       >
-        <div className="flex min-h-full min-w-max p-3">
+        <div className="flex min-h-full min-w-max p-6">
           <div
-            className="relative m-auto shrink-0 overflow-hidden bg-surface outline outline-border"
+            className="artifact-canvas-board-clip relative m-auto shrink-0"
             style={{
               width: board.width * scale,
               height: board.height * scale,
