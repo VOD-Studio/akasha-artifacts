@@ -2,11 +2,13 @@ import { PROTOCOL_VERSION } from '@akasha/protocol'
 import { Hono } from 'hono'
 import { ArtifactService, type ArtifactServiceDeps } from '../application/artifact-service.js'
 import { CheckService } from '../application/check-service.js'
+import { SystemCatalog } from '../application/design-systems/catalog.js'
 import { createHubSharing } from '../application/hub-sharing/service.js'
 import { SpecRegistry } from '../application/spec-registry.js'
 import type { ArtifactStorageRepository } from '../domain/artifact-storage.js'
 import type { HubSharingRepository } from '../domain/hub-sharing.js'
 import type { RealtimePublisher, RealtimeSubscriber } from '../domain/ports.js'
+import type { NamedSystemRepository } from '../domain/team-systems.js'
 import { CryptoIdGenerator, SystemClock } from '../infrastructure/storage/memory/index.js'
 import { createHttpApp } from '../interfaces/http/app.js'
 import { createHubAccess } from '../interfaces/http/hub-access.js'
@@ -18,7 +20,7 @@ export interface HubContainerOptions {
   repositories: Pick<
     ArtifactServiceDeps,
     'projects' | 'artifacts' | 'states' | 'rounds' | 'feedbacks' | 'receipts'
-  > & { sharing: HubSharingRepository }
+  > & { sharing: HubSharingRepository; namedSystems: NamedSystemRepository }
   // 须同时支持发布与订阅
   realtime: RealtimePublisher & RealtimeSubscriber
   clock?: ArtifactServiceDeps['clock']
@@ -101,6 +103,7 @@ export function createHubContainer(options: HubContainerOptions) {
     auth,
     access,
     sharing,
+    catalog: new SystemCatalog(repositories.namedSystems, repositories.artifacts),
     workspace: service.workspace,
     repositories,
     origin,

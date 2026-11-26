@@ -13,6 +13,7 @@ import {
   useArtifactSourceQuery,
 } from '@/entities/artifact'
 import { isResourceUnavailable } from '@/shared/api/error'
+import { isCloudHub } from '@/shared/config/runtime'
 import { LanguageMenu, useMessages } from '@/shared/i18n'
 import { messages } from '../messages'
 import { componentKey } from '../model/review'
@@ -21,6 +22,7 @@ import { GenerateArtboard } from './GenerateArtboard'
 import { GuidanceFields } from './GuidanceFields'
 import { type SystemBaseline, SystemEditor } from './SystemEditor'
 import { SystemPreview } from './SystemPreview'
+import { VersionMembers } from './VersionMembers'
 
 interface SystemWorkspaceProps {
   detail: ArtifactWorkspaceDetail
@@ -164,6 +166,14 @@ export function SystemWorkspace({
                 {snapshot.sourceVersion}
               </dd>
             </dl>
+            {isCloudHub() && canManage && (
+              <VersionMembers
+                key={`${artifact.projectId}:${artifact.publicId}:${version.version}`}
+                projectId={artifact.projectId}
+                id={artifact.publicId}
+                version={version.version}
+              />
+            )}
             <GuidanceFields guidance={snapshot.draft.guidance} />
             <AssetReview files={snapshot.draft.files} />
             {snapshot.draft.components.length > 0 && (

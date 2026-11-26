@@ -242,6 +242,10 @@ A new handoff pinned to the published version returns the editable entry file in
 Editing only the generated preview's example props in the web workspace preserves the project entry. Replacing the implementation can keep the original design-system link; if the current component cannot be verified, the handoff returns the artifact source without substituting an older component file.
 If the source system is withdrawn or the artifact moves to another project, the artifact and any project entry saved with that version remain available. The recipient does not receive component files from the old system.
 
+### Share a reviewed system on the Hub
+
+Open a version of your design system and enter the GitHub logins of the members who may use that version. Save an empty list to make it private again. This grants access to the fixed component catalog, not the source project, raw files, or later versions. The local daemon has no team directory.
+
 ---
 
 ## Development

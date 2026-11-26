@@ -41,6 +41,7 @@ import {
 } from '../workspace-component.js'
 import { createSqlHubSharingRepository } from './hub-sharing/repository.js'
 import { hubSharingSchema } from './hub-sharing/schema.js'
+import { createSqlNamedSystemRepository, namedSystemSchema } from './named-systems.js'
 import { schema } from './schema.js'
 import type { SqlDriver, SqlStatement, SqlValue, SqlWriteLock, VersionBlobs } from './types.js'
 
@@ -105,6 +106,7 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
         [artifactLifecycleTable],
         ...annotationStatements,
         ...hubSharingSchema,
+        ...namedSystemSchema,
       ],
       'schema',
     )
@@ -568,6 +570,7 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
     feedbacks,
     receipts,
     sharing: createSqlHubSharingRepository(execute, batch, driver.jsonArrayValues),
+    namedSystems: createSqlNamedSystemRepository(execute, batch),
     artifactStorage,
     allocateRealtimeSeq,
     ready,

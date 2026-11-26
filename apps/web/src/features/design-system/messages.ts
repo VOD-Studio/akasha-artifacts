@@ -1,6 +1,21 @@
 import type { Messages } from '@/shared/i18n'
 
 export const messages = {
+  共享此版本: ['Diese Version teilen', 'مشاركة هذا الإصدار', 'Share this version'],
+  仅自己: ['Nur ich', 'أنا فقط', 'Only me'],
+  'GitHub 登录名': ['GitHub-Anmeldenamen', 'أسماء تسجيل الدخول إلى GitHub', 'GitHub logins'],
+  '每行一名当前成员，最多 32 名。留空后保存即可设为仅自己。': [
+    'Ein aktuelles Mitglied pro Zeile, höchstens 32. Leer speichern für privaten Zugriff.',
+    'أدخل اسم عضو حالي في كل سطر، حتى 32 عضوًا. احفظ القائمة فارغة لتقتصر المشاركة عليك.',
+    'One current member per line, up to 32. Save an empty list to make this version private.',
+  ],
+  保存名单: ['Liste speichern', 'حفظ القائمة', 'Save list'],
+  无法读取名单: ['Liste konnte nicht geladen werden', 'تعذرت قراءة القائمة', 'Could not load list'],
+  '未保存。请检查成员登录名后重试。': [
+    'Nicht gespeichert. Anmeldenamen prüfen und erneut versuchen.',
+    'لم تُحفظ القائمة. تحقّق من أسماء الأعضاء وحاول مجددًا.',
+    'Not saved. Check the member logins and try again.',
+  ],
   上一版来源: ['Quelle der vorherigen Version', 'مصدر الإصدار السابق', 'Previous source'],
   取消选择: ['Auswahl verwerfen', 'إلغاء التحديد', 'Cancel selection'],
   编辑参数: ['Parameter bearbeiten', 'تعديل الخصائص', 'Edit props'],

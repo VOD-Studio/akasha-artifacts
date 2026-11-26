@@ -9,6 +9,7 @@ import type { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { z } from 'zod'
 import type { ArtifactWorkspaceRead } from '../../application/artifact-workspace-read.js'
+import type { SystemCatalog } from '../../application/design-systems/catalog.js'
 import type { HubSharing } from '../../application/hub-sharing/service.js'
 import type { HubSharingRepository } from '../../domain/hub-sharing.js'
 import type {
@@ -29,12 +30,14 @@ import { canEditSharedArtifact, matchesShareBoard } from './hub-share-policy.js'
 import { forbidden, hidden, invalid } from './hub-sharing/responses.js'
 import { mountHubSharing } from './hub-sharing/routes.js'
 import { serveSharedArtifact, sharedAuthor } from './hub-sharing/shared-artifact.js'
+import { mountSystemCatalog } from './system-catalog.js'
 
 interface HubGuardOptions {
   core: Hono
   auth: HubAuth
   access: HubArtifactAccess
   sharing: HubSharing
+  catalog: SystemCatalog
   workspace: ArtifactWorkspaceRead
   repositories: {
     artifacts: ArtifactRepository
@@ -132,7 +135,7 @@ function rewrite(
  */
 export function mountHubGuard(
   app: Hono,
-  { core, auth, access, sharing, workspace, repositories, origin, clock, ids }: HubGuardOptions,
+  { core, auth, access, sharing, catalog, workspace, repositories, origin, clock, ids }: HubGuardOptions,
 ) {
   app.use('*', async (c, next) => {
     if (
@@ -148,6 +151,7 @@ export function mountHubGuard(
   })
   auth.mount(app)
   mountHubSharing(app, { auth, artifacts: repositories.artifacts, sharing })
+  mountSystemCatalog(app, auth, catalog, repositories.projects)
   app.post('/api/v1/artifacts/:id/storage', bodyLimit({ maxSize: 128 * 1024, onError: invalid }))
   app.post(
     '/api/v1/projects/:id/design-systems/*',
