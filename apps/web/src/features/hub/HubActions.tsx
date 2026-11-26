@@ -1,12 +1,12 @@
 import { Button } from '@akasha/ui/button'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { clearAnnotationDrafts } from '@/entities/feedback'
 import { hubSessionOptions } from '@/entities/hub-session'
 import { isCloudHub } from '@/shared/config/runtime'
 import { useMessages } from '@/shared/i18n'
 import { endHubSession } from './api/session'
 import { messages } from './messages'
+import { clearHubDrafts } from './model/clearHubDrafts'
 
 /** 供界面在服务端授权之外隐藏只对 Hub 成员有意义的入口。 */
 export function useHubSession() {
@@ -21,7 +21,7 @@ export function HubAccountButton() {
   const logout = useMutation({
     mutationFn: endHubSession,
     onSuccess: () => {
-      clearAnnotationDrafts()
+      clearHubDrafts()
       window.location.reload()
     },
     onError: (error) => {
@@ -40,7 +40,7 @@ export function HubAccountButton() {
     <Button asChild variant="ghost" size="sm">
       <a
         href={`/auth/login?next=${encodeURIComponent(window.location.pathname)}`}
-        onClick={clearAnnotationDrafts}
+        onClick={clearHubDrafts}
       >
         {t('使用 GitHub 登录')}
       </a>

@@ -536,6 +536,7 @@ export function ArtifactWorkspace({
     artifact,
     version,
     enabled: canEditText,
+    shareExpiresAt: access?.expiresAt,
     activeBoardId: canvasLocation?.boardId,
     editing: boardEditing,
     readBoard: (board) => readLoadedBoard(board, resources),
@@ -930,6 +931,8 @@ export function ArtifactWorkspace({
       {inlineText.draft ? (
         <InlineCanvasText
           draft={inlineText.draft}
+          initialText={inlineText.initialText}
+          onInput={inlineText.remember}
           onClose={inlineText.close}
           onSave={inlineText.save}
           onAnnotate={inlineText.annotate}

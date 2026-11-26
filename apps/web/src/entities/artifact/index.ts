@@ -40,3 +40,11 @@ export {
   type LoadedCanvasBoard,
   loadCanvasBoard,
 } from './model/canvas'
+export {
+  type CanvasTextTarget,
+  canvasTextDraftKey,
+  clearCanvasTextDrafts,
+  discardCanvasTextDraft,
+  readCanvasTextDraft,
+  writeCanvasTextDraft,
+} from './model/text-draft'

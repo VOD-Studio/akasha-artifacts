@@ -11,6 +11,9 @@ import { canvasToolsMessages } from '../toolbar/canvas-tools-messages'
 interface InlineTextProps {
   /** 源码文字、原生文字和只读提示共用同一个画布锚点。 */
   draft: CanvasTextDraft
+  initialText?: string
+  /** 未提交文字按原版本暂存；主动取消才丢弃。 */
+  onInput: (text: string) => void
   /** 只有在收到真正的保存候选后才关闭；请求失败时保留输入。 */
   onSave: (text: string) => Promise<void>
   /** 仅关闭编辑，不回写源码。 */
@@ -31,7 +34,14 @@ function draftTitle(draft: CanvasTextDraft) {
 }
 
 /** 就地输入不启动试玩；焦点在输入框内时由浏览器处理文本快捷键。 */
-export function InlineCanvasText({ draft, onSave, onClose, onAnnotate }: InlineTextProps) {
+export function InlineCanvasText({
+  draft,
+  initialText,
+  onInput,
+  onSave,
+  onClose,
+  onAnnotate,
+}: InlineTextProps) {
   const { t } = useMessages(canvasToolsMessages)
   const diagnostic = (message: string) => {
     switch (message) {
@@ -46,7 +56,9 @@ export function InlineCanvasText({ draft, onSave, onClose, onAnnotate }: InlineT
     }
   }
   const initial = draftText(draft)
-  const [text, setText] = useState(initial)
+  const [text, setText] = useState(
+    draft.kind === 'readOnly' ? '' : (initialText ?? draft.restoredText ?? initial),
+  )
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const target = useRef<HTMLTextAreaElement>(null)
@@ -134,7 +146,11 @@ export function InlineCanvasText({ draft, onSave, onClose, onAnnotate }: InlineT
               className="resize-y"
               maxLength={draft.kind === 'source' ? undefined : 8000}
               value={text}
-              onChange={(event) => setText(event.target.value)}
+              onChange={(event) => {
+                const next = event.currentTarget.value
+                setText(next)
+                onInput(next)
+              }}
               onKeyDown={(event) => {
                 if (
                   event.key !== 'Enter' ||
