@@ -28,7 +28,7 @@ interface Gesture {
 
 const INK_LIMIT = 2048
 const PRESET_SIZE = {
-  text: [220, 56],
+  text: [160, 28],
   note: [220, 112],
   rectangle: [120, 80],
   ellipse: [120, 80],

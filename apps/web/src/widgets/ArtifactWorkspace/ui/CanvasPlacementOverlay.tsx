@@ -15,7 +15,7 @@ import type { DrawingTool } from './BoardDrawingSurface'
 const MIN_ARTBOARD_EDGE = 32
 const INK_LIMIT = 2048
 const PRESET_LAYER_SIZE = {
-  text: [220, 56],
+  text: [160, 28],
   note: [220, 112],
   rectangle: [120, 80],
   ellipse: [120, 80],
@@ -426,31 +426,33 @@ export function CanvasBlankDrawingOverlay({
         if (tool.kind === 'pen') return
         const moved = Math.hypot(end.x - active.start.x, end.y - active.start.y) >= 3
         const [presetWidth, presetHeight] = PRESET_LAYER_SIZE[tool.kind]
-        const canvasRect = moved
+        const hitRect = moved
           ? boundsFromPoints(active.start, end)
           : {
               x: clampCoord(active.start.x),
               y: clampCoord(active.start.y),
-              width: presetWidth,
-              height: presetHeight,
+              width: 1,
+              height: 1,
             }
-        const owner = resolveLayerOwnerBoard(boards, bounds, canvasRect)
+        const owner = resolveLayerOwnerBoard(boards, bounds, hitRect)
         if (!owner) {
           onUnowned()
           return
         }
+        const localBounds = moved
+          ? owner.localBounds
+          : {
+              ...owner.localBounds,
+              width: Math.min(presetWidth, owner.board.width),
+              height: Math.min(presetHeight, owner.board.height),
+            }
         const id = crypto.randomUUID()
         if (tool.kind === 'text' || tool.kind === 'note') {
-          onCreate(
-            owner.board,
-            { id, kind: tool.kind, ...owner.localBounds, text: '' },
-            base,
-            anchor,
-          )
+          onCreate(owner.board, { id, kind: tool.kind, ...localBounds, text: '' }, base, anchor)
         } else {
           onCreate(
             owner.board,
-            { id, kind: tool.kind, ...owner.localBounds, color: 'blue' },
+            { id, kind: tool.kind, ...localBounds, color: 'blue' },
             base,
             anchor,
           )

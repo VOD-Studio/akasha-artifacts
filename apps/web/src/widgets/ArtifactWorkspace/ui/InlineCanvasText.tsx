@@ -193,8 +193,9 @@ export function InlineCanvasText({
       fontWeight = style?.fontWeight ?? 400
       textAlign = style?.textAlign ?? 'left'
     }
-    const padding = isNote ? Math.max(6, 10 * scale) : Math.max(3, 4 * scale)
-    const minWidth = isSource ? Math.max(140, canvasBox.width + 24) : Math.max(120, canvasBox.width)
+    const paddingY = isNote ? Math.max(6, 8 * scale) : Math.max(2, 2.5 * scale)
+    const paddingX = isNote ? Math.max(8, 10 * scale) : Math.max(4, 5 * scale)
+    const minWidth = isSource ? Math.max(120, canvasBox.width + 20) : Math.max(96, canvasBox.width)
     const maxViewportWidth = canvasBox.viewportWidth
       ? Math.max(160, canvasBox.viewportWidth - 24)
       : 480
@@ -202,6 +203,9 @@ export function InlineCanvasText({
     const boxLeft = canvasBox.viewportWidth
       ? Math.max(12, Math.min(canvasBox.x, canvasBox.viewportWidth - boxWidth - 12))
       : canvasBox.x
+    const showActionBar = Boolean(
+      error || (draft.kind !== 'readOnly' && draft.restoredText !== undefined),
+    )
 
     return (
       <div
@@ -214,7 +218,7 @@ export function InlineCanvasText({
           left: boxLeft,
           top: canvasBox.y,
           width: boxWidth,
-          minHeight: Math.max(28, canvasBox.height),
+          minHeight: Math.max(24, canvasBox.height),
         }}
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
@@ -233,8 +237,9 @@ export function InlineCanvasText({
           data-filled={text.length > 0 || isSource ? 'true' : undefined}
           style={{
             backgroundColor: boxBackground,
-            borderRadius: isNote ? Math.max(3, 4 * scale) : undefined,
-            padding,
+            borderRadius: isNote ? Math.max(4, 5 * scale) : undefined,
+            paddingBlock: paddingY,
+            paddingInline: paddingX,
           }}
         >
           <textarea
@@ -246,15 +251,15 @@ export function InlineCanvasText({
             maxLength={isSource ? undefined : 8000}
             value={text}
             disabled={busy}
-            className="block w-full resize-none overflow-hidden border-0 bg-transparent p-0 outline-none placeholder:text-ink-muted/65"
+            className="block w-full resize-none overflow-hidden border-0 bg-transparent p-0 outline-none caret-(--canvas-selection) placeholder:text-ink-muted/55"
             style={{
               color: foreground,
               fontFamily: 'system-ui, sans-serif',
               fontSize,
               fontWeight,
               textAlign,
-              lineHeight: 1.4,
-              minHeight: Math.max(20, canvasBox.height - padding * 2),
+              lineHeight: 1.35,
+              minHeight: Math.max(18, canvasBox.height - paddingY * 2),
             }}
             onChange={(event) => {
               const next = event.currentTarget.value
@@ -282,7 +287,15 @@ export function InlineCanvasText({
             {diagnostic(error)}
           </p>
         ) : null}
-        <div dir={dir} className="artifact-canvas-inline-text-actions">
+        <div
+          dir={dir}
+          data-visible={showActionBar ? 'true' : undefined}
+          className={
+            showActionBar
+              ? 'artifact-canvas-inline-text-actions'
+              : 'artifact-canvas-inline-text-actions sr-only focus-within:not-sr-only pointer-coarse:not-sr-only'
+          }
+        >
           <Button
             type="button"
             size="sm"

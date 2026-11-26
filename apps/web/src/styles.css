@@ -609,16 +609,19 @@ body,
   position: relative;
   width: 100%;
   height: 100%;
-  border: 1.5px dashed var(--canvas-selection);
-  border-radius: 3px;
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--card) 75%, transparent);
+  border: 1px dashed var(--canvas-selection);
+  border-radius: 2px;
+  background: var(--canvas-selection-tint-soft);
 }
 
 .artifact-canvas-inline-text-box[data-filled="true"] {
+  border-width: 1.5px;
   border-style: solid;
+  background: transparent;
 }
 
 .artifact-canvas-inline-text-box[data-kind="note"] {
+  border-width: 1.5px;
   border-style: solid;
   box-shadow: var(--shadow-sm);
 }
