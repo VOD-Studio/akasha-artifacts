@@ -7,6 +7,7 @@ import {
   DropdownMenuTrigger,
 } from '@akasha/ui/dropdown-menu'
 import { SearchInput } from '@akasha/ui/input'
+import { ListHighlight, ListHighlightItem } from '@akasha/ui/list-highlight'
 import { Popover, PopoverContent, PopoverTrigger } from '@akasha/ui/popover'
 import {
   Check,
@@ -78,10 +79,11 @@ function PageMenu({ page, canEdit, onCopy, onEdit }: PageMenuProps) {
           variant="ghost"
           iconOnly
           size="sm"
+          className="artifact-canvas-nav-more size-6 rounded-8"
           aria-label={label}
           title={label}
         >
-          <Ellipsis size={15} />
+          <Ellipsis size={14} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" onCloseAutoFocus={returnMenuFocus}>
@@ -127,7 +129,6 @@ export function PageNavigator({
   const searchRef = useRef<HTMLInputElement>(null)
   const actionOrigin = useRef<HTMLButtonElement | null>(null)
   const results = useMemo(() => {
-    if (!open) return []
     const search = query.trim().toLocaleLowerCase()
     const matches = (text: string) => text.toLocaleLowerCase().includes(search)
     return pages.flatMap((entry) => {
@@ -136,7 +137,7 @@ export function PageNavigator({
       const boards = pageMatch ? entry.boards : entry.boards.filter((board) => matches(board.title))
       return pageMatch || boards.length ? [{ entry, boards, title }] : []
     })
-  }, [open, pages, query, t])
+  }, [pages, query, t])
 
   const copyLink = async (id: string) => {
     try {
@@ -167,11 +168,11 @@ export function PageNavigator({
     target?.focus({ preventScroll: true })
   }
   const navigate = (target: CanvasPage, boardId?: string) => {
-    setQuery('')
     onNavigate(target, boardId)
   }
   const changeOpen = (next: boolean) => {
-    if (!next) {
+    // 打开时重置上次搜索与提示，收起退场动画期间保留列表内容避免闪现空态。
+    if (next) {
       setQuery('')
       onStatus('')
     }
@@ -181,22 +182,25 @@ export function PageNavigator({
   return (
     <Popover open={open} onOpenChange={changeOpen}>
       <PopoverTrigger asChild>
-        <Button
-          ref={triggerRef}
-          variant="secondary"
-          size="sm"
-          aria-label={t('页面与画板')}
-          leftIcon={<Layers size={15} />}
-          rightIcon={<ChevronDown size={12} />}
-          className="artifact-canvas-nav-trigger max-w-32 sm:max-w-56"
-        >
-          <span className="truncate" dir="auto">
-            {page ? pageTitle(page, t) : t('页面与画板')}
-          </span>
-        </Button>
+        <ListHighlightItem>
+          <Button
+            ref={triggerRef}
+            variant="ghost"
+            size="sm"
+            aria-label={t('页面与画板')}
+            leftIcon={<Layers size={15} />}
+            rightIcon={<ChevronDown size={12} className="disclosure-chevron" />}
+            className="artifact-canvas-nav-trigger max-w-36 sm:max-w-56"
+          >
+            <span className="truncate" dir="auto">
+              {page ? pageTitle(page, t) : t('页面与画板')}
+            </span>
+          </Button>
+        </ListHighlightItem>
       </PopoverTrigger>
       <PopoverContent
         align="start"
+        sideOffset={8}
         className="artifact-canvas-navigator"
         onInteractOutside={(event) => {
           // 语言菜单位于工作台顶栏及其独立 Portal，不应被视为离开页面导航。
@@ -205,76 +209,99 @@ export function PageNavigator({
           }
         }}
       >
-        <SearchInput
-          ref={searchRef}
-          controlSize="sm"
-          aria-label={t('搜索页面或画板')}
-          clearLabel={t('清除搜索')}
-          placeholder={t('搜索页面或画板')}
-          value={query}
-          onValueChange={setQuery}
-        />
-        <div className="artifact-canvas-nav-results">
-          {results.length === 0 && (
-            <p className="p-2 text-sm text-ink-muted">{t('没有匹配的页面或画板')}</p>
-          )}
-          {results.map(({ entry, boards, title }) => (
-            <fieldset key={entry.id} aria-label={title} className="min-w-0 not-first:mt-2">
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="artifact-canvas-nav-item min-w-0 flex-1"
-                  leftIcon={<File size={14} />}
-                  aria-current={entry.id === page?.id ? 'page' : undefined}
-                  title={title}
-                  onClick={() => navigate(entry)}
-                >
-                  <bdi>{title}</bdi>
-                </Button>
-                <span className="shrink-0 text-xs text-ink-muted tabular-nums">
-                  {t('{count} 张画板', { count: entry.boards.length })}
-                </span>
-                <PageMenu
-                  page={entry}
-                  canEdit={Boolean(pageEditing) && entry.ownedBoardCount !== undefined}
-                  onCopy={copyLink}
-                  onEdit={editPage}
-                />
-              </div>
-              {boards.map((board) => {
-                const active = entry.id === page?.id && board.id === selected
-                return (
-                  <Button
-                    key={board.id}
-                    variant="ghost"
-                    size="sm"
-                    className="artifact-canvas-nav-item w-full"
-                    rightIcon={active && <Check size={14} />}
-                    aria-pressed={active}
-                    title={board.title}
-                    onClick={() => navigate(entry, board.id)}
-                  >
-                    <bdi>{board.title}</bdi>
-                  </Button>
-                )
-              })}
-            </fieldset>
-          ))}
+        <div className="border-b border-border/70 px-2.5 py-2">
+          <SearchInput
+            ref={searchRef}
+            variant="plain"
+            controlSize="sm"
+            aria-label={t('搜索页面或画板')}
+            clearLabel={t('清除搜索')}
+            placeholder={t('搜索页面或画板')}
+            value={query}
+            onValueChange={setQuery}
+          />
         </div>
+        <ListHighlight>
+          <div className="artifact-canvas-nav-results">
+            {results.length === 0 && (
+              <p className="px-2.5 py-4 text-center text-xs text-ink-muted">
+                {t('没有匹配的页面或画板')}
+              </p>
+            )}
+            {results.map(({ entry, boards, title }) => {
+              const isCurrent = entry.id === page?.id
+              return (
+                <fieldset key={entry.id} aria-label={title} className="min-w-0 not-first:mt-2">
+                  <ListHighlightItem>
+                    <div
+                      className="artifact-canvas-nav-page-row"
+                      data-current={isCurrent ? 'true' : undefined}
+                    >
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="artifact-canvas-nav-page min-w-0 flex-1"
+                        leftIcon={
+                          <File size={13} className={isCurrent ? 'text-ink' : 'text-ink-muted'} />
+                        }
+                        aria-current={isCurrent ? 'page' : undefined}
+                        title={title}
+                        onClick={() => navigate(entry)}
+                      >
+                        <bdi>{title}</bdi>
+                      </Button>
+                      <span className="shrink-0 pe-0.5 text-[11px] text-ink-muted tabular-nums">
+                        {t('{count} 张画板', { count: entry.boards.length })}
+                      </span>
+                      <PageMenu
+                        page={entry}
+                        canEdit={Boolean(pageEditing) && entry.ownedBoardCount !== undefined}
+                        onCopy={copyLink}
+                        onEdit={editPage}
+                      />
+                    </div>
+                  </ListHighlightItem>
+                  {boards.length > 0 && (
+                    <div className="ms-3 mt-0.5 space-y-0.5 border-s border-border/75 ps-1.5">
+                      {boards.map((board) => {
+                        const active = isCurrent && board.id === selected
+                        return (
+                          <ListHighlightItem key={board.id} active={active}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="artifact-canvas-nav-item w-full"
+                              rightIcon={active && <Check size={13} />}
+                              aria-pressed={active}
+                              title={board.title}
+                              onClick={() => navigate(entry, board.id)}
+                            >
+                              <bdi>{board.title}</bdi>
+                            </Button>
+                          </ListHighlightItem>
+                        )
+                      })}
+                    </div>
+                  )}
+                </fieldset>
+              )
+            })}
+          </div>
+        </ListHighlight>
         {pageEditing && (
-          <div className="border-t border-border pt-2">
+          <div className="border-t border-border/70 p-1.5">
             <Button
               size="sm"
               variant="ghost"
-              leftIcon={<Plus size={15} />}
+              className="h-7 w-full justify-start rounded-8 px-2 text-xs text-ink-muted hover:text-ink"
+              leftIcon={<Plus size={14} />}
               onClick={(event) => createPage(event.currentTarget)}
             >
               {t('新建页面')}
             </Button>
           </div>
         )}
-        <p role="status" className="px-2 text-xs text-ink-muted empty:sr-only">
+        <p role="status" className="px-3 pb-2 text-xs text-ink-muted empty:sr-only">
           {status === '已复制页面链接' || status === '无法复制页面链接，请检查剪贴板权限'
             ? t(status)
             : status}

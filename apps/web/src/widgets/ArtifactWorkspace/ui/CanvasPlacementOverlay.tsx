@@ -297,7 +297,7 @@ export function CanvasBlankDrawingOverlay({
     // biome-ignore lint/a11y/noStaticElementInteractions: 空白画布的指针起笔表面，键盘绘制仍通过画板按钮触发。
     <div
       data-testid="canvas-blank-drawing"
-      className="pointer-events-auto absolute inset-0 z-0 cursor-crosshair touch-none"
+      className="artifact-canvas-blank-drawing pointer-events-auto absolute inset-0 z-0 touch-none"
       onPointerDown={(event: PointerEvent<HTMLDivElement>) => {
         if (event.button !== 0 || drag.current) return
         const rect = event.currentTarget.getBoundingClientRect()

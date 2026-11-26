@@ -106,37 +106,45 @@ export function AgentConversationPane({
       hidden={!open}
       className="absolute inset-0 z-20 flex min-h-0 flex-col border-border bg-surface text-sm lg:static lg:w-92 lg:shrink-0 lg:border-e xl:w-104"
     >
-      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border p-3">
-        <h2 ref={heading} tabIndex={-1} className="font-semibold outline-hidden">
+      <header className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-border/80 px-3.5 py-1.5">
+        <h2 ref={heading} tabIndex={-1} className="text-sm font-semibold outline-hidden">
           {t('Agent 对话')}
         </h2>
         <Button
           variant="ghost"
           size="sm"
-          leftIcon={<ArrowLeft className="rtl:rotate-180" size={15} />}
+          leftIcon={<ArrowLeft className="rtl:rotate-180" size={14} />}
           onClick={onClose}
         >
           {t('返回画布')}
         </Button>
       </header>
       {notice && (
-        <p className="shrink-0 px-3 pt-3 text-xs text-ink-muted" role="status">
-          {notice.text === '无法读取会话'
-            ? getRequestErrorMessage(status.error, t(notice.text))
-            : t(notice.text)}
-          {notice.command && (
-            <code dir="ltr" className="block select-all wrap-break-word">
-              {notice.command}
-            </code>
-          )}
-        </p>
+        <div className="shrink-0 px-3.5 pt-3">
+          <p
+            className="rounded-8 border border-border bg-surface-subtle/60 px-3 py-2 text-xs text-ink-muted"
+            role="status"
+          >
+            {notice.text === '无法读取会话'
+              ? getRequestErrorMessage(status.error, t(notice.text))
+              : t(notice.text)}
+            {notice.command && (
+              <code
+                dir="ltr"
+                className="mt-1.5 block select-all wrap-break-word rounded-4 border border-border bg-canvas px-2 py-1 font-mono text-xs text-ink"
+              >
+                {notice.command}
+              </code>
+            )}
+          </p>
+        </div>
       )}
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      <div className="min-h-0 flex-1 overflow-y-auto p-3.5">
         {session?.turns.length ? <AgentTurnList turns={session.turns} /> : null}
       </div>
-      <form className="shrink-0 space-y-2 border-t border-border p-3" onSubmit={submitMessage}>
+      <form className="shrink-0 space-y-2 border-t border-border/80 p-3.5" onSubmit={submitMessage}>
         {target ? (
-          <div className="flex items-start justify-between gap-2 rounded-md bg-surface-subtle px-2 py-1.5">
+          <div className="flex items-start justify-between gap-2 rounded-8 border border-border bg-surface-subtle/60 px-2.5 py-2">
             <div className="min-w-0 wrap-break-word text-xs">
               <p dir="auto" className="font-medium">
                 {target.label}

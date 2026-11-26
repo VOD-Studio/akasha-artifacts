@@ -7,6 +7,7 @@ import type {
   VersionSummary,
 } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
+import { ListHighlight } from '@akasha/ui/list-highlight'
 import {
   type MouseEvent,
   type ReactNode,
@@ -582,30 +583,54 @@ export function ArtifactCanvas({
     selectBoard(null)
   }
 
+  let activeTool = 'select'
+  if (handActive) activeTool = 'hand'
+  else if (artboardPlacing) activeTool = 'artboard'
+  else if (drawingTool) activeTool = drawingTool.kind
+  else if (visualEdit?.isPicking) activeTool = 'pick'
+
   return (
     <>
       <div hidden={!showOverview} className={showOverview ? 'artifact-canvas-shell' : 'hidden'}>
         <div className="artifact-canvas-navigation">
-          <PageNavigator
-            open={navigatorOpen && showOverview}
-            onOpenChange={setNavigatorOpen}
-            pages={document.pages}
-            page={invalidAddress ? undefined : page}
-            selected={selected}
-            onNavigate={(page, boardId) => {
-              onClearElement()
-              navigate(page, boardId)
-            }}
-            pageLink={pageLink}
-            pageEditing={pageEditing}
-            status={copyStatus}
-            onStatus={setCopyStatus}
-          />
+          <ListHighlight>
+            <div className="artifact-canvas-nav-bar">
+              <PageNavigator
+                open={navigatorOpen && showOverview}
+                onOpenChange={setNavigatorOpen}
+                pages={document.pages}
+                page={invalidAddress ? undefined : page}
+                selected={selected}
+                onNavigate={(page, boardId) => {
+                  onClearElement()
+                  navigate(page, boardId)
+                }}
+                pageLink={pageLink}
+                pageEditing={pageEditing}
+                status={copyStatus}
+                onStatus={setCopyStatus}
+              />
+              {!invalidAddress && page && page.boards.length > 0 ? (
+                <>
+                  <span aria-hidden="true" className="mx-0.5 h-3.5 w-px shrink-0 bg-border/90" />
+                  <CanvasPlaybackMenu
+                    boards={page.boards}
+                    canPlay={canPlay}
+                    canAnimate={canAnimate}
+                    paused={motion.paused}
+                    onTogglePause={motion.togglePause}
+                    onOpen={(id, trigger) => openFromMenu(id, trigger, false)}
+                    onPlay={(id, trigger) => openFromMenu(id, trigger, true)}
+                  />
+                </>
+              ) : null}
+            </div>
+          </ListHighlight>
           {historyEditing ? <CanvasBoardEditNotice editing={historyEditing} /> : null}
           {blankNotice ? (
             <p
               role="status"
-              className="mt-1 max-w-xs rounded-md border border-border bg-surface px-3 py-2 text-xs text-ink shadow-sm"
+              className="mt-1 max-w-xs rounded-8 border border-border bg-surface px-3 py-2 text-xs text-ink shadow-xs"
             >
               {blankNotice}
             </p>
@@ -618,8 +643,10 @@ export function ArtifactCanvas({
           aria-label={t('画布')}
           tabIndex={-1}
           className="artifact-canvas"
+          data-tool={activeTool}
           data-hand={handActive}
           data-dragging={dragging}
+          data-marquee={marquee.box ? 'true' : undefined}
           onPointerDown={(event) => {
             if (marquee.onPointerDown(event)) return
             startPointer(event)
@@ -904,19 +931,6 @@ export function ArtifactCanvas({
           camera={camera}
           guidesVisible={guideBoard ? !hiddenGuideBoards.has(guideBoard.id) : undefined}
           onToggleGuides={guideBoard ? toggleSelectedGuides : undefined}
-          playbackMenu={
-            !invalidAddress && page && page.boards.length > 0 ? (
-              <CanvasPlaybackMenu
-                boards={page.boards}
-                canPlay={canPlay}
-                canAnimate={canAnimate}
-                paused={motion.paused}
-                onTogglePause={motion.togglePause}
-                onOpen={(id, trigger) => openFromMenu(id, trigger, false)}
-                onPlay={(id, trigger) => openFromMenu(id, trigger, true)}
-              />
-            ) : undefined
-          }
           hand={hand}
           onChangeTool={setCanvasTool}
           designTools={

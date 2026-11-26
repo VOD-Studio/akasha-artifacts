@@ -25,39 +25,39 @@ export function CanvasBoardQuickActions({ title, onExpand, onPlay, onExport }: Q
     <>
       <Button
         size="sm"
-        variant="secondary"
+        variant="ghost"
         iconOnly
-        className="artifact-canvas-board-action"
+        className="artifact-canvas-board-action size-7"
         aria-label={t('展开画板：{title}', { title })}
         title={t('展开画板')}
         onClick={onExpand}
       >
-        <Focus size={15} />
+        <Focus size={14} />
       </Button>
       {onPlay && (
         <Button
           size="sm"
-          variant="secondary"
+          variant="ghost"
           iconOnly
-          className="artifact-canvas-board-action"
+          className="artifact-canvas-board-action size-7"
           aria-label={t('播放原型：{title}', { title })}
           title={t('播放原型')}
           onClick={onPlay}
         >
-          <Play size={15} />
+          <Play size={14} />
         </Button>
       )}
       {onExport && (
         <Button
           size="sm"
-          variant="secondary"
+          variant="ghost"
           iconOnly
-          className="artifact-canvas-board-action"
+          className="artifact-canvas-board-action size-7"
           aria-label={t('导出画板：{title}', { title })}
           title={t('导出画板')}
           onClick={onExport}
         >
-          <Download size={15} />
+          <Download size={14} />
         </Button>
       )}
     </>
@@ -105,15 +105,15 @@ export function CanvasBoardActions({
     >
       <PopoverTrigger asChild>
         <Button
-          variant="secondary"
+          variant="ghost"
           size="sm"
           iconOnly
           disabled={disabled}
-          className="artifact-canvas-board-action"
+          className="artifact-canvas-board-action size-7"
           aria-label={t('设置画板：{title}', { title: board.title })}
           title={t('设置画板')}
         >
-          <Ellipsis size={15} />
+          <Ellipsis size={14} />
         </Button>
       </PopoverTrigger>
       <PopoverContent

@@ -50,7 +50,9 @@ export function WorkspacePanelButtons({
         onClick={toggleReview}
       >
         {hasActiveRound ? t('评审') : t('批注')}
-        {feedbackCount > 0 && ` ${number(feedbackCount)}`}
+        {feedbackCount > 0 ? (
+          <span className="font-mono text-xs opacity-70 tabular-nums">{` ${number(feedbackCount)}`}</span>
+        ) : null}
       </Button>
     </>
   )

@@ -103,8 +103,8 @@ it('钢笔只记录点击的节点，切换语言保留草稿、焦点和物理�
   act(() => setLocale('en'))
   expect(screen.getByRole('button', { name: 'Draw polyline on Poster' })).toBe(surface)
   expect(screen.getByRole('button', { name: 'Pen' }).getAttribute('aria-pressed')).toBe('true')
-  expect(screen.getByRole('button', { name: 'Fit page' }).getAttribute('aria-keyshortcuts')).toBe(
-    'Shift+1',
+  expect(screen.getByRole('button', { name: 'Zoom in' }).getAttribute('aria-keyshortcuts')).toBe(
+    '+',
   )
   act(() => setLocale('ar'))
   expect(screen.getByRole('button', { name: 'رسم خط متعدد المقاطع: Poster' })).toBe(surface)
@@ -220,6 +220,12 @@ it('辅助线在画板固有坐标内显示；缩放菜单和快捷键只切换�
   expect(fireEvent.keyDown(toggle, shortcut)).toBe(true)
   act(() => setLocale('en'))
   expect(screen.getByRole('button', { name: 'Show artboard guides' })).toBe(toggle)
+  expect(screen.getByRole('button', { name: 'Fit page' }).getAttribute('aria-keyshortcuts')).toBe(
+    'Shift+1',
+  )
+  expect(
+    screen.getByRole('button', { name: 'Fit selection' }).getAttribute('aria-keyshortcuts'),
+  ).toBe('Shift+2')
   act(() => setLocale('de'))
   expect(screen.getByRole('button', { name: 'Hilfslinien der Zeichenfläche anzeigen' })).toBe(
     toggle,

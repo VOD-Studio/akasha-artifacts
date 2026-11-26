@@ -229,7 +229,7 @@ export function BoardDrawingSurface({
       type="button"
       aria-label={t('在{title}{action}', { title: board.title, action })}
       title={tool.kind === 'pen' ? t('点击添加节点；双击或按 Enter 完成，Esc 取消') : undefined}
-      className="artifact-canvas-board-hit z-2 cursor-crosshair touch-none overflow-visible focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+      className="artifact-canvas-board-hit z-2 touch-none overflow-visible focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
       onPointerDown={(event) => {
         if (event.button !== 0 || gesture.current) return
         const frame = event.currentTarget.getBoundingClientRect()

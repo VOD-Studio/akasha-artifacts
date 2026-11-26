@@ -8,6 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@akasha/ui/dropdown-menu'
+import { ListHighlightItem } from '@akasha/ui/list-highlight'
 import { Focus, Pause, Play } from 'lucide-react'
 import { Fragment, useRef } from 'react'
 import type { CanvasBoard } from '@/entities/artifact'
@@ -116,9 +117,11 @@ export function CanvasPlaybackMenu({ onOpen, onPlay, ...options }: CanvasPlaybac
   return (
     <DropdownMenu dir={dir} modal={false}>
       <DropdownMenuTrigger asChild>
-        <Button ref={triggerRef} variant="outline" size="sm" leftIcon={<Play size={15} />}>
-          {t('播放')}
-        </Button>
+        <ListHighlightItem>
+          <Button ref={triggerRef} variant="ghost" size="sm" leftIcon={<Play size={14} />}>
+            {t('播放')}
+          </Button>
+        </ListHighlightItem>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" onCloseAutoFocus={restoreFocus}>
         <PlaybackMenuItems {...options} onSelectBoard={selectBoard} />

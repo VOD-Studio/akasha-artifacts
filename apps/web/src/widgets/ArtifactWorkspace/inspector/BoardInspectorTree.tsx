@@ -35,18 +35,20 @@ export function BoardInspectorTree({
   const layerStatus = layersAvailable ? noLayers : t('未保存的预览无法查看图层。')
   return (
     <section aria-label={t('页面、画板与图层')} className="border-b border-border pb-3">
-      <div className="mb-2 flex items-center justify-between gap-2 text-sm font-medium">
-        <h2>{t('页面、画板与图层')}</h2>
-        <Badge tone="neutral">v{version}</Badge>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h2 className="text-xs font-semibold text-ink-muted">{t('页面、画板与图层')}</h2>
+        <Badge tone="neutral" className="font-mono tabular-nums">
+          v{version}
+        </Badge>
       </div>
-      <div className="flex max-h-[min(20rem,42dvh)] flex-col gap-1 overflow-auto">
+      <div className="flex max-h-[min(20rem,42dvh)] flex-col gap-0.5 overflow-auto">
         {document.pages.map((page) => (
           <details key={page.id} open={page.id === location?.pageId || undefined}>
-            <summary className="cursor-pointer rounded px-2 py-1 text-sm text-ink">
+            <summary className="cursor-pointer rounded-8 px-2 py-1 text-13 font-medium text-ink transition-colors hover:bg-surface-subtle">
               {page.title}
             </summary>
             {page.boards.length > 0 && (
-              <ul className="ms-3 border-s border-border ps-2">
+              <ul className="ms-2.5 mt-0.5 space-y-0.5 border-s border-border ps-2">
                 {page.boards.map((board) => {
                   const current = page.id === location?.pageId && board.id === location?.boardId
                   return (
@@ -54,7 +56,7 @@ export function BoardInspectorTree({
                       <Button
                         variant={current ? 'secondary' : 'ghost'}
                         size="sm"
-                        className="w-full justify-start"
+                        className="h-7 w-full justify-start rounded-8"
                         aria-pressed={current}
                         onClick={() => onNavigate({ pageId: page.id, boardId: board.id })}
                       >

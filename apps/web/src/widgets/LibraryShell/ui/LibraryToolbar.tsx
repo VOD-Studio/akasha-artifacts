@@ -37,7 +37,7 @@ function FilterMenu({ label, summary, value, icon, children }: FilterMenuProps) 
           className="max-w-44 text-ink-muted hover:text-ink"
           aria-label={label}
           leftIcon={icon}
-          rightIcon={<ChevronDown size={13} />}
+          rightIcon={<ChevronDown size={13} className="disclosure-chevron" />}
         >
           <span className="truncate">{summary}</span>
         </Button>

@@ -119,7 +119,7 @@ function InspectorContent({
           ) : null}
 
           <div className="space-y-2 pt-1">
-            <div className="text-[11px] font-medium text-ink-muted">
+            <div className="text-xs font-semibold text-ink-muted">
               {t('反馈（{count}）', { count: ordered.length })}
             </div>
             <div className="flex flex-wrap gap-2">
@@ -193,7 +193,7 @@ export function ArtifactReviewPanel(props: ArtifactReviewPanelProps) {
         id="artifact-inspector"
         size="sm"
         aria-describedby={undefined}
-        className="top-16 bottom-14 overflow-hidden"
+        className="top-15 bottom-3 overflow-hidden"
       >
         <InspectorContent {...props} />
       </SheetContent>

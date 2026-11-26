@@ -137,15 +137,6 @@ html[data-theme-transition]::view-transition-new(root) {
   transform: scale(1) rotate(0deg);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .library-header,
-  .theme-toggle-core,
-  .theme-toggle-cutout,
-  .theme-toggle-rays {
-    transition: none;
-  }
-}
-
 @media (prefers-contrast: more) {
   :root {
     --material-rule: var(--neutral-11);
@@ -168,6 +159,18 @@ body,
   min-height: 0;
 }
 
+/* 画布工作台暖石底纹：无限画布、单板演示与加载态共用，不干涉滚动与手势。 */
+.artifact-canvas,
+.artifact-canvas-surface {
+  background-color: light-dark(#eeece6, #111110);
+  background-image: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--foreground) 10%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 20px 20px;
+}
+
 .artifact-canvas {
   position: relative;
   flex: 1;
@@ -175,11 +178,75 @@ body,
   overflow: clip;
   overscroll-behavior: contain;
   touch-action: none;
-  background-color: color-mix(in oklab, var(--background) 94%, var(--foreground));
 }
 
 .artifact-canvas:focus {
   outline: none;
+}
+
+/* Akasha 刀锋棱面指针体系：取材品牌双切角几何，暖纸白 + 墨黑分面配外白晕，浅/深画布皆清晰锐利。 */
+.artifact-canvas[data-tool="select"] {
+  cursor:
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='28'%20height='28'%20viewBox='0%200%2028%2028'%3E%3Cpath%20d='M3%203L22%208.8L11.8%2011.8L8.8%2022Z'%20fill='none'%20stroke='%23ffffff'%20stroke-width='2.8'%20stroke-linejoin='round'/%3E%3Cpath%20d='M14.6%2014.6L19.4%2016L16%2019.4Z'%20fill='none'%20stroke='%23ffffff'%20stroke-width='2.4'%20stroke-linejoin='round'/%3E%3Cpath%20d='M3%203L11.8%2011.8L8.8%2022Z'%20fill='%23faf9f5'%20stroke='%231c1b19'%20stroke-width='1.2'%20stroke-linejoin='round'/%3E%3Cpath%20d='M3%203L22%208.8L11.8%2011.8Z'%20fill='%231c1b19'%20stroke='%231c1b19'%20stroke-width='1.2'%20stroke-linejoin='round'/%3E%3Cpath%20d='M14.6%2014.6L19.4%2016L16%2019.4Z'%20fill='%233b3833'%20stroke='%231c1b19'%20stroke-width='1'%20stroke-linejoin='round'/%3E%3C/svg%3E")
+    3 3,
+    default;
+}
+
+.artifact-canvas[data-tool="text"] {
+  cursor:
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='28'%20height='28'%20viewBox='0%200%2028%2028'%3E%3Cpath%20d='M7.5%205.5L11%207L14.5%205.5M11%207v10M7.5%2018.5L11%2017L14.5%2018.5M17%2017.5h6M20%2017.5v5.5'%20fill='none'%20stroke='%23ffffff'%20stroke-width='3.4'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Cpath%20d='M7.5%205.5L11%207L14.5%205.5M11%207v10M7.5%2018.5L11%2017L14.5%2018.5M17%2017.5h6M20%2017.5v5.5'%20fill='none'%20stroke='%231c1b19'%20stroke-width='1.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E")
+    11 12,
+    text;
+}
+
+.artifact-canvas[data-tool="artboard"] {
+  cursor:
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='28'%20height='28'%20viewBox='0%200%2028%2028'%3E%3Cpath%20d='M10%203v4.5M10%2012.5v4.5M3%2010h4.5M12.5%2010h4.5M16%2018.5h7.5M16%2022h7.5M18.5%2016v7.5M22%2016v7.5'%20fill='none'%20stroke='%23ffffff'%20stroke-width='3.2'%20stroke-linecap='round'/%3E%3Cpath%20d='M10%203v4.5M10%2012.5v4.5M3%2010h4.5M12.5%2010h4.5M16%2018.5h7.5M16%2022h7.5M18.5%2016v7.5M22%2016v7.5'%20fill='none'%20stroke='%231c1b19'%20stroke-width='1.5'%20stroke-linecap='round'/%3E%3C/svg%3E")
+    10 10,
+    crosshair;
+}
+
+.artifact-canvas[data-tool="note"] {
+  cursor:
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='28'%20height='28'%20viewBox='0%200%2028%2028'%3E%3Cpath%20d='M9%203v4M9%2011v4M3%209h4M11%209h4'%20fill='none'%20stroke='%23ffffff'%20stroke-width='3.2'%20stroke-linecap='round'/%3E%3Cpath%20d='M15%2015h9v6.2L21.2%2024H15z'%20fill='%23ffffff'%20stroke='%23ffffff'%20stroke-width='2.6'%20stroke-linejoin='round'/%3E%3Cpath%20d='M9%203v4M9%2011v4M3%209h4M11%209h4'%20fill='none'%20stroke='%231c1b19'%20stroke-width='1.5'%20stroke-linecap='round'/%3E%3Cpath%20d='M15%2015h9v6.2L21.2%2024H15z'%20fill='%23f5efe0'%20stroke='%231c1b19'%20stroke-width='1.3'%20stroke-linejoin='round'/%3E%3Cpath%20d='M21.2%2024v-2.8H24'%20fill='none'%20stroke='%231c1b19'%20stroke-width='1.2'%20stroke-linejoin='round'/%3E%3C/svg%3E")
+    9 9,
+    crosshair;
+}
+
+.artifact-canvas[data-tool="stroke"] {
+  cursor:
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='28'%20height='28'%20viewBox='0%200%2028%2028'%3E%3Cpath%20d='M3.5%2024.5L6%2017.2L19%204.2L23.8%209L10.8%2022Z'%20fill='none'%20stroke='%23ffffff'%20stroke-width='3'%20stroke-linejoin='round'/%3E%3Cpath%20d='M6%2017.2L19%204.2L21.4%206.6L8.4%2019.6Z'%20fill='%231c1b19'%20stroke='%231c1b19'%20stroke-width='1.2'%20stroke-linejoin='round'/%3E%3Cpath%20d='M8.4%2019.6L21.4%206.6L23.8%209L10.8%2022Z'%20fill='%23faf9f5'%20stroke='%231c1b19'%20stroke-width='1.2'%20stroke-linejoin='round'/%3E%3Cpath%20d='M3.5%2024.5L6%2017.2L10.8%2022Z'%20fill='%231c1b19'/%3E%3C/svg%3E")
+    3 24,
+    crosshair;
+}
+
+.artifact-canvas[data-tool="pen"] {
+  cursor:
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='28'%20height='28'%20viewBox='0%200%2028%2028'%3E%3Cpath%20d='M3.5%203.5L16.5%207.8L21.2%2017.2L17.2%2021.2L7.8%2016.5Z'%20fill='none'%20stroke='%23ffffff'%20stroke-width='3'%20stroke-linejoin='round'/%3E%3Cpath%20d='M3.5%203.5L16.5%207.8L21.2%2017.2L19.2%2019.2Z'%20fill='%231c1b19'%20stroke='%231c1b19'%20stroke-width='1.2'%20stroke-linejoin='round'/%3E%3Cpath%20d='M3.5%203.5L19.2%2019.2L17.2%2021.2L7.8%2016.5Z'%20fill='%23faf9f5'%20stroke='%231c1b19'%20stroke-width='1.2'%20stroke-linejoin='round'/%3E%3Ccircle%20cx='12.8'%20cy='12.8'%20r='1.7'%20fill='%23faf9f5'%20stroke='%231c1b19'%20stroke-width='1.1'/%3E%3C/svg%3E")
+    3 3,
+    crosshair;
+}
+
+.artifact-canvas[data-tool="rectangle"] {
+  cursor:
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='28'%20height='28'%20viewBox='0%200%2028%2028'%3E%3Cpath%20d='M10%203v4.5M10%2012.5v4.5M3%2010h4.5M12.5%2010h4.5'%20fill='none'%20stroke='%23ffffff'%20stroke-width='3.2'%20stroke-linecap='round'/%3E%3Crect%20x='15.5'%20y='16'%20width='8.5'%20height='7'%20rx='1.2'%20fill='%23ffffff'%20stroke='%23ffffff'%20stroke-width='2.6'/%3E%3Cpath%20d='M10%203v4.5M10%2012.5v4.5M3%2010h4.5M12.5%2010h4.5'%20fill='none'%20stroke='%231c1b19'%20stroke-width='1.5'%20stroke-linecap='round'/%3E%3Crect%20x='15.5'%20y='16'%20width='8.5'%20height='7'%20rx='1.2'%20fill='%23faf9f5'%20stroke='%231c1b19'%20stroke-width='1.4'/%3E%3C/svg%3E")
+    10 10,
+    crosshair;
+}
+
+.artifact-canvas[data-tool="ellipse"] {
+  cursor:
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='28'%20height='28'%20viewBox='0%200%2028%2028'%3E%3Cpath%20d='M10%203v4.5M10%2012.5v4.5M3%2010h4.5M12.5%2010h4.5'%20fill='none'%20stroke='%23ffffff'%20stroke-width='3.2'%20stroke-linecap='round'/%3E%3Ccircle%20cx='19.8'%20cy='19.5'%20r='4.2'%20fill='%23ffffff'%20stroke='%23ffffff'%20stroke-width='2.6'/%3E%3Cpath%20d='M10%203v4.5M10%2012.5v4.5M3%2010h4.5M12.5%2010h4.5'%20fill='none'%20stroke='%231c1b19'%20stroke-width='1.5'%20stroke-linecap='round'/%3E%3Ccircle%20cx='19.8'%20cy='19.5'%20r='4.2'%20fill='%23faf9f5'%20stroke='%231c1b19'%20stroke-width='1.4'/%3E%3C/svg%3E")
+    10 10,
+    crosshair;
+}
+
+.artifact-canvas[data-tool="pick"],
+.artifact-canvas[data-marquee="true"] {
+  cursor:
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='28'%20height='28'%20viewBox='0%200%2028%2028'%3E%3Cpath%20d='M10%202.5v5M10%2012.5v5M2.5%2010h5M12.5%2010h5'%20fill='none'%20stroke='%23ffffff'%20stroke-width='3.2'%20stroke-linecap='round'/%3E%3Cpath%20d='M10%202.5v5M10%2012.5v5M2.5%2010h5M12.5%2010h5'%20fill='none'%20stroke='%231c1b19'%20stroke-width='1.5'%20stroke-linecap='round'/%3E%3C/svg%3E")
+    10 10,
+    crosshair;
 }
 
 .artifact-canvas[data-hand="true"] {
@@ -191,44 +258,56 @@ body,
   cursor: grabbing;
 }
 
+.artifact-canvas-board-hit,
+.artifact-canvas-blank-drawing {
+  cursor: inherit;
+}
+
 .artifact-canvas-board,
 .artifact-canvas-board-header {
   position: absolute;
 }
 
 .artifact-canvas-board[data-selected="true"],
+.artifact-canvas-board:hover,
 .artifact-canvas-board:focus-within {
   z-index: 1;
 }
 
 .artifact-canvas-board-header {
-  inset-block-end: calc(100% + 4px);
+  inset-block-end: calc(100% + 6px);
   inset-inline-start: 0;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
   max-width: max(68px, 100%);
 }
 
 .artifact-canvas-board-title {
   min-width: 0;
-  min-height: 28px;
+  min-height: 26px;
+  max-width: min(18rem, 100%);
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 0;
+  border-radius: var(--radius-full);
   padding: 2px 8px;
-  background: var(--card);
-  color: var(--foreground);
+  background: transparent;
+  color: var(--muted-foreground);
   font-size: 12px;
+  font-weight: 500;
   text-align: start;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 140ms ease-out,
+    color 140ms ease-out;
 }
 
 .artifact-canvas-board-title:hover,
 .artifact-canvas-board-title:focus-visible {
   z-index: 1;
-  max-width: min(18rem, 65vw);
+  background: color-mix(in oklab, var(--card) 75%, transparent);
+  color: var(--foreground);
 }
 
 .artifact-canvas-board[data-selected="true"] .artifact-canvas-board-title {
@@ -241,17 +320,73 @@ body,
   user-select: none;
 }
 
+.artifact-canvas-board-actions {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: calc(100% + 6px);
+  transform: translateY(-50%);
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 1px;
+  padding: 2px;
+  border: 1px solid var(--ol);
+  border-radius: var(--radius-full);
+  background: color-mix(in oklab, var(--card) 86%, transparent);
+  box-shadow: var(--shadow-xs);
+  backdrop-filter: blur(14px) saturate(1.5);
+  -webkit-backdrop-filter: blur(14px) saturate(1.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease-out;
+}
+
+/* 桥接标题与操作胶囊之间的空隙，指针移向操作按钮时不丢失 hover。 */
+.artifact-canvas-board-actions::before {
+  content: "";
+  position: absolute;
+  inset-block: -4px;
+  inset-inline-start: -8px;
+  width: 10px;
+}
+
+.artifact-canvas-board[data-selected="true"] .artifact-canvas-board-actions,
+.artifact-canvas-board:hover .artifact-canvas-board-actions,
+.artifact-canvas-board:focus-within .artifact-canvas-board-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .artifact-canvas-board-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
 .artifact-canvas-board-resize {
   position: absolute;
-  inset-block-end: -6px;
-  inset-inline-end: -6px;
+  inset-block-end: -5px;
+  inset-inline-end: -5px;
   z-index: 2;
-  width: 14px;
-  height: 14px;
+  width: 10px;
+  height: 10px;
   border: 2px solid var(--primary);
-  border-radius: 2px;
+  border-radius: var(--radius-full);
   background: var(--card);
+  box-shadow: var(--shadow-xs);
   cursor: nwse-resize;
+  transition: transform 140ms ease-out;
+}
+
+.artifact-canvas-board-resize::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+}
+
+.artifact-canvas-board-resize:hover {
+  transform: scale(1.2);
 }
 
 .artifact-canvas-board-action {
@@ -266,9 +401,18 @@ body,
 
 .artifact-canvas-board-clip {
   overflow: hidden;
-  outline: 1px solid var(--border);
+  outline: 1px solid color-mix(in oklab, var(--foreground) 8%, transparent);
   background: var(--card);
-  box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.04),
+    0 8px 28px -10px rgb(0 0 0 / 0.1);
+}
+
+.dark .artifact-canvas-board-clip {
+  outline: 1px solid rgb(255 255 255 / 0.09);
+  box-shadow:
+    0 2px 6px rgb(0 0 0 / 0.35),
+    0 14px 36px -12px rgb(0 0 0 / 0.65);
 }
 
 .artifact-canvas-board[data-selected="true"] .artifact-canvas-board-clip {
@@ -300,7 +444,7 @@ body,
   position: absolute;
   inset: 0;
   z-index: 3;
-  cursor: crosshair;
+  cursor: inherit;
   touch-action: none;
   border: 0;
   background: transparent;
@@ -326,15 +470,17 @@ body,
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   width: max-content;
   max-width: calc(100% - 24px);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 1px solid var(--ol);
+  border-radius: var(--radius-12, 12px);
   padding: 4px 6px;
-  background: var(--card);
+  background: color-mix(in oklab, var(--card) 86%, transparent);
   color: var(--foreground);
-  box-shadow: 0 4px 16px rgb(0 0 0 / 12%);
+  box-shadow: var(--shadow-float);
+  backdrop-filter: blur(18px) saturate(1.65);
+  -webkit-backdrop-filter: blur(18px) saturate(1.65);
 }
 
 .artifact-canvas-board-title:focus-visible,
@@ -387,37 +533,142 @@ body,
 .artifact-canvas-navigation {
   inset-block-start: 12px;
   inset-inline-start: 12px;
+  max-width: calc(100% - 24px);
 }
 
+.artifact-canvas-nav-bar,
 .artifact-canvas-zoom,
 .artifact-canvas-tools {
+  --v-list-highlight-color: color-mix(in oklab, var(--foreground) 7%, transparent);
+
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   width: max-content;
   max-width: calc(100% - 24px);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 1px solid var(--ol);
+  border-radius: var(--radius-12, 12px);
   padding: 4px;
-  background: var(--card);
-  box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
+  background: color-mix(in oklab, var(--card) 84%, transparent);
+  box-shadow: var(--shadow-float);
+  backdrop-filter: blur(18px) saturate(1.65);
+  -webkit-backdrop-filter: blur(18px) saturate(1.65);
+}
+
+.artifact-canvas-nav-bar {
+  max-width: 100%;
+}
+
+.artifact-canvas-tools {
+  flex-wrap: wrap;
+}
+
+/* 浮岛内所有控件采用与 12px 外壳同心的 28px / 8px 圆角，消除黑圆点与方壳的割裂感。 */
+.artifact-canvas-nav-bar .v-button,
+.artifact-canvas-zoom .v-button,
+.artifact-canvas-tools .v-button {
+  block-size: 1.75rem;
+  border-radius: var(--radius-8, 8px);
+}
+
+.artifact-canvas-nav-bar .v-button[data-icon-only="true"],
+.artifact-canvas-zoom .v-button[data-icon-only="true"],
+.artifact-canvas-tools .v-button[data-icon-only="true"] {
+  inline-size: 1.75rem;
+}
+
+/* 启用 ListHighlight 滑块的浮岛与菜单抑制按钮自身悬停底色，只由滑动高亮层统一跟随。 */
+.artifact-canvas-nav-bar .v-button--ghost:is(:hover, [aria-expanded="true"], [data-state="open"]),
+.artifact-canvas-zoom .v-button--ghost:is(:hover, [aria-expanded="true"], [data-state="open"]),
+.artifact-canvas-tools .v-button--ghost:is(:hover, [aria-expanded="true"], [data-state="open"]),
+.artifact-canvas-list-menu .v-button--ghost:is(:hover, [aria-expanded="true"], [data-state="open"]),
+.artifact-canvas-nav-results
+  .v-button--ghost:is(:hover, [aria-expanded="true"], [data-state="open"]) {
+  background-color: transparent;
+}
+
+/* 浮层菜单项：让按钮内部 label 撑满剩余宽度，实现「左图标 · 左文案 · 右快捷键」标准对齐。 */
+.artifact-canvas-menu-item {
+  block-size: 1.875rem;
+  justify-content: flex-start;
+  border-radius: var(--radius-8, 8px);
+  padding-inline: 8px;
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+.artifact-canvas-menu-item .v-button__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+/* 下拉菜单 / 浮层触发器的展开箭头：展开时平滑翻转 180°。 */
+.disclosure-chevron {
+  transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+[aria-expanded="true"] .disclosure-chevron,
+[data-state="open"] .disclosure-chevron {
+  transform: rotate(180deg);
+}
+
+/* 组合绘图工具（铅笔/钢笔 + 展开箭头）：共享胶囊底与 ListHighlight 悬停/激活态，视觉上构成一个整体控件。 */
+.artifact-canvas-split-tool {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-8, 8px);
+  background: color-mix(in oklab, var(--foreground) 4.5%, transparent);
+  transition: background-color 140ms ease-out;
+}
+
+.artifact-canvas-tools .artifact-canvas-split-tool > .v-button:first-child {
+  inline-size: 1.5625rem;
+  aspect-ratio: auto;
+  padding-inline-start: 2px;
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.artifact-canvas-tools .artifact-canvas-split-tool .artifact-canvas-tool-caret {
+  inline-size: 0.9375rem;
+  aspect-ratio: auto;
+  padding-inline-end: 2px;
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+  color: var(--muted-foreground);
+}
+
+.artifact-canvas-split-tool[data-active="true"] {
+  background: var(--foreground);
+}
+
+.artifact-canvas-split-tool[data-active="true"] > .v-button:first-child,
+.artifact-canvas-split-tool[data-active="true"] .artifact-canvas-tool-caret {
+  color: var(--background);
+  box-shadow: none;
+}
+
+.artifact-canvas-split-tool[data-active="true"] .artifact-canvas-tool-caret {
+  border-inline-start: 1px solid color-mix(in oklab, var(--background) 18%, transparent);
 }
 
 .artifact-canvas-zoom {
-  inset-block-start: 12px;
-  inset-inline-end: 12px;
+  inset-block-end: 14px;
+  inset-inline-start: 14px;
 }
 
 .artifact-canvas-tools {
-  inset-block-end: 12px;
+  inset-block-end: 14px;
   left: 50%;
   transform: translateX(-50%);
 }
 
-@media (width < 700px) {
+@media (width < 768px) {
   .artifact-canvas-zoom {
-    inset-block-start: 52px;
+    inset-block-end: 58px;
     max-inline-size: calc(100% - 24px);
   }
 }
@@ -425,29 +676,86 @@ body,
 .artifact-canvas-navigator {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  width: min(23rem, var(--radix-popover-content-available-width, calc(100vw - 24px)));
+  gap: 0;
+  width: min(19.5rem, var(--radix-popover-content-available-width, calc(100vw - 24px)));
   max-height: var(--radix-popover-content-available-height);
+  padding: 0;
+  overflow: hidden;
+}
+
+/* 页面导航搜索框融入顶栏，不弹出抢眼的黑框聚焦环。 */
+.artifact-canvas-navigator .v-input-control--plain:focus-within {
+  background-color: transparent;
+  box-shadow: none;
 }
 
 .artifact-canvas-nav-results {
   min-height: 0;
-  max-height: min(48vh, 21rem);
+  max-height: min(46vh, 20rem);
   overflow: auto;
-  padding: 4px;
+  padding: 6px;
+}
+
+.artifact-canvas-nav-page-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--radius-8, 8px);
+  padding: 2px;
+}
+
+.artifact-canvas-nav-page {
+  display: flex;
+  min-width: 0;
+  block-size: 1.625rem;
+  justify-content: flex-start;
+  border-radius: var(--radius-8, 8px);
+  padding: 0 6px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: start;
+}
+
+.artifact-canvas-nav-page:hover {
+  color: var(--foreground);
+}
+
+.artifact-canvas-nav-page-row[data-current="true"] .artifact-canvas-nav-page {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.artifact-canvas-nav-more {
+  opacity: 0.45;
+  transition: opacity 140ms ease-out;
+}
+
+.artifact-canvas-nav-page-row:hover .artifact-canvas-nav-more,
+.artifact-canvas-nav-page-row:focus-within .artifact-canvas-nav-more,
+.artifact-canvas-nav-more[aria-expanded="true"] {
+  opacity: 1;
 }
 
 .artifact-canvas-nav-item {
   display: flex;
   min-width: 0;
-  justify-content: flex-start;
-  border-radius: var(--radius);
-  padding: 6px 8px;
+  block-size: 1.75rem;
+  justify-content: space-between;
+  border-radius: var(--radius-8, 8px);
+  padding: 0 8px;
+  color: var(--muted-foreground);
   text-align: start;
   font-size: 13px;
+  font-weight: 400;
+}
+
+.artifact-canvas-nav-item:hover {
+  color: var(--foreground);
 }
 
 .artifact-canvas-nav-trigger [data-slot="label"],
+.artifact-canvas-nav-page [data-slot="label"],
 .artifact-canvas-nav-item [data-slot="label"] {
   display: block;
   min-width: 0;
@@ -456,19 +764,9 @@ body,
   white-space: nowrap;
 }
 
-.artifact-canvas-nav-item[aria-current="page"] {
-  border-inline-start: 2px solid currentColor;
-  font-weight: 650;
-}
-
-.artifact-canvas-nav-item[aria-pressed] {
-  justify-content: space-between;
-  padding-inline-start: 28px;
-  font-weight: 400;
-}
-
 .artifact-canvas-nav-item[aria-pressed="true"] {
-  background: var(--muted);
+  color: var(--foreground);
+  font-weight: 500;
 }
 
 .akasha-mark {
@@ -548,6 +846,20 @@ body,
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .library-header,
+  .theme-toggle-core,
+  .theme-toggle-cutout,
+  .theme-toggle-rays,
+  .artifact-canvas-board-title,
+  .artifact-canvas-board-actions,
+  .artifact-canvas-board-resize,
+  .artifact-canvas-nav-page-row,
+  .artifact-canvas-nav-more,
+  .artifact-canvas-split-tool,
+  .disclosure-chevron {
+    transition: none;
+  }
+
   .akasha-mark[data-loading="true"] .akasha-mark-ghost {
     opacity: 0;
   }
