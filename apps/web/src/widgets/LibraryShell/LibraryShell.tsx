@@ -139,7 +139,7 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
               />
             </div>
 
-            <div className="flex shrink-0 items-center gap-1">
+            <div className="flex max-w-full flex-wrap items-center justify-end gap-1">
               {cloudHub && hubSession?.admin && <HubSharingPolicyLauncher />}
               {cloudHub ? <HubAccountButton /> : <DaemonStatusPill />}
               <ThemeToggle />

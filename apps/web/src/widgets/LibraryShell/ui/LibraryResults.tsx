@@ -208,7 +208,7 @@ function FavoriteAction({
   const visibilityClass =
     alwaysVisible || favorite
       ? 'opacity-100'
-      : 'opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100'
+      : 'opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100'
   return (
     <Button
       variant="ghost"
@@ -283,7 +283,7 @@ function LibraryEntry({
                 className={`rounded-full bg-surface/85 ring-1 ring-ink/8 backdrop-blur-md transition-opacity ${
                   favorite
                     ? 'opacity-100'
-                    : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
+                    : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100'
                 }`}
               >
                 <FavoriteAction
@@ -294,7 +294,7 @@ function LibraryEntry({
                 />
               </div>
             )}
-            <div className="rounded-full bg-surface/85 opacity-0 ring-1 ring-ink/8 backdrop-blur-md transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+            <div className="rounded-full bg-surface/85 opacity-0 ring-1 ring-ink/8 backdrop-blur-md transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
               <Button
                 variant="ghost"
                 size="sm"
@@ -402,7 +402,7 @@ function LibraryEntry({
           iconOnly
           aria-label={t('复制链接')}
           title={t('复制链接')}
-          className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+          className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
           onClick={() => void copyLink()}
         >
           {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
