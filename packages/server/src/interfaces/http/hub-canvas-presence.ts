@@ -17,7 +17,7 @@ export function createCanvasPresenceAccess(
       auth.authenticateForPresence(request),
       artifacts.findByPublicId(artifactId),
     ])
-    if (!artifact || artifact.type !== 'artboard') return
+    if (artifact?.type !== 'artboard') return
     const { role, grant } = await access.decide(request, artifact, principal)
     if (grant && !canEditSharedArtifact(grant)) return
     if (!grant && role !== 'owner' && role !== 'editor') return

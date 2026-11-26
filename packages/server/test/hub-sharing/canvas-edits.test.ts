@@ -1,6 +1,11 @@
 import { ArtifactSchema, VersionSchema } from '@akasha/protocol'
 import { expect, it } from 'vitest'
+import { z } from 'zod'
 import { sqliteHub } from './sqlite-hub.js'
+
+const versionResponse = z.object({ version: VersionSchema })
+const versionList = z.object({ versions: VersionSchema.array() })
+const shareResponse = z.object({ url: z.url() })
 
 const layer = (id: string) => ({ id, kind: 'text', x: 0, y: 0, width: 80, height: 24, text: id })
 const original = {
@@ -23,7 +28,8 @@ async function openDesign(source = JSON.stringify(original), visibility = 'team'
     source,
   })
   expect(published.status).toBe(201)
-  const id = ArtifactSchema.parse((await published.json()).artifact).publicId
+  const { artifact } = z.object({ artifact: ArtifactSchema }).parse(await published.json())
+  const id = artifact.publicId
   const path = `/api/v1/artifacts/${id}`
   const edit = (cookie: string, baseVersion: number, source: unknown) =>
     hub.send(`${path}/canvas-edits`, 'POST', cookie, {
@@ -51,8 +57,8 @@ it('两名编辑者从同一快照修改不同画板及同板不同对象；重�
   hint.boards[0].designLayers[1].text = '新提示'
   expect((await hub.edit(hub.member, 1, hint)).status).toBe(200)
   const reopened = await hub.open()
-  const version = VersionSchema.parse(
-    (await (await reopened.send(hub.path, 'GET', hub.member)).json()).version,
+  const { version } = versionResponse.parse(
+    await (await reopened.send(hub.path, 'GET', hub.member)).json(),
   )
   expect(version).toMatchObject({ version: 4, parentVersion: 3, author: 'human:github-202' })
   expect(JSON.parse(version.source)).toEqual({
@@ -70,9 +76,7 @@ it('两名编辑者从同一快照修改不同画板及同板不同对象；重�
     teamExtension: { colors: ['#222222'] },
   })
   const history = await (await reopened.send(`${hub.path}/versions`, 'GET', hub.owner)).json()
-  const versions = VersionSchema.array()
-    .parse(history.versions)
-    .sort((a, b) => a.version - b.version)
+  const versions = versionList.parse(history).versions.sort((a, b) => a.version - b.version)
   expect(versions.map(({ parentVersion }) => parentVersion)).toEqual([null, 1, 2, 3])
   expect(JSON.parse(versions[0].source)).toEqual(original)
   expect(
@@ -105,7 +109,7 @@ it('同一字段、删除对修改的冲突不落版本；CLI/本机采用的普
       })
     ).status,
   ).toBe(409)
-  const current = await (await hub.send(hub.path, 'GET', hub.member)).json()
+  const current = versionResponse.parse(await (await hub.send(hub.path, 'GET', hub.member)).json())
   expect(current.version.version).toBe(2)
   expect(JSON.parse(current.version.source)).toEqual(saved)
 })
@@ -124,23 +128,25 @@ it('画板标识不稳定或候选图层不符合设计约束时拒绝共同编�
   const invalid = structuredClone(original)
   invalid.boards[0].designLayers[0].width = -1
   expect((await hub.edit(hub.member, 2, invalid)).status).toBe(409)
-  expect((await (await hub.send(hub.path, 'GET', hub.owner)).json()).version.version).toBe(2)
+  expect(await (await hub.send(hub.path, 'GET', hub.owner)).json()).toMatchObject({
+    version: { version: 2 },
+  })
 })
 
 it('有名编辑授权随降权和撤销即时失效；固定版本不泄漏协作头版', async () => {
   const hub = await openDesign()
   const grant = await hub.invite(hub.path, hub.owner, { kind: 'member', login: 'member' }, 'edit')
   expect((await hub.accept(grant, hub.member)).status).toBe(200)
-  expect((await (await hub.canvas(hub.member)).json()).hubCanEditCanvas).toBe(true)
+  expect(await (await hub.canvas(hub.member)).json()).toMatchObject({ hubCanEditCanvas: true })
   const draft = structuredClone(original)
   draft.boards[0].title = '成员修订'
   const saved = await hub.edit(hub.member, 1, draft)
   expect(saved.status).toBe(200)
-  expect((await saved.json()).version.author).toBe('human:github-202')
+  expect(await saved.json()).toMatchObject({ version: { author: 'human:github-202' } })
   const grantPath = `${hub.path}/sharing/grants/${grant}`
   for (const role of ['comment', 'view']) {
     expect((await hub.send(grantPath, 'PATCH', hub.owner, { role })).status).toBe(200)
-    expect((await (await hub.canvas(hub.member)).json()).hubCanEditCanvas).toBe(false)
+    expect(await (await hub.canvas(hub.member)).json()).toMatchObject({ hubCanEditCanvas: false })
     expect((await hub.edit(hub.member, 2, original)).status).toBe(403)
   }
   expect((await hub.send(grantPath, 'DELETE', hub.owner)).status).toBe(200)
@@ -151,28 +157,32 @@ it('有名编辑授权随降权和撤销即时失效；固定版本不泄漏协�
     entry: { kind: 'version', version: 1 },
   })
   expect(share.status).toBe(201)
-  const redeem = await hub.send((await share.json()).url)
+  const redeem = await hub.send(shareResponse.parse(await share.json()).url)
   const fixed = redeem.headers.get('set-cookie')?.split(';')[0] ?? ''
-  expect((await (await hub.send(hub.path, 'GET', fixed)).json()).version.version).toBe(1)
-  expect((await (await hub.canvas(fixed)).json()).hubCanEditCanvas).toBe(false)
+  expect(await (await hub.send(hub.path, 'GET', fixed)).json()).toMatchObject({
+    version: { version: 1 },
+  })
+  expect(await (await hub.canvas(fixed)).json()).toMatchObject({ hubCanEditCanvas: false })
   expect((await hub.edit(fixed, 1, original)).status).toBe(403)
   expect((await hub.edit('', 1, original)).status).toBe(404)
 })
 
 it('公开只读画布不提供共编；只有有效编辑链接可保存，且不借用同一浏览器内的账号署名', async () => {
   const hub = await openDesign(undefined, 'public')
-  expect((await (await hub.canvas('')).json()).hubCanEditCanvas).toBe(false)
+  expect(await (await hub.canvas('')).json()).toMatchObject({ hubCanEditCanvas: false })
   expect((await hub.edit('', 1, original)).status).toBe(403)
-  expect((await (await hub.canvas(hub.owner)).json()).hubCanEditCanvas).toBe(true)
-  expect((await (await hub.canvas(hub.owner, '&version=1')).json()).hubCanEditCanvas).toBe(false)
+  expect(await (await hub.canvas(hub.owner)).json()).toMatchObject({ hubCanEditCanvas: true })
+  expect(await (await hub.canvas(hub.owner, '&version=1')).json()).toMatchObject({
+    hubCanEditCanvas: false,
+  })
   const link = await hub.link(hub.path, hub.owner)
   const guest = `${await hub.login('guest')}; ${link.cookie}`
-  expect((await (await hub.canvas(guest)).json()).hubCanEditCanvas).toBe(true)
+  expect(await (await hub.canvas(guest)).json()).toMatchObject({ hubCanEditCanvas: true })
   const draft = structuredClone(original)
   draft.boards[1].title = '访客修改'
   const saved = await hub.edit(guest, 1, draft)
   expect(saved.status).toBe(200)
-  expect((await saved.json()).version.author).toBe('human:share')
+  expect(await saved.json()).toMatchObject({ version: { author: 'human:share' } })
 })
 
 it('从空图层列表独立追加的对象均保留；随后两种不一致的重排不能互相覆盖', async () => {
@@ -186,7 +196,7 @@ it('从空图层列表独立追加的对象均保留；随后两种不一致的�
   expect(both.status).toBe(200)
   const merged = structuredClone(original)
   merged.boards[1].designLayers = [layer('first'), layer('second'), layer('third')]
-  expect(JSON.parse((await both.json()).version.source)).toEqual(merged)
+  expect(JSON.parse(versionResponse.parse(await both.json()).version.source)).toEqual(merged)
   const reverse = structuredClone(merged)
   reverse.boards[1].designLayers.reverse()
   expect((await hub.edit(hub.owner, 3, reverse)).status).toBe(200)

@@ -5,9 +5,12 @@ import { join } from 'node:path'
 import { ArtifactSchema, PROTOCOL_VERSION as v } from '@akasha/protocol'
 import { expect, it, vi } from 'vitest'
 import WebSocket from 'ws'
+import { z } from 'zod'
 import { startNodeHub } from '../../src/entry/hub-node.js'
 import { browserClient, origin, sandboxOrigin } from './browser-client.js'
 import { githubProvider } from './github-provider.js'
+
+const shareResponse = z.object({ url: z.url() })
 
 const next = (socket: WebSocket) =>
   once(socket, 'message', { signal: AbortSignal.timeout(3000) }).then(([raw]) =>
@@ -42,7 +45,9 @@ it('同页编辑者互见真实身份和画布坐标；换页、断线与重连�
           source: JSON.stringify({ boards: [{ id: 'first', title: '第一稿' }] }),
         })
         expect(response.status).toBe(201)
-        const { publicId: id } = ArtifactSchema.parse((await response.json()).artifact)
+        const {
+          artifact: { publicId: id },
+        } = z.object({ artifact: ArtifactSchema }).parse(await response.json())
         return { id, path: `/api/v1/artifacts/${id}` }
       }
       const work = await publish('shared-canvas', 'team')
@@ -128,7 +133,7 @@ it('同页编辑者互见真实身份和画布坐标；换页、断线与重连�
       ]) {
         const response = await send(`${privateWork.path}/share`, 'POST', owner, input)
         expect(response.status).toBe(201)
-        const cookie = (await send((await response.json()).url)).headers
+        const cookie = (await send(shareResponse.parse(await response.json()).url)).headers
           .get('set-cookie')
           ?.split(';')[0]
         if (!cookie) throw new Error('缺少分享凭证')
@@ -162,7 +167,7 @@ it('同页编辑者互见真实身份和画布坐标；换页、断线与重连�
         ttlSeconds: 1,
       })
       expect(timed.status).toBe(201)
-      const redeemed = await send((await timed.json()).url)
+      const redeemed = await send(shareResponse.parse(await timed.json()).url)
       const timedCookie = redeemed.headers.get('set-cookie')?.split(';')[0]
       if (!timedCookie) throw new Error('缺少限时分享凭证')
       const limited = await joinRoom(timedCookie, privateWork.id)

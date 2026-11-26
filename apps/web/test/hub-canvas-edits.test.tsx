@@ -50,8 +50,10 @@ it('Hub 编辑在原基准上提交；发生冲突后可取回草稿并按新头
   fireEvent.click(screen.getByRole('button', { name: '应用' }))
   const alert = await screen.findByRole('alert')
   expect(drafts).toHaveLength(1)
-  expect(drafts[0]?.baseVersion).toBe(1)
-  expect(JSON.parse(drafts[0]!.source).boards[0].viewport.width).toBe(880)
+  const [draft] = drafts
+  if (!draft) throw new Error('服务端未收到候选画稿')
+  expect(draft.baseVersion).toBe(1)
+  expect(JSON.parse(draft.source).boards[0].viewport.width).toBe(880)
   expect(request).toHaveBeenCalledWith(
     path,
     expect.objectContaining({ method: 'POST', credentials: 'same-origin' }),
