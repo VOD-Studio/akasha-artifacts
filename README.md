@@ -215,6 +215,18 @@ The default scope is `private`, isolated by user and artifact. `shared` is reada
 | `artifact_await_feedback` | M2        | Long-poll wait (up to 50s) for browser feedback in harnesses without async hook wakeup.                               |
 | `artifact_record_verdict` | M2        | Sync terminal-spoken choices or Pass/Reject/Waive verdicts back onto the artifact's active review round.              |
 
+### Resume a coding session
+
+In the project checkout, save the JSON object from **Hand off to Agent** as `handoff.json`. The following commands use the returned session ID, never a token:
+
+```sh
+akasha coding connect --handoff handoff.json --label checkout
+akasha coding read --session <id>
+claude mcp add --scope local --transport stdio akasha-design -- akasha coding mcp --session <id>
+```
+
+In Claude Code in that checkout, call `coding_session_read`. For a self-hosted Hub, first run `akasha login --hub <origin>` and add `--hub <origin> --project-id <id>` to `connect`. The Hub verifies ownership. Session credentials stay outside the checkout under `AKASHA_HOME`; the session expires after eight hours.
+
 ---
 
 ## Development

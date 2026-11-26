@@ -215,6 +215,18 @@ await window.akasha.storage.delete('layout')
 | `artifact_await_feedback` | M2     | 在无异步 Hook 唤醒的客户端中长轮询等待浏览器反馈（单次最长 50 秒）。                     |
 | `artifact_record_verdict` | M2     | 将用户在终端口头表达的选择或 Pass/Reject/Waive 验收裁决回写至对应评审轮次。              |
 
+### 续接编码会话
+
+在项目目录中，把「移交给 Agent」的 JSON 对象保存为 `handoff.json`。以下命令使用签入返回的会话 ID，不传令牌：
+
+```sh
+akasha coding connect --handoff handoff.json --label checkout
+akasha coding read --session <id>
+claude mcp add --scope local --transport stdio akasha-design -- akasha coding mcp --session <id>
+```
+
+在此项目打开 Claude Code，调用 `coding_session_read`。自托管 Hub 先运行 `akasha login --hub <origin>`，再给 `connect` 加 `--hub <origin> --project-id <id>`；Hub 检查项目所有权。会话凭据存放在项目外的 `AKASHA_HOME` 中，八小时后过期。
+
 ---
 
 ## 本地开发

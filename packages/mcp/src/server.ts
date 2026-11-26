@@ -11,11 +11,11 @@ import {
   ArtifactRecordVerdictInputSchema,
   ArtifactSpecInputSchema,
   ArtifactUpdateInputSchema,
+  describeHandoff,
 } from '@akasha/protocol'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { AkashaApiError, type AkashaClientOptions, AkashaHttpClient } from './client.js'
-import { describeHandoff } from './handoff.js'
 
 export interface AkashaMcpServerOptions extends AkashaClientOptions {
   version?: string

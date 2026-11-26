@@ -174,6 +174,15 @@ export function mountHubGuard(
     const principal = await auth.authenticate(request)
     const defaultProject = principal ? `${hubProjectPrefix(principal)}default` : undefined
     const projectQuery = url.searchParams.get('projectId') ?? undefined
+    const coding =
+      /^\/api\/v1\/projects\/([^/]+)\/coding-sessions(?:\/([a-f0-9-]{36})\/(read))?$/.exec(path)
+    if (coding && method === 'POST') {
+      // 消费端只接受其限权凭证；签入须是拥有该项目的 CLI 登录，分享和浏览器均不能代签。
+      if (coding[3] === 'read') return core.fetch(request)
+      return principal?.kind === 'cli' && ownsHubProject(principal, decodeSegment(coding[1]))
+        ? core.fetch(request)
+        : forbidden(c, principal)
+    }
 
     if (path === '/api/v1/withdrawn-artifacts' && read) {
       if (principal?.kind !== 'session' || !principal.member) return forbidden(c, principal)
