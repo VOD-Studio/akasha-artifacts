@@ -1,3 +1,5 @@
+// 套件收集时只加载 DOM 实现；每个样本仍在 Node 构建完真实组件后才挂载独立 DOM。
+import 'jsdom'
 import { composeCatalogBoard, reconcileCatalogCandidate } from '@akasha/kit'
 import { type DesignSystemDraft, PROTOCOL_VERSION, readCatalogReferences } from '@akasha/protocol'
 import { fireEvent, type RenderResult, render } from '@testing-library/react/pure'
@@ -8,7 +10,7 @@ import { brand, buttons } from '../../../packages/server/test/design-systems/bra
 import type { SandboxBridgeClient } from '../src/bridge/client'
 import { buildElementRef, findElementByRef, SandboxInspector } from '../src/inspector'
 import { readCanvasLayers } from '../src/inspector/layers'
-import { hasPlayableControls } from '../src/prototype/binding'
+import { bindPrototype, hasPlayableControls } from '../src/prototype/binding'
 import { compileReactArtifact } from '../src/runtime/compiler'
 
 async function reviewed(draft: DesignSystemDraft) {
@@ -268,5 +270,66 @@ it('reports the candidate line for unknown code, a changed reference, and an unr
     ok: false,
     reason: 'instance',
     line: lineOf(instance, 'const model = '),
+  })
+})
+
+it('固定系统内的订单表单只提交一次：保留必填校验、真实 onSubmit 与提交按钮的导航', async () => {
+  const draft: DesignSystemDraft = {
+    origin: { kind: 'local', label: '结账组件' },
+    guidance: brand.guidance,
+    files: [
+      {
+        kind: 'source',
+        path: 'src/Order.tsx',
+        content: `import {useState} from 'react';
+export function Order() {
+  const [count, setCount] = useState(0);
+  return <form data-ak-next="form-target" onSubmit={event => {
+    setCount(n => n + 1);
+    if (event.nativeEvent.submitter?.value === 'draft') event.preventDefault();
+  }}>
+    <input required aria-label="订单号"/>
+    <button type="submit" data-ak-next="receipt"><span>结账</span></button>
+    <button type="submit" value="draft" data-ak-next="ignore">仅保存</button>
+    <button type="submit" onClick={event => event.preventDefault()}>继续修改</button>
+    <output>{count}</output>
+  </form>;
+}`,
+      },
+    ],
+    components: [{ path: 'src/Order.tsx', exportName: 'Order', props: {} }],
+  }
+  const { source } = composeCatalogBoard('checkout', [
+    { id: 'CheckoutControls01', version: 1, snapshot: await reviewed(draft), index: 0 },
+  ])
+  await renderBoard(source, (view) => {
+    const [scope] = systemRoots(view.container)
+    const save = scope.querySelector('button[value="draft"]')
+    const input = scope.querySelector('input')
+    const label = scope.querySelector('button span')
+    const edit = scope.querySelector('button:last-of-type')
+    const receipt = scope.querySelector('output')
+    if (!input || !label || !edit || !save || !receipt) throw new Error('缺少结账控件')
+    const destinations: string[] = []
+    const dispose = bindPrototype(view.container, {
+      navigate: (id) => destinations.push(id),
+      exit: () => {},
+    })
+    try {
+      fireEvent.click(label)
+      expect(receipt.textContent).toBe('0')
+      expect(destinations).toEqual([])
+      fireEvent.input(input, { target: { value: 'order-73' } })
+      fireEvent.click(edit)
+      expect(receipt.textContent).toBe('0')
+      expect(fireEvent.click(label)).toBe(false)
+      expect(receipt.textContent).toBe('1')
+      expect(destinations).toEqual(['receipt'])
+      fireEvent.click(save)
+      expect(receipt.textContent).toBe('2')
+      expect(destinations).toEqual(['receipt'])
+    } finally {
+      dispose?.()
+    }
   })
 })

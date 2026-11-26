@@ -36,6 +36,27 @@ it('保留表单校验，使用提交按钮声明的导航，并支持从输入�
   }
 })
 
+it('不把普通 Web Component 内部的同名按钮当作画板导航', () => {
+  const root = document.createElement('main')
+  const host = document.createElement('section')
+  root.append(host)
+  document.body.append(root)
+  const inner = host.attachShadow({ mode: 'open' })
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.dataset.akNext = 'other-artboard'
+  inner.append(button)
+  const destinations: string[] = []
+  const dispose = bindPrototype(root, { navigate: (id) => destinations.push(id), exit: () => {} })
+  try {
+    button.click()
+    expect(destinations).toEqual([])
+  } finally {
+    dispose?.()
+    root.remove()
+  }
+})
+
 it('只把独立 React 的动态按钮视为隐式动作', () => {
   const root = document.createElement('main')
   root.innerHTML = `

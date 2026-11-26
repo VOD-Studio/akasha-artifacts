@@ -1,4 +1,4 @@
-import { catalogScope } from '../inspector/catalog-scope'
+import { catalogScope, scopeForElement } from '../inspector/catalog-scope'
 
 const NATIVE_CONTROL = [
   'select',
@@ -85,19 +85,38 @@ function isSubmitter(element: Element): element is HTMLButtonElement | HTMLInput
   )
 }
 
+// 窗口收到的目标是宿主；只还原当前作品内已识别的固定系统，不潜入其他组件。
+function prototypeEventTarget(event: Event, root: HTMLElement, selector?: string): Element | null {
+  const target = event.target
+  if (!(target instanceof Element) || !root.contains(target)) return null
+  let origin = target
+  let boundary: Element = root
+  const scope = catalogScope(target)
+  if (scope) {
+    const inner = event.composedPath()[0]
+    if (inner instanceof Element && scope.content.contains(inner)) {
+      origin = inner
+      boundary = scope.content
+    }
+  }
+  if (!selector) return origin
+  const control = origin.closest(selector)
+  return control && boundary.contains(control) ? control : null
+}
+
 interface PrototypeActions {
   navigate: (boardId: string) => void
   exit: () => void
 }
 
-/** 试玩仅转发作者声明的动作；表单先通过浏览器约束验证，再通知外壳。 */
+/** 交互预览仅转发作者声明的动作；表单先通过浏览器约束验证，再通知外壳。 */
 export function bindPrototype(root: HTMLElement, { navigate, exit }: PrototypeActions) {
   const view = root.ownerDocument.defaultView
   if (!view) return
   const click = (event: MouseEvent) => {
-    if (event.defaultPrevented || !(event.target instanceof Element)) return
-    const control = event.target.closest(ACTION)
-    if (!control || !root.contains(control)) return
+    if (event.defaultPrevented) return
+    const control = prototypeEventTarget(event, root, ACTION)
+    if (!control) return
     if (control.matches(':disabled, [aria-disabled="true"]')) {
       event.preventDefault()
       return
@@ -105,10 +124,16 @@ export function bindPrototype(root: HTMLElement, { navigate, exit }: PrototypeAc
     if (isSubmitter(control) && control.form) {
       const form = control.form
       event.preventDefault()
+      if (!root.contains(form) && !scopeForElement(form, root)) return
       // allow-scripts 禁止默认表单提交；本地仍要校验控件并触发 React 的 onSubmit。
       if (form.noValidate || control.formNoValidate || form.reportValidity()) {
         form.dispatchEvent(
-          new SubmitEvent('submit', { bubbles: true, cancelable: true, submitter: control }),
+          new SubmitEvent('submit', {
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+            submitter: control,
+          }),
         )
       }
       return
@@ -119,10 +144,11 @@ export function bindPrototype(root: HTMLElement, { navigate, exit }: PrototypeAc
     if (target) navigate(target)
   }
   const submit = (event: SubmitEvent) => {
-    if (event.defaultPrevented || !(event.target instanceof HTMLFormElement)) return
-    if (!root.contains(event.target)) return
+    if (event.defaultPrevented) return
+    const form = prototypeEventTarget(event, root)
+    if (!(form instanceof HTMLFormElement)) return
     event.preventDefault()
-    const target = nextBoard(event.submitter) ?? nextBoard(event.target)
+    const target = nextBoard(event.submitter) ?? nextBoard(form)
     if (target) navigate(target)
   }
   const keydown = (event: KeyboardEvent) => {
