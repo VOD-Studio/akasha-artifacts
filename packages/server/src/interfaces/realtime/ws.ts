@@ -3,8 +3,9 @@ import { createNodeWebSocket, type NodeWebSocket } from '@hono/node-ws'
 import type { Hono } from 'hono'
 import type { RealtimeSubscriber } from '../../domain/ports.js'
 import type { HubRealtimeScope } from '../http/hub-access.js'
+import { type AuthorizeCanvasPresence, createCanvasPresenceRooms } from './canvas-presence.js'
 
-// 三道授权钩子：本机校验制品可见性，Hub 进一步校验连接身份和分享范围。
+// 本机校验制品可见性；只有 Hub 注册独立的协作房间。
 interface NodeWebSocketAuthorization {
   // 是否允许把请求升级为 WebSocket
   authorizeUpgrade?: (request: Request) => Promise<boolean>
@@ -16,6 +17,7 @@ interface NodeWebSocketAuthorization {
     scope: HubRealtimeScope,
     event: RealtimeServerEvent,
   ) => Promise<boolean>
+  authorizeCanvasPresence?: AuthorizeCanvasPresence
 }
 
 /**
@@ -30,10 +32,14 @@ export function attachNodeWebSocket(
   authorization?: NodeWebSocketAuthorization,
 ): Pick<NodeWebSocket, 'injectWebSocket' | 'wss'> {
   const { injectWebSocket, upgradeWebSocket, wss } = createNodeWebSocket({ app })
+  const cursorRoom = authorization?.authorizeCanvasPresence
+    ? createCanvasPresenceRooms(authorization.authorizeCanvasPresence)
+    : undefined
 
   app.get(
     '/api/v1/ws',
     async (c, next) => {
+      if (c.req.query('channel') === 'canvas-presence' && !cursorRoom) return c.notFound()
       if (authorization?.authorizeUpgrade && !(await authorization.authorizeUpgrade(c.req.raw))) {
         return c.json({ error: { code: 'FORBIDDEN', message: '没有访问实时通道的权限' } }, 403)
       }
@@ -41,6 +47,7 @@ export function attachNodeWebSocket(
     },
     upgradeWebSocket((c) => {
       const request = c.req.raw
+      if (cursorRoom && c.req.query('channel') === 'canvas-presence') return cursorRoom(request)
       const subscriptions = new Map<string, { unsubscribe?: () => void }>()
 
       return {

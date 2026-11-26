@@ -2,6 +2,16 @@ import { ARTBOARD_GEOMETRY_LIMITS } from '@akasha/protocol'
 import { type Messages, useMessages } from '@/shared/i18n'
 
 const editErrors = {
+  '此处已有其他改动。请保留草稿，在最新画布上重新选择。': [
+    'Dieses Element wurde bereits geändert. Behalte den Entwurf und wähle das Element auf der aktuellen Arbeitsfläche erneut aus.',
+    'تغيّر هذا العنصر بالفعل. احتفظ بالمسودة وأعد تحديد العنصر في أحدث لوحة.',
+    'This item has changed. Keep your draft and select the item again on the latest canvas.',
+  ],
+  '无法安全合并此设计。请检查画板、页面和图层的标识与结构。': [
+    'Dieses Design lässt sich nicht sicher zusammenführen. Prüfe die IDs und die Struktur der Seiten, Zeichenflächen und Ebenen.',
+    'تعذّر دمج التصميم بأمان. تحقّق من معرّفات الصفحات ولوحات الرسم والطبقات وبنيتها.',
+    'This design cannot be merged safely. Check the IDs and structure of its pages, artboards and layers.',
+  ],
   '作品已更新，未覆盖新版本。': [
     'Das Werk wurde aktualisiert. Die neue Version wurde nicht überschrieben.',
     'حُدّث العمل. لم يُستبدل الإصدار الجديد.',

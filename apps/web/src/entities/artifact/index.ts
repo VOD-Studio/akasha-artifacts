@@ -9,6 +9,7 @@ export {
   parseVersionConflictDetails,
   publishHumanVersion,
   restoreArtifact,
+  saveCanvasVersion,
   transferArtifact,
   type VersionConflictDetails,
   withdrawArtifact,

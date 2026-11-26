@@ -153,6 +153,8 @@ export function mountHubGuard(
     '/api/v1/projects/:id/design-systems/*',
     bodyLimit({ maxSize: 24 * 1024 * 1024, onError: invalid }),
   )
+  // 共编端点在制品写锁内检查当前角色与署名，不能在排队前沿用旧权限。
+  app.post('/api/v1/artifacts/:id/canvas-edits', (c) => core.fetch(c.req.raw))
 
   // 仅转发显式授权的路径；新增 core 路由默认不会在 Hub 暴露。
   app.use('/api/v1/*', async (c, next) => {
@@ -529,18 +531,23 @@ export function mountHubGuard(
         if (!writer) url.searchParams.set('includeDrafts', 'false')
       }
       const response = await core.fetch(rewrite(request, url))
-      if (
-        role === 'owner' &&
-        !suffix &&
-        method === 'GET' &&
-        response.ok &&
-        (await repositories.sharing.getScope(artifact.publicId)).restricted
-      )
-        return c.json({ ...jsonObject.parse(await response.json()), hubRestricted: true })
-      return role === 'owner' ||
-        (await access.authorizeArtifact(request, artifact.publicId, 'read'))
-        ? response
-        : hidden(c)
+      if (role !== 'owner' && !(await access.authorizeArtifact(request, artifact.publicId, 'read')))
+        return hidden(c)
+      if (!suffix && method === 'GET' && response.ok) {
+        const restricted =
+          role === 'owner' && (await repositories.sharing.getScope(artifact.publicId)).restricted
+        const canvas = artifact.type === 'artboard' && url.searchParams.get('view') === 'canvas'
+        if (restricted || canvas)
+          return c.json({
+            ...jsonObject.parse(await response.json()),
+            ...(restricted && { hubRestricted: true }),
+            ...(canvas && {
+              hubCanEditCanvas:
+                writer && principal?.kind === 'session' && !url.searchParams.has('version'),
+            }),
+          })
+      }
+      return response
     }
     if (suffix === '/feedback' || discussion) {
       if (!principal || (discussion && principal.kind === 'cli')) return forbidden(c, principal)

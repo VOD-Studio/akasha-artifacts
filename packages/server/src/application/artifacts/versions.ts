@@ -24,6 +24,7 @@ import type {
   StateRepository,
   WorkspaceComponent,
 } from '../../domain/ports.js'
+import { mergeCanvasSource } from './merge-canvas-source.js'
 import { DEFAULT_PROJECT_ID, type ResolveArtifact } from './queries.js'
 import type { ArtifactWriteLocks } from './write-locks.js'
 
@@ -61,6 +62,14 @@ export type UpdateArtifactInput = {
   /** 等待制品写锁期间撤销的轮次，不得开始写入新版本。 */
   signal?: AbortSignal
 } & ({ edits: readonly TextEdit[] } | { source: string })
+
+/** 写锁内按实际作品及有效授权签名，不接受 HTTP 请求指定作者。 */
+export interface CanvasEditInput {
+  publicId: PublicId
+  baseVersion: number
+  source: string
+  authorize: (artifact: Artifact) => Promise<Author>
+}
 
 export interface RevertArtifactInput {
   id: ArtifactIdentifier
@@ -218,36 +227,59 @@ export class ArtifactVersions {
         throw new NotFoundError(`缺少头版本 v${existing.headVersion}`)
       }
       const nextSource = 'source' in input ? input.source : applyTextEdits(head.source, input.edits)
-      const now = this.deps.clock.now()
-      const nextNumber = existing.headVersion + 1
-      const version = createImmutableVersion({
-        artifactId: existing.publicId,
-        version: nextNumber,
-        parentVersion: existing.headVersion,
-        author: input.author,
-        title: input.title?.trim() || existing.title,
-        source: nextSource,
-        createdAt: now,
-      })
-      const updated: Artifact = {
-        ...existing,
-        title: version.title,
-        headVersion: nextNumber,
-        updatedAt: now,
-      }
-      input.signal?.throwIfAborted()
-      await this.deps.artifacts.appendVersion(version, updated.type, input.workspaceComponent)
-      await this.deps.artifacts.saveArtifact(updated)
-      await this.deps.realtime.publish(
-        {
-          type: 'version.created',
-          artifactId: updated.publicId,
-          version,
-        },
-        { projectId: updated.projectId },
-      )
-      return { artifact: updated, version }
+      return this.appendUpdate(existing, nextSource, input)
     })
+  }
+
+  async editCanvas(input: CanvasEditInput) {
+    return this.locks.forArtifact(input.publicId, async () => {
+      const artifact = await this.deps.artifacts.findByPublicId(input.publicId)
+      if (!artifact) throw new NotFoundError('未找到请求的资源')
+      const author = await input.authorize(artifact)
+      if (artifact.type !== 'artboard')
+        throw new DomainError('BAD_REQUEST', '共同编辑仅支持设计画板')
+      const base = await this.deps.artifacts.getVersion(artifact.publicId, input.baseVersion)
+      if (!base) throw new NotFoundError('未找到编辑所用的基准版本')
+      const head =
+        base.version === artifact.headVersion
+          ? base
+          : await this.deps.artifacts.getVersion(artifact.publicId, artifact.headVersion)
+      if (!head) throw new NotFoundError('未找到头版本')
+      const source = mergeCanvasSource(base.source, head.source, input.source)
+      if (source === head.source) return { artifact, version: head, unchanged: true }
+      return this.appendUpdate(artifact, source, { author })
+    })
+  }
+
+  private async appendUpdate(
+    existing: Artifact,
+    source: string,
+    input: Pick<UpdateArtifactInput, 'author' | 'title' | 'signal' | 'workspaceComponent'>,
+  ) {
+    const now = this.deps.clock.now()
+    const version = createImmutableVersion({
+      artifactId: existing.publicId,
+      version: existing.headVersion + 1,
+      parentVersion: existing.headVersion,
+      author: input.author,
+      title: input.title?.trim() || existing.title,
+      source,
+      createdAt: now,
+    })
+    const updated: Artifact = {
+      ...existing,
+      title: version.title,
+      headVersion: version.version,
+      updatedAt: now,
+    }
+    input.signal?.throwIfAborted()
+    await this.deps.artifacts.appendVersion(version, updated.type, input.workspaceComponent)
+    await this.deps.artifacts.saveArtifact(updated)
+    await this.deps.realtime.publish(
+      { type: 'version.created', artifactId: updated.publicId, version },
+      { projectId: updated.projectId },
+    )
+    return { artifact: updated, version }
   }
 
   async revert(

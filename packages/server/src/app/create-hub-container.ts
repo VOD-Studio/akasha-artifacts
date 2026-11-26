@@ -11,6 +11,8 @@ import { CryptoIdGenerator, SystemClock } from '../infrastructure/storage/memory
 import { createHttpApp } from '../interfaces/http/app.js'
 import { createHubAccess } from '../interfaces/http/hub-access.js'
 import { createHubAuth, type HubOAuthOptions } from '../interfaces/http/hub-auth.js'
+import { mountHubCanvasEdits } from '../interfaces/http/hub-canvas-edits.js'
+import { createCanvasPresenceAccess } from '../interfaces/http/hub-canvas-presence.js'
 import { mountHubGuard } from '../interfaces/http/hub-guard.js'
 import { validateHubOrigins } from './hub-origins.js'
 
@@ -95,6 +97,7 @@ export function createHubContainer(options: HubContainerOptions) {
     filterVisibleFavorites: async (request, candidates) =>
       access.listVisible(candidates, await auth.authenticate(request)),
   })
+  mountHubCanvasEdits(core, { service, access, auth })
   const app = new Hono()
   mountHubGuard(app, {
     core,
@@ -112,6 +115,12 @@ export function createHubContainer(options: HubContainerOptions) {
     service,
     authenticate: auth.authenticate,
     authorizeArtifact: access.authorizeArtifact,
+    authorizeCanvasPresence: createCanvasPresenceAccess(
+      auth,
+      access,
+      repositories.artifacts,
+      origin,
+    ),
     authorizeRealtime: access.authorizeRealtime,
     authorizeRealtimeEvent: access.authorizeRealtimeEvent,
   }

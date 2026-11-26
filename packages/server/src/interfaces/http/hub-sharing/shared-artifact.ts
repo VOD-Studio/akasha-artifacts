@@ -60,6 +60,9 @@ export async function serveSharedArtifact(c: Context, input: SharedRequest) {
         if (!entry) return hidden(c)
         return c.json({
           ...sharedArtifactDetail(artifact, entry.version, grant),
+          ...(artifact.type === 'artboard' && {
+            hubCanEditCanvas: rawVersion === null && canEditSharedArtifact(grant),
+          }),
           ...(entry.canvas ? { canvas: entry.canvas } : {}),
         })
       }

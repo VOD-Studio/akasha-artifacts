@@ -10,10 +10,11 @@ import {
   artifactKeys,
   artifactSourceOptions,
   hasVersionSource,
-  publishHumanVersion,
+  saveCanvasVersion,
 } from '@/entities/artifact'
 import { notifyHumanVersionEdit } from '@/entities/feedback'
-import { ApiError } from '@/shared/api/error'
+import { ApiError, getRequestErrorMessage, isResourceUnavailable } from '@/shared/api/error'
+import { isCloudHub } from '@/shared/config/runtime'
 import {
   type CanvasBoardEdit,
   type CanvasSourceChange,
@@ -98,37 +99,34 @@ export function useCanvasBoardEditing({
 
   const save = async (edit: PendingEdit, onSaved?: (saved: Version) => void) => {
     const live = latest.current
-    const sameBase =
+    const collaborative = isCloudHub() && live.artifact.type === 'artboard'
+    const canSubmit =
       live.enabled &&
       live.artifact.publicId === edit.artifactId &&
-      live.version.version === edit.base.version &&
-      live.artifact.headVersion === edit.base.version
-    if (!sameBase) {
+      live.version.version === live.artifact.headVersion &&
+      (collaborative || live.version.version === edit.base.version)
+    if (!canSubmit) {
       inFlight.current = false
       setPending({ ...edit, status: 'failed', error: '作品已更新，未覆盖新版本。' })
       return
     }
     setPending({ ...edit, status: 'saving', error: undefined })
     try {
-      const saved = await publishHumanVersion({
-        project: artifact.projectId,
-        slug: artifact.slug,
-        title: edit.base.title,
-        type: artifact.type,
-        visibility: artifact.visibility,
-        baseVersion: edit.base.version,
-        source: edit.source,
-      })
+      const saved = await saveCanvasVersion(artifact, edit.base, edit.source)
       query.setQueryData(
         artifactKeys.source(saved.artifact.publicId, saved.version.version),
         saved.version,
       )
-      if (notifyAgent)
+      if (notifyAgent && !collaborative)
         await notifyHumanVersionEdit(artifact.projectId, saved.version, edit.base.source, 'canvas')
       setHistory({
         artifactId: artifact.publicId,
         version: saved.version.version,
-        timeline: edit.timeline,
+        // 合并后的头版含其他作者的改动，不能用旧草稿的整篇撤销快照重放。
+        timeline:
+          saved.unchanged || saved.version.parentVersion !== edit.base.version
+            ? EMPTY_TIMELINE
+            : edit.timeline,
       })
       setPending(null)
       void query.invalidateQueries({ queryKey: artifactKeys.all })
@@ -138,9 +136,12 @@ export function useCanvasBoardEditing({
       setPending({
         ...edit,
         status: 'failed',
-        error: cause instanceof Error ? cause.message : '无法保存改动',
+        error:
+          cause instanceof ApiError && cause.status === 409
+            ? cause.message
+            : getRequestErrorMessage(cause, '无法保存改动'),
       })
-      if (cause instanceof ApiError && cause.status === 409) {
+      if ((cause instanceof ApiError && cause.status === 409) || isResourceUnavailable(cause)) {
         void query.invalidateQueries({ queryKey: artifactKeys.canvas(artifact.publicId) })
       }
     } finally {

@@ -145,10 +145,25 @@ it('Hub 中所有者会话可从顶栏管理分享，普通读者不显示该入
   cleanup()
 
   const { router } = openWorkspace(true, true, undefined, undefined, '/')
-  const openInHub = await screen.findByRole('link', { name: `在 Hub 打开：${title}` })
-  expect(screen.getByRole('link', { name: title }).getAttribute('href')).toBe(`/a/${publicId}`)
-  fireEvent.click(openInHub)
-  await waitFor(() => expect(router.state.location.href).toBe(`/a/${publicId}?shared=1`))
+  const openInHub = await screen.findByRole('link', { name: `打开协作画布：${title}` })
+  const sharedPath = `/a/${publicId}?shared=1`
+  const clipboard = vi.fn().mockResolvedValue(undefined)
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText: clipboard },
+  })
+  try {
+    expect(screen.getByRole('link', { name: title }).getAttribute('href')).toBe(`/a/${publicId}`)
+    expect(openInHub.getAttribute('href')).toBe(sharedPath)
+    fireEvent.click(screen.getByRole('button', { name: '复制协作画布链接' }))
+    await waitFor(() =>
+      expect(clipboard).toHaveBeenCalledWith(new URL(sharedPath, location.origin).href),
+    )
+    fireEvent.click(openInHub)
+    await waitFor(() => expect(router.state.location.href).toBe(sharedPath))
+  } finally {
+    Reflect.deleteProperty(navigator, 'clipboard')
+  }
   fireEvent.click(await screen.findByRole('button', { name: '分享' }))
   expect(screen.getByRole('dialog', { name: '管理作品分享' })).toBeTruthy()
 })

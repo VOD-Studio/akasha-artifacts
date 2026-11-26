@@ -20,6 +20,7 @@ import {
 } from '@akasha/protocol'
 import { ApiError } from '@/shared/api/error'
 import { requestJson } from '@/shared/api/request'
+import { isCloudHub } from '@/shared/config/runtime'
 
 /** 工作区打开一个可读快照所需的数据；源码版本和运行状态是两条独立的版本线。 */
 export interface ArtifactDetailResponse {
@@ -241,6 +242,29 @@ export async function publishHumanVersion(
       ...input,
       author: input.author ?? 'human:web',
     }),
+  })
+}
+
+/** 只有 Hub 画布可按对象合并；切勿把协作凭据或草稿送到独立配置的 API 或本机副本。 */
+export async function saveCanvasVersion(
+  artifact: Artifact,
+  base: Pick<VersionSummary, 'version' | 'title'>,
+  source: string,
+): Promise<{ artifact: Artifact; version: Version; unchanged?: boolean }> {
+  if (isCloudHub() && artifact.type === 'artboard')
+    return requestJson(
+      `/api/v1/artifacts/${encodeURIComponent(artifact.publicId)}/canvas-edits`,
+      { method: 'POST', body: JSON.stringify({ baseVersion: base.version, source }) },
+      'workbench',
+    )
+  return publishHumanVersion({
+    project: artifact.projectId,
+    slug: artifact.slug,
+    type: artifact.type,
+    visibility: artifact.visibility,
+    title: base.title,
+    baseVersion: base.version,
+    source,
   })
 }
 

@@ -139,6 +139,8 @@ export type ArtifactWorkspaceDetail = WorkspaceVersion & {
   access?: ArtifactSharedAccess
   /** 受控设计的所有者也留在 Hub 工作区；个人预览才探测本机副本。 */
   hubRestricted?: true
+  /** Hub 对当前画布和身份的裁决；本机工作台不返回，固定快照一律不可共编。 */
+  hubCanEditCanvas?: boolean
 }
 
 /** 复制固定快照或把原制品移动到当前服务内已登记的项目。 */

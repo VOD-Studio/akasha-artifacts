@@ -39,4 +39,6 @@ GitHub OAuth 需要 `user:email`；配置组织时还需要 `read:org`，如组�
 
 个人预览只在本机已通过 `akasha login` 绑定该 Hub、Daemon 在线且持有相同 `publicId`（历史版亦须存在）时优先使用本机。邀请、分享链接或已启用定向授权的工作区留在 Hub。端口探测不传输制品内容或本机令牌，也不复制云端数据。
 
+在 Hub 作品库中点设计标题是个人预览；要与同事打开同一份画布，选「打开协作画布」或「复制协作画布链接」。这个地址只选择 Hub，不授予访问权限；收件人仍需已有授权。
+
 发布工作流创建正式版本后构建并发布 `ghcr.io/vod-studio/akasha-artifacts:<版本>` 与 `:latest`。健康检查为外壳域名下的 `/api/v1/health`。

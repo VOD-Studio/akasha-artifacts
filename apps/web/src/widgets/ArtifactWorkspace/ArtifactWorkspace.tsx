@@ -41,6 +41,7 @@ import { VersionDiffView } from '@/features/version-diff'
 import { useVisualEdit, VisualEditPanel } from '@/features/visual-edit'
 import { getRequestErrorMessage } from '@/shared/api/error'
 import { AkashaMark } from '@/shared/brand'
+import { isCloudHub } from '@/shared/config/runtime'
 import { type Messages, useMessages } from '@/shared/i18n'
 import { useBoardCapabilities } from './hooks/useBoardCapabilities'
 import { useBoardInspection } from './hooks/useBoardInspection'
@@ -50,6 +51,7 @@ import { useSelectedVisualTarget } from './hooks/useSelectedVisualTarget'
 import { BoardInspector, type BoardInspectorHandoff } from './inspector/BoardInspector'
 import { BoardResources } from './model/board-resources'
 import { createBoardTweakPreviewStore } from './model/board-tweak-previews'
+import { CanvasBoardEditNotice } from './toolbar/CanvasBoardActions'
 import { SelectionToolbar } from './toolbar/SelectionToolbar'
 import { ArtifactCanvas, type InspectorReveal } from './ui/ArtifactCanvas'
 import { ArtifactFrame, type BoardFramePurpose, type FrameConnection } from './ui/ArtifactFrame'
@@ -339,6 +341,7 @@ export function ArtifactWorkspace({
   const canEditBoards =
     canWriteVersion &&
     artifact.type === 'artboard' &&
+    (!isCloudHub() || detail.hubCanEditCanvas === true) &&
     viewMode === 'preview' &&
     savedCanvas.pages.every((page) => page.boards.every((board) => board.scoped))
   const canEditText =
@@ -776,6 +779,13 @@ export function ArtifactWorkspace({
           <ArtifactCanvas
             key={canvasSessionKey}
             document={canvas}
+            collaborationEnabled={
+              isCloudHub() &&
+              detail.hubCanEditCanvas === true &&
+              canWriteVersion &&
+              showCanvas &&
+              canvas === savedCanvas
+            }
             storageKey={canvasSessionKey}
             address={address}
             onClearAddress={onClearAddress}
@@ -793,6 +803,11 @@ export function ArtifactWorkspace({
             onComment={openAnchoredComment}
             boardEditing={canEditBoards ? boardEditing : undefined}
             historyEditing={canEditText ? boardEditing : undefined}
+            editNotice={
+              boardEditing.draft || (canEditText && boardEditing.inputError) ? (
+                <CanvasBoardEditNotice editing={boardEditing} />
+              ) : null
+            }
             textTools={canEditText ? inlineText.tools : undefined}
             pageEditing={
               canEditBoards && !boardEditing.draft && !boardEditing.busy

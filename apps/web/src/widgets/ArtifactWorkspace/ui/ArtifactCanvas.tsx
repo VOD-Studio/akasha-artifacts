@@ -29,6 +29,7 @@ import type {
   CanvasLocation,
   CanvasPage,
 } from '@/entities/artifact'
+import { CanvasPresence } from '@/features/canvas-presence'
 import type { CanvasExportSelection } from '@/features/export-design'
 import type { VisualEditTarget } from '@/features/visual-edit'
 import { useMessages } from '@/shared/i18n'
@@ -50,11 +51,7 @@ import type { CanvasPageEditing } from '../navigation/CanvasPageDialog'
 import { CanvasPlaybackMenu } from '../navigation/CanvasPlaybackMenu'
 import { PageNavigator } from '../navigation/PageNavigator'
 import { CanvasArrangeMenu } from '../toolbar/CanvasArrangeMenu'
-import {
-  CanvasBoardActions,
-  CanvasBoardEditNotice,
-  CanvasBoardQuickActions,
-} from '../toolbar/CanvasBoardActions'
+import { CanvasBoardActions, CanvasBoardQuickActions } from '../toolbar/CanvasBoardActions'
 import { CanvasToolbar } from '../toolbar/CanvasControls'
 import { canvasToolsMessages } from '../toolbar/canvas-tools-messages'
 import type { BoardFramePurpose } from './ArtifactFrame'
@@ -99,6 +96,8 @@ export interface SelectionToolbarAnchor {
 interface ArtifactCanvasProps {
   document: CanvasDocument
   visible: boolean
+  /** 仅 Hub 确认可编辑的当前画布使用；固定快照和本地预览不入房。 */
+  collaborationEnabled?: boolean
   /** 相机与选中画板的本地存储键。 */
   storageKey: string
   /** 链接里 `#page=…&board=…` 形式的定位；只在进入时定位一次。 */
@@ -111,6 +110,8 @@ interface ArtifactCanvasProps {
   boardEditing?: CanvasBoardEditing
   /** 同一份版本历史也可供单板 HTML 或 React 的文字直改使用。 */
   historyEditing?: CanvasBoardEditing
+  /** 先前提交的本地草稿可在降为只读后取回，不授予撤销或写入权限。 */
+  editNotice?: ReactNode
   /** 缺省时双击不启用文字直改，原型仍只从播放入口进入。 */
   textTools?: CanvasTextTools
   /** 抽屉选板后定位；换工具不消费尚不可见的请求。 */
@@ -181,6 +182,7 @@ const isPrototype = (board: CanvasBoard) => board.type === 'html' || board.type 
 export function ArtifactCanvas({
   document,
   visible,
+  collaborationEnabled,
   storageKey,
   address,
   onClearAddress,
@@ -188,6 +190,7 @@ export function ArtifactCanvas({
   pageEditing,
   boardEditing,
   historyEditing = boardEditing,
+  editNotice,
   textTools,
   reveal,
   onRevealHandled,
@@ -647,7 +650,7 @@ export function ArtifactCanvas({
               ) : null}
             </div>
           </ListHighlight>
-          {historyEditing ? <CanvasBoardEditNotice editing={historyEditing} /> : null}
+          {editNotice}
           {blankNotice ? (
             <p
               role="status"
@@ -691,6 +694,15 @@ export function ArtifactCanvas({
           onContextMenuCapture={cameraInput.blockTouchMenu}
           onClick={clickBackground}
         >
+          {collaborationEnabled && showOverview && !invalidAddress && page && (
+            <CanvasPresence
+              key={JSON.stringify([artifactId, page.id])}
+              artifactId={artifactId}
+              pageId={page.id}
+              viewportRef={viewportRef}
+              camera={camera}
+            />
+          )}
           {showOverview &&
           !invalidAddress &&
           page &&
