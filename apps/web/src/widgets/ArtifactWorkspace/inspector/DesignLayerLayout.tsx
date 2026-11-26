@@ -5,7 +5,6 @@ import {
   type VersionSummary,
 } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
-import { Field } from '@akasha/ui/field'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
 import { useState } from 'react'
 import type { CanvasBounds } from '@/entities/artifact'
@@ -14,6 +13,7 @@ import type { CanvasBoardEditing } from '../hooks/useCanvasBoardEditing'
 import { ALIGNMENTS, alignItems } from '../lib/canvas-arrangement'
 import { canvasToolsMessages } from '../toolbar/canvas-tools-messages'
 import { CanvasGeometryFields, sameGeometry } from '../ui/CanvasGeometryFields'
+import { InspectorRow } from '../ui/inspector-controls'
 
 interface LayoutProps {
   /** 图层 id 只在该画板中唯一，不能与其他画板的选择混用。 */
@@ -120,7 +120,7 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
           value={draft?.geometry ?? layer}
           onChange={(geometry) => update({ geometry })}
         />
-        <Field label={t('颜色')}>
+        <InspectorRow label={t('颜色')}>
           <Select
             value={color ?? 'auto'}
             disabled={!editing.available}
@@ -129,7 +129,7 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
               else update({ color: value as DesignLayer['color'] })
             }}
           >
-            <SelectTrigger controlSize="sm">
+            <SelectTrigger aria-label={t('颜色')} controlSize="sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -144,10 +144,12 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
               ) : null}
             </SelectContent>
           </Select>
-        </Field>
-        <Button size="sm" type="submit" disabled={!editing.available || !changed}>
-          {t('应用')}
-        </Button>
+        </InspectorRow>
+        {changed ? (
+          <Button size="sm" type="submit" disabled={!editing.available} className="h-7 rounded-md">
+            {t('应用')}
+          </Button>
+        ) : null}
       </form>
       {selected.length > 1 ? (
         <p className="text-xs text-ink-muted">

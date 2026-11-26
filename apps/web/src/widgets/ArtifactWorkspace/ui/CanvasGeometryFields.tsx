@@ -1,11 +1,11 @@
 import { ARTBOARD_GEOMETRY_LIMITS } from '@akasha/protocol'
-import { Field } from '@akasha/ui/field'
-import { Input } from '@akasha/ui/input'
 import type { CanvasBounds } from '@/entities/artifact'
 import { useMessages } from '@/shared/i18n'
 import { canvasToolsMessages } from '../toolbar/canvas-tools-messages'
+import { InspectorNumberInput } from './inspector-controls'
 
 const titles = { x: '横坐标', y: '纵坐标', width: '宽度', height: '高度' } as const
+const prefixes = { x: 'X', y: 'Y', width: 'W', height: 'H' } as const
 const keys = ['x', 'y', 'width', 'height'] as const
 
 /** 只有实际坐标或视口变化才能提交编辑。 */
@@ -25,23 +25,21 @@ export function CanvasGeometryFields({ value, onChange }: GeometryFieldsProps) {
   const { t } = useMessages(canvasToolsMessages)
   const { coordinate, viewport } = ARTBOARD_GEOMETRY_LIMITS
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="grid grid-cols-2 gap-1.5">
       {keys.map((field) => {
         const position = field === 'x' || field === 'y'
         return (
-          <Field key={field} label={t(titles[field])}>
-            <Input
-              dir="ltr"
-              type="number"
-              controlSize="sm"
-              required
-              value={Number.isNaN(value[field]) ? '' : value[field]}
-              min={position ? -coordinate : 1}
-              max={position ? coordinate : viewport}
-              step={position ? 'any' : 1}
-              onChange={(event) => onChange({ ...value, [field]: event.target.valueAsNumber })}
-            />
-          </Field>
+          <InspectorNumberInput
+            key={field}
+            prefix={prefixes[field]}
+            label={t(titles[field])}
+            required
+            value={value[field]}
+            min={position ? -coordinate : 1}
+            max={position ? coordinate : viewport}
+            step={position ? 'any' : 1}
+            onChange={(event) => onChange({ ...value, [field]: event.target.valueAsNumber })}
+          />
         )
       })}
     </div>

@@ -45,7 +45,11 @@ it('从独立检查器选择其他页面的画板并查看固定版本的真实�
   fireEvent.click(screen.getByRole('button', { name: '检查器' }))
   const inspector = screen.getByRole('dialog', { name: '检查器' })
   expect(within(inspector).getByText('选择画板以查看属性')).toBeTruthy()
-  fireEvent.click(within(inspector).getByText('状态'))
+  expect(within(inspector).getByRole('button', { name: '宽屏首页' })).toBeTruthy()
+  expect(within(inspector).queryByRole('button', { name: '预约完成' })).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: '页面与画板' }))
+  fireEvent.click(screen.getByRole('button', { name: '状态' }))
+  expect(within(inspector).queryByRole('button', { name: '宽屏首页' })).toBeNull()
   fireEvent.click(within(inspector).getByRole('button', { name: '预约完成' }))
 
   const canvas = screen.getByRole('region', { name: '画布' })

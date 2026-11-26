@@ -1,12 +1,11 @@
 import type { ArtifactSpecOutput, ArtifactType, JsonPatchOp } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
-import { Checkbox } from '@akasha/ui/checkbox'
 import { Empty } from '@akasha/ui/empty'
-import { Field } from '@akasha/ui/field'
 import { Input } from '@akasha/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
 import { Skeleton } from '@akasha/ui/skeleton'
 import { Slider } from '@akasha/ui/slider'
+import { Switch } from '@akasha/ui/switch'
 import { RotateCcw, SlidersHorizontal } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -126,14 +125,18 @@ function PropertyField({
 
   if (field.type === 'boolean') {
     return (
-      <Field label={field.label} orientation="horizontal" controlSize="sm">
-        <Checkbox
+      <div className="flex items-center justify-between gap-3 py-0.5">
+        <label htmlFor={id} className="min-w-0 cursor-pointer text-xs text-ink">
+          {field.label}
+        </label>
+        <Switch
           id={id}
+          size="sm"
           checked={Boolean(rawValue)}
           disabled={readOnly}
           onCheckedChange={(checked) => onChange(checked === true)}
         />
-      </Field>
+      </div>
     )
   }
 
@@ -143,14 +146,17 @@ function PropertyField({
       field.options.find((option) => option.value === rawSelection) ?? field.options[0]
     // Select 保留空串表示未选择，Schema 的选项值则可能是空串。
     return (
-      <Field label={field.label}>
+      <div className="grid grid-cols-[minmax(0,1fr)_8.5rem] items-center gap-2">
+        <label htmlFor={id} className="truncate text-xs text-ink">
+          {field.label}
+        </label>
         <Select
           id={id}
           disabled={readOnly}
           value={selection ? `option:${selection.value}` : ''}
           onValueChange={(value) => onChange(value.slice('option:'.length))}
         >
-          <SelectTrigger controlSize="sm">
+          <SelectTrigger aria-label={field.label} controlSize="sm">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -161,23 +167,23 @@ function PropertyField({
             ))}
           </SelectContent>
         </Select>
-      </Field>
+      </div>
     )
   }
 
   if (field.type === 'number') {
     const value = typeof rawValue === 'number' ? rawValue : Number(rawValue ?? field.min ?? 1)
     return (
-      <Field
-        label={field.label}
-        labelEnd={
-          <span dir="ltr" className="font-mono">
+      <div className="space-y-1">
+        <div className="flex items-center justify-between gap-2 text-xs">
+          <span className="truncate text-ink">{field.label}</span>
+          <span dir="ltr" className="font-mono text-[11px] tabular-nums text-ink-muted">
             {number(value)}
           </span>
-        }
-      >
+        </div>
         <Slider
           id={id}
+          aria-label={field.label}
           min={field.min ?? 1}
           max={field.max ?? 10}
           step={field.step ?? 1}
@@ -185,12 +191,15 @@ function PropertyField({
           disabled={readOnly}
           onValueChange={([next]) => onChange(next)}
         />
-      </Field>
+      </div>
     )
   }
 
   return (
-    <Field label={field.label}>
+    <div className="grid grid-cols-[minmax(0,1fr)_8.5rem] items-center gap-2">
+      <label htmlFor={id} className="truncate text-xs text-ink">
+        {field.label}
+      </label>
       <Input
         id={id}
         controlSize="sm"
@@ -198,7 +207,7 @@ function PropertyField({
         disabled={readOnly}
         onChange={(event) => onChange(event.target.value)}
       />
-    </Field>
+    </div>
   )
 }
 
@@ -285,6 +294,9 @@ export function PropsPanel({
           latestSnapshotRef.current = applyJsonPatchClient(latestSnapshotRef.current, patch)
         } catch (err) {
           if (isAccessDenied(err)) {
+            if (deniedArtifact.current !== artifactId) {
+              toast.error(t('没有编辑权限'))
+            }
             deniedArtifact.current = artifactId
             setDenied(artifactId)
             setOptimisticValues({})
@@ -335,22 +347,18 @@ export function PropsPanel({
   const hasOverrides = Object.keys(currentPropsOverlay).length > 0
 
   return (
-    <fieldset
-      disabled={!writable}
-      data-testid="props-panel"
-      className="min-w-0 space-y-3 rounded-xl border border-border bg-surface p-3"
-    >
+    <fieldset disabled={!writable} data-testid="props-panel" className="min-w-0 space-y-2.5">
       <legend className="sr-only">{t('运行参数')}</legend>
-      {denied === artifactId && <p role="alert">{t('没有编辑权限')}</p>}
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-xs font-semibold text-ink">
-          <SlidersHorizontal size={13} aria-hidden />
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-ink-muted uppercase">
+          <SlidersHorizontal size={12} aria-hidden />
           <span aria-hidden>{t('运行参数')}</span>
         </div>
         {writable && hasOverrides ? (
           <Button
             variant="ghost"
             size="sm"
+            className="h-6 px-1.5 text-[11px]"
             leftIcon={<RotateCcw size={11} />}
             loading={pushMutation.isPending}
             onClick={() => {
@@ -363,7 +371,7 @@ export function PropsPanel({
         ) : null}
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-2.5">
         {fields.map((field) => {
           const rawValue =
             optimisticValues[field.key] ??

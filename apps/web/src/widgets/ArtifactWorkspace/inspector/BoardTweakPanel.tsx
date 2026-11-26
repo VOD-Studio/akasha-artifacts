@@ -1,14 +1,13 @@
 import type { ArtboardTweak, ArtboardTweakValues } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
-import { Field } from '@akasha/ui/field'
-import { Input } from '@akasha/ui/input'
 import { Segmented } from '@akasha/ui/segmented'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
 import { Switch } from '@akasha/ui/switch'
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useStore } from 'zustand'
 import { useMessages } from '@/shared/i18n'
 import type { BoardTweakPreviewStore } from '../model/board-tweak-previews'
+import { InspectorColorInput, InspectorNumberInput, InspectorRow } from '../ui/inspector-controls'
 import { tweakApplyMessages } from './board-tweak-apply-messages'
 import { panelMessages } from './messages'
 
@@ -121,9 +120,9 @@ function TweakControl({ tweak, value, locale, onChange }: TweakControlProps) {
         )
       }
       return (
-        <Field label={label}>
+        <InspectorRow label={label}>
           <Select value={currentValue} onValueChange={onChange}>
-            <SelectTrigger controlSize="sm">
+            <SelectTrigger aria-label={label} controlSize="sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -134,13 +133,13 @@ function TweakControl({ tweak, value, locale, onChange }: TweakControlProps) {
               ))}
             </SelectContent>
           </Select>
-        </Field>
+        </InspectorRow>
       )
     }
     case 'boolean':
       return (
         <div className="flex items-center justify-between gap-3 py-0.5">
-          <span className="text-xs font-medium text-ink">{label}</span>
+          <span className="text-xs text-ink">{label}</span>
           <Switch
             size="sm"
             aria-label={label}
@@ -152,27 +151,9 @@ function TweakControl({ tweak, value, locale, onChange }: TweakControlProps) {
     case 'color': {
       const currentColor = typeof value === 'string' ? value : tweak.default
       return (
-        <Field label={label}>
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-surface-subtle px-2 py-1">
-            <label className="relative inline-flex size-5 shrink-0 cursor-pointer overflow-hidden rounded border border-black/10">
-              <span className="sr-only">{label}</span>
-              <input
-                type="color"
-                className="absolute inset-0 size-full cursor-pointer opacity-0"
-                value={currentColor}
-                onChange={(event) => onChange(event.target.value)}
-              />
-              <span
-                aria-hidden="true"
-                className="size-full"
-                style={{ backgroundColor: currentColor }}
-              />
-            </label>
-            <span dir="ltr" className="font-mono text-xs text-ink uppercase">
-              {currentColor}
-            </span>
-          </div>
-        </Field>
+        <InspectorRow label={label}>
+          <InspectorColorInput label={label} value={currentColor} onChange={onChange} />
+        </InspectorRow>
       )
     }
   }
@@ -187,30 +168,43 @@ interface TweakNumberInputProps {
 
 function TweakNumberInput({ label, tweak, value, onChange }: TweakNumberInputProps) {
   const { t, number } = useMessages(panelMessages)
+  const id = useId()
   const [draft, setDraft] = useState<{ text: string; value: number; invalid: boolean } | null>(null)
   const current = draft?.value === value ? draft : null
   const { min, max } = tweak
   return (
-    <Field
-      label={label}
-      hint={`${number(min)}–${number(max)}`}
-      error={current?.invalid ? t('请输入 {min}–{max}', { min, max }) : undefined}
-    >
-      <Input
-        type="number"
-        controlSize="sm"
-        step="any"
-        min={min}
-        max={max}
-        value={current?.text ?? value}
-        onBlur={() => setDraft(null)}
-        onChange={({ currentTarget }) => {
-          const next = currentTarget.valueAsNumber
-          const valid = Number.isFinite(next) && next >= min && next <= max
-          setDraft({ text: currentTarget.value, value: valid ? next : value, invalid: !valid })
-          if (valid) onChange(next)
-        }}
-      />
-    </Field>
+    <div className="space-y-1">
+      <div className="grid grid-cols-[minmax(0,1fr)_5.5rem] items-center gap-2">
+        <div className="min-w-0">
+          <label htmlFor={id} className="block truncate text-xs text-ink">
+            {label}
+          </label>
+          <span dir="ltr" className="block text-[10px] tabular-nums text-ink-muted">
+            {`${number(min)}–${number(max)}`}
+          </span>
+        </div>
+        <InspectorNumberInput
+          id={id}
+          label={label}
+          step="any"
+          min={min}
+          max={max}
+          invalid={current?.invalid}
+          value={current?.text ?? value}
+          onBlur={() => setDraft(null)}
+          onChange={({ currentTarget }) => {
+            const next = currentTarget.valueAsNumber
+            const valid = Number.isFinite(next) && next >= min && next <= max
+            setDraft({ text: currentTarget.value, value: valid ? next : value, invalid: !valid })
+            if (valid) onChange(next)
+          }}
+        />
+      </div>
+      {current?.invalid ? (
+        <p role="alert" className="text-[11px] text-destructive">
+          {t('请输入 {min}–{max}', { min, max })}
+        </p>
+      ) : null}
+    </div>
   )
 }

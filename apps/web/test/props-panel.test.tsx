@@ -2,11 +2,13 @@
 import { type ArtifactSpecOutput, type JsonPatchOp, PROTOCOL_VERSION } from '@akasha/protocol'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type ArtifactDetailResponse, artifactKeys } from '../src/entities/artifact'
 import { applyRealtimeEventToCache } from '../src/features/live-sync'
 import { PropsPanel } from '../src/features/props-panel'
 import { buildPropPatch } from '../src/features/props-panel/PropsPanel'
+import { ApiError } from '../src/shared/api/error'
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -85,7 +87,7 @@ describe('apps/web L2 PropsPanel 结构化属性面板', () => {
       </QueryClientProvider>,
     )
 
-    const toggle = screen.getByRole('checkbox', { name: '显示页面流程连线' })
+    const toggle = screen.getByRole('switch', { name: '显示页面流程连线' })
     expect(toggle.getAttribute('aria-checked')).toBe('true')
     fireEvent.click(toggle)
 
@@ -174,5 +176,44 @@ describe('apps/web L2 PropsPanel 结构化属性面板', () => {
     expect(screen.getByTestId('props-panel-l1-fallback')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '打开批注' }))
     expect(onFallback).toHaveBeenCalledTimes(1)
+  })
+
+  it('无写权限时通过 toast 提示，不在面板内插入提示行引起布局跳动', async () => {
+    const errorToast = vi.spyOn(toast, 'error').mockImplementation(() => '')
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={qc}>
+        <PropsPanel
+          artifactId="AbCdEfGhIjKlMnOpQrStU"
+          projectId="proj_1"
+          artifactType="artboard"
+          source={JSON.stringify({ boards: [], showFlows: true })}
+          stateSnapshot={{}}
+          specOverride={{
+            type: 'artboard',
+            guide: 'artboard',
+            whitelist: [],
+            schema: {
+              type: 'object',
+              'x-akasha-props': [
+                {
+                  key: 'showFlows',
+                  label: '显示页面流程连线',
+                  type: 'boolean',
+                  defaultValue: true,
+                },
+              ],
+            },
+          }}
+          onPushPatch={async () => {
+            throw new ApiError(403, 'forbidden', '没有编辑权限')
+          }}
+        />
+      </QueryClientProvider>,
+    )
+
+    fireEvent.click(screen.getByRole('switch', { name: '显示页面流程连线' }))
+    await waitFor(() => expect(errorToast).toHaveBeenCalledWith('没有编辑权限'))
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })

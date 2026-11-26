@@ -15,8 +15,6 @@ import {
 } from '@akasha/protocol'
 import { Tag } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
-import { Field } from '@akasha/ui/field'
-import { Input } from '@akasha/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
 import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, PencilLine } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
@@ -30,6 +28,7 @@ import { updateTailwindTextClasses } from '../lib/canvas-layer-navigation'
 import { cssColorToHex, evaluateColorContrast } from '../lib/color-contrast'
 import { patchHtmlElementGeometry } from '../lib/html-element-geometry'
 import { canvasToolsMessages } from '../toolbar/canvas-tools-messages'
+import { InspectorColorInput, InspectorNumberInput, InspectorRow } from '../ui/inspector-controls'
 import { BoardPrintSettings } from './BoardPrintSettings'
 import { DESIGN_LAYER_COLOR_LABELS, DesignLayerLayout, isPaletteColor } from './DesignLayerLayout'
 import { panelMessages } from './messages'
@@ -210,8 +209,8 @@ export function BoardInspectorProperties({
               ) : null}
             </div>
             {editing ? (
-              <div className="grid grid-cols-2 gap-2">
-                <Field label={t('字号')}>
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-1.5">
                   <Select
                     value={String(nearestFontSize(currentSize))}
                     disabled={!editing.available}
@@ -220,7 +219,7 @@ export function BoardInspectorProperties({
                       if (Number.isInteger(fontSize)) applyNativeStyle({ fontSize })
                     }}
                   >
-                    <SelectTrigger controlSize="sm">
+                    <SelectTrigger aria-label={t('字号')} controlSize="sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -231,8 +230,6 @@ export function BoardInspectorProperties({
                       ))}
                     </SelectContent>
                   </Select>
-                </Field>
-                <Field label={t('字重')}>
                   <Select
                     value={currentWeight}
                     disabled={!editing.available}
@@ -240,7 +237,7 @@ export function BoardInspectorProperties({
                       applyNativeStyle({ fontWeight: value as DesignLayerFontWeight })
                     }
                   >
-                    <SelectTrigger controlSize="sm">
+                    <SelectTrigger aria-label={t('字重')} controlSize="sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -251,10 +248,9 @@ export function BoardInspectorProperties({
                       ))}
                     </SelectContent>
                   </Select>
-                </Field>
-                <div className="col-span-2 flex items-center justify-between gap-2">
-                  <span className="text-xs text-ink-muted">{t('对齐')}</span>
-                  <div className="flex items-center gap-0.5 rounded-lg border border-border/80 bg-surface-subtle p-0.5">
+                </div>
+                <InspectorRow label={t('对齐')}>
+                  <div className="grid h-7 grid-cols-3 items-center gap-0.5 rounded-md bg-surface-subtle p-0.5">
                     {(
                       [
                         ['left', '文字左对齐', AlignLeft],
@@ -272,8 +268,8 @@ export function BoardInspectorProperties({
                         aria-pressed={currentAlign === align}
                         className={
                           currentAlign === align
-                            ? 'size-6 rounded-md bg-(--canvas-selection-tint) text-(--canvas-selection-strong)'
-                            : 'size-6 rounded-md text-ink-muted hover:text-ink'
+                            ? 'h-6 w-full rounded-[5px] bg-surface text-ink shadow-xs'
+                            : 'h-6 w-full rounded-[5px] text-ink-muted hover:text-ink'
                         }
                         onClick={() => applyNativeStyle({ textAlign: align })}
                       >
@@ -281,7 +277,7 @@ export function BoardInspectorProperties({
                       </Button>
                     ))}
                   </div>
-                </div>
+                </InspectorRow>
               </div>
             ) : null}
           </div>
@@ -544,43 +540,42 @@ function RuntimeElementProperties({
       {canResizeHtml ? (
         <form onSubmit={submitSize} className="space-y-2 border-t border-border/75 pt-3">
           <h3 className={sectionTitle}>{t('尺寸与定位')}</h3>
-          <div className="grid grid-cols-2 gap-2">
-            <Field label={t('宽度')}>
-              <Input
-                type="number"
-                controlSize="sm"
-                min={1}
-                max={ARTBOARD_GEOMETRY_LIMITS.viewport}
-                trailing="px"
-                value={Number.isNaN(widthValue) ? '' : widthValue}
-                onChange={(event) =>
-                  setSizeDraft({
-                    width: event.currentTarget.valueAsNumber,
-                    height: heightValue,
-                  })
-                }
-              />
-            </Field>
-            <Field label={t('高度')}>
-              <Input
-                type="number"
-                controlSize="sm"
-                min={1}
-                max={ARTBOARD_GEOMETRY_LIMITS.viewport}
-                trailing="px"
-                value={Number.isNaN(heightValue) ? '' : heightValue}
-                onChange={(event) =>
-                  setSizeDraft({
-                    width: widthValue,
-                    height: event.currentTarget.valueAsNumber,
-                  })
-                }
-              />
-            </Field>
+          <div className="grid grid-cols-2 gap-1.5">
+            <InspectorNumberInput
+              prefix="W"
+              label={t('宽度')}
+              min={1}
+              max={ARTBOARD_GEOMETRY_LIMITS.viewport}
+              value={widthValue}
+              onChange={(event) =>
+                setSizeDraft({
+                  width: event.currentTarget.valueAsNumber,
+                  height: heightValue,
+                })
+              }
+            />
+            <InspectorNumberInput
+              prefix="H"
+              label={t('高度')}
+              min={1}
+              max={ARTBOARD_GEOMETRY_LIMITS.viewport}
+              value={heightValue}
+              onChange={(event) =>
+                setSizeDraft({
+                  width: widthValue,
+                  height: event.currentTarget.valueAsNumber,
+                })
+              }
+            />
           </div>
           {sizeChanged ? (
             <div>
-              <Button size="sm" type="submit" loading={editing?.draft?.status === 'saving'}>
+              <Button
+                size="sm"
+                type="submit"
+                className="h-7 rounded-md"
+                loading={editing?.draft?.status === 'saving'}
+              >
                 {t('应用')}
               </Button>
             </div>
@@ -628,8 +623,8 @@ function RuntimeElementProperties({
           </div>
 
           {canEditRuntime ? (
-            <div className="grid grid-cols-2 gap-2">
-              <Field label={t('字号')}>
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-1.5">
                 <Select
                   value={String(nearestFontSize(currentFontSize))}
                   onValueChange={(value) => {
@@ -637,7 +632,7 @@ function RuntimeElementProperties({
                     if (Number.isInteger(fontSize)) applyRuntimeStyle({ fontSize })
                   }}
                 >
-                  <SelectTrigger controlSize="sm">
+                  <SelectTrigger aria-label={t('字号')} controlSize="sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -648,15 +643,13 @@ function RuntimeElementProperties({
                     ))}
                   </SelectContent>
                 </Select>
-              </Field>
-              <Field label={t('字重')}>
                 <Select
                   value={currentFontWeight}
                   onValueChange={(value) =>
                     applyRuntimeStyle({ fontWeight: value as DesignLayerFontWeight })
                   }
                 >
-                  <SelectTrigger controlSize="sm">
+                  <SelectTrigger aria-label={t('字重')} controlSize="sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -667,18 +660,16 @@ function RuntimeElementProperties({
                     ))}
                   </SelectContent>
                 </Select>
-              </Field>
-              <Field label={t('文字颜色')}>
-                <Input
-                  type="color"
-                  controlSize="sm"
+              </div>
+              <InspectorRow label={t('文字颜色')}>
+                <InspectorColorInput
+                  label={t('文字颜色')}
                   value={currentColorHex}
-                  onChange={(event) => applyRuntimeStyle({ colorHex: event.currentTarget.value })}
+                  onChange={(colorHex) => applyRuntimeStyle({ colorHex })}
                 />
-              </Field>
-              <div className="flex flex-col justify-end gap-1">
-                <span className="text-xs font-medium text-ink">{t('对齐')}</span>
-                <div className="flex h-8 items-center justify-around rounded-lg border border-border/80 bg-surface-subtle px-0.5">
+              </InspectorRow>
+              <InspectorRow label={t('对齐')}>
+                <div className="grid h-7 grid-cols-3 items-center gap-0.5 rounded-md bg-surface-subtle p-0.5">
                   {(
                     [
                       ['left', '文字左对齐', AlignLeft],
@@ -695,8 +686,8 @@ function RuntimeElementProperties({
                       aria-pressed={currentAlign === align}
                       className={
                         currentAlign === align
-                          ? 'size-6 rounded-md bg-(--canvas-selection-tint) text-(--canvas-selection-strong)'
-                          : 'size-6 rounded-md text-ink-muted hover:text-ink'
+                          ? 'h-6 w-full rounded-[5px] bg-surface text-ink shadow-xs'
+                          : 'h-6 w-full rounded-[5px] text-ink-muted hover:text-ink'
                       }
                       onClick={() => applyRuntimeStyle({ textAlign: align })}
                     >
@@ -704,13 +695,13 @@ function RuntimeElementProperties({
                     </Button>
                   ))}
                 </div>
-              </div>
+              </InspectorRow>
               {contrast ? (
                 <p
-                  className={`col-span-2 rounded-md px-2 py-1 text-[11px] tabular-nums ${
+                  className={`rounded-md px-2 py-1 text-[11px] tabular-nums ${
                     contrast.level === 'fail'
                       ? 'bg-destructive/10 font-medium text-destructive'
-                      : 'bg-surface-subtle text-ink-muted'
+                      : 'bg-surface-subtle/75 text-ink-muted'
                   }`}
                 >
                   {toolText('对比度 {ratio} · {level}', {
@@ -822,42 +813,64 @@ function BoardAppearanceForm({ boardId, current, editing }: BoardAppearanceFormP
   }
   return (
     <form onSubmit={save} aria-label={t('调整画板属性')} className="border-t border-border/75 pt-3">
-      <h3 className={`${sectionTitle} mb-2`}>{t('外观')}</h3>
+      <h3 className={`${sectionTitle} mb-2.5`}>{t('外观')}</h3>
       <fieldset disabled={!editing.available} className="flex min-w-0 flex-col gap-2">
-        <div className="grid grid-cols-2 gap-2">
-          {numericFields.map(({ key, label, min }) => (
-            <Field key={key} label={t(label)}>
-              <Input
-                type="number"
-                controlSize="sm"
-                min={min}
-                max={ARTBOARD_GEOMETRY_LIMITS.viewport}
-                trailing="px"
-                required
-                value={Number.isNaN(values[key]) ? '' : values[key]}
-                onChange={(event) => update({ [key]: event.currentTarget.valueAsNumber })}
-              />
-            </Field>
-          ))}
-          <Field label={t('背景')}>
-            <Input
-              type="color"
-              controlSize="sm"
-              value={values.background}
-              onChange={(event) => update({ background: event.currentTarget.value })}
+        <InspectorRow label={t('尺寸')}>
+          <div className="grid grid-cols-2 gap-1.5">
+            <InspectorNumberInput
+              prefix="W"
+              label={t('宽度')}
+              min={1}
+              max={ARTBOARD_GEOMETRY_LIMITS.viewport}
+              required
+              disabled={!editing.available}
+              value={values.width}
+              onChange={(event) => update({ width: event.currentTarget.valueAsNumber })}
             />
-          </Field>
-        </div>
-        <div>
-          <Button
-            size="sm"
-            type="submit"
-            disabled={!changed}
-            loading={editing.draft?.status === 'saving'}
-          >
-            {t('保存')}
-          </Button>
-        </div>
+            <InspectorNumberInput
+              prefix="H"
+              label={t('高度')}
+              min={1}
+              max={ARTBOARD_GEOMETRY_LIMITS.viewport}
+              required
+              disabled={!editing.available}
+              value={values.height}
+              onChange={(event) => update({ height: event.currentTarget.valueAsNumber })}
+            />
+          </div>
+        </InspectorRow>
+        <InspectorRow label={t('圆角')}>
+          <InspectorNumberInput
+            label={t('圆角')}
+            min={0}
+            max={ARTBOARD_GEOMETRY_LIMITS.viewport}
+            suffix="px"
+            required
+            disabled={!editing.available}
+            value={values.cornerRadius}
+            onChange={(event) => update({ cornerRadius: event.currentTarget.valueAsNumber })}
+          />
+        </InspectorRow>
+        <InspectorRow label={t('背景')}>
+          <InspectorColorInput
+            label={t('背景')}
+            disabled={!editing.available}
+            value={values.background}
+            onChange={(background) => update({ background })}
+          />
+        </InspectorRow>
+        {changed ? (
+          <div className="pt-0.5">
+            <Button
+              size="sm"
+              type="submit"
+              className="h-7 rounded-md"
+              loading={editing.draft?.status === 'saving'}
+            >
+              {t('保存')}
+            </Button>
+          </div>
+        ) : null}
       </fieldset>
     </form>
   )

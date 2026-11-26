@@ -63,7 +63,12 @@ export function BoardInspectorSource({
       )}
       {onOpenEditor && (
         <div>
-          <Button size="sm" variant="outline" onClick={onOpenEditor}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 rounded-md px-2.5 text-xs"
+            onClick={onOpenEditor}
+          >
             {t('编辑整份源码')}
           </Button>
         </div>
@@ -75,14 +80,17 @@ export function BoardInspectorSource({
 function SourceBlock({ label, source }: { label: string; source: string }) {
   return (
     <>
-      <p className="text-xs text-ink-muted">{label}</p>
+      <p className="text-[11px] text-ink-muted">{label}</p>
       <ScrollArea
-        orientation="both"
+        orientation="vertical"
         aria-label={label}
         tabIndex={-1}
-        className="max-h-72 rounded-lg border border-border/70 bg-surface-subtle [--v-scroll-area-padding:0px] [--v-scroll-area-surface:var(--surface-subtle)]"
+        className="max-h-64 rounded-lg border border-border/60 bg-surface-subtle/75 [--v-scroll-area-padding:0px] [--v-scroll-area-surface:var(--surface-subtle)]"
       >
-        <pre dir="ltr" className="w-max min-w-full p-3 font-mono text-xs leading-5 text-ink">
+        <pre
+          dir="ltr"
+          className="w-full p-2.5 font-mono text-[11px] leading-5 whitespace-pre-wrap break-all text-ink"
+        >
           <code>{source}</code>
         </pre>
       </ScrollArea>
@@ -104,7 +112,7 @@ function SourceLines({ excerpt, scope }: { excerpt: SourceExcerpt; scope: string
   const { t } = useMessages(panelMessages)
   return (
     <>
-      <p className="text-xs text-ink-muted">
+      <p className="text-[11px] text-ink-muted">
         {t('唯一片段 · {scope}', { scope })} ·{' '}
         <span>
           {t('源码位置')}{' '}
@@ -114,12 +122,15 @@ function SourceLines({ excerpt, scope }: { excerpt: SourceExcerpt; scope: string
         </span>
       </p>
       <ScrollArea
-        orientation="both"
+        orientation="vertical"
         aria-label={scope}
         tabIndex={-1}
-        className="max-h-72 rounded-lg border border-border/70 bg-surface-subtle [--v-scroll-area-padding:0px] [--v-scroll-area-surface:var(--surface-subtle)]"
+        className="max-h-64 rounded-lg border border-border/60 bg-surface-subtle/75 [--v-scroll-area-padding:0px] [--v-scroll-area-surface:var(--surface-subtle)]"
       >
-        <pre dir="ltr" className="w-max min-w-full p-3 font-mono text-xs leading-5 text-ink">
+        <pre
+          dir="ltr"
+          className="w-full p-2.5 font-mono text-[11px] leading-5 whitespace-pre-wrap break-all text-ink"
+        >
           {excerpt.lines.map((text, index) => {
             const line = excerpt.firstLine + index
             return (

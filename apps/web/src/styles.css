@@ -971,14 +971,81 @@ body,
   --primary: var(--canvas-selection);
   --primary-foreground: var(--canvas-selection-foreground);
   --ring: var(--canvas-selection);
+  --v-switch-on: var(--canvas-selection);
+  --v-switch-on-hover: var(--canvas-selection-strong);
+}
+
+#design-inspector .v-slider {
+  block-size: 22px;
+}
+
+#design-inspector .v-slider__track {
+  inset-block-start: 9px;
+}
+
+#design-inspector .v-slider__range {
+  background: var(--canvas-selection);
+}
+
+#design-inspector .v-slider > span:has(> .v-slider__thumb) {
+  inset-block-start: 3px;
+}
+
+#design-inspector .v-slider__thumb {
+  inline-size: 15px;
+  block-size: 15px;
+}
+
+#design-inspector .v-slider__thumb:hover {
+  border-color: var(--canvas-selection);
+}
+
+#design-inspector .v-select-trigger,
+#design-inspector .v-input-control {
+  --v-input-h: 1.75rem;
+
+  block-size: 1.75rem;
+  min-block-size: 1.75rem;
+  border-color: transparent;
+  border-radius: 6px;
+  background-color: var(--muted);
+  font-size: 12px;
+}
+
+#design-inspector .v-select-trigger:hover,
+#design-inspector .v-input-control:hover {
+  border-color: color-mix(in oklab, var(--border) 70%, transparent);
+}
+
+#design-inspector .v-select-trigger:focus-visible,
+#design-inspector .v-select-trigger[data-state="open"],
+#design-inspector .v-input-control:focus-within {
+  border-color: var(--canvas-selection);
+  background-color: var(--card);
+}
+
+#design-inspector .v-sheet__body {
+  --v-scroll-area-padding: 10px 18px 20px;
+}
+
+#design-inspector .v-sheet__header {
+  min-block-size: 42px;
+  justify-content: flex-end;
+  padding: 4px 52px 0 20px;
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+}
+
+#design-inspector > .v-sheet__close {
+  inset-block-start: 7px;
+  inset-inline-end: 10px;
 }
 
 #design-inspector .v-tabs {
-  --v-tabs-item-height: 2.125rem;
+  --v-tabs-item-height: 2.375rem;
 }
 
 #design-inspector .v-tabs__list-wrap {
-  border-bottom: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+  border-bottom: 0;
 }
 
 #design-inspector .v-tabs__list {
@@ -1000,7 +1067,7 @@ body,
 }
 
 #design-inspector .v-tabs__panel {
-  margin-block-start: 0.625rem;
+  margin-block-start: 0;
 }
 
 .artifact-canvas-nav-page-row {
