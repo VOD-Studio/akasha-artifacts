@@ -79,6 +79,9 @@ export class FsArtifactRepository implements ArtifactRepository {
     this.files.assertOwnedProject(artifact.projectId)
     const nextLayout = resolveArtifactFileLayout(this.artifactsRoot, artifact.type, artifact.slug)
     const previous = this.inner.findByPublicIdSync(artifact.publicId)
+    if (previous?.type === 'design-system' || artifact.type === 'design-system') {
+      throw new DomainError('FORBIDDEN', '目录监听不能重建或转换设计系统')
+    }
     const merged: Artifact = previous
       ? {
           ...previous,

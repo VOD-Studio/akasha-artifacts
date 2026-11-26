@@ -8,6 +8,7 @@ import { useWorkspaceStore } from '@/entities/workspace'
 import { CreateDesignDialog, useDesignAvailability } from '@/features/agent-conversation'
 import { WithdrawnArtifactsDialog } from '@/features/artifact-management'
 import { DaemonStatusPill } from '@/features/daemon-control'
+import { ImportSystemLauncher } from '@/features/design-system'
 import { HubAccountButton, useHubSession } from '@/features/hub'
 import { HubSharingPolicyLauncher } from '@/features/hub-sharing-policy'
 import { AkashaMark } from '@/shared/brand'
@@ -139,11 +140,15 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
               />
             </div>
 
-            <div className="flex shrink-0 items-center gap-1">
+            <div className="flex max-w-full flex-wrap items-center justify-end gap-1">
               {cloudHub && hubSession?.admin && <HubSharingPolicyLauncher />}
               {cloudHub ? <HubAccountButton /> : <DaemonStatusPill />}
               <ThemeToggle />
               <LanguageMenu />
+              <ImportSystemLauncher
+                projects={canManage ? (projects ?? []) : []}
+                onOpenArtifact={onOpenArtifact}
+              />
               {canManage && (
                 <LibraryMenu projects={projects ?? []} onOpenWithdrawn={openWithdrawn} />
               )}

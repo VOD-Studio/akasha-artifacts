@@ -77,11 +77,18 @@ export class ArtifactVersions {
 
   async publish(
     input: PublishArtifactInput,
+    authority?: 'reviewed-system',
   ): Promise<{ artifact: Artifact; version: Readonly<Version> }> {
     const projectId = input.projectId ?? DEFAULT_PROJECT_ID
+    if (input.type === 'design-system' && authority !== 'reviewed-system') {
+      throw new DomainError('FORBIDDEN', '请通过设计系统审阅流程发布来源')
+    }
 
     return this.locks.forSlug(projectId, input.slug, async () => {
       const existing = await this.deps.artifacts.findBySlug(projectId, input.slug)
+      if (existing?.type === 'design-system' && authority !== 'reviewed-system') {
+        throw new DomainError('FORBIDDEN', '设计系统不能通过通用发布接口替换或转换类型')
+      }
       if (existing && input.createOnly) {
         throw new DomainError('RESOURCE_CONFLICT', '目标项目已存在同名制品，原有内容未更改')
       }
@@ -189,12 +196,16 @@ export class ArtifactVersions {
 
   async update(
     input: UpdateArtifactInput,
+    authority?: 'reviewed-system',
   ): Promise<{ artifact: Artifact; version: Readonly<Version> }> {
     const resolved = await this.resolveArtifact(input.id, input.projectId)
     return this.locks.forArtifact(resolved.publicId, async () => {
       const existing = await this.deps.artifacts.findByPublicId(resolved.publicId)
       if (!existing || (input.projectId !== undefined && input.projectId !== existing.projectId)) {
         throw new NotFoundError(`未找到 Artifact "${resolved.publicId}"`)
+      }
+      if (existing.type === 'design-system' && authority !== 'reviewed-system') {
+        throw new DomainError('FORBIDDEN', '请通过设计系统审阅流程确认变更')
       }
       const versions = await this.deps.artifacts.getVersions(existing.publicId)
       assertBaseVersion(existing, versions, input.baseVersion)
@@ -244,6 +255,9 @@ export class ArtifactVersions {
       const existing = await this.deps.artifacts.findByPublicId(resolved.publicId)
       if (!existing) {
         throw new NotFoundError(`未找到 Artifact "${resolved.publicId}"`)
+      }
+      if (existing.type === 'design-system') {
+        throw new DomainError('FORBIDDEN', '请在审阅流程中确认历史来源及移除项')
       }
       const versions = await this.deps.artifacts.getVersions(existing.publicId)
       assertBaseVersion(existing, versions, input.baseVersion)

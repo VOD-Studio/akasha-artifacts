@@ -31,6 +31,7 @@ import {
   type VisualEditCommand,
 } from './artifacts/visual-edit.js'
 import { ArtifactWriteLocks } from './artifacts/write-locks.js'
+import { DesignSystems } from './design-systems/service.js'
 import { type RegisterProjectInput, registerProject } from './projects.js'
 import {
   type DiscussionActionInput,
@@ -73,6 +74,7 @@ export interface ArtifactServiceDeps {
  */
 export class ArtifactService {
   readonly workspace: ArtifactWorkspaceRead
+  readonly designSystems: DesignSystems
   private readonly writeLocks = new ArtifactWriteLocks()
   private readonly queries: ArtifactQueries
   private readonly versions: ArtifactVersions
@@ -88,6 +90,7 @@ export class ArtifactService {
     this.workspace = this.queries.workspace
     const resolve = this.queries.resolveArtifact.bind(this.queries)
     this.versions = new ArtifactVersions(deps, resolve, this.writeLocks)
+    this.designSystems = new DesignSystems(deps.artifacts, this.versions)
     this.lifecycle = new ArtifactLifecycle(deps, resolve, this.writeLocks, this.versions)
     this.feedback = new ReviewFeedback(deps, resolve, this.workspace)
     this.visual = new ArtifactVisualEdit(deps, resolve, this.writeLocks, this.feedback)
