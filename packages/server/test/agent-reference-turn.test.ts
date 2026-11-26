@@ -5,6 +5,8 @@ import type {
   AgentReferenceScope,
 } from '@akasha/protocol'
 import { expect, it, vi } from 'vitest'
+import { AgentReferenceDrafts } from '../src/application/agent-reference-drafts.js'
+import { parseAgentReference } from '../src/application/agent-reference-reader.js'
 import { sessionFixture } from './agent-session-fixture.js'
 
 const png =
@@ -183,5 +185,87 @@ it('拒绝未授权、篡改、超时或无法解析的材料，全部拒绝前�
   } finally {
     vi.useRealTimers()
     container.close()
+  }
+})
+
+it('重新授权后可从原草稿幂等移除失效材料并继续发送，不能移除他人的文件', async () => {
+  const { container, cli, browser, request, launch } = sessionFixture()
+  const projectId = 'studio'
+  const scope = { projectId, draftId: crypto.randomUUID() }
+  const stage = async (content: string) => {
+    const res = await request('/agent/references', 'POST', browser, {
+      scope,
+      file: { name: '风格.md', content: text(content) },
+    })
+    expect(res.status).toBe(201)
+    return (await res.json()) as AgentReferencePreview
+  }
+  const remove = (id: string, owner: AgentReferenceScope = scope) =>
+    request('/agent/references', 'DELETE', browser, { scope: owner, id })
+  try {
+    await container.service.registerProject({
+      id: projectId,
+      name: '设计',
+      rootPath: '/tmp/studio',
+    })
+    await request('/agent/connections', 'POST', cli, { projectId })
+    const original = await stage('失效的内容')
+    await request('/agent/connections', 'POST', cli, { projectId })
+    expect((await remove(original.id)).status).toBe(204)
+    const removed = await stage('已移除的内容')
+    expect((await remove(removed.id)).status).toBe(204)
+    expect((await remove(removed.id)).status).toBe(204)
+    const expired = await stage('过期的内容')
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(expired.expiresAt + 1)
+    expect((await remove(expired.id)).status).toBe(204)
+    vi.useRealTimers()
+
+    const fresh = await stage('NEW-ONLY')
+    for (const other of [
+      { ...scope, draftId: crypto.randomUUID() },
+      { ...scope, sessionId: crypto.randomUUID() },
+      { ...scope, projectId: 'elsewhere' },
+    ]) {
+      const unseen = await remove(crypto.randomUUID(), other)
+      const hidden = await remove(fresh.id, other)
+      expect(hidden.status).toBe(unseen.status)
+      expect(await hidden.text()).toBe(await unseen.text())
+    }
+    const res = await request('/agent/design', 'POST', browser, {
+      projectId,
+      message: '继续原需求',
+      references: { draftId: scope.draftId, ids: [fresh.id] },
+    })
+    expect(res.status).toBe(202)
+    expect(launch[0]?.request.prompt).toContain('NEW-ONLY')
+    expect(launch[0]?.request.prompt).not.toContain('失效的内容')
+    launch[0]?.reply('收到')
+  } finally {
+    vi.useRealTimers()
+    container.close()
+  }
+})
+
+it('幂等移除不撤销正受理的材料，提交失败释放后才可移除', async () => {
+  const drafts = new AgentReferenceDrafts()
+  const scope = { projectId: 'store', draftId: crypto.randomUUID(), sessionId: crypto.randomUUID() }
+  const material = await parseAgentReference({ name: 'mark.md', content: text('NEW') })
+  vi.useFakeTimers()
+  const { id, expiresAt } = drafts.stage(scope, material)
+  const selection = { draftId: scope.draftId, ids: [id] }
+  try {
+    drafts.reserve(scope.projectId, scope.sessionId, selection)
+    expect(() => drafts.remove(scope, id)).toThrow('该材料已在派发中')
+    vi.advanceTimersByTime(expiresAt - Date.now() + 1)
+    expect(() => drafts.remove(scope, id)).toThrow('该材料已在派发中')
+    drafts.settle(selection, false)
+    drafts.remove(scope, id)
+    expect(() => drafts.reserve(scope.projectId, scope.sessionId, selection)).toThrow(
+      '参考材料已失效',
+    )
+  } finally {
+    drafts.revoke(scope.projectId)
+    vi.useRealTimers()
   }
 })

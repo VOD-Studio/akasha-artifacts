@@ -48,7 +48,10 @@ export class AgentReferenceDrafts {
     const id = crypto.randomUUID()
     const lifetime = 10 * 60 * 1000
     const expiresAt = Date.now() + lifetime
-    const timer = setTimeout(() => this.entries.delete(id), lifetime)
+    const timer = setTimeout(() => {
+      // 已锁定的材料由受理事务释放，不能在持久化期间报告撤回成功。
+      if (!this.entries.get(id)?.reserved) this.entries.delete(id)
+    }, lifetime)
     timer.unref()
     this.entries.set(id, { scope, material, expiresAt, timer })
     return {
@@ -65,21 +68,25 @@ export class AgentReferenceDrafts {
   reserve(projectId: string, sessionId: string | undefined, selection: AgentReferenceSelection) {
     if (new Set(selection.ids).size !== selection.ids.length) throw expired()
     const scope = { projectId, sessionId, draftId: selection.draftId }
-    const entries = selection.ids.map((id) => this.get(scope, id))
+    const entries = selection.ids.map((id) => {
+      const entry = this.available(scope, id)
+      if (!entry) throw expired()
+      return entry
+    })
     for (const entry of entries) entry.reserved = true
     return entries.map(({ material }) => material)
   }
 
   remove(scope: AgentReferenceScope, id: string) {
-    this.get(scope, id)
-    this.drop(id)
+    // 原草稿中已经没有此项即达成撤回；不能据此探测其他作用域的标识。
+    if (this.available(scope, id)) this.drop(id)
   }
 
   settle(selection: AgentReferenceSelection, accepted: boolean) {
     for (const id of selection.ids) {
       const entry = this.entries.get(id)
       if (!entry) continue
-      if (accepted) this.drop(id)
+      if (accepted || entry.expiresAt <= Date.now()) this.drop(id)
       else entry.reserved = false
     }
   }
@@ -90,10 +97,14 @@ export class AgentReferenceDrafts {
     }
   }
 
-  private get(scope: AgentReferenceScope, id: string) {
+  private available(scope: AgentReferenceScope, id: string) {
     const entry = this.entries.get(id)
-    if (!entry || !sameDraft(entry.scope, scope) || entry.expiresAt <= Date.now()) throw expired()
+    if (!entry || !sameDraft(entry.scope, scope)) return
     if (entry.reserved) throw new DomainError('RESOURCE_CONFLICT', '该材料已在派发中')
+    if (entry.expiresAt <= Date.now()) {
+      this.drop(id)
+      return
+    }
     return entry
   }
 
