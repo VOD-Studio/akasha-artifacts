@@ -149,6 +149,10 @@ export function mountHubGuard(
   auth.mount(app)
   mountHubSharing(app, { auth, artifacts: repositories.artifacts, sharing })
   app.post('/api/v1/artifacts/:id/storage', bodyLimit({ maxSize: 128 * 1024, onError: invalid }))
+  app.post(
+    '/api/v1/projects/:id/design-systems/*',
+    bodyLimit({ maxSize: 24 * 1024 * 1024, onError: invalid }),
+  )
 
   // 仅转发显式授权的路径；新增 core 路由默认不会在 Hub 暴露。
   app.use('/api/v1/*', async (c, next) => {
@@ -234,6 +238,18 @@ export function mountHubGuard(
         },
         201,
       )
+    }
+
+    const designSystem = /^\/api\/v1\/projects\/([^/]+)\/design-systems\/preview$/.exec(path)
+    if (designSystem) {
+      if (
+        method !== 'POST' ||
+        !principal ||
+        !ownsHubProject(principal, decodeSegment(designSystem[1]))
+      ) {
+        return hidden(c)
+      }
+      return core.fetch(request)
     }
 
     const projectPath = /^\/api\/v1\/projects\/([^/]+)(\/selection)?$/.exec(path)
