@@ -12,6 +12,7 @@ import {
   type DesignLayerPaletteColor,
   type DesignLayerTextAlign,
   type EditOp,
+  type ElementRect,
   resolveDesignLayerColors,
 } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
@@ -63,6 +64,10 @@ export interface SelectionToolbarProps {
   board: CanvasBoard
   runtimeLayer?: CanvasLayer
   designLayer?: DesignLayer
+  /** 当命中节点超出图层树上限或尚未拉回快照时，直接使用沙盒上报的静态源码位置。 */
+  sourceLoc?: string
+  /** 选中元素在画板固有坐标系内的矩形，用于原地文字编辑精准落位。 */
+  selectedRect?: ElementRect
   presentation: CanvasElementPresentation | null
   visualTarget: VisualEditTarget | null
   /** 仅在右栏停留在「属性」页签时成立；打开「源码」等其他页签不隐藏形状或文字快捷项。 */
@@ -152,6 +157,8 @@ export function SelectionToolbar({
   board,
   runtimeLayer,
   designLayer,
+  sourceLoc,
+  selectedRect,
   presentation,
   visualTarget,
   propertiesOpen,
@@ -185,9 +192,10 @@ export function SelectionToolbar({
           )),
     )
   const isText = isNativeText || isRuntimeText
+  const activeSourceLoc = runtimeLayer?.sourceLoc ?? sourceLoc
   const canEditNative = Boolean(designLayer && canEditBoards && editing?.available)
   const canEditRuntime = Boolean(
-    !designLayer && canEditText && runtimeLayer?.sourceLoc && visualTarget && editing?.available,
+    !designLayer && canEditText && activeSourceLoc && visualTarget && editing?.available,
   )
   const canEdit = isNativeText || isNativeShape ? canEditNative : canEditRuntime
 
@@ -230,8 +238,8 @@ export function SelectionToolbar({
 
   const flowOrder = !designLayer ? visualTarget?.order : null
   const flowIndex =
-    flowOrder && runtimeLayer?.sourceLoc
-      ? flowOrder.siblings.findIndex((item) => item.loc === runtimeLayer.sourceLoc)
+    flowOrder && activeSourceLoc
+      ? flowOrder.siblings.findIndex((item) => item.loc === activeSourceLoc)
       : -1
   const canMoveUp = Boolean(canEditRuntime && flowOrder && flowIndex > 0)
   const canMoveDown = Boolean(
@@ -259,10 +267,10 @@ export function SelectionToolbar({
     textAlign?: DesignLayerTextAlign
     colorHex?: string
   }) => {
-    if (!canEditRuntime || !runtimeLayer?.sourceLoc || !visualTarget) return
+    if (!canEditRuntime || !activeSourceLoc || !visualTarget) return
     const nextClassName = updateTailwindTextClasses(visualTarget.className, patch)
     if (nextClassName === visualTarget.className) return
-    void onApplyRuntimeOp({ kind: 'className', loc: runtimeLayer.sourceLoc, value: nextClassName })
+    void onApplyRuntimeOp({ kind: 'className', loc: activeSourceLoc, value: nextClassName })
   }
 
   const applyColorChoice = (choice: DesignLayerColor) => {
@@ -514,11 +522,15 @@ export function SelectionToolbar({
             const rect = event.currentTarget.getBoundingClientRect()
             if (isNativeText && designLayer) {
               textTools?.edit(board, designLayer, { x: rect.left, y: rect.bottom + 6 })
-            } else if (runtimeLayer?.sourceLoc && visualTarget?.text !== null && visualTarget) {
-              textTools?.editSource(board, runtimeLayer.sourceLoc, visualTarget.text, {
-                x: rect.left,
-                y: rect.bottom + 6,
-              })
+            } else if (activeSourceLoc && visualTarget?.text !== null && visualTarget) {
+              textTools?.editSource(
+                board,
+                activeSourceLoc,
+                visualTarget.text,
+                { x: rect.left, y: rect.bottom + 6 },
+                selectedRect,
+                presentation ?? undefined,
+              )
             }
           }}
         >

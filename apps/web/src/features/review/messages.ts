@@ -140,6 +140,12 @@ export const panelMessages = {
   画板批注: ['Zeichenflächenkommentar', 'تعليق على اللوحة', 'Artboard comment'],
   查看全部讨论: ['Alle Diskussionen anzeigen', 'عرض كل النقاشات', 'View all discussions'],
   关闭批注输入: ['Kommentareingabe schließen', 'إغلاق محرر التعليق', 'Close comment input'],
+  另有未发送的批注草稿: [
+    'Es gibt einen weiteren ungesendeten Entwurf',
+    'توجد مسودة تعليق أخرى غير مرسلة',
+    'You have another unsent comment draft',
+  ],
+  恢复原草稿: ['Entwurf wiederherstellen', 'استعادة المسودة', 'Restore draft'],
   待处理: ['Ausstehend', 'قيد الانتظار', 'Pending'],
   批准: ['Genehmigung', 'موافقة', 'Approval'],
   请求修改: ['Änderungen anfordern', 'طلب تعديلات', 'Request changes'],

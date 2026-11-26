@@ -315,7 +315,7 @@ export function BoardDrawingSurface({
           aria-hidden="true"
           viewBox={`0 0 ${width} ${height}`}
           preserveAspectRatio="none"
-          className="pointer-events-none block size-full overflow-visible text-primary"
+          className="pointer-events-none block size-full overflow-visible text-(--canvas-selection)"
         >
           {strokePointsAttr && (
             <polyline
@@ -360,18 +360,42 @@ export function BoardDrawingSurface({
               cy={shapePreview.y + shapePreview.height / 2}
               rx={shapePreview.width / 2}
               ry={shapePreview.height / 2}
-              fill="currentColor"
-              fillOpacity={0.15}
-              stroke="currentColor"
+              fill="#dbeafe"
+              fillOpacity={0.55}
+              stroke="#1d4ed8"
+              strokeWidth={1.5}
               vectorEffect="non-scaling-stroke"
             />
           )}
-          {shapePreview && tool.kind !== 'ellipse' && (
+          {shapePreview && tool.kind === 'rectangle' && (
+            <rect
+              {...shapePreview}
+              fill="#dbeafe"
+              fillOpacity={0.55}
+              stroke="#1d4ed8"
+              strokeWidth={1.5}
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+          {shapePreview && tool.kind === 'note' && (
+            <rect
+              {...shapePreview}
+              rx={4}
+              fill="#fef3c7"
+              fillOpacity={0.78}
+              stroke="#d97706"
+              strokeWidth={1.5}
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+          {shapePreview && tool.kind === 'text' && (
             <rect
               {...shapePreview}
               fill="currentColor"
-              fillOpacity={0.15}
+              fillOpacity={0.04}
               stroke="currentColor"
+              strokeWidth={1.5}
+              strokeDasharray="4 3"
               vectorEffect="non-scaling-stroke"
             />
           )}

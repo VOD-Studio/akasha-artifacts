@@ -4,7 +4,7 @@ import {
   type DesignLayer,
   type VersionSummary,
 } from '@akasha/protocol'
-import { type PointerEvent, useRef, useState } from 'react'
+import { type PointerEvent, useEffect, useRef, useState } from 'react'
 import type { CanvasBoard, CanvasBounds } from '@/entities/artifact'
 import { useMessages } from '@/shared/i18n'
 import type { Camera, Point } from '../lib/canvas-camera'
@@ -170,7 +170,7 @@ export function CanvasArtboardPlacer({
       {preview ? (
         <div
           data-testid="canvas-artboard-preview"
-          className="pointer-events-none absolute border-2 border-dashed border-primary bg-primary/10"
+          className="pointer-events-none absolute border-2 border-dashed border-(--canvas-selection) bg-(--canvas-selection-tint)"
           style={{
             left: camera.x + preview.x * camera.scale,
             top: camera.y + preview.y * camera.scale,
@@ -180,7 +180,7 @@ export function CanvasArtboardPlacer({
         >
           <span
             dir="ltr"
-            className="absolute bottom-1 right-1 rounded bg-primary px-1.5 py-0.5 font-mono text-[10px] text-primary-foreground"
+            className="absolute bottom-1 right-1 rounded bg-(--canvas-selection) px-1.5 py-0.5 font-mono text-[10px] text-(--canvas-selection-foreground)"
           >
             {preview.width} × {preview.height}
           </span>
@@ -226,6 +226,7 @@ export function CanvasBlankDrawingOverlay({
   onUnowned,
   onDraggingChange,
 }: BlankDrawingProps) {
+  const overlayRef = useRef<HTMLDivElement>(null)
   const drag = useRef<{
     pointerId: number
     start: Point
@@ -288,6 +289,16 @@ export function CanvasBlankDrawingOverlay({
     )
   }
 
+  const addPenNode = (start: Point, anchor: Point) => {
+    const current = penPath.current ?? { points: [], base: version, anchor }
+    if (!current.points.length) current.points.push(start)
+    else if (current.points.length < INK_LIMIT) samplePath(current.points, start, true)
+    current.anchor = anchor
+    penPath.current = current
+    setPreviewPoints([...current.points])
+    setCursor(start)
+  }
+
   const finishPen = () => {
     const active = penPath.current
     if (!active || active.points.length < 2) return
@@ -295,9 +306,71 @@ export function CanvasBlankDrawingOverlay({
     commitPoints(active.points, active.base, active.anchor)
   }
 
+  // 钢笔从空白画布起笔后，捕获后续跨入任意画板的点击、双击和 Enter，避免被画板绘制层拆断路径。
+  useEffect(() => {
+    if (tool.kind !== 'pen' || !Array.isArray(previewPoints)) return
+    const onPointerDown = (event: globalThis.PointerEvent) => {
+      if (
+        event.button !== 0 ||
+        event.isPrimary === false ||
+        !penPath.current ||
+        !overlayRef.current
+      )
+        return
+      const target = event.target instanceof Element ? event.target : null
+      if (!target || overlayRef.current.contains(target) || !target.closest('.artifact-canvas'))
+        return
+      const rect = overlayRef.current.getBoundingClientRect()
+      if (!rect.width || !rect.height) return
+      event.stopPropagation()
+      event.preventDefault()
+      addPenNode(toCanvasPoint(rect, event.clientX, event.clientY), {
+        x: event.clientX,
+        y: event.clientY,
+      })
+    }
+    const onPointerMove = (event: globalThis.PointerEvent) => {
+      if (!penPath.current || !overlayRef.current) return
+      const rect = overlayRef.current.getBoundingClientRect()
+      if (!rect.width || !rect.height) return
+      setCursor(toCanvasPoint(rect, event.clientX, event.clientY))
+    }
+    const onDoubleClick = (event: globalThis.MouseEvent) => {
+      if (!penPath.current || !overlayRef.current) return
+      const target = event.target instanceof Element ? event.target : null
+      if (!target || overlayRef.current.contains(target) || !target.closest('.artifact-canvas'))
+        return
+      event.stopPropagation()
+      finishPen()
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!penPath.current || event.isComposing) return
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        event.stopPropagation()
+        finishPen()
+      } else if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        clear()
+      }
+    }
+    window.addEventListener('pointerdown', onPointerDown, true)
+    window.addEventListener('pointermove', onPointerMove)
+    window.addEventListener('dblclick', onDoubleClick, true)
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true)
+      window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('dblclick', onDoubleClick, true)
+      window.removeEventListener('keydown', onKeyDown, true)
+    }
+  })
+
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: 空白画布的指针起笔表面，键盘绘制仍通过画板按钮触发。
     <div
+      ref={overlayRef}
       data-testid="canvas-blank-drawing"
       className="artifact-canvas-blank-drawing pointer-events-auto absolute inset-0 z-0 touch-none"
       onPointerDown={(event: PointerEvent<HTMLDivElement>) => {
@@ -306,17 +379,7 @@ export function CanvasBlankDrawingOverlay({
         const start = toCanvasPoint(rect, event.clientX, event.clientY)
         event.stopPropagation()
         if (tool.kind === 'pen') {
-          const current = penPath.current ?? {
-            points: [],
-            base: version,
-            anchor: { x: event.clientX, y: event.clientY },
-          }
-          if (!current.points.length) current.points.push(start)
-          else if (current.points.length < INK_LIMIT) samplePath(current.points, start, true)
-          current.anchor = { x: event.clientX, y: event.clientY }
-          penPath.current = current
-          setPreviewPoints([...current.points])
-          setCursor(start)
+          addPenNode(start, { x: event.clientX, y: event.clientY })
           return
         }
         event.currentTarget.setPointerCapture?.(event.pointerId)
@@ -408,7 +471,7 @@ export function CanvasBlankDrawingOverlay({
       {previewBox || previewPoints ? (
         <svg
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 size-full overflow-visible text-primary"
+          className="pointer-events-none absolute inset-0 size-full overflow-visible text-(--canvas-selection)"
         >
           {previewBox && tool.kind === 'ellipse' ? (
             <ellipse
@@ -416,20 +479,48 @@ export function CanvasBlankDrawingOverlay({
               cy={camera.y + (previewBox.y + previewBox.height / 2) * camera.scale}
               rx={(previewBox.width * camera.scale) / 2}
               ry={(previewBox.height * camera.scale) / 2}
-              fill="currentColor"
-              fillOpacity={0.15}
-              stroke="currentColor"
+              fill="#dbeafe"
+              fillOpacity={0.55}
+              stroke="#1d4ed8"
+              strokeWidth={1.5}
             />
           ) : null}
-          {previewBox && tool.kind !== 'ellipse' ? (
+          {previewBox && tool.kind === 'rectangle' ? (
+            <rect
+              x={camera.x + previewBox.x * camera.scale}
+              y={camera.y + previewBox.y * camera.scale}
+              width={previewBox.width * camera.scale}
+              height={previewBox.height * camera.scale}
+              fill="#dbeafe"
+              fillOpacity={0.55}
+              stroke="#1d4ed8"
+              strokeWidth={1.5}
+            />
+          ) : null}
+          {previewBox && tool.kind === 'note' ? (
+            <rect
+              x={camera.x + previewBox.x * camera.scale}
+              y={camera.y + previewBox.y * camera.scale}
+              width={previewBox.width * camera.scale}
+              height={previewBox.height * camera.scale}
+              rx={4}
+              fill="#fef3c7"
+              fillOpacity={0.78}
+              stroke="#d97706"
+              strokeWidth={1.5}
+            />
+          ) : null}
+          {previewBox && tool.kind === 'text' ? (
             <rect
               x={camera.x + previewBox.x * camera.scale}
               y={camera.y + previewBox.y * camera.scale}
               width={previewBox.width * camera.scale}
               height={previewBox.height * camera.scale}
               fill="currentColor"
-              fillOpacity={0.15}
+              fillOpacity={0.04}
               stroke="currentColor"
+              strokeWidth={1.5}
+              strokeDasharray="4 3"
             />
           ) : null}
           {previewPoints ? (

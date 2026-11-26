@@ -19,12 +19,25 @@ import { panelMessages } from '../messages'
 
 /** 选区旁批注浮层的锚点与目标引用；复用当前选区，不要求二次指认。 */
 export interface AnchoredAnnotationTarget {
-  /** 外壳屏幕坐标，用于将浮层贴靠在选中对象附近而不遮挡原对象。 */
+  /** 同一次批注落点的稳定标识，用于区分异步命中升级与切换到新落点。 */
+  placementId?: string
+  /** 外壳屏幕坐标，用于将浮层贴靠在选中对象或落点图钉附近而不遮挡原对象。 */
   anchor: { x: number; y: number }
   /** 批注归属的对象或画板引用。 */
   element: ElementRef
-  /** 可选的对象展示名（如画板名或图层标题）。 */
+  /** 可选的对象展示名（如画板名 › 图层标题）。 */
   label?: string
+}
+
+function sameElementTarget(a: ElementRef | null, b: ElementRef | null): boolean {
+  if (!a && !b) return true
+  if (!a || !b) return false
+  return (
+    a.boardId === b.boardId &&
+    a.blockId === b.blockId &&
+    a.loc === b.loc &&
+    a.selector === b.selector
+  )
 }
 
 export interface AnchoredAnnotationComposerProps {
@@ -87,10 +100,53 @@ export function AnchoredAnnotationComposer({
   const headingId = useId()
   const notifyId = useId()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const [draft, setDraft] = useState<AnnotationDraft | null>(() => readAnnotationDraft(artifactId))
+  const [draft, setDraft] = useState<AnnotationDraft | null>(() => {
+    const saved = readAnnotationDraft(artifactId)
+    if (!saved?.body) return null
+    return sameElementTarget(saved.element, target.element) ? saved : null
+  })
+  const [otherDraft, setOtherDraft] = useState<AnnotationDraft | null>(() => {
+    const saved = readAnnotationDraft(artifactId)
+    if (!saved?.body) return null
+    return sameElementTarget(saved.element, target.element) ? null : saved
+  })
   const [sendToAgent, setSendToAgent] = useState(() => draft?.sendToAgent ?? false)
   const [denied, setDenied] = useState(false)
   const submitMutation = useSubmitFeedbackMutation(artifactId)
+
+  // 切换到新落点时仅复用与该落点匹配的草稿，避免将另一对象的未发送正文错绑到当前位置。
+  const placementKey = target.placementId ?? JSON.stringify(target.element)
+  const lastPlacementKey = useRef(placementKey)
+  useEffect(() => {
+    if (lastPlacementKey.current === placementKey) return
+    lastPlacementKey.current = placementKey
+    const saved = readAnnotationDraft(artifactId)
+    if (saved?.body && sameElementTarget(saved.element, target.element)) {
+      setDraft(saved)
+      setOtherDraft(null)
+      setSendToAgent(saved.sendToAgent)
+    } else {
+      setDraft(null)
+      setOtherDraft(saved?.body ? saved : null)
+      setSendToAgent(false)
+    }
+    textareaRef.current?.focus({ preventScroll: true })
+  }, [artifactId, placementKey, target.element])
+
+  // 同一次批注落点收到沙盒异步命中升级时，同步更新已输入草稿的元素引用（切换新落点时不误覆盖）。
+  const lastTargetElement = useRef(target.element)
+  const lastElementPlacementKey = useRef(placementKey)
+  useEffect(() => {
+    const samePlacement = lastElementPlacementKey.current === placementKey
+    lastElementPlacementKey.current = placementKey
+    if (lastTargetElement.current === target.element) return
+    lastTargetElement.current = target.element
+    if (!samePlacement || !draft?.body || draft.version !== originVersion) return
+    if (sameElementTarget(draft.element, target.element)) return
+    const upgraded: AnnotationDraft = { ...draft, element: target.element }
+    setDraft(upgraded)
+    writeAnnotationDraft(artifactId, upgraded)
+  }, [artifactId, draft, originVersion, placementKey, target.element])
 
   const body = draft?.body ?? ''
   const targetElement = draft?.body ? draft.element : target.element
@@ -121,6 +177,7 @@ export function AnchoredAnnotationComposer({
       setSendToAgent(nextSendToAgent)
       return
     }
+    setOtherDraft(null)
     const next: AnnotationDraft = {
       body: nextBody,
       sendToAgent: nextSendToAgent,
@@ -182,7 +239,7 @@ export function AnchoredAnnotationComposer({
       dir={dir}
       data-testid="anchored-annotation-composer"
       aria-labelledby={headingId}
-      className="fixed z-50 m-0 w-[min(21rem,calc(100vw-24px))] rounded-xl border border-border bg-surface p-3 text-ink shadow-lg"
+      className="fixed z-50 m-0 w-[min(21rem,calc(100vw-24px))] rounded-xl border border-(--canvas-selection-border) bg-surface p-3 text-ink shadow-lg ring-1 ring-(--canvas-selection-tint)"
       style={{
         left: `clamp(12px, ${target.anchor.x}px, calc(100vw - 22rem))`,
         top: `clamp(56px, ${target.anchor.y}px, calc(100dvh - 18rem))`,
@@ -229,11 +286,46 @@ export function AnchoredAnnotationComposer({
       </div>
 
       {targetElement ? (
-        <div className="mb-2 flex items-center gap-1.5 rounded-lg border border-border bg-selected px-2.5 py-1.5 text-[11px] text-selected-foreground">
+        <div className="mb-2 flex items-center gap-1.5 rounded-lg border border-(--canvas-selection-border) bg-(--canvas-selection-tint-soft) px-2.5 py-1.5 text-[11px] text-(--canvas-selection-strong)">
           <Target size={12} className="shrink-0" />
           <span className="truncate font-mono font-medium">
-            {targetSummary(targetElement, draft?.body ? undefined : target.label, t)}
+            {targetSummary(
+              targetElement,
+              !draft?.body || sameElementTarget(draft.element, target.element)
+                ? target.label
+                : undefined,
+              t,
+            )}
           </span>
+        </div>
+      ) : null}
+
+      {otherDraft && !draft?.body ? (
+        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-subtle px-2 py-1.5 text-xs text-ink-muted">
+          <span>{t('另有未发送的批注草稿')}</span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setDraft(otherDraft)
+              setSendToAgent(otherDraft.sendToAgent)
+              setOtherDraft(null)
+            }}
+          >
+            {t('恢复原草稿')}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              writeAnnotationDraft(artifactId, null)
+              setOtherDraft(null)
+            }}
+          >
+            {t('放弃草稿')}
+          </Button>
         </div>
       ) : null}
 

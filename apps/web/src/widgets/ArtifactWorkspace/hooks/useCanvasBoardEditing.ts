@@ -130,8 +130,8 @@ export function useCanvasBoardEditing({
       })
       setPending(null)
       void query.invalidateQueries({ queryKey: artifactKeys.all })
-      onVersionSaved?.(saved.version)
       onSaved?.(saved.version)
+      onVersionSaved?.(saved.version)
     } catch (cause) {
       setPending({
         ...edit,

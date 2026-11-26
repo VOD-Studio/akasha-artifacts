@@ -61,6 +61,10 @@ interface ArtifactFrameProps {
   pins: readonly Feedback[]
   /** 图钉只打开原线程，不覆盖正在撰写的选区。 */
   onFocusPin: (feedback: Feedback) => void
+  /** 画布外层已绘制视口级选框时隐藏画板内重复描边。 */
+  hideSelectionBox?: boolean
+  /** 画布当前缩放倍率，用于保持批注图钉尺寸恒定可读。 */
+  pinScale?: number
   purpose: BoardFramePurpose
   /** 只有设计视图登记；试玩不接收设计视图的指认或编辑指令。 */
   register?: (id: string, frame: FrameConnection | null) => void
@@ -143,6 +147,8 @@ export function ArtifactFrame({
   notifyAgent,
   pins,
   onFocusPin,
+  hideSelectionBox,
+  pinScale,
   purpose,
   register,
   onReady,
@@ -712,6 +718,8 @@ export function ArtifactFrame({
           pins={versionPins}
           livePinRects={livePinRects}
           focusedFeedbackId={focusedFeedbackId}
+          hideSelectionBox={hideSelectionBox}
+          pinScale={pinScale}
           onSelectPin={onFocusPin}
         />
       )}

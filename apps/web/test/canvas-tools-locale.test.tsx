@@ -45,7 +45,7 @@ function showCanvas(readOnly = false, document = canvas) {
     replaceSource: vi.fn(),
     dismissDraft: vi.fn(),
   }
-  const onComment = vi.fn()
+  const onCommentPoint = vi.fn()
   render(
     <ArtifactCanvas
       document={document}
@@ -56,7 +56,7 @@ function showCanvas(readOnly = false, document = canvas) {
       onRevealHandled={vi.fn()}
       onLocationChange={vi.fn()}
       onClearElement={vi.fn()}
-      onComment={onComment}
+      onCommentPoint={onCommentPoint}
       exportVersion={version}
       boardEditing={readOnly ? undefined : editing}
       renderBoard={(board) => <p>{board.title}</p>}
@@ -65,7 +65,7 @@ function showCanvas(readOnly = false, document = canvas) {
       canAnimate={() => false}
     />,
   )
-  return { change, undo, onComment }
+  return { change, undo, onCommentPoint }
 }
 
 beforeEach(() => {
@@ -153,7 +153,7 @@ it('钢笔从铅笔旁的菜单打开，Esc 放弃，双击完成另一条折线
 })
 
 it('画板设置输入中不拦截单字符、撤销或 IME，切换语言不清空几何草稿', () => {
-  const { undo, onComment, change } = showCanvas()
+  const { undo, onCommentPoint, change } = showCanvas()
   fireEvent.keyDown(document.body, { key: 'h' })
   expect(screen.getByRole('button', { name: '抓手' }).getAttribute('aria-pressed')).toBe('true')
   fireEvent.click(screen.getByRole('button', { name: '设置画板：Poster' }))
@@ -171,13 +171,13 @@ it('画板设置输入中不拦截单字符、撤销或 IME，切换语言不清
   expect(screen.getByRole('button', { name: 'Handwerkzeug' }).getAttribute('aria-pressed')).toBe(
     'true',
   )
-  expect(onComment).not.toHaveBeenCalled()
+  expect(onCommentPoint).not.toHaveBeenCalled()
   expect(undo).not.toHaveBeenCalled()
   expect(change).not.toHaveBeenCalled()
 })
 
-it('只读画布保留浏览和批注快捷键，不显示也不能键盘唤起写工具', () => {
-  const { onComment, change } = showCanvas(true)
+it('只读画布保留浏览和批注工具模式，不显示也不能键盘唤起写工具', () => {
+  const { onCommentPoint, change } = showCanvas(true)
   fireEvent.keyDown(document.body, { key: 'p' })
   fireEvent.keyDown(document.body, { key: 'f' })
   expect(screen.queryByRole('button', { name: '选择绘图工具' })).toBeNull()
@@ -185,7 +185,12 @@ it('只读画布保留浏览和批注快捷键，不显示也不能键盘唤起�
   expect(screen.queryByRole('button', { name: '在Poster绘制折线' })).toBeNull()
   expect(change).not.toHaveBeenCalled()
   fireEvent.keyDown(document.body, { key: 'c' })
-  expect(onComment).toHaveBeenCalledOnce()
+  expect(screen.getByRole('button', { name: '画布批注' }).getAttribute('aria-pressed')).toBe('true')
+  expect(screen.getByRole('region', { name: '画布' }).dataset.tool).toBe('comment')
+  const commentHit = screen.getByRole('button', { name: '在Poster添加批注' })
+  vi.spyOn(commentHit, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 400, 200))
+  fireEvent.click(commentHit, { clientX: 80, clientY: 60 })
+  expect(onCommentPoint).toHaveBeenCalledOnce()
 })
 
 it('辅助线在画板固有坐标内显示；缩放菜单和快捷键只切换单选画板，不写快照', () => {
