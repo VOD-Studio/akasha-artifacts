@@ -31,7 +31,12 @@ import { selectionForVersion, syncProjectSelection, useSelectionStore } from '@/
 import { useWorkspaceStore } from '@/entities/workspace'
 import { SplitCodeEditor } from '@/features/code-editor'
 import type { CanvasExportSelection } from '@/features/export-design'
-import { ArtifactReviewPanel, selectActiveRound } from '@/features/review'
+import {
+  AnchoredAnnotationComposer,
+  type AnchoredAnnotationTarget,
+  ArtifactReviewPanel,
+  selectActiveRound,
+} from '@/features/review'
 import { VersionDiffView } from '@/features/version-diff'
 import { useVisualEdit, VisualEditPanel } from '@/features/visual-edit'
 import { getRequestErrorMessage } from '@/shared/api/error'
@@ -79,6 +84,8 @@ export interface ArtifactWorkspaceProps {
   onClearAddress?: () => void
   /** 将当前讨论定位写入路由，刷新后仍回到相同线程。 */
   onRememberThread?: (id: string) => void
+  /** 从批注线程打开原快照或 Agent 发布的版本并携带定位片段。 */
+  onOpenVersion?: (version: number, hash?: string) => void
   /** 只导出当前已保存快照中的画板，编辑器临时预览不提供出口。 */
   onExportBoard?: (boardId: string) => void
   /** 仅在已保存的画布可见时，供导出入口按需读取当前选区。 */
@@ -112,6 +119,7 @@ export function ArtifactWorkspace({
   fixedVersion,
   onClearAddress,
   onRememberThread,
+  onOpenVersion,
   onExportBoard,
   exportSelectionRef,
   onHandoff,
@@ -133,6 +141,11 @@ export function ArtifactWorkspace({
   const [inspectorReveal, setInspectorReveal] = useState<InspectorReveal | null>(null)
   const [inspectorPage, setInspectorPage] = useState('properties')
   const [layerFocusToken, setLayerFocusToken] = useState(0)
+  const [anchoredComment, setAnchoredComment] = useState<{
+    artifactId: string
+    version: number
+    target: AnchoredAnnotationTarget
+  } | null>(null)
   const clearInspectorReveal = useCallback(() => setInspectorReveal(null), [])
   const latestVersion = useMemo(() => {
     if (versions.length === 0) return version
@@ -382,23 +395,34 @@ export function ArtifactWorkspace({
     useWorkspaceStore.getState().setViewMode('preview')
     setInspectorReveal(location)
   }, [])
+  const handleHighlightElement = useCallback(
+    (element: ElementRef) => {
+      setSelectedElement(artifact.publicId, element)
+      const frameId = element.boardId ?? STANDALONE_BOARD_ID
+      frames.current.get(frameId)?.send({ type: 'highlight', element })
+    },
+    [artifact.publicId, setSelectedElement],
+  )
   const restoredThread = useRef<string | null>(null)
   const focusThread = useCallback(
-    (feedback: Feedback, reveal: boolean) => {
+    (feedback: Feedback, reveal: boolean, locateAcrossVersions = false) => {
       if (feedback.artifactId !== artifact.publicId) return
       useSelectionStore.getState().setFocusedFeedbackId(feedback.id)
       setInspectorTab('review')
-      if (!reveal || !feedback.element || feedback.version !== version.version) return
+      if (!reveal || !feedback.element) return
+      if (!locateAcrossVersions && feedback.version !== version.version) return
       if (savedIndex && !feedback.element.boardId) return
       const boardId = feedback.element.boardId ?? STANDALONE_BOARD_ID
       const active = savedCanvas.pages.find((page) => page.id === canvasLocation?.pageId)
       const includesBoard = (page: CanvasPage) => page.boards.some((board) => board.id === boardId)
       const page = active && includesBoard(active) ? active : savedCanvas.pages.find(includesBoard)
       if (page) revealBoard({ pageId: page.id, boardId })
+      handleHighlightElement(feedback.element)
     },
     [
       artifact.publicId,
       canvasLocation?.pageId,
+      handleHighlightElement,
       revealBoard,
       savedCanvas.pages,
       setInspectorTab,
@@ -409,40 +433,35 @@ export function ArtifactWorkspace({
 
   const focusAndRemember = useCallback(
     (feedback: Feedback, reveal: boolean) => {
-      restoredThread.current = `${version.version}:${feedback.id}`
+      restoredThread.current = `${version.version}:${feedback.id}:${reveal ? '1' : '0'}`
       focusThread(feedback, reveal)
       onRememberThread?.(feedback.id)
     },
     [focusThread, onRememberThread, version.version],
   )
 
-  const linkedThread = useMemo(
-    () => new URLSearchParams(address.replace(/^#/, '')).get('thread'),
-    [address],
-  )
+  const threadHash = useMemo(() => {
+    const params = new URLSearchParams(address.replace(/^#/, ''))
+    return {
+      thread: params.get('thread'),
+      locate: params.get('locate') === '1',
+    }
+  }, [address])
   useEffect(() => {
-    if (!linkedThread) {
+    if (!threadHash.thread) {
       restoredThread.current = null
       return
     }
-    const key = `${version.version}:${linkedThread}`
+    const key = `${version.version}:${threadHash.thread}:${threadHash.locate ? '1' : '0'}`
     if (restoredThread.current === key) return
     const feedback = feedbacks.find(
-      (entry) => entry.id === linkedThread && isAnnotationKind(entry.kind),
+      (entry) => entry.id === threadHash.thread && isAnnotationKind(entry.kind),
     )
     if (feedback) {
       restoredThread.current = key
-      focusThread(feedback, true)
+      focusThread(feedback, true, threadHash.locate)
     }
-  }, [feedbacks, focusThread, linkedThread, version.version])
-  const handleHighlightElement = useCallback(
-    (element: ElementRef) => {
-      setSelectedElement(artifact.publicId, element)
-      const frameId = element.boardId ?? STANDALONE_BOARD_ID
-      frames.current.get(frameId)?.send({ type: 'highlight', element })
-    },
-    [artifact.publicId, setSelectedElement],
-  )
+  }, [feedbacks, focusThread, threadHash.locate, threadHash.thread, version.version])
   const sendBoard = useCallback(
     (boardId: string, message: Parameters<FrameConnection['send']>[0]) =>
       frames.current.get(boardId)?.send(message),
@@ -641,6 +660,80 @@ export function ArtifactWorkspace({
     useWorkspaceStore.getState().setViewMode('edit')
   }
 
+  // 热更新推进版本时不卸载未发送的选区批注浮层，沿用其发起时的原版本与目标草稿。
+  const activeAnchoredComment =
+    canComment && anchoredComment?.artifactId === artifact.publicId ? anchoredComment : null
+
+  const draftingRound = !access && activeRound?.status === 'drafting' ? activeRound : null
+  const resolveAnchoredElement = (): { element: ElementRef; label?: string } | null => {
+    if (selectedElement) {
+      const label =
+        selectedLayer?.label ??
+        (selectedDesignLayer &&
+        (selectedDesignLayer.kind === 'text' || selectedDesignLayer.kind === 'note')
+          ? selectedDesignLayer.text.slice(0, 40)
+          : undefined) ??
+        selectedElement.textPreview
+      return { element: selectedElement, label }
+    }
+    if (selectedDesignLayer && activeBoard) {
+      const textLabel =
+        selectedDesignLayer.kind === 'text' || selectedDesignLayer.kind === 'note'
+          ? selectedDesignLayer.text.slice(0, 40)
+          : undefined
+      return {
+        element: {
+          ...(activeBoard.scoped ? { boardId: activeBoard.id } : {}),
+          blockId: `${DESIGN_LAYER_BLOCK_PREFIX}${selectedDesignLayer.id}`,
+          ...(textLabel ? { textPreview: textLabel } : {}),
+        },
+        label: textLabel ?? activeBoard.title,
+      }
+    }
+    if (selectedLayer && activeBoard) {
+      return {
+        element: {
+          ...(activeBoard.scoped ? { boardId: activeBoard.id } : {}),
+          selector: selectedLayer.selector,
+          ...(!activeBoard.scoped && selectedLayer.sourceLoc
+            ? { loc: selectedLayer.sourceLoc }
+            : {}),
+          ...(selectedLayer.label ? { textPreview: selectedLayer.label } : {}),
+        },
+        label: selectedLayer.label || activeBoard.title,
+      }
+    }
+    if (inspectedBoardLayout?.scoped) {
+      return {
+        element: { boardId: inspectedBoardLayout.id, blockId: inspectedBoardLayout.id },
+        label: inspectedBoardLayout.title,
+      }
+    }
+    return null
+  }
+  const openAnchoredComment = (anchor?: { x: number; y: number }) => {
+    if (!canComment) {
+      setInspectorTab('review')
+      return
+    }
+    const resolved = resolveAnchoredElement()
+    if (!resolved || !anchor) {
+      if (resolved) handleHighlightElement(resolved.element)
+      setInspectorTab('review')
+      return
+    }
+    handleHighlightElement(resolved.element)
+    setAnchoredComment({
+      artifactId: artifact.publicId,
+      version: version.version,
+      target: {
+        anchor,
+        element: resolved.element,
+        label: resolved.label,
+      },
+    })
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-canvas">
       <main className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
@@ -690,13 +783,7 @@ export function ArtifactWorkspace({
             onLocationChange={setCanvasLocation}
             onSelectPoint={canvas === savedCanvas ? inspection.pickPoint : undefined}
             onClearElement={inspection.clearPoint}
-            onComment={() => {
-              if (canComment && !selectedElement && inspectedBoardLayout?.scoped) {
-                const boardId = inspectedBoardLayout.id
-                handleHighlightElement({ boardId, blockId: boardId })
-              }
-              setInspectorTab('review')
-            }}
+            onComment={openAnchoredComment}
             boardEditing={canEditBoards ? boardEditing : undefined}
             historyEditing={canEditText ? boardEditing : undefined}
             textTools={canEditText ? inlineText.tools : undefined}
@@ -725,7 +812,7 @@ export function ArtifactWorkspace({
                       editing={canEditText ? boardEditing : undefined}
                       textTools={canEditText ? inlineText.tools : undefined}
                       onApplyRuntimeOp={runtimeVisualTarget.applyOp}
-                      onComment={() => setInspectorTab('review')}
+                      onComment={(point) => openAnchoredComment(point)}
                     />
                   )
                 : undefined
@@ -800,6 +887,7 @@ export function ArtifactWorkspace({
         threads={threads}
         pageFeedbackIds={pageFeedbackIds}
         onFocusThread={(feedback) => focusAndRemember(feedback, true)}
+        onOpenVersion={onOpenVersion}
       />
       <BoardInspector
         artifact={artifact}
@@ -840,6 +928,20 @@ export function ArtifactWorkspace({
           onClose={inlineText.close}
           onSave={inlineText.save}
           onAnnotate={inlineText.annotate}
+        />
+      ) : null}
+      {activeAnchoredComment ? (
+        <AnchoredAnnotationComposer
+          artifactId={artifact.publicId}
+          projectId={artifact.projectId}
+          version={version.version}
+          originVersion={activeAnchoredComment.version}
+          target={activeAnchoredComment.target}
+          activeDraftingRound={draftingRound}
+          notifyAgent={!access}
+          onClose={() => setAnchoredComment(null)}
+          onOpenAllDiscussions={() => setInspectorTab('review')}
+          onOpenVersion={onOpenVersion}
         />
       ) : null}
     </div>

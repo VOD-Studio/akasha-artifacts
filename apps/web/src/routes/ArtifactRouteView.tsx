@@ -258,16 +258,17 @@ export function ArtifactRouteView({
     openAgent({ label, reference: getHandoffReference(detail, scope) })
   const openShare = () =>
     setShareTarget({ artifact: detail.artifact, version: detail.version, canvas: detail.canvas })
-  const openVersion = (version?: number) => {
+  const openVersion = (version?: number, nextHash?: string) => {
     const publicId = detail.artifact.publicId
+    const hash = nextHash !== undefined ? nextHash : address
     if (version === undefined) {
-      void navigate({ to: '/a/$publicId', params: { publicId }, hash: address, search: true })
+      void navigate({ to: '/a/$publicId', params: { publicId }, hash, search: true })
       return
     }
     void navigate({
       to: '/a/$publicId/v/$version',
       params: { publicId, version: String(version) },
-      hash: address,
+      hash,
       search: true,
     })
   }
@@ -329,6 +330,7 @@ export function ArtifactRouteView({
             fixedVersion={viewingFixedVersion}
             onClearAddress={clearAddress}
             onRememberThread={rememberThread}
+            onOpenVersion={openVersion}
             onExportBoard={openExport}
             exportSelectionRef={exportSelectionRef}
             onHandoff={openHandoff}

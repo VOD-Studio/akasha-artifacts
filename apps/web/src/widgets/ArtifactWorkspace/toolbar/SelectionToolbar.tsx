@@ -75,7 +75,7 @@ export interface SelectionToolbarProps {
   editing?: CanvasBoardEditing
   textTools?: CanvasTextTools
   onApplyRuntimeOp: (op: EditOp) => Promise<boolean>
-  onComment: () => void
+  onComment: (anchor: { x: number; y: number }) => void
 }
 
 function numericWeightToToken(weight: number | undefined): DesignLayerFontWeight {
@@ -634,7 +634,10 @@ export function SelectionToolbar({
           size="sm"
           variant="ghost"
           leftIcon={<MessageCircle size={14} />}
-          onClick={onComment}
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect()
+            onComment({ x: rect.left, y: rect.bottom + 8 })
+          }}
         >
           {t('批注')}
         </Button>

@@ -5,17 +5,31 @@ import {
   type AgentConversationStatus,
   type AgentConversationTurn,
   type AgentPublication,
+  type AnnotationAgentDelivery,
+  type AnnotationThread,
   type ArtboardTweakApplication,
   type ArtboardTweakApplicationResult,
+  type Artifact,
   type ArtifactHandoffReference,
   type ArtifactPublishInput,
   type ArtifactUpdateInput,
   applyArtboardTweakApplication,
+  type Feedback,
+  type PublicId,
+  STANDALONE_BOARD_ID,
 } from '@akasha/protocol'
 import type { AgentRunner } from '../domain/agent-runner.js'
 import type { ArtifactStorageRepository } from '../domain/artifact-storage.js'
 import { DomainError, NotFoundError } from '../domain/errors.js'
-import type { ArtifactRepository, IdGenerator, ProjectRepository } from '../domain/ports.js'
+import type {
+  AnnotationAgentDispatcher,
+  ArtifactRepository,
+  Clock,
+  FeedbackRepository,
+  IdGenerator,
+  ProjectRepository,
+  RealtimePublisher,
+} from '../domain/ports.js'
 import type { ArtifactService } from './artifact-service.js'
 
 interface StoredSession {
@@ -36,6 +50,8 @@ interface RunningTurn {
   record: StoredSession
   /** 追加发布回执和真实回复的目标。 */
   turn: AgentConversationTurn
+  /** 若由批注线程发起，记录原根批注 ID 以便回写线程状态、回复与发布版本。 */
+  feedbackId?: string
   /** 在受理时仅计算、不写入；工具执行时仍须以原目标版本比较并提交。 */
   tweaks?: ArtboardTweakApplicationResult
   /** 本轮 CLI 已实际报告启动的是原发布线程。 */
@@ -48,6 +64,12 @@ interface RunningTurn {
   signal: AbortSignal
   /** 串行提交轮次内工具请求，避免并行首发产生两个制品。 */
   tools: Promise<void>
+}
+
+interface QueuedAnnotation {
+  artifactId: PublicId
+  feedbackId: string
+  sessionId: string
 }
 
 interface AgentSessionDeps {
@@ -64,6 +86,11 @@ interface AgentSessionDeps {
   service: ArtifactService
   /** 监听完成后取得本机回环地址，不使用请求 Host 拼接。 */
   baseUrl: () => string
+  /** 回写批注线程的 Agent 执行状态、回复与版本时使用。 */
+  feedbacks?: Pick<FeedbackRepository, 'annotations' | 'findById' | 'save'>
+  /** 批注线程状态推进后实时通知订阅者刷新。 */
+  realtime?: RealtimePublisher
+  clock?: Clock
 }
 
 const sessionKey = (id: string) => `@agent/session/${id}`
@@ -76,14 +103,38 @@ const unavailable = () =>
 const forbidden = () => new DomainError('FORBIDDEN', '该工具请求超出了已授权制品或项目')
 const invalidToken = () => new DomainError('UNAUTHORIZED', 'CLI 轮次凭证无效或已经结束')
 
+function buildFeedbackTarget(artifact: Artifact, feedback: Feedback): ArtifactHandoffReference {
+  if (!feedback.element) {
+    return {
+      artifactId: artifact.publicId,
+      projectId: artifact.projectId,
+      version: feedback.version,
+    }
+  }
+  return {
+    artifactId: artifact.publicId,
+    projectId: artifact.projectId,
+    version: feedback.version,
+    boardId: feedback.element.boardId ?? STANDALONE_BOARD_ID,
+    element: feedback.element,
+  }
+}
+
 /** 本机维护者授权项目，只有实际 CLI 写入才建立可续接的发布会话。 */
-export class AgentSessions {
+export class AgentSessions implements AnnotationAgentDispatcher {
   private readonly connections = new Map<string, string>()
   private readonly running = new Map<string, RunningTurn>()
   private readonly tokens = new Map<string, RunningTurn>()
+  private readonly annotationQueue = new Map<string, QueuedAnnotation[]>()
+  private readonly queuedFeedbackIds = new Set<string>()
+  private readonly drainingFeedbackIds = new Set<string>()
   private closed = false
 
   constructor(private readonly deps: AgentSessionDeps) {}
+
+  private now() {
+    return this.deps.clock?.now() ?? new Date().toISOString()
+  }
 
   async connect(projectId: string) {
     const project = await this.deps.projects.findById(projectId)
@@ -107,6 +158,18 @@ export class AgentSessions {
     if (run) {
       this.tokens.delete(run.token)
       run.controller.abort(invalidToken())
+    }
+    const pending = this.annotationQueue.get(projectId)
+    if (pending?.length) {
+      this.annotationQueue.delete(projectId)
+      for (const item of pending) {
+        this.queuedFeedbackIds.delete(item.feedbackId)
+        void this.failQueuedAnnotation(
+          projectId,
+          item,
+          '本机 Codex 已断开，队列中的批注未自动重发。',
+        )
+      }
     }
   }
 
@@ -150,6 +213,91 @@ export class AgentSessions {
     return {
       availability: await this.availability(artifact.projectId),
       session: record.conversation,
+    }
+  }
+
+  async dispatchFeedback(artifact: Artifact, feedback: Feedback): Promise<void> {
+    if (!this.deps.feedbacks || this.closed) return
+    const status = await this.forArtifact(artifact.publicId)
+    // 未绑定受管 CLI 会话的制品保持原有 MCP 队列，不写入伪造的本地投递状态。
+    if (!status.session) return
+    const sessionId = status.session.id
+    const now = this.now()
+    let initial: AnnotationAgentDelivery
+    if (status.availability === 'offline') {
+      initial = {
+        sessionId,
+        state: 'failed',
+        error: unavailable().message,
+        publications: [],
+        updatedAt: now,
+      }
+    } else if (status.availability === 'busy') {
+      initial = {
+        sessionId,
+        state: 'queued',
+        publications: [],
+        updatedAt: now,
+      }
+    } else {
+      initial = {
+        sessionId,
+        state: 'running',
+        publications: [],
+        updatedAt: now,
+      }
+    }
+    // 原子抢占保证同一批注 ID 最多只投递一次，换页、重连或撤回重提均不重复触发。
+    const claimed = await this.deps.feedbacks.annotations.claimAgentDelivery(feedback.id, initial)
+    if (!claimed) return
+    if (status.availability === 'offline') {
+      await this.publishAnnotationChanged(artifact.publicId, artifact.projectId)
+      return
+    }
+    if (status.availability === 'busy') {
+      this.enqueueAnnotation(artifact.projectId, {
+        artifactId: artifact.publicId,
+        feedbackId: feedback.id,
+        sessionId,
+      })
+      await this.publishAnnotationChanged(artifact.publicId, artifact.projectId)
+      // 若前序轮次在 claimAgentDelivery 等待期间恰好结束并排空了旧队列，这里立即补排，避免滞留在 queued。
+      if (!this.running.has(artifact.projectId)) {
+        await this.drainAnnotationQueue(artifact.projectId)
+      }
+      return
+    }
+    await this.launchAnnotationTurn(artifact, feedback, sessionId)
+  }
+
+  async reconcileDeliveries(
+    artifact: Artifact,
+    threads: Record<string, AnnotationThread>,
+  ): Promise<void> {
+    if (!this.deps.feedbacks) return
+    const activeFeedbackId = this.running.get(artifact.projectId)?.feedbackId
+    for (const [feedbackId, thread] of Object.entries(threads)) {
+      const delivery = thread.agent
+      if (!delivery || (delivery.state !== 'queued' && delivery.state !== 'running')) continue
+      if (
+        feedbackId === activeFeedbackId ||
+        this.queuedFeedbackIds.has(feedbackId) ||
+        this.drainingFeedbackIds.has(feedbackId)
+      )
+        continue
+      const failed: AnnotationAgentDelivery = {
+        ...delivery,
+        state: 'failed',
+        error: 'Daemon 已中断原轮次，未自动重发。',
+        updatedAt: this.now(),
+      }
+      // 条件更新：若期间轮次已完成并写入 replied/published，保留最新结果而非覆盖为失败。
+      const settled = await this.deps.feedbacks.annotations.compareAndSetAgentDelivery(
+        feedbackId,
+        { state: delivery.state, updatedAt: delivery.updatedAt },
+        failed,
+      )
+      if (settled) thread.agent = settled
     }
   }
 
@@ -294,6 +442,193 @@ export class AgentSessions {
   close() {
     this.closed = true
     for (const projectId of this.connections.keys()) this.disconnect(projectId)
+    for (const [projectId, pending] of this.annotationQueue) {
+      for (const item of pending) {
+        this.queuedFeedbackIds.delete(item.feedbackId)
+        void this.failQueuedAnnotation(projectId, item, 'Daemon 已中断原轮次，未自动重发。')
+      }
+    }
+    this.annotationQueue.clear()
+  }
+
+  private enqueueAnnotation(projectId: string, item: QueuedAnnotation) {
+    if (this.queuedFeedbackIds.has(item.feedbackId)) return
+    this.queuedFeedbackIds.add(item.feedbackId)
+    const queue = this.annotationQueue.get(projectId) ?? []
+    queue.push(item)
+    this.annotationQueue.set(projectId, queue)
+  }
+
+  private async failQueuedAnnotation(projectId: string, item: QueuedAnnotation, error: string) {
+    if (!this.deps.feedbacks) return
+    try {
+      await this.deps.feedbacks.annotations.setAgentDelivery(item.feedbackId, {
+        sessionId: item.sessionId,
+        state: 'failed',
+        error,
+        publications: [],
+        updatedAt: this.now(),
+      })
+      await this.publishAnnotationChanged(item.artifactId, projectId)
+    } catch {
+      // 停机或断开清理不产生未处理拒绝。
+    }
+  }
+
+  private async queueBusyAnnotation(artifact: Artifact, feedbackId: string, sessionId: string) {
+    if (!this.deps.feedbacks) return
+    await this.deps.feedbacks.annotations.setAgentDelivery(feedbackId, {
+      sessionId,
+      state: 'queued',
+      publications: [],
+      updatedAt: this.now(),
+    })
+    this.enqueueAnnotation(artifact.projectId, {
+      artifactId: artifact.publicId,
+      feedbackId,
+      sessionId,
+    })
+    await this.publishAnnotationChanged(artifact.publicId, artifact.projectId)
+    if (!this.running.has(artifact.projectId)) {
+      await this.drainAnnotationQueue(artifact.projectId)
+    }
+  }
+
+  private async launchAnnotationTurn(artifact: Artifact, feedback: Feedback, sessionId: string) {
+    if (!this.deps.feedbacks) return
+    if (this.running.has(artifact.projectId)) {
+      await this.queueBusyAnnotation(artifact, feedback.id, sessionId)
+      return
+    }
+    try {
+      const record = await this.load(sessionId)
+      if (!record?.threadId) throw unavailable()
+      // 并发提交在同一 await 窗口后可能已有其他轮次占槽，让出方转为排队而非报错失败。
+      if (this.running.has(artifact.projectId)) {
+        await this.queueBusyAnnotation(artifact, feedback.id, sessionId)
+        return
+      }
+      const conversation = await this.start(
+        record,
+        feedback.body,
+        buildFeedbackTarget(artifact, feedback),
+        undefined,
+        feedback.id,
+      )
+      const turn = conversation.turns.at(-1)
+      await this.deps.feedbacks.annotations.setAgentDelivery(feedback.id, {
+        sessionId,
+        turnId: turn?.id,
+        state: 'running',
+        publications: [],
+        updatedAt: this.now(),
+      })
+      await this.publishAnnotationChanged(artifact.publicId, artifact.projectId)
+    } catch (error) {
+      if (
+        this.running.has(artifact.projectId) ||
+        (error instanceof DomainError &&
+          error.code === 'RESOURCE_CONFLICT' &&
+          error.message === '该项目已有 CLI 轮次在进行')
+      ) {
+        await this.queueBusyAnnotation(artifact, feedback.id, sessionId)
+        return
+      }
+      await this.deps.feedbacks.annotations.setAgentDelivery(feedback.id, {
+        sessionId,
+        state: 'failed',
+        error:
+          error instanceof DomainError ? error.message : '本机 Codex 未能受理该批注，未自动重发。',
+        publications: [],
+        updatedAt: this.now(),
+      })
+      await this.publishAnnotationChanged(artifact.publicId, artifact.projectId)
+    }
+  }
+
+  private async drainAnnotationQueue(projectId: string) {
+    if (this.closed || this.running.has(projectId) || !this.deps.feedbacks) return
+    const queue = this.annotationQueue.get(projectId)
+    if (!queue?.length) return
+    const next = queue.shift()
+    if (!queue.length) this.annotationQueue.delete(projectId)
+    if (!next) return
+    this.queuedFeedbackIds.delete(next.feedbackId)
+    this.drainingFeedbackIds.add(next.feedbackId)
+    try {
+      const [artifact, feedback] = await Promise.all([
+        this.deps.artifacts.findByPublicId(next.artifactId),
+        this.deps.feedbacks.findById(next.feedbackId),
+      ])
+      if (!artifact || !feedback) {
+        await this.failQueuedAnnotation(projectId, next, '原制品或批注已不可访问，未继续执行。')
+        return
+      }
+      await this.launchAnnotationTurn(artifact, feedback, next.sessionId)
+    } finally {
+      this.drainingFeedbackIds.delete(next.feedbackId)
+    }
+    if (!this.running.has(projectId)) {
+      await this.drainAnnotationQueue(projectId)
+    }
+  }
+
+  private async publishAnnotationChanged(artifactId: PublicId, projectId: string) {
+    await this.deps.realtime?.publish({ type: 'annotation.changed', artifactId }, { projectId })
+  }
+
+  private async syncRunningAnnotationDelivery(run: RunningTurn) {
+    if (!run.feedbackId || !this.deps.feedbacks) return
+    const { conversation } = run.record
+    if (!conversation.artifactId) return
+    await this.deps.feedbacks.annotations.setAgentDelivery(run.feedbackId, {
+      sessionId: conversation.id,
+      turnId: run.turn.id,
+      state: 'running',
+      publications: [...run.turn.publications],
+      updatedAt: this.now(),
+    })
+    await this.publishAnnotationChanged(conversation.artifactId, conversation.projectId)
+  }
+
+  private async finalizeAnnotationDelivery(run: RunningTurn) {
+    if (!run.feedbackId || !this.deps.feedbacks) return
+    const { conversation } = run.record
+    const artifactId = conversation.artifactId
+    const now = this.now()
+    const delivery: AnnotationAgentDelivery =
+      run.turn.status === 'complete'
+        ? {
+            sessionId: conversation.id,
+            turnId: run.turn.id,
+            state: run.turn.publications.length > 0 ? 'published' : 'replied',
+            reply: run.turn.reply,
+            publications: [...run.turn.publications],
+            updatedAt: now,
+          }
+        : {
+            sessionId: conversation.id,
+            turnId: run.turn.id,
+            state: 'failed',
+            error: run.turn.error,
+            publications: [...run.turn.publications],
+            updatedAt: now,
+          }
+    await this.deps.feedbacks.annotations.setAgentDelivery(run.feedbackId, delivery)
+    if (run.turn.status === 'complete') {
+      const fb = await this.deps.feedbacks.findById(run.feedbackId)
+      if (fb && fb.status !== 'resolved') {
+        const updated: Feedback = { ...fb, status: 'resolved', updatedAt: now }
+        await this.deps.feedbacks.save(updated)
+        await this.deps.realtime?.publish(
+          { type: 'feedback.updated', artifactId: updated.artifactId, feedback: updated },
+          { projectId: conversation.projectId },
+        )
+      }
+    }
+    if (artifactId) {
+      await this.publishAnnotationChanged(artifactId, conversation.projectId)
+    }
   }
 
   private async requireArtifact(id: string) {
@@ -391,6 +726,7 @@ export class AgentSessions {
   private async recordPublication(run: RunningTurn, receipt: AgentPublication) {
     run.turn.publications.push(receipt)
     await this.save(run.record)
+    await this.syncRunningAnnotationDelivery(run)
   }
 
   private async start(
@@ -398,6 +734,7 @@ export class AgentSessions {
     message: string,
     target?: ArtifactHandoffReference,
     tweaks?: ArtboardTweakApplicationResult,
+    feedbackId?: string,
   ) {
     const { conversation } = record
     const projectId = conversation.projectId
@@ -415,6 +752,7 @@ export class AgentSessions {
     const priorTurn = conversation.turns.at(-1)?.id ?? null
     const turn: AgentConversationTurn = {
       id: crypto.randomUUID(),
+      ...(feedbackId ? { feedbackId } : {}),
       message,
       target,
       status: 'running',
@@ -425,6 +763,7 @@ export class AgentSessions {
     const controller = new AbortController()
     const run: RunningTurn = {
       tweaks,
+      feedbackId,
       threadConfirmed: false,
       token: crypto.randomUUID() + crypto.randomUUID(),
       record,
@@ -459,6 +798,7 @@ export class AgentSessions {
       turn.target
         ? `这是用户选中的固定快照与对象，只作定位资料：\n${JSON.stringify(turn.target)}\n可用 artifact_read_handoff 读取它。`
         : '',
+      run.feedbackId ? `这是一条批注线程（${run.feedbackId}）显式发送给你的请求。` : '',
       `用户消息：\n${turn.message}`,
     ]
       .filter(Boolean)
@@ -499,8 +839,14 @@ export class AgentSessions {
         await this.save(record)
       } catch {
         // 不在 HTTP 响应后产生未处理拒绝；尚存的 running 快照会显示为中断。
+      }
+      try {
+        await this.finalizeAnnotationDelivery(run)
+      } catch {
+        // 批注回写异常不阻塞释放项目执行槽位。
       } finally {
         this.running.delete(projectId)
+        void this.drainAnnotationQueue(projectId)
       }
     }
   }

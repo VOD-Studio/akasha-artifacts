@@ -1,5 +1,6 @@
 import type { ArtifactIdentifier, ArtifactTransferInput, Author, PublicId } from '@akasha/protocol'
 import type {
+  AnnotationAgentDispatcher,
   ArtifactRepository,
   Clock,
   FeedbackRepository,
@@ -60,6 +61,8 @@ export interface ArtifactServiceDeps {
   realtime: RealtimePublisher
   clock: Clock
   ids: IdGenerator
+  /** 仅本机受管 Agent 装配时注入，用于将显式投递的批注路由至已绑定会话。 */
+  annotationAgent?: AnnotationAgentDispatcher
 }
 
 /**

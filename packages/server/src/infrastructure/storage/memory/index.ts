@@ -362,11 +362,37 @@ export class InMemoryFeedbackRepository implements FeedbackRepository {
         if (resolution) this.discussions.set(id, { replies: [], resolution: { ...resolution } })
       } else if (resolution) {
         thread.resolution ??= { ...resolution }
-      } else if (thread.replies.length) {
+      } else if (thread.replies.length || thread.agent) {
         thread.resolution = null
       } else {
         this.discussions.delete(id)
       }
+    },
+    claimAgentDelivery: async (id, delivery) => {
+      const existing = this.discussions.get(id)
+      if (existing?.agent) return false
+      const thread = existing ?? { replies: [], resolution: null }
+      thread.agent = structuredClone(delivery)
+      this.discussions.set(id, thread)
+      return true
+    },
+    setAgentDelivery: async (id, delivery) => {
+      const thread = this.discussions.get(id) ?? { replies: [], resolution: null }
+      thread.agent = structuredClone(delivery)
+      this.discussions.set(id, thread)
+    },
+    compareAndSetAgentDelivery: async (id, expected, next) => {
+      const thread = this.discussions.get(id)
+      const current = thread?.agent
+      if (current && current.state === expected.state && current.updatedAt === expected.updatedAt) {
+        thread.agent = structuredClone(next)
+        return structuredClone(next)
+      }
+      return current ? structuredClone(current) : undefined
+    },
+    getAgentDelivery: async (id) => {
+      const agent = this.discussions.get(id)?.agent
+      return agent ? structuredClone(agent) : undefined
     },
   }
 

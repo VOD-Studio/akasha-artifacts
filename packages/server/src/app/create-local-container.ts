@@ -146,6 +146,7 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
   const receipts = persistentBackend ? persistentBackend.receipts : new InMemoryReceiptRepository()
   const artifactStorage = persistentBackend?.artifactStorage ?? new InMemoryArtifactStorage()
 
+  let annotationAgent: AgentSessions | undefined
   const service = new ArtifactService({
     projects,
     artifacts,
@@ -156,6 +157,14 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
     realtime,
     clock,
     ids,
+    annotationAgent: options.agentRunner
+      ? {
+          dispatchFeedback: (artifact, feedback) =>
+            annotationAgent?.dispatchFeedback(artifact, feedback) ?? Promise.resolve(),
+          reconcileDeliveries: (artifact, threads) =>
+            annotationAgent?.reconcileDeliveries(artifact, threads) ?? Promise.resolve(),
+        }
+      : undefined,
   })
 
   // .artifacts/ 原生文件模式下启用文件监听：外部编辑自动生成新版本并广播到 WS（保态重绘）
@@ -367,9 +376,13 @@ export function createLocalContainer(options: LocalContainerOptions = {}) {
         artifacts,
         ids,
         service,
+        feedbacks,
+        realtime,
+        clock,
         baseUrl: () => `http://${options.agentHost ?? '127.0.0.1'}:${daemonState.port}`,
       })
     : undefined
+  annotationAgent = agentSessions
 
   const app = createHttpApp({
     service,

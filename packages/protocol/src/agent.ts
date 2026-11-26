@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { ArtboardTweakApplicationSchema } from './artboard/tweak-application.js'
+import { AgentPublicationSchema } from './domain.js'
 import { PublicIdSchema } from './primitives.js'
 import { ArtifactHandoffReferenceSchema } from './transport/mcp.js'
 
@@ -25,22 +26,11 @@ export const ApplyRequestedTweaksInputSchema = z.strictObject({})
 export const AgentAvailabilitySchema = z.enum(['unbound', 'offline', 'busy', 'ready'])
 export type AgentAvailability = z.infer<typeof AgentAvailabilitySchema>
 
-export const AgentPublicationSchema = z.object({
-  /** 实际写入成功的制品标识，不接受模型在正文中声明的链接。 */
-  artifactId: PublicIdSchema,
-  /** 本会话提交成功的固定版本。 */
-  version: z.number().int().positive(),
-  /** 仅参数应用回执携带；记录该固定版本中默认值实际改变的画板。 */
-  changed: z
-    .array(z.object({ id: z.string(), title: z.string() }))
-    .min(1)
-    .optional(),
-})
-export type AgentPublication = z.infer<typeof AgentPublicationSchema>
-
 export const AgentConversationTurnSchema = z.object({
   /** 服务端分配给一次已接受发送的标识。 */
   id: z.uuid(),
+  /** 由批注线程触发时记录原根批注 ID，便于在对话与批注间双向审计。 */
+  feedbackId: z.string().min(1).optional(),
   /** 交付给 CLI 的用户原文。 */
   message: z.string(),
   /** 用户发送时的固定选区；后续版本不会改写它。 */

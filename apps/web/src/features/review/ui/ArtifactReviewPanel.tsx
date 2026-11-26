@@ -32,6 +32,7 @@ interface ArtifactReviewPanelProps {
   /** 讨论记录以根批注 ID 为键。Agent 回执状态仍在 feedbacks 中。 */
   threads?: Readonly<Record<string, AnnotationThread>>
   onFocusThread?: (feedback: Feedback) => void
+  onOpenVersion?: (version: number, hash: string) => void
 }
 
 function InspectorContent({
@@ -45,6 +46,7 @@ function InspectorContent({
   pageFeedbackIds,
   threads,
   onFocusThread,
+  onOpenVersion,
 }: ArtifactReviewPanelProps) {
   const { t } = useMessages(panelMessages)
   const selectedElement = useSelectionStore((s) =>
@@ -160,6 +162,7 @@ function InspectorContent({
                 isFocused={feedback.id === focusedFeedbackId}
                 focusedCard={focusedCard}
                 onFocusFeedback={focusFeedback}
+                onOpenVersion={onOpenVersion}
               />
             ))}
           </div>

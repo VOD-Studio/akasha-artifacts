@@ -319,12 +319,57 @@ export const AnnotationResolutionSchema = z.object({
 })
 export type AnnotationResolution = z.infer<typeof AnnotationResolutionSchema>
 
+/** 已绑定 Agent 在一轮执行中真实发布的制品版本回执，不接受模型正文里的自述链接。 */
+export const AgentPublicationSchema = z.object({
+  // 实际写入成功的制品标识
+  artifactId: PublicIdSchema,
+  // 本轮提交成功的固定版本号
+  version: z.number().int().positive(),
+  // 仅参数应用回执携带；记录该固定版本中默认值实际改变的画板
+  changed: z
+    .array(z.object({ id: z.string(), title: z.string() }))
+    .min(1)
+    .optional(),
+})
+export type AgentPublication = z.infer<typeof AgentPublicationSchema>
+
+/** 批注线程经由本机已绑定 Agent 执行时的真实状态；与 MCP 收件回执相互独立。 */
+export const AnnotationAgentStateSchema = z.enum([
+  'queued', // 已绑定 Agent 正忙，本条已入队等待前序轮次完成
+  'running', // 已绑定 Agent 正在执行本条批注
+  'replied', // 已收到真实 Agent 回复，但本轮未发布新版本
+  'published', // 已收到真实 Agent 回复，并发布了至少一个新版本
+  'failed', // 投递或执行失败（如离线、中断、超时或无正文回复）
+])
+export type AnnotationAgentState = z.infer<typeof AnnotationAgentStateSchema>
+
+/** 批注线程关联的已绑定 Agent 执行回执、真实正文回复与发布版本。 */
+export const AnnotationAgentDeliverySchema = z.object({
+  // 关联的本机 Agent 会话标识；离线或未启动轮次时可省略
+  sessionId: z.uuid().optional(),
+  // 关联的 Agent 会话轮次标识；排队或启动前可省略
+  turnId: z.uuid().optional(),
+  // 真实执行状态；用于区分排队、处理中、失败、仅回复与已发布版本
+  state: AnnotationAgentStateSchema,
+  // Agent CLI 返回的最后一条真实助手正文，不得用发布回执替代
+  reply: z.string().optional(),
+  // 失败原因（仅用户可处理提示，不含敏感环境细节）
+  error: z.string().optional(),
+  // 本轮经受限发布通道实际落库的版本列表
+  publications: z.array(AgentPublicationSchema),
+  // 最近一次状态更新的服务端时间
+  updatedAt: ISODateTimeSchema,
+})
+export type AnnotationAgentDelivery = z.infer<typeof AnnotationAgentDeliverySchema>
+
 /** 根批注之外的浏览器讨论记录；按 `Feedback.id` 关联。 */
 export const AnnotationThreadSchema = z.object({
   // 回复按创建时间升序展示
   replies: z.array(AnnotationReplySchema),
   // null 表示未解决或重新打开
   resolution: AnnotationResolutionSchema.nullable(),
+  // 显式投递给已绑定 Agent 后的执行状态、回复与版本；普通讨论或未绑定时为空
+  agent: AnnotationAgentDeliverySchema.optional(),
 })
 export type AnnotationThread = z.infer<typeof AnnotationThreadSchema>
 

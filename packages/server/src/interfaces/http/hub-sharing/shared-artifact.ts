@@ -76,7 +76,12 @@ export async function serveSharedArtifact(c: Context, input: SharedRequest) {
     return c.json({
       items: await workspace.resolveLegacyFeedback(artifact, items),
       threads: Object.fromEntries(
-        items.flatMap(({ id }) => (threads[id] ? [[id, threads[id]]] : [])),
+        items.flatMap(({ id }) => {
+          const thread = threads[id]
+          if (!thread) return []
+          const { agent: _omitAgent, ...publicThread } = thread
+          return [[id, publicThread]]
+        }),
       ),
     })
   }
