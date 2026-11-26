@@ -50,7 +50,12 @@ import { useOverviewPlayback } from '../hooks/useOverviewPlayback'
 import { useViewportSize } from '../hooks/useViewportSize'
 import { fitSelection } from '../lib/canvas-arrangement'
 import { type Camera, fitCamera, type Point, pointInBoard, zoomCamera } from '../lib/canvas-camera'
-import { indexViewportBoards, MAX_ANIMATED_BOARDS, planViewport } from '../lib/canvas-viewport'
+import {
+  indexViewportBoards,
+  MAX_ANIMATED_BOARDS,
+  MAX_DETAIL_BOARDS,
+  planViewport,
+} from '../lib/canvas-viewport'
 import type { CanvasPageEditing } from '../navigation/CanvasPageDialog'
 import { CanvasPlaybackMenu } from '../navigation/CanvasPlaybackMenu'
 import { PageNavigator } from '../navigation/PageNavigator'
@@ -602,6 +607,7 @@ export function ArtifactCanvas({
   })
   const { dragging, wheelActive } = cameraInput
   const recent = useRef<{ index: typeof viewportIndex; ids: ReadonlySet<string> } | null>(null)
+  const mounted = useRef<{ index: typeof viewportIndex; ids: ReadonlySet<string> } | null>(null)
   const plan = useMemo(
     () =>
       planViewport(
@@ -615,9 +621,26 @@ export function ArtifactCanvas({
       ),
     [viewportIndex, camera, size, selected, firstBoard?.id, keyboardBoard, moved, showOverview],
   )
-  useLayoutEffect(() => {
-    recent.current = showOverview ? { index: viewportIndex, ids: plan.runtime } : null
+  // 常规画板数量下，已挂载的实稿 iframe 在缩放进出期间保持常驻，避免缩小再放大触发重建与模糊闪烁。
+  const effectiveRuntime = useMemo(() => {
+    if (!showOverview || viewportIndex.byId.size > MAX_DETAIL_BOARDS) return plan.runtime
+    const retained = mounted.current?.index === viewportIndex ? mounted.current.ids : null
+    if (!retained?.size) return plan.runtime
+    const merged = new Set(plan.runtime)
+    for (const id of retained) {
+      if (viewportIndex.byId.has(id)) merged.add(id)
+    }
+    return merged
   }, [showOverview, viewportIndex, plan.runtime])
+  useLayoutEffect(() => {
+    if (!showOverview) {
+      recent.current = null
+      mounted.current = null
+      return
+    }
+    recent.current = { index: viewportIndex, ids: plan.runtime }
+    mounted.current = { index: viewportIndex, ids: effectiveRuntime }
+  }, [showOverview, viewportIndex, plan.runtime, effectiveRuntime])
   const animatedIds = useMemo(() => {
     if (!showOverview || !motion.allowsAnimation) return NO_MOTION
     const ids = new Set<string>()
@@ -1071,7 +1094,7 @@ export function ArtifactCanvas({
                 const bounds = boundsFor(board.id)
                 if (!bounds) return null
                 const detailed =
-                  (showOverview && plan.runtime.has(board.id)) ||
+                  (showOverview && effectiveRuntime.has(board.id)) ||
                   (board === standalone && !activePresentation)
                 const interactive =
                   !handActive &&

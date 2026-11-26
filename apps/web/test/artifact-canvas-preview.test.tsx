@@ -255,3 +255,25 @@ it('页面隐藏时暂停已运行画板，返回时不重建帧而恢复动画'
   )
   expect(screen.getByTitle('画板内容：动效封面')).toBe(frame)
 })
+
+it('大幅缩小画布再放大时不卸载已加载的画板，极小倍率下隐藏未选中板头避免标题重叠', () => {
+  showWorkspace()
+  const viewport = screen.getByRole('region', { name: '画布' })
+  const desktopFrame = screen.getByTitle<HTMLIFrameElement>('画板内容：宽屏首页')
+  const desktopHeader = screen
+    .getByRole('button', { name: '宽屏首页' })
+    .closest<HTMLElement>('.artifact-canvas-board-header')
+  expect(desktopHeader?.dataset.compact).toBeUndefined()
+
+  for (let i = 0; i < 18; i += 1) {
+    fireEvent.wheel(viewport, { deltaY: 300, ctrlKey: true, clientX: 500, clientY: 300 })
+  }
+  expect(screen.getByTitle('画板内容：宽屏首页')).toBe(desktopFrame)
+  expect(desktopHeader?.dataset.compact).toBe('true')
+
+  for (let i = 0; i < 18; i += 1) {
+    fireEvent.wheel(viewport, { deltaY: -300, ctrlKey: true, clientX: 500, clientY: 300 })
+  }
+  expect(screen.getByTitle('画板内容：宽屏首页')).toBe(desktopFrame)
+  expect(desktopHeader?.dataset.compact).toBeUndefined()
+})

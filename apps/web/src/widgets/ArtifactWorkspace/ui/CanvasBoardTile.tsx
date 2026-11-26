@@ -48,6 +48,9 @@ export function CanvasBoardTile({
   children,
 }: CanvasBoardTileProps) {
   const { t, dir } = useMessages(canvasToolsMessages)
+  const pixelWidth = bounds.width * camera.scale
+  const pixelHeight = bounds.height * camera.scale
+  const compactHeader = !isSelected && (pixelWidth < 110 || pixelHeight < 64)
   return (
     <div
       className="artifact-canvas-board"
@@ -55,11 +58,15 @@ export function CanvasBoardTile({
       style={{
         left: camera.x + bounds.x * camera.scale,
         top: camera.y + bounds.y * camera.scale,
-        width: bounds.width * camera.scale,
-        height: bounds.height * camera.scale,
+        width: pixelWidth,
+        height: pixelHeight,
       }}
     >
-      <div dir={dir} className="artifact-canvas-board-header">
+      <div
+        dir={dir}
+        data-compact={compactHeader ? 'true' : undefined}
+        className="artifact-canvas-board-header"
+      >
         {/* 标题、命中区与尺寸柄的指针边界由画布布局决定。 */}
         <button
           type="button"

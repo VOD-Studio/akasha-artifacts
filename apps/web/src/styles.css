@@ -317,7 +317,13 @@ body,
   inset-inline-start: 0;
   display: inline-flex;
   align-items: center;
-  max-width: max(68px, 100%);
+  max-width: 100%;
+  transition: opacity 140ms ease-out;
+}
+
+.artifact-canvas-board-header[data-compact="true"] {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .artifact-canvas-board-title {
