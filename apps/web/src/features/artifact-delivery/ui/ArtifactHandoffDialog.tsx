@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { useMessages } from '@/shared/i18n'
 import { messages } from '../messages'
+import { CodingSessionTargets } from './CodingSessionTargets'
 
 /** 打开交接时立即固定版本和目标，不随画布或头版本切换。 */
 export interface ArtifactHandoffTarget {
@@ -18,7 +19,7 @@ interface ArtifactHandoffDialogProps {
   onClose: () => void
 }
 
-/** 不在网页调用 Agent；复制给当前项目中已配置 Akasha MCP 的 CLI。 */
+/** 前台会话可直接绑定；仅需固定引用时仍可复制给通用 MCP。 */
 export function ArtifactHandoffDialog({ target, onClose }: ArtifactHandoffDialogProps) {
   const { t } = useMessages(messages)
   const [copying, setCopying] = useState(false)
@@ -55,29 +56,33 @@ export function ArtifactHandoffDialog({ target, onClose }: ArtifactHandoffDialog
           <bdi>{target.label}</bdi> · <bdi dir="ltr">v{target.reference.version}</bdi>
         </>
       }
-      footer={
+    >
+      <CodingSessionTargets reference={target.reference} />
+      <details className="mt-4">
+        <summary className="cursor-pointer text-sm">{t('复制固定引用')}</summary>
+        <p className="mb-3 text-sm text-ink-muted">
+          {t(
+            '请粘贴到同一项目中已配置 Akasha MCP 的 CLI。交接不会启动会话、授予访问权或传递凭据。',
+          )}
+        </p>
+        <Textarea
+          aria-label={t('交接内容')}
+          dir="ltr"
+          readOnly
+          onFocus={(event) => event.currentTarget.select()}
+          value={description}
+          rows={8}
+          className="font-mono"
+        />
         <Button size="sm" loading={copying} onClick={() => void copyHandoff()}>
           {t('复制')}
         </Button>
-      }
-    >
-      <p className="mb-3 text-sm text-ink-muted">
-        {t('请粘贴到同一项目中已配置 Akasha MCP 的 CLI。交接不会启动会话、授予访问权或传递凭据。')}
-      </p>
-      <Textarea
-        aria-label={t('交接内容')}
-        dir="ltr"
-        readOnly
-        onFocus={(event) => event.currentTarget.select()}
-        value={description}
-        rows={8}
-        className="font-mono"
-      />
-      {copyFailed ? (
-        <p role="status" className="mt-2 text-sm text-ink-muted">
-          {t('无法访问剪贴板，请手动复制交接内容。')}
-        </p>
-      ) : null}
+        {copyFailed ? (
+          <p role="status" className="mt-2 text-sm text-ink-muted">
+            {t('无法访问剪贴板，请手动复制交接内容。')}
+          </p>
+        ) : null}
+      </details>
     </Modal>
   )
 }

@@ -217,6 +217,8 @@ The default scope is `private`, isolated by user and artifact. `shared` is reada
 
 ### Resume a coding session
 
+To select a live target, run `akasha coding connect --label checkout` in the local checkout and leave the terminal open. In a remote checkout (including a browser IDE terminal) run `akasha login --hub <origin>` and `akasha coding connect --hub <origin> --project-id <id> --label checkout`. On the artifact choose **Hand off to agent → Refresh targets → Hand off to checkout**. The waiting terminal receives the pinned design; reopening the dialog for that selection lets you resume the same session. The Hub never starts a process on either machine.
+
 In the project checkout, save the JSON object from **Hand off to Agent** as `handoff.json`. The following commands use the returned session ID, never a token:
 
 ```sh

@@ -1,4 +1,8 @@
-import { CodingSessionConnectSchema, CodingSessionPublishSchema } from '@akasha/protocol'
+import {
+  ArtifactHandoffReferenceSchema,
+  CodingSessionConnectSchema,
+  CodingSessionPublishSchema,
+} from '@akasha/protocol'
 import type { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { publishCodingSession } from '../../../application/coding-publication.js'
@@ -14,15 +18,45 @@ export function mountCodingSessionRoutes(
   deps: HttpAppDeps,
   store: ArtifactStorageRepository,
 ) {
-  const sessions = new CodingSessions(store, deps.artifacts, deps.projects, deps.clock)
+  const sessions = new CodingSessions(
+    store,
+    deps.artifacts,
+    deps.projects,
+    deps.clock,
+    deps.codingOwnerActive,
+  )
   const root = '/api/v1/projects/:project/coding-sessions'
+  const smallBody = bodyLimit({ maxSize: 128 * 1024 })
+  app.use(root, smallBody)
+  app.use(`${root}/targets`, smallBody)
+  app.use(`${root}/:id/bind`, smallBody)
   app.use(`${root}/:id/publish`, bodyLimit({ maxSize: 16 * 1024 * 1024 }))
+  const tokenFor = (authorization?: string) =>
+    authorization?.match(/^Bearer ([a-f0-9]{64})$/)?.[1] ?? ''
   app.post(root, async (c) => {
     if (deps.security?.token && c.req.header('authorization') !== `Bearer ${deps.security.token}`)
       throw new DomainError('FORBIDDEN', '请在项目终端签入编码会话')
     const { label, reference } = await parseJsonBody(c.req.raw, CodingSessionConnectSchema)
     c.header('Cache-Control', 'no-store')
-    return c.json(await sessions.connect(c.req.param('project'), label, reference), 201)
+    const expiry = deps.codingOwnerActive ? Number(c.req.header('x-akasha-cli-expiry')) : undefined
+    return c.json(await sessions.connect(c.req.param('project'), label, reference, expiry), 201)
+  })
+  app.post(`${root}/targets`, async (c) => {
+    const reference = await parseJsonBody(c.req.raw, ArtifactHandoffReferenceSchema)
+    return c.json(await sessions.targets(c.req.param('project'), reference))
+  })
+  app.post(`${root}/:id/bind`, async (c) => {
+    const reference = await parseJsonBody(c.req.raw, ArtifactHandoffReferenceSchema)
+    return c.json(await sessions.bind(c.req.param('project'), c.req.param('id'), reference))
+  })
+  app.post(`${root}/:id/poll`, async (c) => {
+    return c.json(
+      await sessions.poll(
+        c.req.param('project'),
+        c.req.param('id'),
+        tokenFor(c.req.header('authorization')),
+      ),
+    )
   })
   app.post(`${root}/:id/read`, async (c) => {
     c.header('Cache-Control', 'no-store')
@@ -30,7 +64,7 @@ export function mountCodingSessionRoutes(
       await sessions.read(
         c.req.param('project'),
         c.req.param('id'),
-        c.req.header('authorization')?.match(/^Bearer ([a-f0-9]{64})$/)?.[1] ?? '',
+        tokenFor(c.req.header('authorization')),
       ),
     )
   })
@@ -39,7 +73,7 @@ export function mountCodingSessionRoutes(
     const reference = await sessions.authorize(
       c.req.param('project'),
       id,
-      c.req.header('authorization')?.match(/^Bearer ([a-f0-9]{64})$/)?.[1] ?? '',
+      tokenFor(c.req.header('authorization')),
     )
     const input = await parseJsonBody(c.req.raw, CodingSessionPublishSchema)
     return c.json(await publishCodingSession(deps, id, reference, input), 201)

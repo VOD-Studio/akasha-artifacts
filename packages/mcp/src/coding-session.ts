@@ -1,8 +1,11 @@
 import {
+  CodingSessionPollSchema,
   type CodingSessionPublication,
+  CodingSessionPublicationSchema,
   type CodingSessionPublish,
   CodingSessionPublishSchema,
   type CodingSessionRead,
+  CodingSessionReadSchema,
   ErrorEnvelopeSchema,
 } from '@akasha/protocol'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
@@ -20,15 +23,23 @@ export interface CodingConnection {
 export class CodingSessionClient {
   constructor(private readonly connection: CodingConnection) {}
 
-  read(): Promise<CodingSessionRead> {
-    return this.request('read')
+  async read(): Promise<CodingSessionRead> {
+    const result = CodingSessionReadSchema.parse(await this.request('read'))
+    if (result.reference.projectId !== this.connection.projectId)
+      throw new Error('返回的设计不属于绑定项目')
+    return result
   }
 
-  publish(input: CodingSessionPublish): Promise<CodingSessionPublication> {
-    return this.request('publish', input)
+  /** 仅前台连接签报可用；读取已有会话不会将其重新列为待分配目标。 */
+  async poll(): Promise<{ bound: boolean }> {
+    return CodingSessionPollSchema.parse(await this.request('poll'))
   }
 
-  private async request<T>(action: string, input?: CodingSessionPublish): Promise<T> {
+  async publish(input: CodingSessionPublish): Promise<CodingSessionPublication> {
+    return CodingSessionPublicationSchema.parse(await this.request('publish', input))
+  }
+
+  private async request(action: string, input?: CodingSessionPublish): Promise<unknown> {
     const { origin, projectId, id, token } = this.connection
     const url = new URL(
       `/api/v1/projects/${encodeURIComponent(projectId)}/coding-sessions/${encodeURIComponent(id)}/${action}`,

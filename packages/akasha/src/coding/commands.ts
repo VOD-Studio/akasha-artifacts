@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import { CodingSessionClient, runCodingSessionMcp } from '@akasha/mcp'
 import {
   ArtifactReadHandoffInputSchema,
@@ -10,7 +11,6 @@ import {
 import { ensureDaemon } from '../daemon/lifecycle.js'
 import { resolveAkashaHome } from '../daemon/state.js'
 import { parseHubOrigin, readHubLogin } from '../hub/login.js'
-
 import { readCodingPublication } from './publication.js'
 
 /** 签入需要作者凭证，其他动作仅从项目外的私有文件恢复已授权的会话。 */
@@ -24,10 +24,9 @@ export async function runCodingCommand(
   const sessions = path.join(home, 'coding-sessions')
   if (action === 'connect') {
     const file = flag('handoff')
-    if (!file) throw new Error('请用 --handoff 指定交接 JSON 文件')
-    const { handoff: reference } = ArtifactReadHandoffInputSchema.parse(
-      JSON.parse(await fs.readFile(file, 'utf8')),
-    )
+    const reference = file
+      ? ArtifactReadHandoffInputSchema.parse(JSON.parse(await fs.readFile(file, 'utf8'))).handoff
+      : undefined
     const hub = flag('hub')
     let origin: string
     let ownerToken: string
@@ -45,7 +44,8 @@ export async function runCodingCommand(
       ownerToken = daemon.state.token
       projectId = daemon.projectId
     }
-    if (projectId !== reference.projectId) throw new Error('交接不属于此编码工作区绑定的项目')
+    if (!projectId || (reference && projectId !== reference.projectId))
+      throw new Error('交接不属于此编码工作区绑定的项目')
     const response = await fetch(
       new URL(`/api/v1/projects/${encodeURIComponent(projectId)}/coding-sessions`, origin),
       {
@@ -69,6 +69,17 @@ export async function runCodingCommand(
       { mode: 0o600, flag: 'wx' },
     )
     console.log(`会话 ${grant.id} · ${projectId} · 有效至 ${grant.expiresAt}`)
+    if (!reference) {
+      const client = new CodingSessionClient({
+        origin,
+        projectId,
+        id: grant.id,
+        token: grant.token,
+      })
+      console.log('保持此终端打开，在作品的「移交给 Agent」中选择此会话。')
+      while (!(await client.poll()).bound) await delay(3000)
+      console.log(JSON.stringify(await client.read(), null, 2))
+    }
     return 0
   }
   if (action !== 'read' && action !== 'mcp' && action !== 'publish')

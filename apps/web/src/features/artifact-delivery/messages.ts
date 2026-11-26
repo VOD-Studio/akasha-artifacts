@@ -2,6 +2,22 @@ import type { Messages } from '@/shared/i18n'
 
 export const messages = {
   '移交给 Agent': ['An Agent übergeben', 'تسليم إلى الوكيل', 'Hand off to agent'],
+  编码会话: ['Coding-Sitzungen', 'جلسات البرمجة', 'Coding sessions'],
+  刷新目标: ['Ziele aktualisieren', 'تحديث الوجهات', 'Refresh targets'],
+  复制固定引用: ['Feste Referenz kopieren', 'نسخ المرجع الثابت', 'Copy pinned reference'],
+  '暂无可用会话。在目标工程的终端运行以下命令，再刷新目标。': [
+    'Keine Sitzung verfügbar. Diese Befehle im Terminal des Zielprojekts ausführen, dann die Ziele aktualisieren.',
+    'لا توجد جلسة متاحة. شغّل الأوامر التالية في طرفية المشروع المستهدف ثم حدّث الوجهات.',
+    'No sessions available. Run these commands in the target project terminal, then refresh targets.',
+  ],
+  '移交到 {label}': ['An {label} übergeben', 'تسليم إلى {label}', 'Hand off to {label}'],
+  '续接 {label}': ['{label} fortsetzen', 'استئناف {label}', 'Resume {label}'],
+  '已绑定：{label}': ['Verbunden: {label}', 'تم الربط: {label}', 'Bound to {label}'],
+  '在已授权工程中续接，或为 Claude Code 配置此会话。': [
+    'Im autorisierten Projekt fortsetzen oder diese Sitzung für Claude Code einrichten.',
+    'استأنف في المشروع المصرّح به أو اضبط هذه الجلسة لاستخدام Claude Code.',
+    'Resume in the authorized checkout or configure this session for Claude Code.',
+  ],
   '请用 Akasha MCP 的 artifact_read_handoff 工具读取以下固定版本的设计。': [
     'Lies diese feste Designversion mit dem Werkzeug artifact_read_handoff von Akasha MCP.',
     'اقرأ هذا الإصدار الثابت من التصميم بأداة artifact_read_handoff في Akasha MCP.',
