@@ -81,7 +81,7 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
   }, [])
 
   const canManage = cloudHub ? hubSession?.member === true : authorized
-  const resume = !cloudHub && canManage && canResume && !canCreate
+  const resume = !cloudHub && canManage && canResume
   const openDesign = () => setShowCreateDesign(true)
   const closeDesign = () => setShowCreateDesign(false)
   const openWithdrawn = () => setShowWithdrawn(true)
@@ -209,7 +209,7 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
                 cards={layout === 'cards'}
                 hasArtifacts={hasArtifacts}
                 cloudHub={cloudHub}
-                onCreate={canCreate ? openDesign : undefined}
+                onCreate={canCreate && !resume ? openDesign : undefined}
                 onResetFilters={resetFilters}
                 onOpenArtifact={onOpenArtifact}
               />
