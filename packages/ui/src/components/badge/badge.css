@@ -7,10 +7,10 @@
   /* —— 标签 —— */
 
   .v-tag {
-    --v-tag-height: 1.5rem;
-    --v-tag-padding-inline: 0.625rem;
-    --v-tag-font-size: 0.75rem;
-    --v-tag-bg: var(--muted);
+    --v-tag-height: 1.375rem;
+    --v-tag-padding-inline: 0.4375rem;
+    --v-tag-font-size: 0.6875rem;
+    --v-tag-bg: color-mix(in oklab, var(--foreground) 5%, transparent);
     --v-tag-fg: var(--muted-foreground);
 
     box-sizing: border-box;
@@ -22,7 +22,7 @@
     margin: 0;
     padding: 0 var(--v-tag-padding-inline);
     border: 0;
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-6, 6px);
     background-color: var(--v-tag-bg);
     color: var(--v-tag-fg);
     font-family: inherit;
@@ -161,31 +161,31 @@
   /* —— 状态徽章 —— */
 
   .v-badge {
-    --v-badge-bg: var(--muted);
-    --v-badge-fg: var(--foreground);
+    --v-badge-bg: color-mix(in oklab, var(--foreground) 5%, transparent);
+    --v-badge-fg: var(--muted-foreground);
     --v-badge-dot: var(--muted-foreground);
-    --v-badge-ring: color-mix(in oklab, var(--foreground) 8%, transparent);
+    --v-badge-ring: color-mix(in oklab, var(--foreground) 7%, transparent);
 
     box-sizing: border-box;
     display: inline-flex;
     flex-shrink: 0;
     align-items: center;
-    gap: 0.375rem;
-    block-size: 1.5rem;
-    padding: 0 0.625rem;
-    border-radius: var(--radius-full);
+    gap: 0.3125rem;
+    block-size: 1.375rem;
+    padding: 0 0.4375rem;
+    border-radius: var(--radius-6, 6px);
     background-color: var(--v-badge-bg);
     box-shadow: inset 0 0 0 1px var(--v-badge-ring);
     color: var(--v-badge-fg);
-    font-size: 0.75rem;
+    font-size: 0.6875rem;
     font-weight: 500;
     line-height: 1;
     white-space: nowrap;
   }
 
   .v-badge__dot {
-    inline-size: 0.375rem;
-    block-size: 0.375rem;
+    inline-size: 0.3125rem;
+    block-size: 0.3125rem;
     flex-shrink: 0;
     border-radius: 50%;
     background-color: var(--v-badge-dot);

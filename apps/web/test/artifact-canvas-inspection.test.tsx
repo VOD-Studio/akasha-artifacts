@@ -422,6 +422,15 @@ it('图层树默认折叠 svg 子树，检查器属性随选中的 HTML 文本�
   expect(svgToggle.getAttribute('aria-expanded')).toBe('false')
   expect(within(inspector).queryByRole('button', { name: '<rect>' })).toBeNull()
 
+  // 展开 svg 并选中子图层 <rect> 后，直接点击父节点收起箭头也能立刻收起
+  fireEvent.click(svgToggle)
+  const rectBtn = within(inspector).getByRole('button', { name: '<rect>' })
+  fireEvent.click(rectBtn)
+  expect(rectBtn.getAttribute('aria-pressed')).toBe('true')
+  fireEvent.click(within(inspector).getByRole('button', { name: '折叠图层' }))
+  expect(within(inspector).queryByRole('button', { name: '<rect>' })).toBeNull()
+  fireEvent.click(within(inspector).getByRole('button', { name: '宽屏首页' }))
+
   // 未选元素时展示画板外观属性，不展示元素排版区块
   expect(within(inspector).getByText('外观')).toBeTruthy()
   expect(within(inspector).queryByText('排版与文字')).toBeNull()

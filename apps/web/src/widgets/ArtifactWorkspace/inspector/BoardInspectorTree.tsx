@@ -1,5 +1,4 @@
 import type { CanvasLayer } from '@akasha/protocol'
-import { Badge } from '@akasha/ui/badge'
 import { ScrollArea } from '@akasha/ui/scroll-area'
 import { ChevronRight, Hash } from 'lucide-react'
 import { useState } from 'react'
@@ -52,9 +51,7 @@ export function BoardInspectorTree({
     <section aria-label={t('页面、画板与图层')} className="border-b border-border/80 pb-3">
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <h2 className="text-xs font-semibold text-ink-muted">{t('页面、画板与图层')}</h2>
-        <Badge tone="neutral" className="font-mono tabular-nums">
-          v{version}
-        </Badge>
+        <span className="font-mono text-[11px] text-ink-muted tabular-nums">v{version}</span>
       </div>
       <ScrollArea
         aria-label={t('页面、画板与图层')}

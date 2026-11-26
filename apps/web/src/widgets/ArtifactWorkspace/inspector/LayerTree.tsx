@@ -87,13 +87,28 @@ export function LayerTree({ layers, selectedId, selectedIds, onSelect }: LayerTr
     return { groups, parents }
   }, [layers])
 
-  const forcedOpen = useMemo(() => {
-    const ancestors = new Set<string>()
-    for (let cursor = selectedId ? parents.get(selectedId) : undefined; cursor; ) {
-      ancestors.add(cursor)
-      cursor = parents.get(cursor)
+  // 仅当选区切换到新图层时自动展开其祖先路径，之后允许用户随时手动收起父节点。
+  const expandedSelectionRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!selectedId || expandedSelectionRef.current === selectedId) return
+    expandedSelectionRef.current = selectedId
+    const ancestors: string[] = []
+    for (let cursor = parents.get(selectedId); cursor; cursor = parents.get(cursor)) {
+      ancestors.push(cursor)
     }
-    return ancestors
+    if (ancestors.length > 0) {
+      setToggles((prev) => {
+        let changed = false
+        const next = new Map(prev)
+        for (const id of ancestors) {
+          if (next.get(id) !== true) {
+            next.set(id, true)
+            changed = true
+          }
+        }
+        return changed ? next : prev
+      })
+    }
   }, [parents, selectedId])
 
   useEffect(() => {
@@ -103,7 +118,6 @@ export function LayerTree({ layers, selectedId, selectedIds, onSelect }: LayerTr
   }, [selectedId])
 
   const isExpanded = (layer: CanvasLayer) => {
-    if (forcedOpen.has(layer.id)) return true
     const manual = toggles.get(layer.id)
     if (manual !== undefined) return manual
     return defaultExpanded(layer)

@@ -5,11 +5,10 @@ import {
   type VersionSummary,
 } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
-import { Field } from '@akasha/ui/field'
 import { Input } from '@akasha/ui/input'
 import { Radio, RadioGroup } from '@akasha/ui/radio'
-import { X } from 'lucide-react'
-import { type FormEvent, useState } from 'react'
+import { ChevronRight, X } from 'lucide-react'
+import { type FormEvent, useId, useState } from 'react'
 import type { CanvasBoard } from '@/entities/artifact'
 import { useMessages } from '@/shared/i18n'
 import type { CanvasBoardEditing } from '../hooks/useCanvasBoardEditing'
@@ -88,15 +87,28 @@ function GuideList({ guides, onRemove }: GuideListProps) {
 /** 版式和辅助线共用打开草稿时的版本，一次保存只占一个撤销步骤。 */
 export function BoardPrintSettings({ board, editing }: BoardPrintSettingsProps) {
   const { t } = useMessages(boardPrintMessages)
+  const [open, setOpen] = useState(false)
   const layout = board.printLayout ?? fixed
   return (
-    <details className="border-t border-border pt-2 text-sm">
-      <summary className="cursor-pointer font-medium">{t('打印与辅助线')}</summary>
-      {editing ? (
-        <PrintForm board={board} editing={editing} />
-      ) : (
-        <div className="mt-2 space-y-2">
-          <p>
+    <div className="border-t border-border/75 pt-2.5 text-xs">
+      <button
+        type="button"
+        aria-expanded={open}
+        className="flex h-7 w-full items-center gap-1.5 rounded-md px-1 text-start text-xs font-medium text-ink transition-colors hover:bg-surface-subtle"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <ChevronRight
+          size={13}
+          className={`shrink-0 text-ink-muted transition-transform duration-150 ${
+            open ? 'rotate-90' : ''
+          }`}
+        />
+        <span>{t('打印与辅助线')}</span>
+      </button>
+      {open && editing ? <PrintForm board={board} editing={editing} /> : null}
+      {open && !editing ? (
+        <div className="mt-2 space-y-2 ps-1">
+          <p className="text-ink-muted">
             {layout.mode === 'flow' ? t('流式') : t('固定')} ·{' '}
             <bdi dir="ltr">
               {layout.mode === 'flow'
@@ -106,13 +118,14 @@ export function BoardPrintSettings({ board, editing }: BoardPrintSettingsProps) 
           </p>
           <GuideList guides={board.layoutGuides ?? noGuides} />
         </div>
-      )}
-    </details>
+      ) : null}
+    </div>
   )
 }
 
 function PrintForm({ board, editing }: Required<BoardPrintSettingsProps>) {
   const { t } = useMessages(boardPrintMessages)
+  const positionId = useId()
   const currentLayout = board.printLayout ?? fixed
   const currentGuides = board.layoutGuides ?? noGuides
   const [draft, setDraft] = useState<PrintDraft | null>(null)
@@ -212,37 +225,61 @@ function PrintForm({ board, editing }: Required<BoardPrintSettingsProps>) {
             <Radio value="x" label={t('垂直')} />
             <Radio value="y" label={t('水平')} />
           </RadioGroup>
-          <Field label={t('位置（px）')} error={duplicate ? t('此位置已有辅助线') : undefined}>
-            <Input
-              type="number"
-              dir="ltr"
-              controlSize="sm"
-              step="any"
-              min={0}
-              max={span}
-              value={input}
-              onChange={(event) => setInput(event.currentTarget.value)}
-              onKeyDown={(event) => {
-                if (event.key !== 'Enter') return
-                event.preventDefault()
-                addGuide()
-              }}
-            />
-          </Field>
-          <Button type="button" variant="outline" size="sm" disabled={!canAdd} onClick={addGuide}>
-            {t('添加辅助线')}
-          </Button>
+          <div className="space-y-1">
+            <div className="grid grid-cols-[5.25rem_1fr] items-center gap-2">
+              <label htmlFor={positionId} className="text-xs text-ink-muted">
+                {t('位置（px）')}
+              </label>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  id={positionId}
+                  type="number"
+                  dir="ltr"
+                  controlSize="sm"
+                  step="any"
+                  min={0}
+                  max={span}
+                  aria-invalid={duplicate || undefined}
+                  className="flex-1"
+                  value={input}
+                  onChange={(event) => setInput(event.currentTarget.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter') return
+                    event.preventDefault()
+                    addGuide()
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!canAdd}
+                  className="h-7 shrink-0 rounded-md px-2 text-xs"
+                  onClick={addGuide}
+                >
+                  {t('添加辅助线')}
+                </Button>
+              </div>
+            </div>
+            {duplicate ? (
+              <p role="alert" className="text-[11px] text-destructive">
+                {t('此位置已有辅助线')}
+              </p>
+            ) : null}
+          </div>
         </div>
-        <div>
-          <Button
-            type="submit"
-            size="sm"
-            disabled={!canSave}
-            loading={editing.draft?.status === 'saving'}
-          >
-            {t('保存打印设置')}
-          </Button>
-        </div>
+        {draft !== null ? (
+          <div>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={!canSave}
+              loading={editing.draft?.status === 'saving'}
+            >
+              {t('保存打印设置')}
+            </Button>
+          </div>
+        ) : null}
       </fieldset>
       {stale && (
         <div role="alert" className="space-y-1">

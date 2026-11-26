@@ -1,5 +1,6 @@
 import { ARTBOARD_GEOMETRY_LIMITS, type VersionSummary } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
+import { Spinner } from '@akasha/ui/indicator'
 import { Popover, PopoverContent, PopoverTrigger } from '@akasha/ui/popover'
 import { AlertCircle, Download, Ellipsis, Focus, Play, RotateCcw } from 'lucide-react'
 import { type MouseEventHandler, useState } from 'react'
@@ -222,10 +223,7 @@ export function CanvasBoardEditNotice({ editing }: { editing: CanvasBoardEditing
         role="status"
         className="inline-flex items-center gap-2 rounded-full border border-ol bg-card/92 px-3 py-1.5 text-xs text-ink-muted shadow-(--shadow-float) backdrop-blur-md"
       >
-        <span
-          aria-hidden="true"
-          className="size-1.5 animate-pulse rounded-full bg-(--canvas-selection)"
-        />
+        <Spinner size={16} aria-hidden="true" className="text-(--canvas-selection)" />
         <span>{t('正在保存…')}</span>
       </div>
     )

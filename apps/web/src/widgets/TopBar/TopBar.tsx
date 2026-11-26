@@ -25,6 +25,8 @@ export interface TopBarProps {
   /** 有值时普通制品链接固定到正在查看的历史版本。 */
   fixedVersion?: number
   feedbackCount?: number
+  /** 未解决批注数量，用于决定顶栏批注图标右上角提示点是否点亮；缺省时回退到 `feedbackCount`。 */
+  unresolvedCount?: number
   hasActiveRound?: boolean
   onBackToLibrary: () => void
   /** 打开基于当前允许读取版本的整份制品导出。 */
@@ -51,6 +53,7 @@ export function TopBar({
   versions,
   fixedVersion,
   feedbackCount = 0,
+  unresolvedCount,
   hasActiveRound = false,
   onBackToLibrary,
   onExport,
@@ -148,7 +151,11 @@ export function TopBar({
             <span className="sr-only sm:not-sr-only">{t('会话')}</span>
           </Button>
         ) : null}
-        <WorkspacePanelButtons feedbackCount={feedbackCount} hasActiveRound={hasActiveRound} />
+        <WorkspacePanelButtons
+          feedbackCount={feedbackCount}
+          unresolvedCount={unresolvedCount}
+          hasActiveRound={hasActiveRound}
+        />
         {canManage && onShare && (
           <Button
             size="sm"

@@ -1,6 +1,6 @@
 import { Button } from '@akasha/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@akasha/ui/popover'
-import { Check, ChevronDown, MessageCircle, ScanLine } from 'lucide-react'
+import { ChevronDown, MessageCircle, ScanLine } from 'lucide-react'
 import { useState } from 'react'
 import { useSelectionStore } from '@/entities/selection'
 import { useWorkspaceStore } from '@/entities/workspace'
@@ -10,13 +10,16 @@ import { messages } from '../messages'
 /**
  * 顶栏右侧工作区控制组：
  * - 检查器按钮切换属性/源码/参数抽屉；
- * - 批注主按钮控制画布上的批注图钉显隐，右侧下拉箭头展开「查看全部批注」与显隐选项。
+ * - 批注主按钮控制画布上的批注图钉显隐，有未解决批注时在图标右上角展示提示点；
+ * - 右侧下拉箭头打开「查看全部批注」快捷入口。
  */
 export function WorkspacePanelButtons({
   feedbackCount,
+  unresolvedCount,
   hasActiveRound,
 }: {
   feedbackCount: number
+  unresolvedCount?: number
   hasActiveRound: boolean
 }) {
   const { t, number } = useMessages(messages)
@@ -27,6 +30,7 @@ export function WorkspacePanelButtons({
   const [menuOpen, setMenuOpen] = useState(false)
   const inspectOpen = panel === 'inspect'
   const reviewOpen = panel === 'review'
+  const hasUnreadIndicator = (unresolvedCount ?? feedbackCount) > 0
 
   const toggleInspect = () => setPanel(inspectOpen ? null : 'inspect')
   const toggleReview = () => {
@@ -59,7 +63,7 @@ export function WorkspacePanelButtons({
       </Button>
 
       <div
-        className={`inline-flex items-center rounded-lg border transition-colors ${
+        className={`group inline-flex items-center rounded-lg border transition-colors ${
           showComments
             ? 'border-(--canvas-selection-border) bg-(--canvas-selection-tint)'
             : 'border-transparent hover:bg-surface-subtle'
@@ -80,8 +84,9 @@ export function WorkspacePanelButtons({
           onClick={toggleShowComments}
         >
           <MessageCircle size={15} className={showComments ? 'fill-current/15' : undefined} />
-          {feedbackCount > 0 ? (
+          {hasUnreadIndicator ? (
             <span
+              data-testid="comments-unread-dot"
               aria-hidden="true"
               className="absolute top-1 end-1 size-1.5 rounded-full bg-(--canvas-selection) ring-2 ring-surface"
             />
@@ -98,10 +103,10 @@ export function WorkspacePanelButtons({
               title={t('更多批注选项')}
               aria-expanded={menuOpen}
               aria-haspopup="dialog"
-              className={`h-7 w-5 rounded-s-none rounded-e-lg border-s px-0 ${
+              className={`h-7 w-5 rounded-s-none rounded-e-lg px-0 ${
                 showComments
-                  ? 'border-(--canvas-selection-border) text-(--canvas-selection-strong) hover:bg-(--canvas-selection-tint)'
-                  : 'border-border/60 text-ink-muted hover:bg-transparent hover:text-ink'
+                  ? 'border-s border-(--canvas-selection-border) text-(--canvas-selection-strong) hover:bg-(--canvas-selection-tint)'
+                  : 'border-s border-transparent text-ink-muted group-hover:border-border/60 hover:bg-transparent hover:text-ink'
               }`}
             >
               <ChevronDown size={12} className="disclosure-chevron" />
@@ -110,37 +115,20 @@ export function WorkspacePanelButtons({
           <PopoverContent
             align="end"
             sideOffset={6}
-            className="w-52 rounded-xl border border-ol bg-popover/96 p-1 shadow-(--shadow-float) backdrop-blur-lg"
+            className="w-48 rounded-xl border border-ol bg-popover/96 p-1 shadow-(--shadow-float) backdrop-blur-lg"
             aria-label={t('更多批注选项')}
           >
-            <div className="flex flex-col gap-0.5">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 w-full justify-between rounded-lg px-2.5 text-xs font-normal text-ink"
-                onClick={toggleReview}
-              >
-                <span>{hasActiveRound ? t('查看评审面板') : t('查看全部批注')}</span>
-                <span className="font-mono text-xs text-ink-muted tabular-nums">
-                  {number(feedbackCount)}
-                </span>
-              </Button>
-              <hr className="my-0.5 border-0 border-t border-border/70" />
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 w-full justify-between rounded-lg px-2.5 text-xs font-normal text-ink"
-                onClick={() => {
-                  toggleShowComments()
-                  setMenuOpen(false)
-                }}
-              >
-                <span>{t('显示画布批注')}</span>
-                {showComments ? (
-                  <Check size={13} className="text-(--canvas-selection-strong)" />
-                ) : null}
-              </Button>
-            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-full justify-between rounded-lg px-2.5 text-xs font-normal text-ink"
+              onClick={toggleReview}
+            >
+              <span>{hasActiveRound ? t('查看评审面板') : t('查看全部批注')}</span>
+              <span className="font-mono text-xs text-ink-muted tabular-nums">
+                {number(feedbackCount)}
+              </span>
+            </Button>
           </PopoverContent>
         </Popover>
       </div>

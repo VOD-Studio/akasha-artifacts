@@ -316,6 +316,16 @@ export function ArtifactRouteView({
           (count, feedback) => count + Number(isAnnotationKind(feedback.kind)),
           0,
         )}
+        unresolvedCount={feedbacks.reduce(
+          (count, feedback) =>
+            count +
+            Number(
+              isAnnotationKind(feedback.kind) &&
+                feedback.status !== 'resolved' &&
+                !feedbackQuery.data?.threads?.[feedback.id]?.resolution,
+            ),
+          0,
+        )}
         hasActiveRound={rounds.some((round) => round.status !== 'closed')}
         onExport={() => openExport()}
         onHandoff={() => openHandoff(detail.version.title)}

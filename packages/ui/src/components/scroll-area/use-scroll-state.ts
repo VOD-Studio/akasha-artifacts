@@ -63,10 +63,13 @@ export function useScrollState(
       }
     }
 
-    const resizeObserver = new ResizeObserver(measure)
-    resizeObserver.observe(element)
-    if (content.current) {
-      resizeObserver.observe(content.current)
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null
+    if (resizeObserver) {
+      resizeObserver.observe(element)
+      if (content.current) {
+        resizeObserver.observe(content.current)
+      }
     }
 
     measure()
@@ -80,7 +83,7 @@ export function useScrollState(
     return () => {
       cancelAnimationFrame(frame)
       clearTimeout(idleTimer)
-      resizeObserver.disconnect()
+      resizeObserver?.disconnect()
       scrollTarget.removeEventListener('scroll', onScroll)
       scrollTarget.removeEventListener('scrollend', stopScrolling)
       if (isDocument) {

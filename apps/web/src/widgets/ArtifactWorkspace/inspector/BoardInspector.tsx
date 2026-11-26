@@ -357,7 +357,7 @@ export function BoardInspector({
                       onHtmlElementSaved={onHtmlElementSaved}
                     />
                     {((layer || designLayer || selectedElement) && canComment) ||
-                    (onHandoff && page) ||
+                    (onHandoff && page && handoffElement) ||
                     (onAskAgent && page && handoffElement) ? (
                       <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border/75 pt-3">
                         {(layer || designLayer || selectedElement) && canComment ? (
@@ -365,7 +365,7 @@ export function BoardInspector({
                             {t('批注')}
                           </Button>
                         ) : null}
-                        {onHandoff && page ? (
+                        {onHandoff && page && handoffElement ? (
                           <Button
                             variant="outline"
                             size="sm"
@@ -373,16 +373,14 @@ export function BoardInspector({
                               onHandoff(`${page.title} / ${board.title}`, {
                                 pageId: page.id,
                                 boardId: board.id,
-                                element: handoffElement
-                                  ? {
-                                      blockId: handoffElement.blockId,
-                                      selector: handoffElement.selector,
-                                    }
-                                  : undefined,
+                                element: {
+                                  blockId: handoffElement.blockId,
+                                  selector: handoffElement.selector,
+                                },
                               })
                             }
                           >
-                            {handoffElement ? t('移交对象') : t('移交画板')}
+                            {t('移交对象')}
                           </Button>
                         ) : null}
                         {onAskAgent && page && handoffElement ? (

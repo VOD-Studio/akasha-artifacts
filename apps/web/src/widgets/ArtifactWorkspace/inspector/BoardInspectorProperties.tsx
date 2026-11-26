@@ -13,7 +13,7 @@ import {
   type ElementRef,
   type VersionSummary,
 } from '@akasha/protocol'
-import { Badge } from '@akasha/ui/badge'
+import { Tag } from '@akasha/ui/badge'
 import { Button } from '@akasha/ui/button'
 import { Field } from '@akasha/ui/field'
 import { Input } from '@akasha/ui/input'
@@ -172,7 +172,7 @@ export function BoardInspectorProperties({
           <p className="min-w-0 truncate text-sm font-medium text-ink">
             {runtimeLayer?.label || t(kindLabels[designLayer.kind])}
           </p>
-          <Badge tone="neutral">{t(kindLabels[designLayer.kind])}</Badge>
+          <Tag size="sm">{t(kindLabels[designLayer.kind])}</Tag>
         </div>
 
         {!editing && (
@@ -325,7 +325,7 @@ export function BoardInspectorProperties({
           {pageTitle ? <p className="truncate text-[11px] text-ink-muted">{pageTitle}</p> : null}
           <p className="truncate text-sm font-medium text-ink">{board.title}</p>
         </div>
-        <Badge tone="neutral">{artifactTypeLabel(board.type, locale)}</Badge>
+        <Tag size="sm">{artifactTypeLabel(board.type, locale)}</Tag>
       </div>
       {!editing && (
         <dl className={measurements}>
@@ -531,9 +531,14 @@ function RuntimeElementProperties({
             </span>
           </div>
         </div>
-        <Badge tone={isEditable ? 'accent' : 'neutral'}>
+        <Tag
+          size="sm"
+          className={
+            isEditable ? 'bg-(--canvas-selection-tint) text-(--canvas-selection-strong)' : undefined
+          }
+        >
           {t(isEditable ? '可编辑' : '只读测量')}
-        </Badge>
+        </Tag>
       </div>
 
       {canResizeHtml ? (
