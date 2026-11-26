@@ -247,6 +247,10 @@ function LibraryEntry({
 }: LibraryEntryProps) {
   const { t, locale } = useMessages(messages)
   const [copied, setCopied] = useState(false)
+  const href = `/a/${encodeURIComponent(artifact.publicId)}`
+  const hubHref = cloudHub ? hubArtifactPath(artifact.publicId) : href
+  const sharedCanvas = cloudHub && artifact.type === 'artboard'
+  const copyLabel = t(sharedCanvas ? '复制协作画布链接' : '复制链接')
 
   const openArtifact = (event: MouseEvent<HTMLAnchorElement>, destination?: 'hub') => {
     if (event.defaultPrevented || event.button !== 0) return
@@ -257,8 +261,9 @@ function LibraryEntry({
 
   const copyLink = async () => {
     try {
-      const path = `/a/${encodeURIComponent(artifact.publicId)}`
-      await navigator.clipboard.writeText(new URL(path, window.location.origin).href)
+      await navigator.clipboard.writeText(
+        new URL(sharedCanvas ? hubHref : href, window.location.origin).href,
+      )
       setCopied(true)
       toast.success(t('已复制链接'))
       window.setTimeout(() => setCopied(false), 1500)
@@ -267,10 +272,22 @@ function LibraryEntry({
     }
   }
 
-  const href = `/a/${encodeURIComponent(artifact.publicId)}`
   const type = artifactTypeLabel(artifact.type, locale)
   const projectLabel = projectName ?? t('其他项目')
   const updatedText = formatRelativeTime(artifact.updatedAt, undefined, locale)
+  const hubLink = cloudHub && (
+    <Button asChild size="sm" variant="ghost" className={cards ? 'ms-auto' : undefined}>
+      <a
+        href={hubHref}
+        aria-label={t(sharedCanvas ? '打开协作画布：{title}' : '在 Hub 打开：{title}', {
+          title: artifact.title,
+        })}
+        onClick={(event) => openArtifact(event, 'hub')}
+      >
+        {t(sharedCanvas ? '打开协作画布' : '在 Hub 打开')}
+      </a>
+    </Button>
+  )
 
   if (cards) {
     return (
@@ -300,8 +317,8 @@ function LibraryEntry({
                 size="sm"
                 iconOnly
                 className="size-7"
-                aria-label={t('复制链接')}
-                title={t('复制链接')}
+                aria-label={copyLabel}
+                title={copyLabel}
                 onClick={() => void copyLink()}
               >
                 {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
@@ -338,17 +355,7 @@ function LibraryEntry({
             <time dateTime={artifact.updatedAt} className="shrink-0 tabular-nums">
               <bdi>{updatedText}</bdi>
             </time>
-            {cloudHub && (
-              <Button asChild size="sm" variant="ghost" className="ms-auto">
-                <a
-                  href={hubArtifactPath(artifact.publicId)}
-                  aria-label={t('在 Hub 打开：{title}', { title: artifact.title })}
-                  onClick={(event) => openArtifact(event, 'hub')}
-                >
-                  {t('在 Hub 打开')}
-                </a>
-              </Button>
-            )}
+            {hubLink}
           </CardFrameMeta>
         </CardFrameBody>
       </CardFrame>
@@ -381,17 +388,7 @@ function LibraryEntry({
       <time dateTime={artifact.updatedAt} className="shrink-0 tabular-nums">
         <bdi>{updatedText}</bdi>
       </time>
-      {cloudHub && (
-        <Button asChild size="sm" variant="ghost">
-          <a
-            href={hubArtifactPath(artifact.publicId)}
-            aria-label={t('在 Hub 打开：{title}', { title: artifact.title })}
-            onClick={(event) => openArtifact(event, 'hub')}
-          >
-            {t('在 Hub 打开')}
-          </a>
-        </Button>
-      )}
+      {hubLink}
       <div className="flex shrink-0 items-center gap-0.5">
         {favoritesAvailable && (
           <FavoriteAction artifactId={artifact.publicId} favorite={favorite} />
@@ -400,8 +397,8 @@ function LibraryEntry({
           variant="ghost"
           size="sm"
           iconOnly
-          aria-label={t('复制链接')}
-          title={t('复制链接')}
+          aria-label={copyLabel}
+          title={copyLabel}
           className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
           onClick={() => void copyLink()}
         >

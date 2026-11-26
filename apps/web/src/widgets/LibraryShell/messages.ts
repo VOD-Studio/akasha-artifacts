@@ -7,6 +7,21 @@ export const messages = {
   收藏: ['Favoriten', 'المفضلة', 'Favorites'],
   '在 Hub 打开': ['Im Hub öffnen', 'فتح في Hub', 'Open in Hub'],
   '在 Hub 打开：{title}': ['Im Hub öffnen: {title}', 'فتح في Hub: {title}', 'Open in Hub: {title}'],
+  打开协作画布: [
+    'Gemeinsame Arbeitsfläche öffnen',
+    'فتح لوحة التصميم المشتركة',
+    'Open shared canvas',
+  ],
+  '打开协作画布：{title}': [
+    'Gemeinsame Arbeitsfläche öffnen: {title}',
+    'فتح لوحة التصميم المشتركة: {title}',
+    'Open shared canvas: {title}',
+  ],
+  复制协作画布链接: [
+    'Link zur gemeinsamen Arbeitsfläche kopieren',
+    'نسخ رابط لوحة التصميم المشتركة',
+    'Copy shared canvas link',
+  ],
   新建设计: ['Neues Design', 'تصميم جديد', 'New design'],
   继续设计会话: ['Designsitzung fortsetzen', 'متابعة جلسة التصميم', 'Resume design session'],
   作品列表: ['Werkliste', 'قائمة الأعمال', 'Artifact list'],
