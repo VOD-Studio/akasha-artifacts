@@ -220,7 +220,9 @@ export function ArtifactCanvas({
   const [drawingTool, setDrawingTool] = useState<DrawingTool | null>(null)
   const [artboardPlacing, setArtboardPlacing] = useState(false)
   const [drawingDragging, setDrawingDragging] = useState(false)
-  const presentation = useBoardPresentation(document, visible)
+  const presentation = useBoardPresentation(document, visible, (boardId) => {
+    pendingKeyboardFocus.current = boardId
+  })
   const showOverview = visible && !presentation.focused && !presentation.playing
   const motion = useOverviewPlayback()
   const size = useViewportSize(viewportRef, showOverview)
@@ -1031,6 +1033,11 @@ export function ArtifactCanvas({
           board={focused}
           visible={visible && !presentation.playing}
           onClose={presentation.closeFocus}
+          onPickText={
+            textTools && historyEditing?.available && isPrototype(focused)
+              ? (point, anchor) => textTools.pick(focused, point, anchor)
+              : undefined
+          }
           onExport={onExportBoard ? () => onExportBoard(focused.id) : undefined}
           onPlay={
             canPlay(focused)

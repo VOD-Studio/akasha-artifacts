@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
 import {
   design,
@@ -7,6 +7,7 @@ import {
   sandbox,
   setupCanvasTest,
   showEditableWorkspace,
+  showWorkspace,
   stubResizeObserver,
 } from './canvas-test-fixture'
 
@@ -161,6 +162,43 @@ it('总览长按文字不依赖双击，末尾的点击不会发出第二次选�
   expect(editor.submittedVersion).toBeUndefined()
 })
 
+it('展开另一张画板后点选文字、提交版本，再回到原来的选区、倍率和焦点', async () => {
+  stubResizeObserver()
+  const editor = showEditableWorkspace(detailWithNote())
+  const desktop = screen.getByRole('button', { name: '宽屏首页' })
+  fireEvent.click(desktop)
+  const zoom = screen.getByLabelText('画布缩放比例').textContent
+  const expand = screen.getByRole('button', { name: '展开画板：手机首页' })
+  fireEvent.click(expand)
+  const focus = within(screen.getByRole('region', { name: '画板查看' }))
+  const frame = sandbox(focus.getByTitle('画板内容：手机首页'))
+  frame.receive({ type: 'ready' })
+  fireEvent.click(focus.getByRole('button', { name: '编辑文字' }))
+  const hit = focus.getByRole('button', { name: '选择要编辑的文字' })
+  vi.spyOn(hit, 'getBoundingClientRect').mockReturnValue(new DOMRect(20, 80, 195, 422))
+  touch(hit, 'pointerdown', 1, 35, 100)
+  touch(hit, 'pointerup', 1, 35, 100)
+  fireEvent.click(hit, { clientX: 35, clientY: 100, detail: 1 })
+  const request = frame.post.mock.calls.find(([message]) => message.type === 'inspect.at')?.[0]
+  expect(request).toMatchObject({ purpose: 'text', x: 30, y: 40, version: 1 })
+  frame.receive({
+    type: 'inspect.target',
+    purpose: 'text',
+    version: 1,
+    requestId: request.requestId,
+    element: { blockId: 'design-layer:note', selector: 'aside', textPreview: '预约' },
+  })
+  const dialog = within(screen.getByRole('dialog', { name: '编辑文字' }))
+  fireEvent.change(dialog.getByRole('textbox', { name: '文字' }), { target: { value: '改期' } })
+  fireEvent.click(dialog.getByRole('button', { name: '保存' }))
+  await waitFor(() => expect(editor.current.version.version).toBe(2))
+  expect(JSON.parse(editor.current.version.source).boards[1].designLayers[0].text).toBe('改期')
+  fireEvent.click(focus.getByRole('button', { name: '返回总览' }))
+  expect(desktop.getAttribute('aria-pressed')).toBe('true')
+  expect(screen.getByLabelText('画布缩放比例').textContent).toBe(zoom)
+  expect(document.activeElement).toBe(expand)
+})
+
 it('绘图工具仅让第一指落笔，另一指不能在邻板创建图层或取消正在绘制的笔画', async () => {
   stubResizeObserver()
   const editor = showEditableWorkspace(detailFor())
@@ -181,4 +219,24 @@ it('绘图工具仅让第一指落笔，另一指不能在邻板创建图层或�
     expect.objectContaining({ kind: 'rectangle', x: 20, y: 10, width: 70, height: 50 }),
   ])
   expect(mobile.designLayers).toBeUndefined()
+})
+
+it('查看者可以从画布展开画板，但展开态没有文字写入口', () => {
+  showWorkspace({
+    ...detailWithNote(),
+    access: { role: 'view', expiresAt: '2099-01-01T00:00:00Z' },
+  })
+  const expand = screen.getByRole('button', { name: '展开画板：手机首页' })
+  fireEvent.click(expand)
+  const focus = within(screen.getByRole('region', { name: '画板查看' }))
+  expect(focus.queryByRole('button', { name: '编辑文字' })).toBeNull()
+  fireEvent.click(focus.getByRole('button', { name: '返回总览' }))
+  expect(document.activeElement).toBe(expand)
+})
+
+it('从单板直链退出时焦点回到目标标题，不依赖打开它的按钮', () => {
+  showEditableWorkspace(detailWithNote(), 'page=reserve&board=mobile&play=1')
+  const focus = within(screen.getByRole('region', { name: '画板查看' }))
+  fireEvent.click(focus.getByRole('button', { name: '返回总览' }))
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: '手机首页' }))
 })

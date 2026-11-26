@@ -206,7 +206,7 @@ export function ArtifactWorkspace({
 
   const activeRound = useMemo(() => selectActiveRound(rounds), [rounds])
   const frames = useRef(new Map<string, FrameConnection>())
-  const focusedFrame = useRef<FrameConnection | null>(null)
+  const focusedFrame = useRef<{ id: string; frame: FrameConnection } | null>(null)
   // biome-ignore lint/correctness/useExhaustiveDependencies: 同版本的分享授权变更必须清空该范围的缓存。
   const resources = useMemo(
     () =>
@@ -220,13 +220,14 @@ export function ArtifactWorkspace({
     if (frame) frames.current.set(id, frame)
     else frames.current.delete(id)
   }, [])
-  const registerFocusedFrame = useCallback((_id: string, frame: FrameConnection | null) => {
-    focusedFrame.current = frame
+  const registerFocusedFrame = useCallback((id: string, frame: FrameConnection | null) => {
+    if (frame) focusedFrame.current = { id, frame }
+    else if (focusedFrame.current?.id === id) focusedFrame.current = null
   }, [])
   useEffect(() => {
     onRegisterStateForwarder?.((seq, ops) => {
       for (const frame of frames.current.values()) frame.forwardState(seq, ops)
-      focusedFrame.current?.forwardState(seq, ops)
+      focusedFrame.current?.frame.forwardState(seq, ops)
     })
     return () => onRegisterStateForwarder?.(null)
   }, [onRegisterStateForwarder])
@@ -538,7 +539,11 @@ export function ArtifactWorkspace({
     activeBoardId: canvasLocation?.boardId,
     editing: boardEditing,
     readBoard: (board) => readLoadedBoard(board, resources),
-    send: sendBoard,
+    send: (id, message) => {
+      const focused = focusedFrame.current
+      if (focused?.id === id) focused.frame.send(message)
+      else sendBoard(id, message)
+    },
     annotate: (element) => {
       handleHighlightElement(element)
       setInspectorTab('review')
