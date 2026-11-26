@@ -1,6 +1,56 @@
 import type { Messages } from '@/shared/i18n'
 
 export const messages = {
+  新建设计: ['Neuer Entwurf', 'تصميم جديد', 'New design'],
+  设计名称: ['Entwurfsname', 'اسم التصميم', 'Design name'],
+  创建: ['Erstellen', 'إنشاء', 'Create'],
+  本次设计系统: [
+    'Designsysteme für diesen Entwurf',
+    'أنظمة هذا التصميم',
+    'Systems for this design',
+  ],
+  使用个人设置: [
+    'Persönliche Einstellung verwenden',
+    'استخدام الإعداد الشخصي',
+    'Use personal setting',
+  ],
+  本次不使用系统: [
+    'Für diesen Entwurf kein System verwenden',
+    'عدم استخدام نظام لهذا التصميم',
+    'No systems for this design',
+  ],
+  选择系统版本: ['Systemversionen auswählen', 'اختيار إصدارات الأنظمة', 'Choose system versions'],
+  继承团队默认: [
+    'Teamstandard übernehmen',
+    'استخدام الخيار الافتراضي للفريق',
+    'Inherit team default',
+  ],
+  未继承团队默认: [
+    'Teamstandard nicht übernommen',
+    'لا يُستخدم الخيار الافتراضي للفريق',
+    'Not inheriting the team default',
+  ],
+  尚无团队默认: [
+    'Kein Teamstandard festgelegt',
+    'لم يُعيَّن خيار افتراضي للفريق',
+    'No team default is set',
+  ],
+  未能保存个人设置: [
+    'Einstellung nicht gespeichert',
+    'تعذر حفظ الإعداد الشخصي',
+    'Could not save personal setting',
+  ],
+  未能创建设计: ['Entwurf nicht erstellt', 'تعذّر إنشاء التصميم', 'Could not create design'],
+  '最多选择 8 个固定版本': [
+    'Höchstens 8 feste Versionen auswählen',
+    'اختر حتى 8 إصدارات محددة',
+    'Choose up to 8 pinned versions',
+  ],
+  本次使用的固定来源: [
+    'Verwendete feste Quellen',
+    'المصادر ذات الإصدارات المحددة المستخدمة',
+    'Pinned sources used',
+  ],
   系统目录: ['Systemkatalog', 'دليل الأنظمة', 'System catalog'],
   团队默认: ['Teamstandard', 'الخيار الافتراضي للفريق', 'Team default'],
   发布到团队: ['Für das Team veröffentlichen', 'نشر للفريق', 'Publish to team'],

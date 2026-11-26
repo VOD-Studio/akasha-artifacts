@@ -1,3 +1,4 @@
+export { CatalogDesignDialog } from './ui/CatalogDesignDialog'
 export { ImportSystemLauncher } from './ui/ImportSystemLauncher'
 export { SystemCatalogLauncher } from './ui/SystemCatalogLauncher'
 export { SystemSourceLink } from './ui/SystemSourceLink'

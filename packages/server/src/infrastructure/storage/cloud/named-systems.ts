@@ -22,6 +22,7 @@ export const namedSystemSchema: SqlStatement[] = [
     )`,
   ],
   ['CREATE INDEX IF NOT EXISTS idx_hub_named_system_user ON hub_named_system_members (user_id)'],
+  ['CREATE TABLE IF NOT EXISTS hub_system_default_opt_outs (user_id TEXT NOT NULL PRIMARY KEY)'],
 ]
 
 const pinMatch = 'project_id = ? AND artifact_id = ? AND version = ? AND generation = ?'
@@ -33,6 +34,23 @@ export function createSqlNamedSystemRepository(
 ): NamedSystemRepository {
   return {
     ...createSqlSystemPublications(execute, batch),
+    async inheritDefault(userId) {
+      const rows = await execute([
+        'SELECT 1 FROM hub_system_default_opt_outs WHERE user_id = ?',
+        userId,
+      ])
+      return rows.length === 0
+    },
+    async setInheritDefault(userId, enabled) {
+      if (enabled) {
+        await execute(['DELETE FROM hub_system_default_opt_outs WHERE user_id = ?', userId])
+      } else {
+        await execute([
+          'INSERT INTO hub_system_default_opt_outs (user_id) VALUES (?) ON CONFLICT (user_id) DO NOTHING',
+          userId,
+        ])
+      }
+    },
     listNamed: (userId) =>
       execute<NamedSystemPin>([
         `SELECT m.project_id AS "projectId", m.artifact_id AS id, m.version, m.generation

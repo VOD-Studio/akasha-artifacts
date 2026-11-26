@@ -103,7 +103,7 @@ export function createHubContainer(options: HubContainerOptions) {
     auth,
     access,
     sharing,
-    catalog: new SystemCatalog(repositories.namedSystems, repositories.artifacts),
+    catalog: new SystemCatalog(repositories.namedSystems, repositories.artifacts, service),
     workspace: service.workspace,
     repositories,
     origin,

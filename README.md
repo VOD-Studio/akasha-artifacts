@@ -248,6 +248,8 @@ Open a version of your design system and enter the GitHub logins of the members 
 
 In the library’s system catalog, a Hub administrator can publish an available fixed version to the team, make it the default, clear the default, or withdraw the version. To nominate a private version for publication, share it with the administrator first. Publishing does not grant access to the original artifact. Withdrawal removes the version from new selections, not from designs already saved.
 
+Choose **New design** in the Hub library. Use your team default, select no system, or combine fixed versions and specific component exports. The personal default switch in the catalog affects only your future designs. Generated designs contain the reviewed components and styles, not a link to the latest system. They stay private in the target project until you share them.
+
 ---
 
 ## Development

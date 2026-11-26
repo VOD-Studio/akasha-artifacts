@@ -1,4 +1,9 @@
-import { SystemCatalogSchema, type SystemPublicationAction } from '@akasha/protocol'
+import {
+  type CatalogGenerateInput,
+  CatalogGenerateOutputSchema,
+  SystemCatalogSchema,
+  type SystemPublicationAction,
+} from '@akasha/protocol'
 import { queryOptions } from '@tanstack/react-query'
 import { requestJson } from '@/shared/api/request'
 
@@ -30,5 +35,23 @@ export function changePublication(
       method: 'PUT',
       body: JSON.stringify({ action }),
     },
+  )
+}
+
+/** 持久化本人偏好，不改团队默认版本，也不提交本次设计。 */
+export function updateDefaultPreference(projectId: string, inheritDefault: boolean) {
+  return requestJson<{ ok: true }>(`${catalogPath(projectId)}/preference`, {
+    method: 'PUT',
+    body: JSON.stringify({ inheritDefault }),
+  })
+}
+
+/** 省略 selections 才继承个人偏好；显式空数组仅对本次起稿生效。 */
+export async function generateCatalogDesign(projectId: string, input: CatalogGenerateInput) {
+  return CatalogGenerateOutputSchema.parse(
+    await requestJson<unknown>(`${catalogPath(projectId)}/generate`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
   )
 }

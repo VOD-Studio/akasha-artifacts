@@ -34,10 +34,13 @@ function showLibrary(admin: boolean, hub = true, multipleProjects = false) {
     const url = String(input)
     if (url.endsWith('/auth/session'))
       return Response.json({ user: { member: true, admin, login: 'ada', kind: 'session' } })
-    if (url === catalog) return Response.json({ items: [{ ...item, publication, isDefault }] })
+    if (url === catalog)
+      return Response.json({ inheritDefault: true, items: [{ ...item, publication, isDefault }] })
     if (url === '/api/v1/projects/beta/system-catalog') {
       betaReads++
-      return betaReads === 1 ? new Response(null, { status: 503 }) : Response.json({ items: [] })
+      return betaReads === 1
+        ? new Response(null, { status: 503 })
+        : Response.json({ inheritDefault: true, items: [] })
     }
     if (url === `${catalog}/${item.id}/2/publication` && init?.method === 'PUT') {
       const { action } = JSON.parse(String(init.body))

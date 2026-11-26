@@ -7,7 +7,7 @@ import {
 import { expect, it } from 'vitest'
 import { z } from 'zod'
 import { sqliteHub } from '../hub-sharing/sqlite-hub.js'
-import { brand } from './brand.js'
+import { brand, buttons } from './brand.js'
 
 async function setupCatalog() {
   const hub = await sqliteHub()
@@ -125,4 +125,62 @@ it('管理员从可用版本发布团队基础；默认与撤回对两名成员�
       })
     ).status,
   ).toBe(404)
+})
+
+it('两名成员继承固定基础，关闭只影响本人；同名组件按来源合成一份独立作品', async () => {
+  const { hub, owner, member, admin, publish } = await setupCatalog()
+  const first = await publish(buttons('#ae1122'), 'first')
+  const second = await publish(buttons('#2266bb'), 'second')
+  for (const id of [first, second]) {
+    await hub.send(`${owner.catalog}/${id}/1/members`, 'PUT', owner.cookie, { logins: ['admin'] })
+    await hub.send(`${admin.catalog}/${id}/1/publication`, 'PUT', admin.cookie, {
+      action: 'publish',
+    })
+  }
+  await hub.send(`${admin.catalog}/${first}/1/publication`, 'PUT', admin.cookie, {
+    action: 'default',
+  })
+  const peer = await hub.open()
+  const generate = (account: typeof member, slug: string, selections?: unknown[]) =>
+    peer.send(`${account.catalog}/generate`, 'POST', account.cookie, {
+      title: 'Checkout',
+      slug,
+      selections,
+    })
+  for (const account of [owner, member]) {
+    const response = await generate(account, 'inherited')
+    expect(response.status).toBe(201)
+    expect(await response.json()).toMatchObject({ references: [{ id: first, version: 1 }] })
+  }
+  await hub.send(`${member.catalog}/preference`, 'PUT', member.cookie, { inheritDefault: false })
+  expect(await (await generate(member, 'blank')).json()).toMatchObject({ references: [] })
+  expect(await (await generate(owner, 'again')).json()).toMatchObject({
+    references: [{ id: first }],
+  })
+  expect(await (await generate(owner, 'without-base', [])).json()).toMatchObject({ references: [] })
+  const forged = await peer.send(`${owner.catalog}/preference`, 'PUT', member.cookie, {
+    inheritDefault: false,
+  })
+  expect(forged.status).toBe(404)
+  const component = { path: 'src/Button.tsx', exportName: 'ConfirmButton' }
+  const selections = [first, second].map((id) => ({ id, version: 1, component }))
+  const output = await (await generate(member, 'combined', selections)).json()
+  expect(output).toMatchObject({
+    artifact: { projectId: member.project, visibility: 'private' },
+    references: selections.map(({ id }) => ({ id, version: 1, components: [component] })),
+  })
+  const saved = DesignSystemWriteOutputSchema.parse(output)
+  expect(saved.version.source).toContain('#ae1122')
+  expect(saved.version.source).toContain('#2266bb')
+  expect(saved.version.source).not.toContain('Private badge implementation')
+  await hub.send(`${admin.catalog}/${first}/1/publication`, 'PUT', admin.cookie, {
+    action: 'withdraw',
+  })
+  expect((await generate(member, 'unavailable', selections)).status).toBe(404)
+  const reopened = await peer.send(
+    `/api/v1/artifacts/${saved.artifact.publicId}`,
+    'GET',
+    member.cookie,
+  )
+  expect(await reopened.json()).toMatchObject({ version: { source: saved.version.source } })
 })

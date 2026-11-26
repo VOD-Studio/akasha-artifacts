@@ -42,4 +42,8 @@ export interface NamedSystemRepository {
   publication(pin: NamedSystemPin): Promise<SystemPublication | undefined>
   /** 默认切换在整个 Hub 内互斥；版本不再有效或不能执行该转换时返回 false。 */
   setPublication(pin: NamedSystemPin, action: SystemPublicationAction): Promise<boolean>
+  /** 账号未设置时继承团队默认系统；这一偏好与当前默认版本无关。 */
+  inheritDefault(userId: string): Promise<boolean>
+  /** 调用方须从认证身份取得账号 ID；修改个人偏好不会改变团队默认版本。 */
+  setInheritDefault(userId: string, enabled: boolean): Promise<void>
 }

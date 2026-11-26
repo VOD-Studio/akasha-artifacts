@@ -138,7 +138,7 @@ it('管理员从本人来源工作区发布未在目录列出的历史版本', a
     if (url.includes('/management')) return Response.json({ canManage: true })
     if (url.endsWith('/members')) return Response.json({ logins: [] })
     if (url.endsWith('/auth/session')) return Response.json({ user: { member: true, admin: true } })
-    if (url.endsWith('/system-catalog')) return Response.json({ items: [] })
+    if (url.endsWith('/system-catalog')) return Response.json({ inheritDefault: true, items: [] })
     if (url === path && init?.method === 'PUT') return Response.json({ ok: true })
     return new Response(null, { status: 404 })
   })

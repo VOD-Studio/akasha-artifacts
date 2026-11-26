@@ -11,6 +11,7 @@ import { catalogOptions } from '../api/catalog'
 import { messages } from '../messages'
 import { componentKey } from '../model/review'
 import { PublicationControls } from './PublicationControls'
+import { SystemPreference } from './SystemPreference'
 
 interface SystemCatalogProps {
   projects: readonly Project[]
@@ -30,40 +31,43 @@ function CatalogItems({ projectId, admin }: { projectId: string; admin: boolean 
         </Button>
       </div>
     )
-  if (!catalog.data.items.length) return <p>{t('无可用系统版本')}</p>
   return (
-    <ul className="space-y-3">
-      {catalog.data.items.map((item) => (
-        <li key={`${item.id}:${item.version}`} className="space-y-2 border-t border-border pt-3">
-          <h3 className="flex flex-wrap items-baseline gap-2 font-medium">
-            <bdi>{item.title}</bdi> <span>v{item.version}</span>
-          </h3>
-          <code dir="ltr" className="break-all">
-            {item.id}
-          </code>
-          {item.isDefault && <p>{t('团队默认')}</p>}
-          {item.publication === 'team' && !item.isDefault && <p>{t('已发布到团队')}</p>}
-          {item.components.length > 0 && (
-            <ul>
-              {item.components.map((entry) => (
-                <li key={componentKey(entry)}>
-                  <code dir="ltr">{componentKey(entry)}</code>
-                </li>
-              ))}
-            </ul>
-          )}
-          {admin && (
-            <PublicationControls
-              projectId={projectId}
-              id={item.id}
-              version={item.version}
-              publication={item.publication}
-              isDefault={item.isDefault}
-            />
-          )}
-        </li>
-      ))}
-    </ul>
+    <>
+      <SystemPreference projectId={projectId} inheritDefault={catalog.data.inheritDefault} />
+      {!catalog.data.items.length && <p>{t('无可用系统版本')}</p>}
+      <ul className="space-y-3">
+        {catalog.data.items.map((item) => (
+          <li key={`${item.id}:${item.version}`} className="space-y-2 border-t border-border pt-3">
+            <h3 className="flex flex-wrap items-baseline gap-2 font-medium">
+              <bdi>{item.title}</bdi> <span>v{item.version}</span>
+            </h3>
+            <code dir="ltr" className="break-all">
+              {item.id}
+            </code>
+            {item.isDefault && <p>{t('团队默认')}</p>}
+            {item.publication === 'team' && !item.isDefault && <p>{t('已发布到团队')}</p>}
+            {item.components.length > 0 && (
+              <ul>
+                {item.components.map((entry) => (
+                  <li key={componentKey(entry)}>
+                    <code dir="ltr">{componentKey(entry)}</code>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {admin && (
+              <PublicationControls
+                projectId={projectId}
+                id={item.id}
+                version={item.version}
+                publication={item.publication}
+                isDefault={item.isDefault}
+              />
+            )}
+          </li>
+        ))}
+      </ul>
+    </>
   )
 }
 

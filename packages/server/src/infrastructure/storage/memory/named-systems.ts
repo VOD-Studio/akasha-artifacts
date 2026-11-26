@@ -14,6 +14,7 @@ export function createMemoryNamedSystemRepository(
 ): NamedSystemRepository {
   const grants = new Map<string, { pin: NamedSystemPin; members: Map<string, string> }>()
   const publications = new Map<string, Omit<SystemPublication, 'isDefault'>>()
+  const defaultOptOuts = new Set<string>()
   let defaultKey: string | undefined
   const isCurrent = async (pin: NamedSystemPin) => {
     const artifact = await artifacts.findByPublicId(pin.id)
@@ -24,6 +25,13 @@ export function createMemoryNamedSystemRepository(
     )
   }
   return {
+    async inheritDefault(userId) {
+      return !defaultOptOuts.has(userId)
+    },
+    async setInheritDefault(userId, enabled) {
+      if (enabled) defaultOptOuts.delete(userId)
+      else defaultOptOuts.add(userId)
+    },
     async listNamed(userId) {
       const pins: NamedSystemPin[] = []
       for (const { pin, members } of grants.values()) {

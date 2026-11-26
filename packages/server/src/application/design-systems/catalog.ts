@@ -1,14 +1,22 @@
-import { parseDesignSystem } from '@akasha/kit'
-import type { CatalogSystem, SystemPublicationAction } from '@akasha/protocol'
+import { composeCatalogBoard, parseDesignSystem } from '@akasha/kit'
+import type {
+  Author,
+  CatalogGenerateInput,
+  CatalogSelection,
+  CatalogSystem,
+  SystemPublicationAction,
+} from '@akasha/protocol'
 import { DomainError, NotFoundError } from '../../domain/errors.js'
 import type { ArtifactRepository } from '../../domain/ports.js'
 import type { NamedSystemPin, NamedSystemRepository } from '../../domain/team-systems.js'
+import type { ArtifactService } from '../artifact-service.js'
 
 /** 名单绑定固定版本、来源项目和生命周期；目录读取不会授予项目或原始文件权限。 */
 export class SystemCatalog {
   constructor(
     readonly members: NamedSystemRepository,
     private readonly artifacts: ArtifactRepository,
+    private readonly publisher: Pick<ArtifactService, 'publish'>,
   ) {}
 
   async pin(projectId: string, id: string, version: number): Promise<NamedSystemPin | undefined> {
@@ -47,11 +55,12 @@ export class SystemCatalog {
       throw new DomainError('RESOURCE_CONFLICT', '团队发布状态已变化，请刷新目录后重试')
   }
 
-  async list(project: string, userId: string) {
-    const [owned, named, published] = await Promise.all([
+  private async candidates(project: string, userId: string) {
+    const [owned, named, published, inheritDefault] = await Promise.all([
       this.artifacts.listByProject(project),
       this.members.listNamed(userId),
       this.members.listPublications(),
+      this.members.inheritDefault(userId),
     ])
     const pins = new Map(named.map((pin) => [`${pin.id}/${pin.version}`, pin]))
     for (const artifact of owned) {
@@ -64,6 +73,11 @@ export class SystemCatalog {
       if (release.withdrawn) pins.delete(key)
       else pins.set(key, release)
     }
+    return { pins, releases, inheritDefault }
+  }
+
+  async list(project: string, userId: string) {
+    const { pins, releases, inheritDefault } = await this.candidates(project, userId)
     const items: CatalogSystem[] = []
     for (const pin of pins.values()) {
       const fixed = await this.fixed(pin)
@@ -80,6 +94,38 @@ export class SystemCatalog {
         isDefault: release?.isDefault ?? false,
       })
     }
-    return { items }
+    return { items, inheritDefault }
+  }
+
+  async generate(projectId: string, userId: string, author: Author, input: CatalogGenerateInput) {
+    const { pins, releases, inheritDefault } = await this.candidates(projectId, userId)
+    const selections: readonly CatalogSelection[] =
+      input.selections ??
+      (inheritDefault ? Array.from(releases.values()).filter((item) => item.isDefault) : [])
+    const systems = []
+    for (const { id, version, component } of selections) {
+      const pin = pins.get(`${id}/${version}`)
+      const fixed = pin && (await this.fixed(pin))
+      if (!fixed) throw new NotFoundError('无法选用该系统版本，请刷新目录重新选择')
+      const { snapshot } = fixed
+      const index = component
+        ? snapshot.draft.components.findIndex(
+            (entry) => entry.path === component.path && entry.exportName === component.exportName,
+          )
+        : null
+      if (index === -1) throw new DomainError('BAD_REQUEST', '找不到此版本的组件，请从目录重新选择')
+      systems.push({ id, version, snapshot, index })
+    }
+    const { source, references } = composeCatalogBoard(input.title, systems)
+    const saved = await this.publisher.publish({
+      projectId,
+      slug: input.slug,
+      title: input.title,
+      type: 'react',
+      source,
+      author,
+      createOnly: true,
+    })
+    return { ...saved, references }
   }
 }

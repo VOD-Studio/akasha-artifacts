@@ -1,11 +1,17 @@
-import { PublicIdSchema, SystemMembersSchema, SystemPublicationInputSchema } from '@akasha/protocol'
+import {
+  CatalogGenerateInputSchema,
+  PublicIdSchema,
+  SystemMembersSchema,
+  SystemPreferenceSchema,
+  SystemPublicationInputSchema,
+} from '@akasha/protocol'
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import type { SystemCatalog } from '../../application/design-systems/catalog.js'
 import type { HubPrincipal } from '../../application/hub-sharing/authority.js'
 import { DomainError, NotFoundError } from '../../domain/errors.js'
 import type { ProjectRepository } from '../../domain/ports.js'
-import { ownsHubProject } from './hub-access.js'
+import { hubAuthor, ownsHubProject } from './hub-access.js'
 import type { HubAuth } from './hub-auth.js'
 import { invalid } from './hub-sharing/responses.js'
 import { parseJsonBody } from './request-body.js'
@@ -54,6 +60,22 @@ export function mountSystemCatalog(
   routes.get(root, async (c) =>
     c.json(await catalog.list(c.req.param('projectId'), c.get('principal').userId)),
   )
+  routes.put(`${root}/preference`, async (c) => {
+    const { inheritDefault } = await parseJsonBody(c.req.raw, SystemPreferenceSchema)
+    await catalog.members.setInheritDefault(c.get('principal').userId, inheritDefault)
+    return c.json({ inheritDefault })
+  })
+  routes.post(`${root}/generate`, async (c) => {
+    const principal = c.get('principal')
+    const input = await parseJsonBody(c.req.raw, CatalogGenerateInputSchema)
+    const result = await catalog.generate(
+      c.req.param('projectId'),
+      principal.userId,
+      hubAuthor(principal),
+      input,
+    )
+    return c.json(result, 201)
+  })
   routes.put(`${root}/:id/:version/publication`, async (c) => {
     const principal = c.get('principal')
     if (!auth.isAdministrator(principal))
