@@ -1,11 +1,18 @@
 /** 本地 Daemon 授权给一个 CLI 轮次的执行参数，绝不来自浏览器的进程配置。 */
 export interface AgentRunnerLaunch {
-  /** 已登记并由本机终端授权的项目路径。 */
+  /** 已授权的项目路径，不是接收方可读取的工作目录。 */
   root: string
   /** 真实发布线程；缺省时才启动新会话。 */
   threadId?: string
   /** 用户文字和经过校验的制品快照引用。 */
   prompt: string
+  /** 仅附加本轮明确选择的图片；恢复线程不重发上一轮附件。 */
+  images?: readonly {
+    /** 已验证的原始图片字节，不接受文件路径或远端地址。 */
+    bytes: Uint8Array
+    /** 按图片内容确定，供接收方识别临时文件格式。 */
+    extension: 'png' | 'jpg'
+  }[]
   /** 仅此轮次生效，不能认证到普通 Daemon API。 */
   token: string
   /** 同一 Daemon 的回环地址，由服务端生成。 */

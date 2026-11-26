@@ -1,4 +1,5 @@
 export * from './agent.js'
+export * from './agent-reference.js'
 export * from './artboard/appearance.js'
 export * from './artboard/edit.js'
 export * from './artboard/layers.js'

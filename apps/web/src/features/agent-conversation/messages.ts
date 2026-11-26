@@ -14,6 +14,7 @@ export const messages = {
     'Agent conversation history',
   ],
   你: ['Du', 'أنت', 'You'],
+  已发送的参考材料: ['Gesendete Referenzen', 'المراجع المرسلة', 'Sent references'],
   'Codex 回复': ['Antwort von Codex', 'رد Codex', 'Codex reply'],
   此轮发布的版本: [
     'In dieser Runde veröffentlichte Versionen',

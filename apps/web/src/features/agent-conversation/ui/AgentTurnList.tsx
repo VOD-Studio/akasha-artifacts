@@ -27,6 +27,12 @@ export function AgentTurnList({ turns }: { turns: readonly AgentConversationTurn
             <p dir="auto" className="wrap-break-word whitespace-pre-wrap">
               {turn.message}
             </p>
+            {turn.references?.length ? (
+              <p className="mt-1 wrap-break-word text-xs text-ink-muted">
+                {t('已发送的参考材料')} ·{' '}
+                <bdi>{turn.references.map(({ name }) => name).join(' · ')}</bdi>
+              </p>
+            ) : null}
             {turn.target ? (
               <p className="mt-1 wrap-break-word text-xs text-ink-muted">
                 <AgentTarget target={turn.target} />

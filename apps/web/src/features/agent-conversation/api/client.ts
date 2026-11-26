@@ -2,8 +2,8 @@ import type {
   AgentConnection,
   AgentConversation,
   AgentConversationStatus,
-  ArtboardTweakApplication,
-  ArtifactHandoffReference,
+  AgentDesignInput,
+  AgentMessageInput,
 } from '@akasha/protocol'
 import { requestJson } from '@/shared/api/request'
 
@@ -24,14 +24,7 @@ export async function fetchArtifactConversation(id: string, signal?: AbortSignal
  * @param input - `target` 固定作品和版本；应用画板参数时还须明确写入范围，不会自动改投新基准。
  * @throws 无有效绑定、CLI 离线或项目已有轮次时拒绝，不会改投其他会话。
  */
-export async function sendArtifactConversation(
-  id: string,
-  input: {
-    message: string
-    target?: ArtifactHandoffReference
-    tweakApplication?: ArtboardTweakApplication
-  },
-) {
+export async function sendArtifactConversation(id: string, input: AgentMessageInput) {
   return requestJson<AgentConversation>(
     `/api/v1/artifacts/${encodeURIComponent(id)}/agent-session`,
     {
@@ -51,10 +44,10 @@ export async function fetchAgentConnections(signal?: AbortSignal) {
  *
  * @returns 受理后的会话；用其 `id` 读取同一会话的进度，而不是重发消息。
  */
-export async function startAgentDesign(projectId: string, message: string) {
+export async function startAgentDesign(input: AgentDesignInput) {
   return requestJson<AgentConversation>('/api/v1/agent/design', {
     method: 'POST',
-    body: JSON.stringify({ projectId, message }),
+    body: JSON.stringify(input),
   })
 }
 

@@ -1,4 +1,8 @@
-import type { AgentAvailability, ArtifactHandoffReference } from '@akasha/protocol'
+import type {
+  AgentAvailability,
+  AgentMessageInput,
+  ArtifactHandoffReference,
+} from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Textarea } from '@akasha/ui/textarea'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -9,6 +13,8 @@ import { useMessages } from '@/shared/i18n'
 import { fetchArtifactConversation, sendArtifactConversation } from '../api/client'
 import { messages } from '../messages'
 import { useAgentDraft } from '../model/agent-draft'
+import { ReferenceComposer } from '../references/ReferenceComposer'
+import { useReferenceDraft } from '../references/useReferenceDraft'
 import { AgentTarget, AgentTurnList } from './AgentTurnList'
 
 export interface ConversationTarget {
@@ -69,34 +75,48 @@ export function AgentConversationPane({
     retry: false,
     refetchInterval: (query) => (query.state.data?.availability === 'busy' ? 1000 : 4000),
   })
+  const denied = status.error instanceof ApiError && [401, 403, 404].includes(status.error.status)
+  const session = denied ? undefined : status.data?.session
+  const availability = status.data?.availability
+  const bound =
+    session?.projectId === projectId &&
+    session.artifactId === artifactId &&
+    (availability === 'ready' || availability === 'busy')
+  const references = useReferenceDraft(bound ? projectId : '', bound ? session.id : undefined)
   const send = useMutation({
-    mutationFn: (input: { message: string; target?: ArtifactHandoffReference }) =>
-      sendArtifactConversation(artifactId, input),
+    mutationFn: (input: AgentMessageInput) => sendArtifactConversation(artifactId, input),
     onSuccess(session) {
       setDraft('')
+      references.reset()
       onClearTarget()
       queryClient.setQueryData(queryKey, { availability: 'busy', session })
       void queryClient.invalidateQueries({ queryKey })
     },
-    onError() {
+    onError(error) {
+      if (error instanceof ApiError && error.status === 409) references.invalidate()
       void queryClient.invalidateQueries({ queryKey })
     },
   })
-  const denied = status.error instanceof ApiError && [401, 403, 404].includes(status.error.status)
-  const session = denied ? undefined : status.data?.session
-  const availability = status.data?.availability
   const running = session?.turns.at(-1)?.status === 'running'
   const notice =
     running && !status.error ? null : getConnectionNotice(artifactId, status.error, availability)
   const message = draft.trim()
-  const canSend = !status.isError && availability === 'ready' && Boolean(message)
+  const canSend =
+    bound && !status.isError && availability === 'ready' && !references.blocked && Boolean(message)
 
   const editMessage: ChangeEventHandler<HTMLTextAreaElement> = (event) =>
     setDraft(event.currentTarget.value)
   const submitMessage: FormEventHandler<HTMLFormElement> = (event) => {
     event.preventDefault()
-    if (!canSend || send.isPending) return
-    send.mutate({ message, target: target?.reference })
+    const selection = references.selection
+    if (
+      !canSend ||
+      send.isPending ||
+      references.blocked ||
+      (references.entries.length && !selection)
+    )
+      return
+    send.mutate({ message, target: target?.reference, references: selection })
   }
 
   return (
@@ -142,7 +162,10 @@ export function AgentConversationPane({
       <div className="min-h-0 flex-1 overflow-y-auto p-3.5">
         {session?.turns.length ? <AgentTurnList turns={session.turns} /> : null}
       </div>
-      <form className="shrink-0 space-y-2 border-t border-border/80 p-3.5" onSubmit={submitMessage}>
+      <form
+        className="max-h-2/3 shrink-0 space-y-2 overflow-y-auto border-t border-border/80 p-3.5"
+        onSubmit={submitMessage}
+      >
         {target ? (
           <div className="flex items-start justify-between gap-2 rounded-8 border border-border bg-surface-subtle/60 px-2.5 py-2">
             <div className="min-w-0 wrap-break-word text-xs">
@@ -174,6 +197,9 @@ export function AgentConversationPane({
           disabled={send.isPending}
           onChange={editMessage}
         />
+        {bound && (
+          <ReferenceComposer key={session.id} draft={references} disabled={send.isPending} />
+        )}
         {send.error ? (
           <p role="alert" className="text-xs">
             {t('未发送：{error}', { error: getRequestErrorMessage(send.error) })}
