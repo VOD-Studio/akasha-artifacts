@@ -125,6 +125,36 @@ it('沙盒包装器和作品根外的节点不作为祖先来源', () => {
   expect(read()).toEqual({ layerId: 'selected', declarations: [], truncated: true })
 })
 
+it('同名目录按钮只报告自身的行内声明和所在隔离树可读的 CSSOM', () => {
+  const { root } = board('<style>.action { padding: 99px }</style><div data-target></div>')
+  const buttons = ['11px', '22px'].map((size, i) => {
+    const host = document.createElement('section')
+    host.style.color = 'teal'
+    root.append(host)
+    const shadow = host.attachShadow({ mode: 'open' })
+    const main = document.createElement('main')
+    main.dataset.akSystem = `OriginalControls0${i}`
+    main.dataset.akSystemVersion = '1'
+    const style = document.createElement('style')
+    style.textContent = `.action { height: ${size} }`
+    const button = document.createElement('button')
+    button.className = 'action'
+    button.style.width = size
+    main.append(style, button)
+    shadow.append(main)
+    return { button, style, size }
+  })
+
+  for (const { button, style, size } of buttons) {
+    const snapshot = readLayerStyles(button, root, 'selected')
+    const expected = [{ source: 'style', property: 'width', value: size }]
+    // 不把样式文本重新装入文档；未开放隔离树 CSSOM 的环境只能证明行内来源。
+    if (style.sheet) expected.push({ source: '.action', property: 'height', value: size })
+    expect(snapshot.declarations).toEqual(expected)
+    expect(snapshot.truncated).toBe(true)
+  }
+})
+
 it('SVG 文字保留表现属性原值，继承在表现属性、匹配 CSS 和行内之间按层叠截断', () => {
   const { read } = board(`
     <style>.paint { fill: purple; stroke: teal }</style>

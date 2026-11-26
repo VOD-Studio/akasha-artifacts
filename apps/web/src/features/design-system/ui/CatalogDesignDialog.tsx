@@ -1,0 +1,179 @@
+import type { CatalogCorrection, CatalogSelection, Project } from '@akasha/protocol'
+import { Button } from '@akasha/ui/button'
+import { Modal } from '@akasha/ui/dialog'
+import { Field } from '@akasha/ui/field'
+import { Input } from '@akasha/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
+import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useWorkspaceStore } from '@/entities/workspace'
+import { useMessages } from '@/shared/i18n'
+import { catalogOptions } from '../api/catalog'
+import { messages } from '../messages'
+import { SavedCorrections } from './CandidateOutcome'
+import { CandidateSubmission } from './CandidateSubmission'
+import { CatalogSelections } from './CatalogSelections'
+
+interface CatalogDesignDialogProps {
+  projects: readonly Project[]
+  onClose: () => void
+  onCreated: (id: string) => void
+}
+
+const modes = {
+  preference: '使用个人设置',
+  none: '本次不使用系统',
+  choose: '选择系统版本',
+} as const
+const noSystems: CatalogSelection[] = []
+
+/** Hub 直接创建独立作品；本次系统选择不修改个人偏好或团队默认。 */
+export function CatalogDesignDialog({ projects, onClose, onCreated }: CatalogDesignDialogProps) {
+  const { t } = useMessages(messages)
+  const [projectId, setProjectId] = useState(() => {
+    const current = useWorkspaceStore.getState().selectedProjectId
+    return (
+      projects.find((p) => p.id === current)?.id ?? (projects.length === 1 ? projects[0].id : '')
+    )
+  })
+  const [title, setTitle] = useState('')
+  const [slug] = useState(() => `design/${crypto.randomUUID()}`)
+  const [mode, setMode] = useState<string>('preference')
+  const [selections, setSelections] = useState<CatalogSelection[]>([])
+  const targetAvailable = projects.some((p) => p.id === projectId)
+  const catalog = useQuery({ ...catalogOptions(projectId), enabled: targetAvailable })
+  const teamDefault = catalog.data?.items.find((item) => item.isDefault)
+  const [source, setSource] = useState<string | null>(null)
+  const [pendingProject, setPendingProject] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [saved, setSaved] = useState<{ id: string; corrections: CatalogCorrection[] } | null>(null)
+  const input = {
+    slug,
+    title: title.trim(),
+    ...(mode !== 'preference' && { selections: mode === 'choose' ? selections : noSystems }),
+  }
+  const changeProject = (id: string) => {
+    setProjectId(id)
+    setSelections([])
+    setMode('preference')
+    setPendingProject(null)
+    setSource(null)
+  }
+  return (
+    <Modal
+      open
+      size="lg"
+      dirty={!saved && source !== null}
+      title={t('新建设计')}
+      onOpenChange={(visible) => {
+        if (!visible && !busy) onClose()
+      }}
+    >
+      {saved && (
+        <SavedCorrections corrections={saved.corrections} onOpen={() => onCreated(saved.id)} />
+      )}
+      {!saved && (
+        <fieldset className="space-y-4" disabled={busy}>
+          <Field label={t('设计名称')}>
+            <Input dir="auto" value={title} onChange={(event) => setTitle(event.target.value)} />
+          </Field>
+          <Field label={t('项目')}>
+            <Select
+              value={targetAvailable ? projectId : ''}
+              onValueChange={(id) => (source === null ? changeProject(id) : setPendingProject(id))}
+              disabled={busy}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={t('选择项目')} />
+              </SelectTrigger>
+              <SelectContent>
+                {projects.map((project) => (
+                  <SelectItem key={project.id} value={project.id}>
+                    {project.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          {pendingProject !== null && (
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => changeProject(pendingProject)}>
+                {t('放弃候选稿并切换项目')}
+              </Button>
+              <Button variant="outline" onClick={() => setPendingProject(null)}>
+                {t('保留当前候选稿')}
+              </Button>
+            </div>
+          )}
+          {targetAvailable && catalog.isPending && <p role="status">{t('正在读取')}</p>}
+          {targetAvailable && catalog.isError && (
+            <div role="alert">
+              {t('无法读取系统目录')}{' '}
+              <Button onClick={() => void catalog.refetch()}>{t('重试')}</Button>
+            </div>
+          )}
+          {targetAvailable && catalog.isSuccess && (
+            <>
+              <Field label={t('本次设计系统')}>
+                <Select value={mode} onValueChange={setMode} disabled={busy}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(modes).map(([key, label]) => (
+                      <SelectItem key={key} value={key}>
+                        {t(label)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              {mode === 'preference' && catalog.data.inheritDefault && teamDefault && (
+                <p>
+                  {t('团队默认')} ·{' '}
+                  <bdi>
+                    {teamDefault.title} · {teamDefault.id} · v{teamDefault.version}
+                  </bdi>
+                </p>
+              )}
+              {mode === 'preference' && !catalog.data.inheritDefault && (
+                <p>{t('未继承团队默认')}</p>
+              )}
+              {mode === 'preference' && catalog.data.inheritDefault && !teamDefault && (
+                <p>{t('尚无团队默认')}</p>
+              )}
+              {mode === 'choose' && (
+                <CatalogSelections
+                  items={catalog.data.items}
+                  selections={selections}
+                  onChange={setSelections}
+                />
+              )}
+            </>
+          )}
+          {projectId && (
+            <CandidateSubmission
+              key={projectId}
+              projectId={projectId}
+              input={input}
+              ready={
+                !!input.title &&
+                targetAvailable &&
+                catalog.isSuccess &&
+                pendingProject === null &&
+                (mode !== 'choose' || selections.length > 0)
+              }
+              source={source}
+              onEdit={setSource}
+              onBusy={setBusy}
+              onSaved={(id, corrections) => {
+                if (corrections.length) setSaved({ id, corrections })
+                else onCreated(id)
+              }}
+            />
+          )}
+        </fieldset>
+      )}
+    </Modal>
+  )
+}

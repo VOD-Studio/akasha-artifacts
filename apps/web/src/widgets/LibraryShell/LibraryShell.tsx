@@ -8,7 +8,11 @@ import { useWorkspaceStore } from '@/entities/workspace'
 import { CreateDesignDialog, useDesignAvailability } from '@/features/agent-conversation'
 import { WithdrawnArtifactsDialog } from '@/features/artifact-management'
 import { DaemonStatusPill } from '@/features/daemon-control'
-import { ImportSystemLauncher } from '@/features/design-system'
+import {
+  CatalogDesignDialog,
+  ImportSystemLauncher,
+  SystemCatalogLauncher,
+} from '@/features/design-system'
 import { HubAccountButton, useHubSession } from '@/features/hub'
 import { HubSharingPolicyLauncher } from '@/features/hub-sharing-policy'
 import { AkashaMark } from '@/shared/brand'
@@ -83,6 +87,7 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
 
   const canManage = cloudHub ? hubSession?.member === true : authorized
   const resume = !cloudHub && canManage && canResume
+  const canCreateHubDesign = cloudHub && canManage && !!projects?.length
   const openDesign = () => setShowCreateDesign(true)
   const closeDesign = () => setShowCreateDesign(false)
   const openWithdrawn = () => setShowWithdrawn(true)
@@ -145,6 +150,9 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
               {cloudHub ? <HubAccountButton /> : <DaemonStatusPill />}
               <ThemeToggle />
               <LanguageMenu />
+              {cloudHub && hubSession?.member && (
+                <SystemCatalogLauncher projects={projects ?? []} admin={hubSession.admin} />
+              )}
               <ImportSystemLauncher
                 projects={canManage ? (projects ?? []) : []}
                 onOpenArtifact={onOpenArtifact}
@@ -152,7 +160,7 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
               {canManage && (
                 <LibraryMenu projects={projects ?? []} onOpenWithdrawn={openWithdrawn} />
               )}
-              {((canCreate && hasArtifacts) || resume) && (
+              {(canCreateHubDesign || (canCreate && hasArtifacts) || resume) && (
                 <Button
                   variant="primary"
                   size="sm"
@@ -223,6 +231,16 @@ export function LibraryShell({ onOpenArtifact }: LibraryShellProps) {
         </main>
       </ScrollArea>
 
+      {cloudHub && canManage && showCreateDesign && (
+        <CatalogDesignDialog
+          projects={projects ?? []}
+          onClose={closeDesign}
+          onCreated={(id) => {
+            closeDesign()
+            onOpenArtifact(id, 'hub')
+          }}
+        />
+      )}
       {/* 保留同一个提交实例，关闭再重开不能丢掉还未返回的受理响应。 */}
       {!cloudHub && (
         <CreateDesignDialog

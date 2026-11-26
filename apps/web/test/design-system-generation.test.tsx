@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { designSystemReferenceHeader } from '@akasha/protocol'
+import { catalogReferenceHeader, designSystemReferenceHeader } from '@akasha/protocol'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -79,4 +79,31 @@ it('从指定历史版本选择具名组件，发布新作品成功后才导航�
   fireEvent.click(screen.getByText('设计系统 · v2'))
   expect(screen.getByRole('link', { name: `${id} · v2` }).getAttribute('href')).toBe(`/a/${id}/v/2`)
   expect(screen.getByText(sourceVersion)).toBeDefined()
+})
+
+it('目录生成的作品展示每个固定来源和组件，不把来源标识变成读取链接', () => {
+  const refs = [
+    { id, version: 2, sourceVersion, components: [component] },
+    {
+      id: resultId,
+      version: 3,
+      sourceVersion,
+      components: [{ path: 'other/Brand.tsx', exportName: 'BrandButton' }],
+    },
+  ]
+  render(
+    <SystemSourceLink
+      source={`${catalogReferenceHeader(refs)}\nexport default function Design() { return null }`}
+    />,
+  )
+  fireEvent.click(screen.getByText('本次使用的固定来源'))
+  for (const text of [
+    `${id} · v2`,
+    `${resultId} · v3`,
+    'ui/Button.tsx#BrandButton',
+    'other/Brand.tsx#BrandButton',
+  ]) {
+    expect(screen.getByText(text)).toBeDefined()
+  }
+  expect(screen.queryByRole('link')).toBeNull()
 })

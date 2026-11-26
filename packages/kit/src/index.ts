@@ -27,6 +27,9 @@ export function registerBuiltinKitTemplates(): void {
 // 导入本包即注册内置模板，渲染器与校验门禁不需要再手动调用
 registerBuiltinKitTemplates()
 
+export { composeCatalogBoard } from './catalog-board.js'
+export { type CatalogReconciliation, reconcileCatalogCandidate } from './catalog-reconcile.js'
+export type { CatalogBoardSource } from './catalog-regions.js'
 export {
   designSystemPreviewSource,
   generateDesignSystemBoard,

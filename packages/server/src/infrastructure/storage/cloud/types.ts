@@ -1,7 +1,7 @@
 export type SqlValue = string | number | null
 export type SqlStatement = [sql: string, ...params: SqlValue[]]
 /** 成组写入的互斥范围；PostgreSQL 驱动据此取事务级咨询锁，SQLite 驱动靠事务本身串行。 */
-export type SqlWriteLock = 'schema' | 'rounds' | 'feedbacks'
+export type SqlWriteLock = 'schema' | 'rounds' | 'feedbacks' | 'systemPublications'
 
 export interface SqlDriver {
   // 把单个 JSON 数组参数展开为多行的 SQL 片段，占位符为 ?；各数据库的展开函数不同

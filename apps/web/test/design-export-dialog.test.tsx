@@ -359,7 +359,8 @@ it('范围和固定版本切换清理预览；复核下载权限失败不交付�
   fireEvent.click(screen.getByRole('button', { name: 'Export' }))
   await screen.findByRole('alert')
   expect(screen.queryByRole('img')).toBeNull()
-  expect(liveDownloadUrls.size).toBe(0)
+  // 拒绝请求异步卸载预览，URL 在该次提交的 effect 清理中回收。
+  await waitFor(() => expect(liveDownloadUrls.size).toBe(0))
   expect(names).toEqual([])
   openPreview()
   await screen.findByRole('img', { name: 'Page 1 of 2' })

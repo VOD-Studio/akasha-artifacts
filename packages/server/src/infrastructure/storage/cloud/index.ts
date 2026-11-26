@@ -41,7 +41,9 @@ import {
 } from '../workspace-component.js'
 import { createSqlHubSharingRepository } from './hub-sharing/repository.js'
 import { hubSharingSchema } from './hub-sharing/schema.js'
+import { createSqlNamedSystemRepository, namedSystemSchema } from './named-systems.js'
 import { schema } from './schema.js'
+import { systemPublicationSchema } from './system-publications.js'
 import type { SqlDriver, SqlStatement, SqlValue, SqlWriteLock, VersionBlobs } from './types.js'
 
 const projectColumns = 'id, root_path AS "rootPath", name, last_active_at AS "lastActiveAt"'
@@ -105,6 +107,8 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
         [artifactLifecycleTable],
         ...annotationStatements,
         ...hubSharingSchema,
+        ...namedSystemSchema,
+        ...systemPublicationSchema,
       ],
       'schema',
     )
@@ -116,13 +120,14 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
   const query = <Row>(...statement: SqlStatement) => execute<Row>(statement)
   const first = async <Row>(...statement: SqlStatement): Promise<Row | undefined> =>
     (await execute<Row>(statement))[0]
-  async function write<Row>(lock: SqlWriteLock, ...statements: SqlStatement[]): Promise<Row[]> {
+  async function transact<Row>(statements: SqlStatement[], lock?: SqlWriteLock): Promise<Row[]> {
     await ready
     return driver.batch<Row>(statements, lock)
   }
+  const write = <Row>(lock: SqlWriteLock, ...statements: SqlStatement[]) =>
+    transact<Row>(statements, lock)
   const batch = async (statements: SqlStatement[]): Promise<void> => {
-    await ready
-    await driver.batch(statements)
+    await transact(statements)
   }
 
   const projects: ProjectRepository = {
@@ -568,6 +573,7 @@ export function createCloudStorage(driver: SqlDriver, blobs?: VersionBlobs) {
     feedbacks,
     receipts,
     sharing: createSqlHubSharingRepository(execute, batch, driver.jsonArrayValues),
+    namedSystems: createSqlNamedSystemRepository(execute, transact),
     artifactStorage,
     allocateRealtimeSeq,
     ready,

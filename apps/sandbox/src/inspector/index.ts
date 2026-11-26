@@ -6,6 +6,7 @@ import {
   type ShellToSandboxMessage,
 } from '@akasha/protocol'
 import type { SandboxBridgeClient } from '../bridge/client'
+import { inspectPoint, resolveScopedSelector, scopeForElement } from './catalog-scope'
 import { layerElementId, layerSelector, readDesignLayerId, uniqueLayerBlock } from './layers'
 
 const TEXT_ELEMENTS = new Set([
@@ -56,7 +57,12 @@ function readElementPresentation(
   const computed = win.getComputedStyle(target)
   const color = computed.color?.trim() || undefined
   let backgroundColor: string | undefined
-  for (let current: Element | null = target; current; current = current.parentElement) {
+  const scope = scopeForElement(target, root)
+  for (
+    let current: Element | null = target;
+    current;
+    current = current.parentElement ?? (current === scope?.content ? scope.host : null)
+  ) {
     const bg = win.getComputedStyle(current).backgroundColor?.trim()
     if (bg && !isTransparentCssColor(bg)) {
       backgroundColor = bg
@@ -102,7 +108,7 @@ function resolveHitElement(target: Element | null, root: HTMLElement): Element |
   if (
     !target ||
     target === root ||
-    !root.contains(target) ||
+    (!root.contains(target) && !scopeForElement(target, root)) ||
     target.hasAttribute('data-ak-renderer')
   )
     return null
@@ -196,6 +202,7 @@ function readLoc(el: Element, rootEl?: Element | null): string | undefined {
 
 /** AST 直改只接受目标本身的唯一静态位置，不使用批注允许的祖先定位。 */
 export function uniqueStaticSourceLocation(target: Element, root: Element) {
+  if (!root.contains(target)) return undefined
   const loc = target.getAttribute('data-ak-loc')
   return loc &&
     /^\d{1,8}:\d{1,8}$/.test(loc) &&
@@ -219,9 +226,11 @@ function readRect(el: Element): { x: number; y: number; width: number; height: n
  * 按 `blockId` > `loc` > `selector` > `textPreview` 构造 `ElementRef`，并附带相对视口的 `rect`。
  */
 export function buildElementRef(el: Element, rootEl?: Element | null): ElementRef {
-  const blockId = readBlockId(el, rootEl)
-  const loc = readLoc(el, rootEl)
-  const selector = buildCssSelector(el, rootEl)
+  // 固定组件中的 id/源码行可与另一个实例完全相同；只保存带固定来源的定位路径。
+  const scoped = rootEl && scopeForElement(el, rootEl)
+  const blockId = scoped ? undefined : readBlockId(el, rootEl)
+  const loc = scoped ? undefined : readLoc(el, rootEl)
+  const selector = scoped ? layerSelector(el, rootEl) : buildCssSelector(el, rootEl)
   const rawText = (el.textContent ?? '').replace(/\s+/g, ' ').trim()
   const textPreview = rawText ? rawText.slice(0, 160) : undefined
 
@@ -240,6 +249,10 @@ export function buildElementRef(el: Element, rootEl?: Element | null): ElementRe
  * @returns 第一个匹配的元素；都找不到时返回 `null`。
  */
 export function findElementByRef(rootEl: Element, ref: ElementRef): Element | null {
+  if (ref.selector) {
+    const scoped = resolveScopedSelector(rootEl, ref.selector)
+    if (scoped !== undefined) return scoped
+  }
   if (ref.blockId) {
     const esc = escapeCssIdent(ref.blockId)
     if (ref.blockId.startsWith(DESIGN_LAYER_BLOCK_PREFIX)) {
@@ -333,7 +346,7 @@ export class SandboxInspector {
     if (message.version !== this.getVersion()) return
     const root = this.getRootEl()
     if (!root) return
-    const hit = resolveHitElement(root.ownerDocument.elementFromPoint(message.x, message.y), root)
+    const hit = resolveHitElement(inspectPoint(root, message.x, message.y), root)
     const picking = message.purpose === 'select'
     if (picking) {
       this.selectedEl = hit
@@ -419,7 +432,13 @@ export class SandboxInspector {
   // 触发一次同步重算（供无 rAF 的测试、容器尺寸变化或强制刷新调用）
   syncRects(): void {
     const root = this.getRootEl()
-    if (root && this.selectedEl?.isConnected) this.emitSelection(this.selectedEl, root)
+    if (
+      root &&
+      this.selectedEl?.isConnected &&
+      (root.contains(this.selectedEl) || scopeForElement(this.selectedEl, root))
+    ) {
+      this.emitSelection(this.selectedEl, root)
+    }
     this.emitPinRects()
   }
 

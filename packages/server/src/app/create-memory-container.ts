@@ -12,6 +12,7 @@ import {
   InMemoryStateRepository,
   SystemClock,
 } from '../infrastructure/storage/memory/index.js'
+import { createMemoryNamedSystemRepository } from '../infrastructure/storage/memory/named-systems.js'
 
 export interface MemoryContainerOptions {
   clock?: Clock
@@ -29,6 +30,7 @@ export function createMemoryContainer(options: MemoryContainerOptions = {}) {
   const feedbacks = new InMemoryFeedbackRepository()
   const receipts = new InMemoryReceiptRepository()
   const sharing = createMemoryHubSharingRepository((id) => artifacts.invalidateShares(id))
+  const namedSystems = createMemoryNamedSystemRepository(artifacts)
   const realtime = new InMemoryRealtimeBus(clock)
 
   const service = new ArtifactService({
@@ -46,6 +48,15 @@ export function createMemoryContainer(options: MemoryContainerOptions = {}) {
   return {
     service,
     realtime,
-    repositories: { projects, artifacts, states, rounds, feedbacks, receipts, sharing },
+    repositories: {
+      projects,
+      artifacts,
+      states,
+      rounds,
+      feedbacks,
+      receipts,
+      sharing,
+      namedSystems,
+    },
   }
 }
