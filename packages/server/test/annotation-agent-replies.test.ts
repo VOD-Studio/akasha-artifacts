@@ -327,3 +327,61 @@ it('离线失败、访客拦截与未绑定制品的纯 MCP 收件回执相互�
     container.close()
   }
 })
+
+it('前序轮次在 claimAgentDelivery 等待期间结束时，入队的批注会立即补排而非永久滞留 queued', async () => {
+  const { container, launches, browser, req, publishBoundArtifact, listReview } =
+    createFixture('memory')
+  try {
+    const artifactId = await publishBoundArtifact()
+
+    // 启动第一条批注，使项目进入 busy。
+    expect(
+      (
+        await req(`/artifacts/${artifactId}/feedback`, 'POST', browser, {
+          project: 'design',
+          version: 1,
+          kind: 'comment',
+          audience: 'agent',
+          element: { blockId: 'hero-title' },
+          body: '第一条占槽批注',
+        })
+      ).status,
+    ).toBe(201)
+    await vi.waitFor(() => expect(launches).toHaveLength(2))
+
+    // 劫持 claimAgentDelivery：在等待期间让第一条轮次完成并排空空队列。
+    const annotations = container.repositories.feedbacks.annotations
+    const originalClaim = annotations.claimAgentDelivery.bind(annotations)
+    annotations.claimAgentDelivery = async (feedbackId, delivery) => {
+      const claimed = await originalClaim(feedbackId, delivery)
+      launches[1]?.resolve('第一条已完成。')
+      await vi.waitFor(async () => {
+        const res = await req(`/artifacts/${artifactId}/agent-session`, 'GET', browser)
+        const data = (await res.json()) as { availability: string }
+        expect(data.availability).toBe('ready')
+      })
+      return claimed
+    }
+
+    const secondRes = await req(`/artifacts/${artifactId}/feedback`, 'POST', browser, {
+      project: 'design',
+      version: 1,
+      kind: 'comment',
+      audience: 'agent',
+      element: { blockId: 'hero-title' },
+      body: '并发落入排队分支的第二条批注',
+    })
+    expect(secondRes.status).toBe(201)
+    const { feedback: secondFb } = (await secondRes.json()) as { feedback: Feedback }
+
+    await vi.waitFor(() => expect(launches).toHaveLength(3))
+    launches[2]?.resolve('第二条已正常补排并完成。')
+
+    await vi.waitFor(async () => {
+      const done = await listReview(artifactId)
+      expect(done.threads[secondFb.id]?.agent?.state).toBe('replied')
+    })
+  } finally {
+    container.close()
+  }
+})

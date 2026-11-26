@@ -7,6 +7,11 @@ import { MessageSquareText, Send, Target, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
+import {
+  type AnnotationDraft,
+  readAnnotationDraft,
+  writeAnnotationDraft,
+} from '@/entities/feedback'
 import { isAccessDenied } from '@/shared/api/error'
 import { useMessages } from '@/shared/i18n'
 import { useSubmitFeedbackMutation } from '../api/mutations'
@@ -25,7 +30,10 @@ export interface AnchoredAnnotationTarget {
 export interface AnchoredAnnotationComposerProps {
   artifactId: string
   projectId: string
+  /** 当前工作区正在展示的版本；热更新推进后与草稿原版本对比以防错绑。 */
   version: number
+  /** 发起本条选区批注时的固定版本，不随头版本热更新改写。 */
+  originVersion: number
   target: AnchoredAnnotationTarget
   /** 当前草拟中的评审轮次；存在时保存为本轮草稿，提交本轮后才投递 Agent。 */
   activeDraftingRound: ReviewRound | null
@@ -33,19 +41,21 @@ export interface AnchoredAnnotationComposerProps {
   notifyAgent: boolean
   onClose: () => void
   onOpenAllDiscussions: () => void
+  onOpenVersion?: (version: number) => void
   onSubmitted?: (feedback: Feedback) => void
 }
 
 function targetSummary(
-  target: AnchoredAnnotationTarget,
+  element: ElementRef | null,
+  fallbackLabel: string | undefined,
   t: ReturnType<typeof useMessages<typeof panelMessages>>['t'],
 ): string {
-  if (target.label) return target.label
-  const el = target.element
-  if (el.textPreview) return el.textPreview.slice(0, 32)
-  if (el.blockId) return `#${el.blockId}`
-  if (el.loc) return t('源码 {loc}', { loc: el.loc })
-  if (el.selector) return el.selector.slice(0, 36)
+  if (fallbackLabel) return fallbackLabel
+  if (!element) return t('已选元素')
+  if (element.textPreview) return element.textPreview.slice(0, 32)
+  if (element.blockId) return `#${element.blockId}`
+  if (element.loc) return t('源码 {loc}', { loc: element.loc })
+  if (element.selector) return element.selector.slice(0, 36)
   return t('已选元素')
 }
 
@@ -58,35 +68,70 @@ function submittedMessage(audience: Feedback['audience'], roundId: string | null
 
 /**
  * 贴靠选区对象的批注浮层：保留原对象在画面内，默认仅讨论不投递，
- * 逐条勾选后才发给 Agent，不强制展开全部讨论抽屉。
+ * 逐条勾选后才发给 Agent，不强制展开全部讨论抽屉；热更新期间按 §7.3 保留原版本与草稿。
  */
 export function AnchoredAnnotationComposer({
   artifactId,
   projectId,
   version,
+  originVersion,
   target,
   activeDraftingRound,
   notifyAgent,
   onClose,
   onOpenAllDiscussions,
+  onOpenVersion,
   onSubmitted,
 }: AnchoredAnnotationComposerProps) {
   const { t, dir } = useMessages(panelMessages)
   const headingId = useId()
   const notifyId = useId()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const [body, setBody] = useState('')
-  const [sendToAgent, setSendToAgent] = useState(false)
+  const [draft, setDraft] = useState<AnnotationDraft | null>(() => readAnnotationDraft(artifactId))
+  const [sendToAgent, setSendToAgent] = useState(() => draft?.sendToAgent ?? false)
   const [denied, setDenied] = useState(false)
   const submitMutation = useSubmitFeedbackMutation(artifactId)
-  const roundId = activeDraftingRound?.id ?? null
+
+  const body = draft?.body ?? ''
+  const targetElement = draft?.body ? draft.element : target.element
+  const targetVersion = draft?.body ? draft.version : originVersion
+  const roundId = draft?.body ? draft.roundId : (activeDraftingRound?.id ?? null)
+  const wrongVersion = targetVersion !== version
+  const roundChanged = roundId !== null && roundId !== activeDraftingRound?.id
   const busy = submitMutation.isPending
-  const locked = denied || busy
+  const locked = denied || wrongVersion || roundChanged || busy
   const isBoardOnly =
-    Boolean(target.element.boardId) &&
-    target.element.blockId === target.element.boardId &&
-    !target.element.selector &&
-    !target.element.loc
+    Boolean(targetElement?.boardId) &&
+    targetElement?.blockId === targetElement?.boardId &&
+    !targetElement?.selector &&
+    !targetElement?.loc
+
+  const replaceDraft = (next: AnnotationDraft | null) => {
+    setDraft(next)
+    writeAnnotationDraft(artifactId, next)
+    if (!next) setSendToAgent(false)
+  }
+
+  const updateDraft = (changes: Partial<AnnotationDraft>) => {
+    const nextSendToAgent = changes.sendToAgent ?? sendToAgent
+    if (changes.sendToAgent !== undefined) setSendToAgent(changes.sendToAgent)
+    const nextBody = changes.body ?? body
+    if (!nextBody) {
+      replaceDraft(null)
+      setSendToAgent(nextSendToAgent)
+      return
+    }
+    const next: AnnotationDraft = {
+      body: nextBody,
+      sendToAgent: nextSendToAgent,
+      element: targetElement,
+      version: targetVersion,
+      roundId,
+      ...changes,
+    }
+    setDraft(next)
+    writeAnnotationDraft(artifactId, next)
+  }
 
   useEffect(() => {
     const previous = document.activeElement
@@ -112,13 +157,14 @@ export function AnchoredAnnotationComposer({
     try {
       const { feedback } = await submitMutation.mutateAsync({
         project: projectId,
-        version,
+        version: targetVersion,
         roundId,
         kind: 'comment',
         audience,
-        element: target.element,
+        element: targetElement,
         body: trimmed,
       })
+      replaceDraft(null)
       toast.success(t(submittedMessage(audience, roundId)))
       onSubmitted?.(feedback)
       onClose()
@@ -127,6 +173,8 @@ export function AnchoredAnnotationComposer({
       else toast.error(err instanceof Error ? err.message : t('提交批注失败'))
     }
   }
+
+  const returnHref = `/a/${encodeURIComponent(artifactId)}/v/${targetVersion}${window.location.search}`
 
   return createPortal(
     <dialog
@@ -161,10 +209,10 @@ export function AnchoredAnnotationComposer({
           <h2 id={headingId} className="text-xs font-semibold text-ink">
             {isBoardOnly ? t('画板批注') : t('元素批注')}
           </h2>
-          {roundId ? (
+          {roundId && !wrongVersion && !roundChanged ? (
             <Badge tone="warning">{t('本轮草稿')}</Badge>
           ) : (
-            <Badge tone="neutral">v{version}</Badge>
+            <Badge tone="neutral">v{targetVersion}</Badge>
           )}
         </div>
         <Button
@@ -180,10 +228,64 @@ export function AnchoredAnnotationComposer({
         </Button>
       </div>
 
-      <div className="mb-2 flex items-center gap-1.5 rounded-lg border border-border bg-selected px-2.5 py-1.5 text-[11px] text-selected-foreground">
-        <Target size={12} className="shrink-0" />
-        <span className="truncate font-mono font-medium">{targetSummary(target, t)}</span>
-      </div>
+      {targetElement ? (
+        <div className="mb-2 flex items-center gap-1.5 rounded-lg border border-border bg-selected px-2.5 py-1.5 text-[11px] text-selected-foreground">
+          <Target size={12} className="shrink-0" />
+          <span className="truncate font-mono font-medium">
+            {targetSummary(targetElement, draft?.body ? undefined : target.label, t)}
+          </span>
+        </div>
+      ) : null}
+
+      {(wrongVersion || roundChanged) && (
+        <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
+          {wrongVersion ? (
+            <a
+              className="font-medium text-accent underline underline-offset-2"
+              href={returnHref}
+              onClick={(event) => {
+                if (
+                  !onOpenVersion ||
+                  event.button !== 0 ||
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey
+                ) {
+                  return
+                }
+                event.preventDefault()
+                onOpenVersion(targetVersion)
+              }}
+            >
+              {t('回 {version} 继续', { version: `v${targetVersion}` })}
+            </a>
+          ) : (
+            <>
+              <span>{t('原轮次已变更。')}</span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => updateDraft({ roundId: null, sendToAgent: false })}
+              >
+                {t('转为独立批注')}
+              </Button>
+            </>
+          )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              replaceDraft(null)
+              if (wrongVersion) onClose()
+            }}
+          >
+            {t('放弃草稿')}
+          </Button>
+        </div>
+      )}
 
       <Textarea
         ref={textareaRef}
@@ -192,7 +294,7 @@ export function AnchoredAnnotationComposer({
         rows={3}
         value={body}
         readOnly={locked}
-        onChange={(event) => setBody(event.target.value)}
+        onChange={(event) => updateDraft({ body: event.target.value })}
         placeholder={t('输入批注')}
       />
 
@@ -208,7 +310,7 @@ export function AnchoredAnnotationComposer({
             id={notifyId}
             checked={sendToAgent}
             disabled={locked}
-            onCheckedChange={(checked) => setSendToAgent(checked === true)}
+            onCheckedChange={(checked) => updateDraft({ sendToAgent: checked === true })}
           />
           {roundId ? t('随本轮发给 Agent') : t('同时发送给 Agent')}
         </label>

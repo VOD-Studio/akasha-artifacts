@@ -660,12 +660,9 @@ export function ArtifactWorkspace({
     useWorkspaceStore.getState().setViewMode('edit')
   }
 
+  // 热更新推进版本时不卸载未发送的选区批注浮层，沿用其发起时的原版本与目标草稿。
   const activeAnchoredComment =
-    canComment &&
-    anchoredComment?.artifactId === artifact.publicId &&
-    anchoredComment.version === version.version
-      ? anchoredComment.target
-      : null
+    canComment && anchoredComment?.artifactId === artifact.publicId ? anchoredComment : null
 
   const draftingRound = !access && activeRound?.status === 'drafting' ? activeRound : null
   const resolveAnchoredElement = (): { element: ElementRef; label?: string } | null => {
@@ -938,11 +935,13 @@ export function ArtifactWorkspace({
           artifactId={artifact.publicId}
           projectId={artifact.projectId}
           version={version.version}
-          target={activeAnchoredComment}
+          originVersion={activeAnchoredComment.version}
+          target={activeAnchoredComment.target}
           activeDraftingRound={draftingRound}
           notifyAgent={!access}
           onClose={() => setAnchoredComment(null)}
           onOpenAllDiscussions={() => setInspectorTab('review')}
+          onOpenVersion={onOpenVersion}
         />
       ) : null}
     </div>

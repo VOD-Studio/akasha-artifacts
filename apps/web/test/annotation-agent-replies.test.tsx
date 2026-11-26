@@ -417,3 +417,48 @@ it('打开已发布版本可定位该对象，回看旧快照仍定位原对象'
     ),
   ).toBe(true)
 })
+
+it('头版本热更新时保留选区旁批注草稿正文与发送给 Agent 勾选状态', () => {
+  stubResizeObserver()
+  const openVersion = vi.fn()
+  const detailV1 = detailFor(1, sourceWithHeadline())
+  const detailV2 = detailFor(2, sourceWithHeadline())
+  const view = showWorkspace(detailV1)
+  view.update(
+    <ArtifactWorkspace
+      detail={detailV1}
+      versions={[detailV1.version]}
+      sandboxOrigin="http://127.0.0.1:24331"
+      onOpenVersion={openVersion}
+    />,
+  )
+  selectHeadlineLayer()
+
+  fireEvent.click(
+    within(screen.getByTestId('selection-toolbar')).getByRole('button', { name: '批注' }),
+  )
+  const popover = screen.getByTestId('anchored-annotation-composer')
+  fireEvent.click(within(popover).getByRole('checkbox', { name: '同时发送给 Agent' }))
+  fireEvent.change(within(popover).getByRole('textbox', { name: '批注内容' }), {
+    target: { value: '热更新前未写完的选区批注' },
+  })
+
+  // Agent 推送 v2 热更新：浮层不得卸载或丢失未提交草稿。
+  view.update(
+    <ArtifactWorkspace
+      detail={detailV2}
+      versions={[detailV1.version, detailV2.version]}
+      sandboxOrigin="http://127.0.0.1:24331"
+      onOpenVersion={openVersion}
+    />,
+  )
+  const kept = screen.getByTestId('anchored-annotation-composer')
+  const textarea = within(kept).getByRole('textbox', { name: '批注内容' }) as HTMLTextAreaElement
+  expect(textarea.value).toBe('热更新前未写完的选区批注')
+  expect(textarea.hasAttribute('readonly')).toBe(true)
+  expect(
+    within(kept).getByRole('checkbox', { name: '同时发送给 Agent' }).getAttribute('aria-checked'),
+  ).toBe('true')
+  fireEvent.click(within(kept).getByRole('link', { name: '回 v1 继续' }))
+  expect(openVersion).toHaveBeenCalledWith(1)
+})

@@ -260,6 +260,10 @@ export class AgentSessions implements AnnotationAgentDispatcher {
         sessionId,
       })
       await this.publishAnnotationChanged(artifact.publicId, artifact.projectId)
+      // 若前序轮次在 claimAgentDelivery 等待期间恰好结束并排空了旧队列，这里立即补排，避免滞留在 queued。
+      if (!this.running.has(artifact.projectId)) {
+        await this.drainAnnotationQueue(artifact.projectId)
+      }
       return
     }
     await this.launchAnnotationTurn(artifact, feedback, sessionId)
@@ -475,6 +479,9 @@ export class AgentSessions implements AnnotationAgentDispatcher {
         sessionId,
       })
       await this.publishAnnotationChanged(artifact.publicId, artifact.projectId)
+      if (!this.running.has(artifact.projectId)) {
+        await this.drainAnnotationQueue(artifact.projectId)
+      }
       return
     }
     try {
