@@ -22,6 +22,7 @@ import {
 } from '../../lib/modal-opener'
 import { useUiLocale } from '../../locale'
 import { Button } from '../button'
+import { ScrollArea } from '../scroll-area'
 
 /** 宽度档：小 360、中 400、大 520。 */
 export type SheetSize = 'sm' | 'md' | 'lg'
@@ -264,9 +265,28 @@ function SheetDescription({
   )
 }
 
-/** 内容区：单独滚动，滚到头不带动背后的页面。 */
-function SheetBody({ className, ...props }: ComponentProps<'div'>) {
-  return <div data-slot="sheet-body" className={cn('v-sheet__body', className)} {...props} />
+/** 内容区：使用覆盖式滚动条单独滚动，滚到头不带动背后的页面。 */
+function SheetBody({
+  className,
+  children,
+  role = 'presentation',
+  tabIndex = -1,
+  'aria-label': ariaLabel = '面板内容',
+  ...props
+}: ComponentProps<'div'>) {
+  return (
+    <ScrollArea
+      data-slot="sheet-body"
+      className={cn('v-sheet__body', className)}
+      viewportClassName="v-sheet__body-viewport"
+      role={role}
+      tabIndex={tabIndex}
+      aria-label={ariaLabel}
+      {...props}
+    >
+      {children}
+    </ScrollArea>
+  )
 }
 
 /** 底栏：可选，顶上一条细线，按钮等分或靠右。 */
