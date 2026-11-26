@@ -87,7 +87,7 @@ export function CanvasArtboardPlacer({
       title={t('点击或拖动以放置新画板，Esc 取消')}
       className="artifact-canvas-placement"
       onPointerDown={(event) => {
-        if (event.button !== 0 || drag.current) return
+        if (event.button !== 0 || event.isPrimary === false || drag.current) return
         event.stopPropagation()
         const rect = event.currentTarget.getBoundingClientRect()
         const start = toCanvasPoint(rect, event.clientX, event.clientY)
@@ -136,9 +136,11 @@ export function CanvasArtboardPlacer({
           base,
         )
       }}
-      onPointerCancel={clear}
-      onLostPointerCapture={() => {
-        if (drag.current) clear()
+      onPointerCancel={(event) => {
+        if (drag.current && drag.current.pointerId === event.pointerId) clear()
+      }}
+      onLostPointerCapture={(event) => {
+        if (drag.current && drag.current.pointerId === event.pointerId) clear()
       }}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
@@ -299,7 +301,7 @@ export function CanvasBlankDrawingOverlay({
       data-testid="canvas-blank-drawing"
       className="artifact-canvas-blank-drawing pointer-events-auto absolute inset-0 z-0 touch-none"
       onPointerDown={(event: PointerEvent<HTMLDivElement>) => {
-        if (event.button !== 0 || drag.current) return
+        if (event.button !== 0 || event.isPrimary === false || drag.current) return
         const rect = event.currentTarget.getBoundingClientRect()
         const start = toCanvasPoint(rect, event.clientX, event.clientY)
         event.stopPropagation()
@@ -391,9 +393,15 @@ export function CanvasBlankDrawingOverlay({
           )
         }
       }}
-      onPointerCancel={clear}
-      onLostPointerCapture={() => {
-        if (drag.current) clear()
+      onPointerCancel={(event) => {
+        if (
+          event.isPrimary !== false &&
+          (!drag.current || drag.current.pointerId === event.pointerId)
+        )
+          clear()
+      }}
+      onLostPointerCapture={(event) => {
+        if (drag.current && drag.current.pointerId === event.pointerId) clear()
       }}
       onDoubleClick={tool.kind === 'pen' ? finishPen : undefined}
     >

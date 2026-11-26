@@ -160,3 +160,25 @@ it('总览长按文字不依赖双击，末尾的点击不会发出第二次选�
   expect(screen.getByRole<HTMLTextAreaElement>('textbox', { name: '文字' }).value).toBe('预约')
   expect(editor.submittedVersion).toBeUndefined()
 })
+
+it('绘图工具仅让第一指落笔，另一指不能在邻板创建图层或取消正在绘制的笔画', async () => {
+  stubResizeObserver()
+  const editor = showEditableWorkspace(detailFor())
+  fireEvent.click(screen.getByRole('button', { name: '形状' }))
+  fireEvent.click(screen.getByRole('button', { name: '绘制矩形' }))
+  const drawing = screen.getByRole('button', { name: '在宽屏首页绘制矩形' })
+  const other = screen.getByRole('button', { name: '在手机首页绘制矩形' })
+  vi.spyOn(drawing, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 1440, 900))
+  vi.spyOn(other, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 390, 844))
+  touch(drawing, 'pointerdown', 1, 20, 10)
+  touch(other, 'pointerdown', 2, 30, 30)
+  touch(other, 'pointerup', 2, 40, 40)
+  touch(drawing, 'pointermove', 1, 90, 60)
+  touch(drawing, 'pointerup', 1, 90, 60)
+  await waitFor(() => expect(editor.current.version.version).toBe(2))
+  const [desktop, mobile] = JSON.parse(editor.current.version.source).boards
+  expect(desktop.designLayers).toEqual([
+    expect.objectContaining({ kind: 'rectangle', x: 20, y: 10, width: 70, height: 50 }),
+  ])
+  expect(mobile.designLayers).toBeUndefined()
+})

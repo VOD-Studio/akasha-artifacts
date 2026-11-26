@@ -171,7 +171,8 @@ export function BoardDrawingSurface({
   useEffect(() => {
     if (tool.kind !== 'pen' || !Array.isArray(preview)) return
     const onPointerDown = (event: globalThis.PointerEvent) => {
-      if (event.button !== 0 || !path.current || !buttonRef.current) return
+      if (event.button !== 0 || event.isPrimary === false || !path.current || !buttonRef.current)
+        return
       const target = event.target instanceof Element ? event.target : null
       if (!target || buttonRef.current.contains(target)) return
       if (!target.closest('.artifact-canvas')) return
@@ -231,7 +232,7 @@ export function BoardDrawingSurface({
       title={tool.kind === 'pen' ? t('点击添加节点；双击或按 Enter 完成，Esc 取消') : undefined}
       className="artifact-canvas-board-hit z-2 touch-none overflow-visible focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
       onPointerDown={(event) => {
-        if (event.button !== 0 || gesture.current) return
+        if (event.button !== 0 || event.isPrimary === false || gesture.current) return
         const frame = event.currentTarget.getBoundingClientRect()
         if (!frame.width || !frame.height) return
         const toBoardPoint = (point: Pick<PointerEvent, 'clientX' | 'clientY'>): Point =>
@@ -282,9 +283,15 @@ export function BoardDrawingSurface({
         sample(drawing.points, end, true)
         commitStroke(drawing.points, drawing.base, anchor)
       }}
-      onPointerCancel={cancel}
-      onLostPointerCapture={() => {
-        if (gesture.current) cancel()
+      onPointerCancel={(event) => {
+        if (
+          event.isPrimary !== false &&
+          (!gesture.current || gesture.current.pointer === event.pointerId)
+        )
+          cancel()
+      }}
+      onLostPointerCapture={(event) => {
+        if (gesture.current && gesture.current.pointer === event.pointerId) cancel()
       }}
       onKeyDown={(event) => {
         if (tool.kind === 'pen' && event.key === 'Enter' && !event.nativeEvent.isComposing) {
