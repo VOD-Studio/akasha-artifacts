@@ -151,9 +151,9 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
   }
 
   return (
-    <section aria-label={t('图层布局')}>
+    <section aria-label={t('图层布局')} className="divide-y divide-border/75">
       {selected.length > 1 || canUngroup ? (
-        <div className="grid grid-cols-6 items-center border-b border-border/75 px-3 py-1.5">
+        <div className="grid grid-cols-6 items-center px-3 py-1.5">
           {ALIGNMENTS.map(({ id, label }) => {
             const Icon = ALIGNMENT_ICONS[id]
             return (
@@ -174,7 +174,7 @@ export function DesignLayerLayout({ boardId, layer, selected, editing }: LayoutP
           })}
         </div>
       ) : null}
-      <div>
+      <div className="divide-y divide-border/75">
         <InspectorSection title={panelText('尺寸')}>
           <InspectorRow label={t('宽度')}>
             <InspectorNumberInput

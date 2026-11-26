@@ -536,7 +536,7 @@ export function BoardInspector({
                 )}
               </TabsContent>
               {hasTweaksTab && (
-                <TabsContent value="tweaks">
+                <TabsContent value="tweaks" className="divide-y divide-border/75">
                   {hasBoardTweaks && board && tweaks && (
                     <InspectorSection title={t('画板参数')}>
                       <BoardTweakPanel

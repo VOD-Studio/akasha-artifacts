@@ -167,7 +167,7 @@ export function BoardInspectorProperties({
     }
 
     return (
-      <section aria-label={t('原生图层属性')}>
+      <section aria-label={t('原生图层属性')} className="divide-y divide-border/75">
         {textLayer && (editing || canEditText) ? (
           <InspectorSection
             title={t('文本')}
@@ -332,7 +332,7 @@ export function BoardInspectorProperties({
 
   const current = boardProperties(board)
   return (
-    <section aria-label={t('画板属性')}>
+    <section aria-label={t('画板属性')} className="divide-y divide-border/75">
       {!editing && (
         <>
           <InspectorSection title={t('画板')}>
@@ -543,9 +543,9 @@ function RuntimeElementProperties({
   const matchedStyles = runtimeLayer && styles?.layerId === runtimeLayer.id ? styles : undefined
 
   return (
-    <section aria-label={t('运行图层属性')}>
+    <section aria-label={t('运行图层属性')} className="divide-y divide-border/75">
       {canReorder ? (
-        <div className="grid grid-cols-2 gap-1.5 border-b border-border/75 px-4 py-2">
+        <div className="grid grid-cols-2 gap-1.5 px-4 py-2">
           <Button
             size="sm"
             variant="ghost"
@@ -922,7 +922,7 @@ function BoardAppearanceForm({ boardId, current, editing }: BoardAppearanceFormP
         commitDraft()
       }}
     >
-      <fieldset disabled={!editing.available} className="min-w-0">
+      <fieldset disabled={!editing.available} className="min-w-0 divide-y divide-border/75">
         <InspectorSection title={t('画板')}>
           <InspectorRow label={t('宽度')}>
             <InspectorNumberInput
