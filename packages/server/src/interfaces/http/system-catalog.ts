@@ -59,8 +59,7 @@ export function mountSystemCatalog(
     const principal = await auth.authenticate(c.req.raw)
     const projectId = c.req.param('projectId')
     if (
-      !principal ||
-      principal.kind !== 'session' ||
+      principal?.kind !== 'session' ||
       !ownsHubProject(principal, projectId) ||
       !(await projects.findById(projectId))
     )
