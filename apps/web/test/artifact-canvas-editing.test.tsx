@@ -86,7 +86,10 @@ it('画板表单打开后收到新版本时，保留未保存布局而不提交�
   const alert = screen.getByRole('alert')
   expect(within(alert).getByText('未保存的改动已保留（基于 v1）。')).toBeTruthy()
   expect(within(alert).getByRole('button', { name: '下载草稿' })).toBeTruthy()
+  expect(within(alert).getByRole('button', { name: '关闭' })).toBeTruthy()
   expect(screen.getByTitle<HTMLIFrameElement>('画板内容：宽屏首页').width).toBe('1000')
+  fireEvent.click(within(alert).getByRole('button', { name: '关闭' }))
+  expect(screen.queryByRole('alert')).toBeNull()
   expect(
     request.mock.calls.some(
       ([path, init]) => path === '/api/v1/artifacts' && init?.method === 'POST',

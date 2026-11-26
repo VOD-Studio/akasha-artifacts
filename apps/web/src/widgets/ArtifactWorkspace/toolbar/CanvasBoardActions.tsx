@@ -2,7 +2,7 @@ import { ARTBOARD_GEOMETRY_LIMITS, type VersionSummary } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Spinner } from '@akasha/ui/indicator'
 import { Popover, PopoverContent, PopoverTrigger } from '@akasha/ui/popover'
-import { AlertCircle, Download, Ellipsis, Focus, Play, RotateCcw } from 'lucide-react'
+import { AlertCircle, Download, Ellipsis, Focus, Play, RotateCcw, X } from 'lucide-react'
 import { type MouseEventHandler, useState } from 'react'
 import type { CanvasBoard, CanvasBounds } from '@/entities/artifact'
 import { getRequestErrorMessage } from '@/shared/api/error'
@@ -221,7 +221,7 @@ export function CanvasBoardEditNotice({ editing }: { editing: CanvasBoardEditing
     return (
       <div
         role="status"
-        className="inline-flex items-center gap-2 rounded-full border border-ol bg-card/92 px-3 py-1.5 text-xs text-ink-muted shadow-(--shadow-float) backdrop-blur-md"
+        className="v-toast relative min-h-0 w-auto gap-2 rounded-full px-3.5 py-2 text-xs text-ink-muted"
       >
         <Spinner size={16} aria-hidden="true" className="text-(--canvas-selection)" />
         <span>{t('正在保存…')}</span>
@@ -231,36 +231,34 @@ export function CanvasBoardEditNotice({ editing }: { editing: CanvasBoardEditing
   return (
     <div
       role="alert"
-      className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-ol bg-card/94 px-3 py-2 text-xs text-ink shadow-(--shadow-float) backdrop-blur-lg sm:flex-nowrap"
+      className="v-toast v-toast--error relative w-auto max-w-[min(36rem,calc(100vw-24px))] flex-wrap gap-x-3 gap-y-2 sm:flex-nowrap"
     >
-      <div className="flex min-w-0 items-start gap-2">
-        <AlertCircle size={15} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
-        <div className="min-w-0 space-y-0.5">
-          <p className="font-medium leading-4 text-ink">{errorText}</p>
-          {draft ? (
-            <p className="leading-4 text-ink-muted">
-              {t('未保存的改动已保留（基于 {version}）。', { version: `v${draft.base.version}` })}
-            </p>
-          ) : null}
-        </div>
-      </div>
-      <div className="flex shrink-0 items-center gap-1 border-border/70 sm:border-s sm:ps-2">
-        {draft && editing.retryDraft ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 gap-1 rounded-lg px-2 text-xs font-medium text-(--canvas-selection-strong) hover:bg-(--canvas-selection-tint)"
-            onClick={editing.retryDraft}
-          >
-            <RotateCcw size={12} aria-hidden="true" />
-            {t('重试')}
-          </Button>
-        ) : null}
+      <span className="v-toast__icon self-start pt-0.5" aria-hidden="true">
+        <AlertCircle size={17} />
+      </span>
+      <div className="v-toast__content">
+        <p className="v-toast__title font-medium">{errorText}</p>
         {draft ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 gap-1 rounded-lg px-2 text-xs text-ink-muted hover:text-ink"
+          <p className="v-toast__description">
+            {t('未保存的改动已保留（基于 {version}）。', { version: `v${draft.base.version}` })}
+          </p>
+        ) : null}
+      </div>
+      {draft ? (
+        <div className="flex shrink-0 items-center gap-1 border-border/70 sm:border-s sm:ps-2">
+          {editing.retryDraft ? (
+            <button
+              type="button"
+              className="v-toast__action h-7 gap-1 px-2.5 text-xs text-(--canvas-selection-strong)"
+              onClick={editing.retryDraft}
+            >
+              <RotateCcw size={12} aria-hidden="true" />
+              {t('重试')}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="v-toast__cancel h-7 gap-1 px-2 text-xs"
             onClick={() => {
               const url = URL.createObjectURL(
                 new Blob([draft.source], { type: 'application/json' }),
@@ -274,17 +272,24 @@ export function CanvasBoardEditNotice({ editing }: { editing: CanvasBoardEditing
           >
             <Download size={12} aria-hidden="true" />
             {t('下载草稿')}
-          </Button>
-        ) : null}
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-7 rounded-lg px-2 text-xs text-ink-muted hover:text-ink"
-          onClick={editing.dismissDraft}
-        >
-          {t(draft ? '放弃改动' : '关闭')}
-        </Button>
-      </div>
+          </button>
+          <button
+            type="button"
+            className="v-toast__cancel h-7 px-2 text-xs"
+            onClick={editing.dismissDraft}
+          >
+            {t('放弃改动')}
+          </button>
+        </div>
+      ) : null}
+      <button
+        type="button"
+        className="v-toast__close"
+        aria-label={t('关闭')}
+        onClick={editing.dismissDraft}
+      >
+        <X size={12} aria-hidden="true" />
+      </button>
     </div>
   )
 }
