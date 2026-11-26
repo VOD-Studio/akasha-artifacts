@@ -20,6 +20,7 @@ import {
   ArtifactTransferDialog,
   type ArtifactTransferTarget,
 } from '@/features/artifact-delivery'
+import { SystemWorkspace } from '@/features/design-system'
 import {
   ArtifactExportDialog,
   type CanvasExportSelection,
@@ -274,6 +275,20 @@ export function ArtifactRouteView({
   }
   const returnToHead = () => {
     if (requestedVersion !== undefined) openVersion()
+  }
+
+  if (detail.artifact.type === 'design-system') {
+    return (
+      <SystemWorkspace
+        key={detail.artifact.publicId}
+        detail={detail}
+        versions={versions}
+        fixedVersion={viewingFixedVersion}
+        sandboxOrigin={sandboxOrigin}
+        onBack={backToLibrary}
+        onVersion={openVersion}
+      />
+    )
   }
 
   return (
