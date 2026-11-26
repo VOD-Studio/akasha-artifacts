@@ -421,6 +421,7 @@ describe('@akasha/protocol MCP, HTTP, Realtime, and Bridge', () => {
       },
       { type: 'capture.cancel', requestId: 'capture-1' },
       { type: 'inspect.at', purpose: 'select', requestId: 'select-1', version: 2, x: 8, y: 9 },
+      { type: 'inspect.at', purpose: 'hover', requestId: 'hover-1', version: 2, x: 12, y: 16 },
     ]
     for (const message of messages) {
       const payload = { ...envelope, ...message }

@@ -247,7 +247,7 @@ export const ShellToSandboxMessageSchema = z.discriminatedUnion('type', [
     ...BridgeEnvelopeBase,
     // 坐标用沙盒视口 CSS 像素；命中不派发作者的点击事件。
     type: z.literal('inspect.at'),
-    purpose: z.enum(['select', 'text']),
+    purpose: z.enum(['select', 'text', 'hover']),
     requestId: z.string().min(1).max(64),
     version: z.number().int().positive(),
     x: z.number().nonnegative(),
@@ -393,7 +393,7 @@ export const SandboxToShellMessageSchema = z.discriminatedUnion('type', [
   z.object({
     ...BridgeEnvelopeBase,
     type: z.literal('inspect.target'),
-    purpose: z.enum(['select', 'text']),
+    purpose: z.enum(['select', 'text', 'hover']),
     requestId: z.string().min(1).max(64),
     version: z.number().int().positive(),
     // 未命中元素时为空；有元素但不能安全改写时只提供批注定位。
