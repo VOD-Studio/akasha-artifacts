@@ -87,14 +87,10 @@
 
   .v-sheet__body {
     --v-scroll-area-surface: var(--popover);
-    --v-scroll-area-padding: 0px;
+    --v-scroll-area-padding: 4px 20px 20px;
 
     flex: 1 1 auto;
     min-block-size: 0;
-  }
-
-  .v-sheet__body-viewport {
-    padding: 4px 20px 20px;
   }
 
   .v-sheet__footer {

@@ -370,7 +370,32 @@ export function ArtifactCanvas({
     )
   }, [inspectedFocus, invalidAddress, onLocationChange, pageId, selected])
 
+  const [cameraAnimating, setCameraAnimating] = useState(false)
+  const cameraAnimateTimer = useRef<number | null>(null)
+  const triggerCameraAnimation = () => {
+    if (cameraAnimateTimer.current !== null) window.clearTimeout(cameraAnimateTimer.current)
+    setCameraAnimating(true)
+    cameraAnimateTimer.current = window.setTimeout(() => {
+      cameraAnimateTimer.current = null
+      setCameraAnimating(false)
+    }, 280)
+  }
+  const stopCameraAnimation = () => {
+    if (cameraAnimateTimer.current !== null) {
+      window.clearTimeout(cameraAnimateTimer.current)
+      cameraAnimateTimer.current = null
+    }
+    setCameraAnimating(false)
+  }
+  useEffect(
+    () => () => {
+      if (cameraAnimateTimer.current !== null) window.clearTimeout(cameraAnimateTimer.current)
+    },
+    [],
+  )
+
   const navigate = (target: CanvasPage, boardId?: string | null) => {
+    if (target.id === pageId && boardId) triggerCameraAnimation()
     navigateView(target, boardId)
     setDrawingTool(null)
     setArtboardPlacing(false)
@@ -763,10 +788,12 @@ export function ArtifactCanvas({
     () => fitSelection(selectedBoards.flatMap((board) => layout.bounds.get(board.id) ?? [])),
     [selectedBoards, layout.bounds],
   )
-  const zoom = (factor: number) =>
+  const zoom = (factor: number) => {
+    triggerCameraAnimation()
     updateCamera((current) =>
       zoomCamera(current, factor, { x: size.width / 2, y: size.height / 2 }),
     )
+  }
 
   const openFromMenu = (boardId: string, trigger: HTMLButtonElement, play: boolean) => {
     if (!page) return
@@ -942,8 +969,15 @@ export function ArtifactCanvas({
           data-tool={activeTool}
           data-hand={handActive}
           data-dragging={anyDragging}
+          data-wheel={wheelActive ? 'true' : undefined}
+          data-camera-animating={
+            cameraAnimating && !anyDragging && !wheelActive ? 'true' : undefined
+          }
           data-marquee={marquee.box ? 'true' : undefined}
-          onPointerDownCapture={cameraInput.startPointer}
+          onPointerDownCapture={(event) => {
+            if (cameraAnimating) stopCameraAnimation()
+            cameraInput.startPointer(event)
+          }}
           onPointerMoveCapture={cameraInput.movePointer}
           onPointerUpCapture={cameraInput.endPointer}
           onPointerCancelCapture={cameraInput.endPointer}
@@ -1459,12 +1493,18 @@ export function ArtifactCanvas({
           onZoom={zoom}
           onFitPage={
             measurable && page?.boards.length && !invalidAddress
-              ? () => updateCamera(() => fitCamera(layout.page, size, 'page'))
+              ? () => {
+                  triggerCameraAnimation()
+                  updateCamera(() => fitCamera(layout.page, size, 'page'))
+                }
               : undefined
           }
           onFitSelection={
             measurable && selectionBounds
-              ? () => updateCamera(() => fitCamera(selectionBounds, size, 'board'))
+              ? () => {
+                  triggerCameraAnimation()
+                  updateCamera(() => fitCamera(selectionBounds, size, 'board'))
+                }
               : undefined
           }
           visualEditActive={visualEdit?.isPicking}

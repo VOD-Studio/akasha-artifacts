@@ -174,6 +174,8 @@ export const panelMessages = {
     'Enter a value between {min} and {max}',
   ],
   画板图层: ['Ebenen der Zeichenfläche', 'طبقات اللوحة', 'Board layers'],
+  展开图层: ['Ebene aufklappen', 'توسيع الطبقة', 'Expand layer'],
+  折叠图层: ['Ebene zuklappen', 'طيّ الطبقة', 'Collapse layer'],
   '{label} · {count} 个子图层': [
     { one: '{label} · {count} Unterebene', other: '{label} · {count} Unterebenen' },
     {

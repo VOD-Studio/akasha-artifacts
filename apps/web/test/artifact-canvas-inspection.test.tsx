@@ -418,9 +418,9 @@ it('图层树默认折叠 svg 子树，检查器属性随选中的 HTML 文本�
     ],
   })
 
-  const svgSummary = within(inspector).getByText('<svg> · 1 个子图层')
-  const svgDetails = svgSummary.closest('details')
-  expect(svgDetails?.open).toBe(false)
+  const svgToggle = within(inspector).getByRole('button', { name: '展开图层' })
+  expect(svgToggle.getAttribute('aria-expanded')).toBe('false')
+  expect(within(inspector).queryByRole('button', { name: '<rect>' })).toBeNull()
 
   // 未选元素时展示画板外观属性，不展示元素排版区块
   expect(within(inspector).getByText('外观')).toBeTruthy()

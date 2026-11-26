@@ -685,6 +685,31 @@ body,
   font-size: 12px;
 }
 
+/* 切换选中元素与程序化定位画板时平滑过渡，手动拖曳或滚轮缩放期间保持零延迟直跟。 */
+.artifact-canvas[data-dragging="false"]:not([data-wheel="true"])
+  .artifact-canvas-layer-focus:not([data-transforming="true"]),
+.artifact-canvas[data-dragging="false"]:not([data-wheel="true"])
+  .artifact-canvas-selection-toolbar {
+  transition:
+    left 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    top 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.artifact-canvas[data-dragging="false"][data-camera-animating="true"]:not([data-wheel="true"])
+  .artifact-canvas-board,
+.artifact-canvas[data-dragging="false"][data-camera-animating="true"]:not([data-wheel="true"])
+  .artifact-canvas-layer-focus:not([data-transforming="true"]),
+.artifact-canvas[data-dragging="false"][data-camera-animating="true"]:not([data-wheel="true"])
+  .artifact-canvas-selection-toolbar {
+  transition:
+    left 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    top 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 .artifact-canvas-board-title:focus-visible,
 .artifact-canvas-nav-item:focus-visible {
   outline: 2px solid var(--ring);
@@ -1131,6 +1156,9 @@ body,
   .artifact-canvas-nav-page-row,
   .artifact-canvas-nav-more,
   .artifact-canvas-split-tool,
+  .artifact-canvas-board,
+  .artifact-canvas-layer-focus,
+  .artifact-canvas-selection-toolbar,
   .disclosure-chevron {
     transition: none;
   }
