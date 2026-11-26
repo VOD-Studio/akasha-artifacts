@@ -1,5 +1,12 @@
 import { createHash, randomBytes } from 'node:crypto'
+import {
+  ArtifactSchema,
+  CodingSessionGrantSchema,
+  CodingSessionPublicationSchema,
+  ProjectSchema,
+} from '@akasha/protocol'
 import { expect, it } from 'vitest'
+import { z } from 'zod'
 import { origin } from './hub-sharing/browser-client.js'
 import { sqliteHub } from './hub-sharing/sqlite-hub.js'
 
@@ -17,18 +24,16 @@ async function checkout() {
     start.headers.get('set-cookie')?.split(';')[0],
   )
   const code = (await callback.text()).trim().split('\n').at(-1)
-  const { token } = await (
-    await hub.send('/api/v1/auth/cli/token', 'POST', '', { verifier, code })
-  ).json()
-  const project = (
-    await (
-      await hub.send('/api/v1/projects', 'POST', owner, {
-        id: 'checkout',
-        name: 'Checkout',
-        rootPath: '/checkout',
-      })
-    ).json()
-  ).project.id
+  const login = await hub.send('/api/v1/auth/cli/token', 'POST', '', { verifier, code })
+  const { token } = z.object({ token: z.string().min(1) }).parse(await login.json())
+  const created = await hub.send('/api/v1/projects', 'POST', owner, {
+    id: 'checkout',
+    name: 'Checkout',
+    rootPath: '/checkout',
+  })
+  const {
+    project: { id: project },
+  } = z.object({ project: ProjectSchema }).parse(await created.json())
   const design = {
     pages: [
       { id: 'browse', title: '商品' },
@@ -45,15 +50,14 @@ async function checkout() {
     ],
   }
   const source = JSON.stringify(design)
-  const { artifact } = await (
-    await hub.send('/api/v1/artifacts', 'POST', owner, {
-      project,
-      slug: 'cart',
-      title: 'Cart',
-      type: 'artboard',
-      source,
-    })
-  ).json()
+  const published = await hub.send('/api/v1/artifacts', 'POST', owner, {
+    project,
+    slug: 'cart',
+    title: 'Cart',
+    type: 'artboard',
+    source,
+  })
+  const { artifact } = z.object({ artifact: ArtifactSchema }).parse(await published.json())
   const reference = {
     projectId: project,
     artifactId: artifact.publicId,
@@ -77,7 +81,8 @@ async function checkout() {
 it('作者将冻结设计交付给活跃远端工作区，重启后可续接且拒绝越权或过期写入', async () => {
   const { hub, owner, guest, token, reference, source, root, cli } = await checkout()
   expect((await hub.send(root, 'POST', owner, { label: '伪终端' })).status).toBe(403)
-  const grant = await (await cli(root, token, { label: 'Remote checkout' })).json()
+  const connected = await cli(root, token, { label: 'Remote checkout' })
+  const grant = CodingSessionGrantSchema.parse(await connected.json())
   const poll = `${root}/${grant.id}/poll`
   const bind = `${root}/${grant.id}/bind`
   const publish = `${root}/${grant.id}/publish`
@@ -123,7 +128,8 @@ it('作者将冻结设计交付给活跃远端工作区，重启后可续接且�
 
 it('作者可用 Web 续接指定会话并发布，访客和其他项目不能借地址读写', async () => {
   const { hub, owner, guest, token, reference, source, root, cli } = await checkout()
-  const { id } = await (await cli(root, token, { reference, label: '订单工程' })).json()
+  const connected = await cli(root, token, { reference, label: '订单工程' })
+  const { id } = CodingSessionGrantSchema.parse(await connected.json())
   const workspace = `${root}/${id}/workspace`
   expect((await hub.send(workspace, 'POST', guest)).status).toBe(403)
   expect(
@@ -138,7 +144,7 @@ it('作者可用 Web 续接指定会话并发布，访客和其他项目不能�
   expect((await hub.send(`${workspace}-publish`, 'POST', guest, body)).status).toBe(403)
   const result = await hub.send(`${workspace}-publish`, 'POST', owner, body)
   expect(result.status).toBe(201)
-  const publication = await result.json()
+  const publication = CodingSessionPublicationSchema.parse(await result.json())
   const reopened = await hub.open()
   expect(await (await reopened.send(workspace, 'POST', owner)).json()).toMatchObject({
     snapshot: { reference, design: { version: 1, source } },
