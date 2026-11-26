@@ -71,6 +71,7 @@ export async function startNodeHub(options: NodeHubOptions) {
       authorizeUpgrade: canConnect,
       authorizeSubscription: hub.authorizeRealtime,
       authorizeEvent: hub.authorizeRealtimeEvent,
+      authorizeCanvasPresence: hub.authorizeCanvasPresence,
     })
     app.get('/assets/*', serveStatic({ root: options.webDir }))
     const sandboxOrigin = new URL(options.sandboxOrigin).origin

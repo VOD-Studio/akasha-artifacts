@@ -778,6 +778,13 @@ export function ArtifactWorkspace({
           <ArtifactCanvas
             key={canvasSessionKey}
             document={canvas}
+            collaborationEnabled={
+              isCloudHub() &&
+              detail.hubCanEditCanvas === true &&
+              canWriteVersion &&
+              showCanvas &&
+              canvas === savedCanvas
+            }
             storageKey={canvasSessionKey}
             address={address}
             onClearAddress={onClearAddress}

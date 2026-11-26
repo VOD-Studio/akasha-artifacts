@@ -125,3 +125,28 @@ export const RealtimeClientMessageSchema = z.discriminatedUnion('type', [
   }),
 ])
 export type RealtimeClientMessage = z.infer<typeof RealtimeClientMessageSchema>
+
+const cursorEnvelope = { v: z.literal(PROTOCOL_VERSION) }
+// 坐标以当前画布页面的世界像素计；不含视口位置、相机倍率或屏幕像素密度。
+const cursorPoint = { x: z.number().finite(), y: z.number().finite() }
+
+/** 临时光标独占一条绑定制品与页面的连接，不能发版本、订阅或替其他会话移动。 */
+export const CanvasCursorInputSchema = z.discriminatedUnion('type', [
+  z.object({ ...cursorEnvelope, type: z.literal('cursor.move'), ...cursorPoint }),
+  z.object({ ...cursorEnvelope, type: z.literal('cursor.hide') }),
+])
+export type CanvasCursorInput = z.infer<typeof CanvasCursorInputSchema>
+
+/** 不带 seq，不回放；peerId 只在该连接有效，匿名授权不附账号信息。 */
+export const CanvasCursorEventSchema = z.discriminatedUnion('type', [
+  z.object({ ...cursorEnvelope, type: z.literal('cursor.ready') }),
+  z.object({
+    ...cursorEnvelope,
+    type: z.literal('cursor.moved'),
+    peerId: z.uuid(),
+    login: z.string().min(1).max(39).nullable(),
+    ...cursorPoint,
+  }),
+  z.object({ ...cursorEnvelope, type: z.literal('cursor.left'), peerId: z.uuid() }),
+])
+export type CanvasCursorEvent = z.infer<typeof CanvasCursorEventSchema>

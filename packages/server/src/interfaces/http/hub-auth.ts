@@ -99,6 +99,8 @@ export interface HubAuth extends HubIdentityAuthority {
   mount(app: Hono): void
   /** 凭会话 cookie 或 Bearer 令牌识别调用方；Bearer 只接受 cli 凭证。 */
   authenticate(request: Request): Promise<HubPrincipal | undefined>
+  /** 仅临时光标可在同一已验签的会话连接内复用最多五秒的外部目录资格。 */
+  authenticateForPresence(request: Request): Promise<HubPrincipal | undefined>
   /** 保留签入凭据本身的有效期；衍生会话不得延长它。 */
   cliExpiry(principal: HubPrincipal): number
   /** 由项目命名空间确定的所有者必须仍有 CLI 成员资格。 */
@@ -217,14 +219,24 @@ export function createHubAuth(
   }
 
   const expiries = new WeakMap<HubPrincipal, number>()
-  const authenticate = async (request: Request): Promise<HubPrincipal | undefined> => {
+  const directoryLeases = new WeakMap<Request, { principal: HubPrincipal; until: number }>()
+  const authenticate = async (
+    request: Request,
+    presence = false,
+  ): Promise<HubPrincipal | undefined> => {
     const bearer = request.headers.get('authorization')
     const credential = await verify(
       bearer ? /^Bearer (\S+)$/i.exec(bearer)?.[1] : cookie(request, sessionCookie),
     )
     if (credential?.kind !== 'cli' && credential?.kind !== 'session') return
     if ((credential.kind === 'cli') !== Boolean(bearer)) return
+    if (presence && credential.kind !== 'session') return
+    const checkedAt = presence ? Date.parse(clock.now()) : 0
+    const lease = presence ? directoryLeases.get(request) : undefined
+    if (lease && lease.until > checkedAt && lease.principal.userId === credential.userId)
+      return lease.principal
     const principal = await directory.authenticate(credential.userId, credential.kind)
+    if (presence && principal) directoryLeases.set(request, { principal, until: checkedAt + 5000 })
     if (principal?.kind === 'cli') expiries.set(principal, credential.exp * 1000)
     return principal
   }
@@ -387,6 +399,7 @@ export function createHubAuth(
     ...directory.authority,
     mount,
     authenticate,
+    authenticateForPresence: (request) => authenticate(request, true),
     cliExpiry: (principal) => expiries.get(principal) ?? 0,
     async codingOwnerActive(projectId) {
       const id = /^github-(\d+):/.exec(projectId)?.[1]

@@ -29,6 +29,7 @@ import type {
   CanvasLocation,
   CanvasPage,
 } from '@/entities/artifact'
+import { CanvasPresence } from '@/features/canvas-presence'
 import type { CanvasExportSelection } from '@/features/export-design'
 import type { VisualEditTarget } from '@/features/visual-edit'
 import { useMessages } from '@/shared/i18n'
@@ -99,6 +100,8 @@ export interface SelectionToolbarAnchor {
 interface ArtifactCanvasProps {
   document: CanvasDocument
   visible: boolean
+  /** 仅 Hub 确认可编辑的当前画布使用；固定快照和本地预览不入房。 */
+  collaborationEnabled?: boolean
   /** 相机与选中画板的本地存储键。 */
   storageKey: string
   /** 链接里 `#page=…&board=…` 形式的定位；只在进入时定位一次。 */
@@ -181,6 +184,7 @@ const isPrototype = (board: CanvasBoard) => board.type === 'html' || board.type 
 export function ArtifactCanvas({
   document,
   visible,
+  collaborationEnabled,
   storageKey,
   address,
   onClearAddress,
@@ -691,6 +695,15 @@ export function ArtifactCanvas({
           onContextMenuCapture={cameraInput.blockTouchMenu}
           onClick={clickBackground}
         >
+          {collaborationEnabled && showOverview && !invalidAddress && page && (
+            <CanvasPresence
+              key={JSON.stringify([artifactId, page.id])}
+              artifactId={artifactId}
+              pageId={page.id}
+              viewportRef={viewportRef}
+              camera={camera}
+            />
+          )}
           {showOverview &&
           !invalidAddress &&
           page &&
