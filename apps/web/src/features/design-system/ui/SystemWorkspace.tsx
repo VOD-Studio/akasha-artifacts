@@ -44,7 +44,7 @@ export function SystemWorkspace({
 }: SystemWorkspaceProps) {
   const { t } = useMessages(messages)
   const { artifact, version, access } = detail
-  const management = useArtifactManagementQuery(artifact.publicId, !access)
+  const management = useArtifactManagementQuery(artifact.publicId, artifact.projectId, !access)
   const canManage =
     !access && management.data?.canManage === true && !isResourceUnavailable(management.error)
   const fetched = useArtifactSourceQuery(
