@@ -23,6 +23,31 @@
 | 2:44–2:56、3:44–3:52、5:12–5:32 | 单板有 Fill／Fit；互动视图能操作控件；在总览里相邻画板各自动画。                                                                        | #106：区别展开查看、试玩和总览循环。录屏无音轨，未证明自动播放声音或整页定时推进。 |
 | 3:01、3:31–3:35、6:51           | 单板菜单有 PNG 1×／2×、PDF／HTML ZIP 及全部／选中画板 PDF；画板有 Flow／Fixed、纸型和布局线；缩放菜单内有倍率、辅助线显隐和撤销／重做。 | #114／#136：核对实际像素、页张与内容范围。画面只证明菜单和条件，不证明生成了文件。 |
 
+### 2026-11-26：查看者能操作什么，哪些仍要用自有稿验证
+
+本次匿名阅读的是从 **Artifacts → Design** 起稿的[官方课程](https://academy.claude.com/tutorials/using-claude-design-for-prototypes-and-ux#1-start-a-design)及现行帮助。产品页的「Start designing」指向[作品库](https://claude.ai/artifacts)，不是示例作品；匿名静态读取未返回可操作的画板。本次没有已连接的 Tern 窗口或可用于起稿的 Claude Code，未创建、编辑、分享或导出 Claude 作品。以下是文档证据，不是上述录屏或本次账号实测。
+
+| 条件 | 官方明确的行为 | 尚不能据此判定 |
+| --- | --- | --- |
+| 受邀者以 **Can view** 打开设计 | [课程 §5：团队评审](https://academy.claude.com/tutorials/using-claude-design-for-prototypes-and-ux#5-review-it-with-your-team)允许点元素读尺寸、间距、颜色；若板可交互，可点**板上方**的 Play。仅在组织外持公开链接、或未登录的人[不能看或写批注](https://support.claude.com/en/articles/9547008-share-artifacts#h_333cbc7307)，不是同一身份。 | 只读者能否进 Code、Tweaks 或作者的导出菜单。单板 Play 不是顶栏 Play，更不证明整页定时换板。 |
+| 已有选区，Properties 关闭 | [Design 键盘说明](https://support.claude.com/en/articles/14604416-get-started-with-claude-design#h_f646e56e6f)：F6 可到选区浮栏，Esc 回画布且保留选区；Shift+G 切换辅助线显隐。 | 鼠标对每类对象是否出现同一浮栏；显隐是否跨板、刷新或进入导出。显隐不等于添加辅助线。 |
+| 作者直接改文字或拖动元素 | [课程 §4：在画板上修改](https://academy.claude.com/tutorials/using-claude-design-for-prototypes-and-ux#4-refine-on-the-artboards)说明直接编辑随改随存。[Design 帮助](https://support.claude.com/en/articles/14604416-get-started-with-claude-design)区分在对话里保留先前方案与版本历史，后者仍列为已知限制。 | 不能推导 Code 字段可写、Tweaks 自动写回，或分享链接固定到某版。只读身份与固定版本须分别记录。 |
+| 收件人打不开原稿链接 | [课程 §5](https://academy.claude.com/tutorials/using-claude-design-for-prototypes-and-ux#5-review-it-with-your-team)列出单板 PNG、PDF、HTML ZIP；整份原型可从 Share → Export 交付为一个 HTML，全部画板也可合成 PDF。 | 收到文件不授予原稿权限；未实际打开产物，不判定其像素、页序、参数或离线交互。 |
+| 作品菜单里的桌面动作 | [安装帮助](https://support.claude.com/en/articles/18516354-install-an-artifact-as-an-app)明确区分网页快捷方式与原生 **Install as app**。后者的当前限制排除模板制品；[模板清单](https://support.claude.com/en/articles/17153992-what-are-artifacts-and-how-do-i-use-them)明确包括 Design。 | 不能从浏览器快捷方式推出 Design 可安装为原生应用，也不能据此判定「打开桌面端」「Turn into」或反馈项何时出现。 |
+| 作者为设计添加参考 | [Design 帮助的 Add context to your project](https://support.claude.com/en/articles/14604416-get-started-with-claude-design)列出上传已有截图、图片或文件，以及关联代码仓库。 | 传现成截图不是抓取任意网页，传视频不是录屏；本次未核到集成版 Design 原生采集网页、语音、视频或 3D 的入口及权限。 |
+
+**供下次原样起稿的简报**（自行编写，无外部素材，不是已生成的设计）：
+
+> 做一份社区取书设计，同一页三张画板：「取书须知」是静态长文，含页首 `PICKUP-17` 和页尾 `END-17`；「等待取书」只有圆点在板内循环；「取书单」点「确认领取」才从 `READY-17` 变为 `WAIT-17`，三秒后在同一板内显示 `DONE-17`。标题继承容器文字颜色，强调词单独设色；为取书单提供一个间距调参项。不要做自定义工具栏、全局播放、自动翻页或录音录像入口。
+
+在集成版新建该稿，只邀请自有第二账号查看。先核对实际生成的画板和控件：没有生成某项，只说明该样本没覆盖。
+
+1. **权限和保存**：在同一文字层检查本层与 `From`，尝试改值、重开、还原；以只读身份对照。测试间距时，每次从同一基线设为同一新值，再分别切板、刷新、用只读身份打开、或实际导出并打开文件。不要在刷新已经重置参数后，再用该状态判断分享是否保留参数。
+2. **菜单和产物**：比较无选区、单选、多选及 Properties 开关下的菜单。用单板、选中的两板、全部三板分别导出可用格式；打开 PNG 读像素，打开 PDF 核对纸型、页序及首尾标记，解开 HTML ZIP 操作里面的内容。菜单可见、禁用、文件能打开分别记。
+3. **播放**：不操作时看圆点；进入交互预览后点取书单，分别记状态文字是否改变、当前画板标题是否改变；再从顶栏播放查看是否有原生定时选项。作品自带计时器、视频或 3D 不算编辑器有相应入口。
+
+只记录角色、操作、前后可见值和可公开的产物属性，不上传私人链接。未执行的项保留在 [#124](https://github.com/VOD-Studio/akasha-artifacts/issues/124)，不据此新增功能或宣布已对齐。
+
 ### 设计交付目的地
 
 根据[现行官方清单](https://support.claude.com/en/articles/14604416-get-started-with-claude-design)和[合作方说明](https://claude.com/product/design)，按用户在接收端要完成的工作分组，不假设各服务使用相同 API。Google Slides 单独作为演示文稿交付目标，不计入下列 15 项。
