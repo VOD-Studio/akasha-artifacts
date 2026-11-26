@@ -14,6 +14,7 @@ import type { AgentSessions } from '../../application/agent-sessions.js'
 import type { CheckService } from '../../application/check-service.js'
 import type { SpecRegistry } from '../../application/spec-registry.js'
 import { DomainError, NotFoundError } from '../../domain/errors.js'
+import { mountAgentReferenceRoutes } from './routes/agent-references.js'
 
 const API = '/api/v1/agent'
 export const LOCAL_AGENT_TOOL_PATH = `${API}/tool`
@@ -55,6 +56,7 @@ export function mountLocalAgentRoutes(
   app: Hono,
   { sessions, daemonToken, specs, checks, readBody, authorizeRead }: LocalAgentRoutes,
 ) {
+  mountAgentReferenceRoutes(app, sessions)
   app.get(`${API}/connections`, async (c) => {
     authorizeRead(c.req.raw)
     return c.json({ connections: await sessions.listConnections() }, 200, privateHeaders)
@@ -71,8 +73,8 @@ export function mountLocalAgentRoutes(
     return c.json({ connected: false })
   })
   app.post(`${API}/design`, async (c) => {
-    const { projectId, message } = await readBody(c.req.raw, AgentDesignInputSchema)
-    return c.json(await sessions.startDesign(projectId, message), 202, privateHeaders)
+    const { projectId, message, references } = await readBody(c.req.raw, AgentDesignInputSchema)
+    return c.json(await sessions.startDesign(projectId, message, references), 202, privateHeaders)
   })
   app.get(`${API}/sessions/:id`, async (c) => {
     authorizeRead(c.req.raw)
@@ -85,13 +87,17 @@ export function mountLocalAgentRoutes(
     return c.json(await sessions.forArtifact(artifactId(c.req.param('id'))), 200, privateHeaders)
   })
   app.post(SESSION, async (c) => {
-    const { message, target, tweakApplication } = await readBody(c.req.raw, AgentMessageInputSchema)
+    const { message, target, tweakApplication, references } = await readBody(
+      c.req.raw,
+      AgentMessageInputSchema,
+    )
     return c.json(
       await sessions.continueArtifact(
         artifactId(c.req.param('id')),
         message,
         target,
         tweakApplication,
+        references,
       ),
       202,
       privateHeaders,

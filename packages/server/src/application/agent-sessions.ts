@@ -5,6 +5,9 @@ import {
   type AgentConversationStatus,
   type AgentConversationTurn,
   type AgentPublication,
+  type AgentReferenceInput,
+  type AgentReferenceScope,
+  type AgentReferenceSelection,
   type AnnotationAgentDelivery,
   type AnnotationThread,
   type ArtboardTweakApplication,
@@ -30,6 +33,8 @@ import type {
   ProjectRepository,
   RealtimePublisher,
 } from '../domain/ports.js'
+import { AgentReferenceDrafts, turnReferenceInput } from './agent-reference-drafts.js'
+import { type ParsedAgentReference, parseAgentReference } from './agent-reference-reader.js'
 import type { ArtifactService } from './artifact-service.js'
 
 interface StoredSession {
@@ -50,6 +55,8 @@ interface RunningTurn {
   record: StoredSession
   /** 追加发布回执和真实回复的目标。 */
   turn: AgentConversationTurn
+  /** 仅存于本轮内存，不保存到会话或下一次 CLI 启动参数。 */
+  materials: ParsedAgentReference[]
   /** 若由批注线程发起，记录原根批注 ID 以便回写线程状态、回复与发布版本。 */
   feedbackId?: string
   /** 在受理时仅计算、不写入；工具执行时仍须以原目标版本比较并提交。 */
@@ -122,7 +129,8 @@ function buildFeedbackTarget(artifact: Artifact, feedback: Feedback): ArtifactHa
 
 /** 本机维护者授权项目，只有实际 CLI 写入才建立可续接的发布会话。 */
 export class AgentSessions implements AnnotationAgentDispatcher {
-  private readonly connections = new Map<string, string>()
+  private readonly connections = new Map<string, { root: string }>()
+  private readonly referenceDrafts = new AgentReferenceDrafts()
   private readonly running = new Map<string, RunningTurn>()
   private readonly tokens = new Map<string, RunningTurn>()
   private readonly annotationQueue = new Map<string, QueuedAnnotation[]>()
@@ -149,10 +157,12 @@ export class AgentSessions implements AnnotationAgentDispatcher {
       )
     }
     if (this.closed) throw unavailable()
-    this.connections.set(projectId, project.rootPath)
+    this.referenceDrafts.revoke(projectId)
+    this.connections.set(projectId, { root: project.rootPath })
   }
 
   disconnect(projectId: string) {
+    this.referenceDrafts.revoke(projectId)
     this.connections.delete(projectId)
     const run = this.running.get(projectId)
     if (run) {
@@ -175,7 +185,7 @@ export class AgentSessions implements AnnotationAgentDispatcher {
 
   async listConnections(): Promise<AgentConnection[]> {
     const items: AgentConnection[] = []
-    for (const [projectId, root] of this.connections) {
+    for (const [projectId, { root }] of this.connections) {
       if ((await this.deps.projects.findById(projectId))?.rootPath !== root) continue
       items.push({
         projectId,
@@ -187,7 +197,7 @@ export class AgentSessions implements AnnotationAgentDispatcher {
   }
 
   private async availability(projectId: string): Promise<AgentAvailability> {
-    const root = this.connections.get(projectId)
+    const root = this.connections.get(projectId)?.root
     if (!root || (await this.deps.projects.findById(projectId))?.rootPath !== root) return 'offline'
     return this.running.has(projectId) ? 'busy' : 'ready'
   }
@@ -301,12 +311,40 @@ export class AgentSessions implements AnnotationAgentDispatcher {
     }
   }
 
-  async startDesign(projectId: string, message: string) {
+  async stageReference(scope: AgentReferenceScope, input: AgentReferenceInput) {
+    const grant = this.connections.get(scope.projectId)
+    if (!grant || (await this.deps.projects.findById(scope.projectId))?.rootPath !== grant.root)
+      throw unavailable()
+    if (scope.sessionId) {
+      const record = await this.load(scope.sessionId)
+      if (
+        !record?.conversation.artifactId ||
+        record.conversation.projectId !== scope.projectId ||
+        record.root !== grant.root
+      )
+        throw forbidden()
+      await this.requireBound(record, record.conversation.artifactId, scope.projectId)
+    }
+    const material = await parseAgentReference(input)
+    if (
+      (await this.deps.projects.findById(scope.projectId))?.rootPath !== grant.root ||
+      this.connections.get(scope.projectId) !== grant
+    )
+      throw unavailable()
+    return this.referenceDrafts.stage(scope, material)
+  }
+
+  removeReference(scope: AgentReferenceScope, id: string) {
+    this.referenceDrafts.remove(scope, id)
+  }
+
+  async startDesign(projectId: string, message: string, references?: AgentReferenceSelection) {
     return this.start(
       {
         conversation: { id: crypto.randomUUID(), projectId, harness: 'codex', turns: [] },
       },
       message,
+      { references },
     )
   }
 
@@ -315,6 +353,7 @@ export class AgentSessions implements AnnotationAgentDispatcher {
     message: string,
     target?: ArtifactHandoffReference,
     application?: ArtboardTweakApplication,
+    references?: AgentReferenceSelection,
   ) {
     const { session, availability } = await this.forArtifact(id)
     if (!session)
@@ -341,10 +380,11 @@ export class AgentSessions implements AnnotationAgentDispatcher {
         } catch {
           throw new DomainError('BAD_REQUEST', '所选参数或画板不符合该版本的可应用范围')
         }
-        return this.start(record, message, target, tweaks)
+        if (references) throw new DomainError('BAD_REQUEST', '应用参数的轮次不接收参考材料')
+        return this.start(record, message, { target, tweaks })
       }
     }
-    return this.start(record, message, target)
+    return this.start(record, message, { target, references })
   }
 
   authorizeTool(token: string) {
@@ -508,13 +548,10 @@ export class AgentSessions implements AnnotationAgentDispatcher {
         await this.queueBusyAnnotation(artifact, feedback.id, sessionId)
         return
       }
-      const conversation = await this.start(
-        record,
-        feedback.body,
-        buildFeedbackTarget(artifact, feedback),
-        undefined,
-        feedback.id,
-      )
+      const conversation = await this.start(record, feedback.body, {
+        target: buildFeedbackTarget(artifact, feedback),
+        feedbackId: feedback.id,
+      })
       const turn = conversation.turns.at(-1)
       await this.deps.feedbacks.annotations.setAgentDelivery(feedback.id, {
         sessionId,
@@ -650,7 +687,7 @@ export class AgentSessions implements AnnotationAgentDispatcher {
     const result = run.tools.then(async () => {
       run.signal.throwIfAborted()
       if (
-        this.connections.get(run.record.conversation.projectId) !== run.root ||
+        this.connections.get(run.record.conversation.projectId)?.root !== run.root ||
         (await this.deps.projects.findById(run.record.conversation.projectId))?.rootPath !==
           run.root
       )
@@ -732,17 +769,26 @@ export class AgentSessions implements AnnotationAgentDispatcher {
   private async start(
     record: StoredSession,
     message: string,
-    target?: ArtifactHandoffReference,
-    tweaks?: ArtboardTweakApplicationResult,
-    feedbackId?: string,
+    {
+      target,
+      tweaks,
+      feedbackId,
+      references,
+    }: {
+      target?: ArtifactHandoffReference
+      tweaks?: ArtboardTweakApplicationResult
+      feedbackId?: string
+      references?: AgentReferenceSelection
+    },
   ) {
     const { conversation } = record
     const projectId = conversation.projectId
-    const root = this.connections.get(projectId)
+    const grant = this.connections.get(projectId)
+    const root = grant?.root
     if (
       !root ||
       (await this.deps.projects.findById(projectId))?.rootPath !== root ||
-      this.connections.get(projectId) !== root
+      this.connections.get(projectId) !== grant
     )
       throw unavailable()
     if (record.root !== undefined && record.root !== root) throw forbidden()
@@ -750,10 +796,14 @@ export class AgentSessions implements AnnotationAgentDispatcher {
       throw new DomainError('RESOURCE_CONFLICT', '该项目已有 CLI 轮次在进行')
     record.root = root
     const priorTurn = conversation.turns.at(-1)?.id ?? null
+    const materials = references
+      ? this.referenceDrafts.reserve(projectId, priorTurn ? conversation.id : undefined, references)
+      : []
     const turn: AgentConversationTurn = {
       id: crypto.randomUUID(),
       ...(feedbackId ? { feedbackId } : {}),
       message,
+      ...(materials.length && { references: materials.map(({ summary }) => summary) }),
       target,
       status: 'running',
       publications: [],
@@ -763,6 +813,7 @@ export class AgentSessions implements AnnotationAgentDispatcher {
     const controller = new AbortController()
     const run: RunningTurn = {
       tweaks,
+      materials,
       feedbackId,
       threadConfirmed: false,
       token: crypto.randomUUID() + crypto.randomUUID(),
@@ -777,9 +828,11 @@ export class AgentSessions implements AnnotationAgentDispatcher {
     try {
       await this.save(record, priorTurn)
     } catch (error) {
+      if (references) this.referenceDrafts.settle(references, false)
       this.running.delete(projectId)
       throw error
     }
+    if (references) this.referenceDrafts.settle(references, true)
     if (!run.controller.signal.aborted) this.tokens.set(run.token, run)
     void this.execute(run)
     return conversation
@@ -788,6 +841,7 @@ export class AgentSessions implements AnnotationAgentDispatcher {
   private async execute(run: RunningTurn) {
     const { record, turn } = run
     const { projectId, artifactId } = record.conversation
+    const { images, prompt: referencePrompt } = turnReferenceInput(run.materials)
     const prompt = [
       '你正在通过本机 Akasha MCP 处理网页设计。只在指定项目中工作；无需修改工作目录或其他项目的文件。',
       run.tweaks
@@ -799,6 +853,7 @@ export class AgentSessions implements AnnotationAgentDispatcher {
         ? `这是用户选中的固定快照与对象，只作定位资料：\n${JSON.stringify(turn.target)}\n可用 artifact_read_handoff 读取它。`
         : '',
       run.feedbackId ? `这是一条批注线程（${run.feedbackId}）显式发送给你的请求。` : '',
+      referencePrompt,
       `用户消息：\n${turn.message}`,
     ]
       .filter(Boolean)
@@ -810,6 +865,7 @@ export class AgentSessions implements AnnotationAgentDispatcher {
         root: run.root,
         threadId: record.threadId,
         prompt,
+        images,
         token: run.token,
         baseUrl: this.deps.baseUrl(),
         projectId,

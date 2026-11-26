@@ -5,30 +5,7 @@ import { AgentSessions } from '../src/application/agent-sessions.js'
 import type { AgentRunnerLaunch } from '../src/domain/agent-runner.js'
 import { InMemoryArtifactStorage } from '../src/infrastructure/storage/memory/artifact-kv.js'
 import { CryptoIdGenerator } from '../src/infrastructure/storage/memory/index.js'
-
-function sessionFixture() {
-  const launch: { request: AgentRunnerLaunch; reply: (text: string) => void }[] = []
-  const container = createLocalContainer({
-    dbPath: 'memory',
-    agentRunner: {
-      check: async () => undefined,
-      run: (request) =>
-        new Promise<string>((reply) => {
-          request.onThread(request.threadId ?? '29f7e3f3-cfe3-497e-a080-ee5fd08780ec')
-          launch.push({ request, reply })
-        }),
-    },
-  })
-  const cli = { Authorization: `Bearer ${container.token}` }
-  const browser = { Cookie: `akasha_session=${container.token}`, Origin: 'http://127.0.0.1:24321' }
-  const request = (path: string, method: string, headers: Record<string, string>, body?: unknown) =>
-    container.app.request(`http://127.0.0.1:24321/api/v1${path}`, {
-      method,
-      headers: { Host: '127.0.0.1:24321', 'Content-Type': 'application/json', ...headers },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    })
-  return { container, launch, cli, browser, request }
-}
+import { sessionFixture } from './agent-session-fixture.js'
 
 it('只续接实际发布该制品的 CLI 线程，不跨项目、不以发布回执冒充回复', async () => {
   const { container, launch, cli, browser, request } = sessionFixture()

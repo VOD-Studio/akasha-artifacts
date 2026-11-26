@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { AgentReferenceSelectionSchema, AgentReferenceSummarySchema } from './agent-reference.js'
 import { ArtboardTweakApplicationSchema } from './artboard/tweak-application.js'
 import { AgentPublicationSchema } from './domain.js'
 import { PublicIdSchema } from './primitives.js'
@@ -8,6 +9,8 @@ export const AgentMessageInputSchema = z
   .object({
     /** 用户输入的原始文本；不从制品源文件拼接用户消息。 */
     message: z.string().trim().min(1).max(8000),
+    /** 仅从当前草稿消费这组已解析材料，不含文件路径或可更改的正文。 */
+    references: AgentReferenceSelectionSchema.optional(),
     /** 可选的、发送时已保存的固定快照与选区。 */
     target: ArtifactHandoffReferenceSchema.optional(),
     /** 仅允许该轮提交指定快照上的这组参数。 */
@@ -15,7 +18,10 @@ export const AgentMessageInputSchema = z
   })
   .strict()
 
-export const AgentDesignInputSchema = AgentMessageInputSchema.pick({ message: true }).extend({
+export const AgentDesignInputSchema = AgentMessageInputSchema.pick({
+  message: true,
+  references: true,
+}).extend({
   /** 本机显式授权 Codex 接收设计任务的项目。 */
   projectId: z.string().min(1).max(1024),
 })
@@ -33,6 +39,8 @@ export const AgentConversationTurnSchema = z.object({
   feedbackId: z.string().min(1).optional(),
   /** 交付给 CLI 的用户原文。 */
   message: z.string(),
+  /** 按用户确认的顺序记录本轮材料摘要，与本轮真实发布版本对应。 */
+  references: z.array(AgentReferenceSummarySchema).optional(),
   /** 用户发送时的固定选区；后续版本不会改写它。 */
   target: ArtifactHandoffReferenceSchema.optional(),
   /** running 表示已受理正交付给 CLI，并非离线排队。 */
