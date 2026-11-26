@@ -492,3 +492,95 @@ it('空闲时并发提交两条发给 Agent 的批注时，落败方自动入队
     container.close()
   }
 })
+
+it('同项目队首排队制品被撤回后，会标记其失败并继续排空后续有效制品的排队批注', async () => {
+  const { container, launches, browser, req, publishBoundArtifact, listReview } =
+    createFixture(':memory:')
+  try {
+    const artifactA = await publishBoundArtifact()
+
+    // 在同一项目创建第二个已绑定 Agent 会话的制品。
+    expect(
+      (
+        await req('/agent/design', 'POST', browser, {
+          projectId: 'design',
+          message: '创建第二份设计',
+        })
+      ).status,
+    ).toBe(202)
+    await vi.waitFor(() => expect(launches).toHaveLength(2))
+    const secondLaunch = launches[1]
+    if (!secondLaunch) throw new Error('missing second design turn')
+    const secondTool = { Authorization: `Bearer ${secondLaunch.request.token}` }
+    const createdB = await req('/agent/tool/artifacts', 'POST', secondTool, {
+      project: 'design',
+      slug: 'pricing',
+      title: '定价页',
+      type: 'html',
+      source: '<main><h1 data-ak-block="price-title">定价方案</h1></main>',
+    })
+    expect(createdB.status).toBe(201)
+    const { artifact: artifactB } = (await createdB.json()) as { artifact: { publicId: string } }
+    secondLaunch.resolve('已发布定价页。')
+    await vi.waitFor(async () => {
+      const res = await req(`/artifacts/${artifactB.publicId}/agent-session`, 'GET', browser)
+      const data = (await res.json()) as { availability: string }
+      expect(data.availability).toBe('ready')
+    })
+
+    // 占槽轮次运行在 artifactB 上，随后依次入队 artifactA 与 artifactB 的批注。
+    const runningRes = await req(`/artifacts/${artifactB.publicId}/feedback`, 'POST', browser, {
+      project: 'design',
+      version: 1,
+      kind: 'comment',
+      audience: 'agent',
+      element: { blockId: 'price-title' },
+      body: '占槽批注',
+    })
+    expect(runningRes.status).toBe(201)
+    await vi.waitFor(() => expect(launches).toHaveLength(3))
+
+    const queuedARes = await req(`/artifacts/${artifactA}/feedback`, 'POST', browser, {
+      project: 'design',
+      version: 1,
+      kind: 'comment',
+      audience: 'agent',
+      element: { blockId: 'hero-title' },
+      body: '稍后会被撤回制品的排队批注',
+    })
+    expect(queuedARes.status).toBe(201)
+    const { feedback: fbA } = (await queuedARes.json()) as { feedback: Feedback }
+
+    const queuedBRes = await req(`/artifacts/${artifactB.publicId}/feedback`, 'POST', browser, {
+      project: 'design',
+      version: 1,
+      kind: 'comment',
+      audience: 'agent',
+      element: { blockId: 'price-title' },
+      body: '队首失败后仍应继续执行的排队批注',
+    })
+    expect(queuedBRes.status).toBe(201)
+    const { feedback: fbB } = (await queuedBRes.json()) as { feedback: Feedback }
+
+    // 撤回队首排队项对应的 artifactA，再完成当前占槽轮次。
+    expect((await req(`/artifacts/${artifactA}`, 'DELETE', browser)).status).toBe(200)
+    launches[2]?.resolve('占槽批注已完成。')
+
+    // 队首不可访问项标为 failed，紧随其后的 artifactB 排队项自动继续出队并执行。
+    await vi.waitFor(() => expect(launches).toHaveLength(4))
+    const failedA = await container.repositories.feedbacks.annotations.getAgentDelivery(fbA.id)
+    expect(failedA?.state).toBe('failed')
+    expect(failedA?.error).toContain('不可访问')
+
+    launches[3]?.resolve('后续排队批注已成功执行。')
+    await vi.waitFor(async () => {
+      const done = await listReview(artifactB.publicId)
+      expect(done.threads[fbB.id]?.agent).toMatchObject({
+        state: 'replied',
+        reply: '后续排队批注已成功执行。',
+      })
+    })
+  } finally {
+    container.close()
+  }
+})

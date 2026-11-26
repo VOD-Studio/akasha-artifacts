@@ -547,29 +547,27 @@ export class AgentSessions implements AnnotationAgentDispatcher {
   }
 
   private async drainAnnotationQueue(projectId: string) {
-    if (this.closed || this.running.has(projectId) || !this.deps.feedbacks) return
-    const queue = this.annotationQueue.get(projectId)
-    if (!queue?.length) return
-    const next = queue.shift()
-    if (!queue.length) this.annotationQueue.delete(projectId)
-    if (!next) return
-    this.queuedFeedbackIds.delete(next.feedbackId)
-    this.drainingFeedbackIds.add(next.feedbackId)
-    try {
-      const [artifact, feedback] = await Promise.all([
-        this.deps.artifacts.findByPublicId(next.artifactId),
-        this.deps.feedbacks.findById(next.feedbackId),
-      ])
-      if (!artifact || !feedback) {
-        await this.failQueuedAnnotation(projectId, next, '原制品或批注已不可访问，未继续执行。')
-        return
+    while (!this.closed && !this.running.has(projectId) && this.deps.feedbacks) {
+      const queue = this.annotationQueue.get(projectId)
+      if (!queue?.length) return
+      const next = queue.shift()
+      if (!queue.length) this.annotationQueue.delete(projectId)
+      if (!next) return
+      this.queuedFeedbackIds.delete(next.feedbackId)
+      this.drainingFeedbackIds.add(next.feedbackId)
+      try {
+        const [artifact, feedback] = await Promise.all([
+          this.deps.artifacts.findByPublicId(next.artifactId),
+          this.deps.feedbacks.findById(next.feedbackId),
+        ])
+        if (!artifact || !feedback) {
+          await this.failQueuedAnnotation(projectId, next, '原制品或批注已不可访问，未继续执行。')
+        } else {
+          await this.launchAnnotationTurn(artifact, feedback, next.sessionId)
+        }
+      } finally {
+        this.drainingFeedbackIds.delete(next.feedbackId)
       }
-      await this.launchAnnotationTurn(artifact, feedback, next.sessionId)
-    } finally {
-      this.drainingFeedbackIds.delete(next.feedbackId)
-    }
-    if (!this.running.has(projectId)) {
-      await this.drainAnnotationQueue(projectId)
     }
   }
 

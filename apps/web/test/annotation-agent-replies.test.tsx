@@ -462,3 +462,72 @@ it('头版本热更新时保留选区旁批注草稿正文与发送给 Agent 勾
   fireEvent.click(within(kept).getByRole('link', { name: '回 v1 继续' }))
   expect(openVersion).toHaveBeenCalledWith(1)
 })
+
+it('批注抽屉已打开时，选区浮层与抽屉共享同一草稿源，编辑和提交后实时同步无残留', async () => {
+  stubResizeObserver()
+  const submitted: Array<Record<string, unknown>> = []
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input, init) => {
+      if (String(input).includes('/feedback') && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>
+        submitted.push(body)
+        return Response.json(
+          {
+            feedback: {
+              id: `fb_sync_${submitted.length}`,
+              artifactId: artifact.publicId,
+              version: 1,
+              roundId: null,
+              groupId: null,
+              kind: body.kind,
+              audience: body.audience,
+              element: body.element,
+              body: body.body,
+              author: 'human:local',
+              draft: false,
+              status: 'pending',
+              createdAt: '2026-11-26T00:00:00Z',
+              updatedAt: '2026-11-26T00:00:00Z',
+            },
+          },
+          { status: 201 },
+        )
+      }
+      return Response.json({ selection: null })
+    }),
+  )
+
+  useWorkspaceStore.getState().setInspectorTab('review')
+  showWorkspace(detailFor(1, sourceWithHeadline()))
+  selectHeadlineLayer()
+
+  // 右侧抽屉已处于打开状态，再从选区工具栏打开带锚点的批注浮层（两者同时挂载）。
+  const drawer = screen.getByRole('dialog', { name: '批注与评审' })
+  const drawerTextarea = within(drawer).getByRole('textbox', {
+    name: '批注内容',
+  }) as HTMLTextAreaElement
+  fireEvent.click(
+    within(screen.getByTestId('selection-toolbar')).getByRole('button', { name: '批注' }),
+  )
+  const popover = screen.getByTestId('anchored-annotation-composer')
+
+  // 在选区浮层编辑正文与投递勾选，抽屉中的编辑器立即同步，不保留过期副本。
+  fireEvent.change(within(popover).getByRole('textbox', { name: '批注内容' }), {
+    target: { value: '同步验证草稿正文' },
+  })
+  fireEvent.click(within(popover).getByRole('checkbox', { name: '同时发送给 Agent' }))
+  expect(drawerTextarea.value).toBe('同步验证草稿正文')
+  expect(
+    within(drawer).getByRole('checkbox', { name: '同时发送给 Agent' }).getAttribute('aria-checked'),
+  ).toBe('true')
+
+  // 从选区浮层提交后，抽屉编辑器同步清空正文与勾选状态，防止重复提交。
+  fireEvent.click(within(popover).getByRole('button', { name: '发送' }))
+  await waitFor(() => expect(submitted).toHaveLength(1))
+  expect(screen.queryByTestId('anchored-annotation-composer')).toBeNull()
+  expect(drawerTextarea.value).toBe('')
+  expect(
+    within(drawer).getByRole('checkbox', { name: '同时发送给 Agent' }).getAttribute('aria-checked'),
+  ).toBe('false')
+})

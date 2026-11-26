@@ -6,11 +6,7 @@ import { Textarea } from '@akasha/ui/textarea'
 import { Send, Target, X } from 'lucide-react'
 import { useId, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import {
-  type AnnotationDraft,
-  readAnnotationDraft,
-  writeAnnotationDraft,
-} from '@/entities/feedback'
+import { type AnnotationDraft, useAnnotationDraft, writeAnnotationDraft } from '@/entities/feedback'
 import { useSelectionStore } from '@/entities/selection'
 import { isAccessDenied } from '@/shared/api/error'
 import { useMessages } from '@/shared/i18n'
@@ -77,7 +73,7 @@ export function AnnotationComposer({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const notifyId = useId()
   const [pendingKind, setPendingKind] = useState<'comment' | 'request_changes' | null>(null)
-  const [draft, setDraft] = useState(() => readAnnotationDraft(artifactId))
+  const draft = useAnnotationDraft(artifactId)
   const draftText = draft?.body ?? ''
   const target = draft?.body ? draft.element : selectedElement
   const targetVersion = draft?.body ? draft.version : version
@@ -92,19 +88,19 @@ export function AnnotationComposer({
   const canSaveDraft = roundId !== null && !wrongVersion && !roundChanged
 
   const replaceDraft = (next: AnnotationDraft | null) => {
-    setDraft(next)
     writeAnnotationDraft(artifactId, next)
   }
 
   const changeDraft = (changes: Partial<AnnotationDraft>) => {
-    replaceDraft({
+    const next: AnnotationDraft = {
       body: draftText,
       sendToAgent: draft?.sendToAgent ?? false,
       element: target,
       version: targetVersion,
       roundId,
       ...changes,
-    })
+    }
+    replaceDraft(next.body || next.sendToAgent ? next : null)
   }
 
   const handleSubmit = async (kind: 'comment' | 'request_changes') => {

@@ -13,6 +13,7 @@ export {
   clearAnnotationDrafts,
   readAnnotationDraft,
   readReplyDraft,
+  useAnnotationDraft,
   writeAnnotationDraft,
   writeReplyDraft,
 } from './model/annotation-draft'

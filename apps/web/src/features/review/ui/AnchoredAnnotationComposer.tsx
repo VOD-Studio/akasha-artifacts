@@ -7,11 +7,7 @@ import { MessageSquareText, Send, Target, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
-import {
-  type AnnotationDraft,
-  readAnnotationDraft,
-  writeAnnotationDraft,
-} from '@/entities/feedback'
+import { type AnnotationDraft, useAnnotationDraft, writeAnnotationDraft } from '@/entities/feedback'
 import { isAccessDenied } from '@/shared/api/error'
 import { useMessages } from '@/shared/i18n'
 import { useSubmitFeedbackMutation } from '../api/mutations'
@@ -87,8 +83,8 @@ export function AnchoredAnnotationComposer({
   const headingId = useId()
   const notifyId = useId()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const [draft, setDraft] = useState<AnnotationDraft | null>(() => readAnnotationDraft(artifactId))
-  const [sendToAgent, setSendToAgent] = useState(() => draft?.sendToAgent ?? false)
+  const draft = useAnnotationDraft(artifactId)
+  const sendToAgent = draft?.sendToAgent ?? false
   const [denied, setDenied] = useState(false)
   const submitMutation = useSubmitFeedbackMutation(artifactId)
 
@@ -107,30 +103,19 @@ export function AnchoredAnnotationComposer({
     !targetElement?.loc
 
   const replaceDraft = (next: AnnotationDraft | null) => {
-    setDraft(next)
     writeAnnotationDraft(artifactId, next)
-    if (!next) setSendToAgent(false)
   }
 
   const updateDraft = (changes: Partial<AnnotationDraft>) => {
-    const nextSendToAgent = changes.sendToAgent ?? sendToAgent
-    if (changes.sendToAgent !== undefined) setSendToAgent(changes.sendToAgent)
-    const nextBody = changes.body ?? body
-    if (!nextBody) {
-      replaceDraft(null)
-      setSendToAgent(nextSendToAgent)
-      return
-    }
     const next: AnnotationDraft = {
-      body: nextBody,
-      sendToAgent: nextSendToAgent,
+      body,
+      sendToAgent,
       element: targetElement,
       version: targetVersion,
       roundId,
       ...changes,
     }
-    setDraft(next)
-    writeAnnotationDraft(artifactId, next)
+    replaceDraft(next.body || next.sendToAgent ? next : null)
   }
 
   useEffect(() => {

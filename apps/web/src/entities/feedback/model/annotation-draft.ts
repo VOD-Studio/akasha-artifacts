@@ -1,4 +1,5 @@
 import { type ElementRef, ElementRefSchema } from '@akasha/protocol'
+import { useCallback, useSyncExternalStore } from 'react'
 
 /** 尚未提交的正文和发起时的目标；换页、换选区和头版本推进都不改写锚点。 */
 export interface AnnotationDraft {
@@ -13,13 +14,35 @@ export interface AnnotationDraft {
   sendToAgent: boolean
 }
 
-const prefix = 'akasha:annotation-draft:'
+interface CachedAnnotationDraft {
+  /** 与 `draft` 对应的 sessionStorage 序列化文本；未持久化（空正文或已清空）时为 `null`。 */
+  raw: string | null
+  draft: AnnotationDraft | null
+  /** 浏览器禁用 sessionStorage 时退回当前标签页内存共享，供多编辑器保持一致。 */
+  memoryOnly: boolean
+}
 
-/** 从当前标签页找回一条草稿，不读取其他制品或其他标签页。 */
-export function readAnnotationDraft(artifactId: string): AnnotationDraft | null {
+const prefix = 'akasha:annotation-draft:'
+const draftCache = new Map<string, CachedAnnotationDraft>()
+const draftListeners = new Map<string, Set<() => void>>()
+
+function notifyDraftListeners(artifactId: string): void {
+  const listeners = draftListeners.get(artifactId)
+  if (!listeners) return
+  for (const listener of [...listeners]) listener()
+}
+
+function readRawDraft(artifactId: string): { available: boolean; raw: string | null } {
   try {
-    const saved = sessionStorage.getItem(`${prefix}${artifactId}`)
-    if (!saved) return null
+    return { available: true, raw: sessionStorage.getItem(`${prefix}${artifactId}`) }
+  } catch {
+    return { available: false, raw: null }
+  }
+}
+
+function parseAnnotationDraft(saved: string | null): AnnotationDraft | null {
+  if (!saved) return null
+  try {
     const value = JSON.parse(saved) as Partial<AnnotationDraft> | null
     if (
       !value ||
@@ -45,13 +68,73 @@ export function readAnnotationDraft(artifactId: string): AnnotationDraft | null 
   }
 }
 
-/** 提交或清空正文后移除持久草稿；浏览器关闭存储时只保留当前编辑器的状态。 */
+function getAnnotationDraftSnapshot(artifactId: string): AnnotationDraft | null {
+  const { available, raw } = readRawDraft(artifactId)
+  const cached = draftCache.get(artifactId)
+  if (!available) return cached?.draft ?? null
+  if (cached) {
+    if (cached.memoryOnly && raw === null) return cached.draft
+    if (!cached.memoryOnly && cached.raw === raw) return cached.draft
+  }
+  const parsed = parseAnnotationDraft(raw)
+  draftCache.set(artifactId, { raw, draft: parsed, memoryOnly: false })
+  return parsed
+}
+
+function subscribeAnnotationDraft(artifactId: string, listener: () => void): () => void {
+  let listeners = draftListeners.get(artifactId)
+  if (!listeners) {
+    listeners = new Set()
+    draftListeners.set(artifactId, listeners)
+  }
+  listeners.add(listener)
+  return () => {
+    const current = draftListeners.get(artifactId)
+    if (!current) return
+    current.delete(listener)
+    if (current.size === 0) {
+      draftListeners.delete(artifactId)
+      const cached = draftCache.get(artifactId)
+      if (cached && !cached.draft?.body) draftCache.delete(artifactId)
+    }
+  }
+}
+
+const getServerDraftSnapshot = () => null
+
+/** 订阅同一制品的共享批注草稿，使选区浮层与右侧讨论抽屉始终读写同一状态源。 */
+export function useAnnotationDraft(artifactId: string): AnnotationDraft | null {
+  const subscribe = useCallback(
+    (listener: () => void) => subscribeAnnotationDraft(artifactId, listener),
+    [artifactId],
+  )
+  const getSnapshot = useCallback(() => getAnnotationDraftSnapshot(artifactId), [artifactId])
+  return useSyncExternalStore(subscribe, getSnapshot, getServerDraftSnapshot)
+}
+
+/** 从当前标签页找回一条草稿，不读取其他制品或其他标签页。 */
+export function readAnnotationDraft(artifactId: string): AnnotationDraft | null {
+  const snapshot = getAnnotationDraftSnapshot(artifactId)
+  return snapshot?.body ? snapshot : null
+}
+
+/** 提交或清空正文后移除持久草稿；浏览器关闭存储时只保留当前标签页内的共享草稿状态。 */
 export function writeAnnotationDraft(artifactId: string, draft: AnnotationDraft | null): void {
+  const key = `${prefix}${artifactId}`
+  const serialized = draft?.body ? JSON.stringify(draft) : null
+  let memoryOnly = false
   try {
-    const key = `${prefix}${artifactId}`
-    if (draft?.body) sessionStorage.setItem(key, JSON.stringify(draft))
+    if (serialized) sessionStorage.setItem(key, serialized)
     else sessionStorage.removeItem(key)
-  } catch {}
+  } catch {
+    memoryOnly = true
+  }
+  if (draft) {
+    draftCache.set(artifactId, { raw: serialized, draft, memoryOnly })
+  } else {
+    draftCache.set(artifactId, { raw: null, draft: null, memoryOnly: false })
+  }
+  notifyDraftListeners(artifactId)
 }
 
 /** 回复草稿只属于此次讨论，不替换同制品正在撰写的根批注。 */
@@ -80,4 +163,8 @@ export function clearAnnotationDrafts(): void {
       if (key?.startsWith(prefix)) sessionStorage.removeItem(key)
     }
   } catch {}
+  draftCache.clear()
+  for (const artifactId of [...draftListeners.keys()]) {
+    notifyDraftListeners(artifactId)
+  }
 }
