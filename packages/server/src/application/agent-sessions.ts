@@ -127,6 +127,7 @@ export class AgentSessions implements AnnotationAgentDispatcher {
   private readonly tokens = new Map<string, RunningTurn>()
   private readonly annotationQueue = new Map<string, QueuedAnnotation[]>()
   private readonly queuedFeedbackIds = new Set<string>()
+  private readonly drainingFeedbackIds = new Set<string>()
   private closed = false
 
   constructor(private readonly deps: AgentSessionDeps) {}
@@ -278,15 +279,25 @@ export class AgentSessions implements AnnotationAgentDispatcher {
     for (const [feedbackId, thread] of Object.entries(threads)) {
       const delivery = thread.agent
       if (!delivery || (delivery.state !== 'queued' && delivery.state !== 'running')) continue
-      if (feedbackId === activeFeedbackId || this.queuedFeedbackIds.has(feedbackId)) continue
+      if (
+        feedbackId === activeFeedbackId ||
+        this.queuedFeedbackIds.has(feedbackId) ||
+        this.drainingFeedbackIds.has(feedbackId)
+      )
+        continue
       const failed: AnnotationAgentDelivery = {
         ...delivery,
         state: 'failed',
         error: 'Daemon 已中断原轮次，未自动重发。',
         updatedAt: this.now(),
       }
-      await this.deps.feedbacks.annotations.setAgentDelivery(feedbackId, failed)
-      thread.agent = failed
+      // 条件更新：若期间轮次已完成并写入 replied/published，保留最新结果而非覆盖为失败。
+      const settled = await this.deps.feedbacks.annotations.compareAndSetAgentDelivery(
+        feedbackId,
+        { state: delivery.state, updatedAt: delivery.updatedAt },
+        failed,
+      )
+      if (settled) thread.agent = settled
     }
   }
 
@@ -464,29 +475,39 @@ export class AgentSessions implements AnnotationAgentDispatcher {
     }
   }
 
+  private async queueBusyAnnotation(artifact: Artifact, feedbackId: string, sessionId: string) {
+    if (!this.deps.feedbacks) return
+    await this.deps.feedbacks.annotations.setAgentDelivery(feedbackId, {
+      sessionId,
+      state: 'queued',
+      publications: [],
+      updatedAt: this.now(),
+    })
+    this.enqueueAnnotation(artifact.projectId, {
+      artifactId: artifact.publicId,
+      feedbackId,
+      sessionId,
+    })
+    await this.publishAnnotationChanged(artifact.publicId, artifact.projectId)
+    if (!this.running.has(artifact.projectId)) {
+      await this.drainAnnotationQueue(artifact.projectId)
+    }
+  }
+
   private async launchAnnotationTurn(artifact: Artifact, feedback: Feedback, sessionId: string) {
     if (!this.deps.feedbacks) return
     if (this.running.has(artifact.projectId)) {
-      await this.deps.feedbacks.annotations.setAgentDelivery(feedback.id, {
-        sessionId,
-        state: 'queued',
-        publications: [],
-        updatedAt: this.now(),
-      })
-      this.enqueueAnnotation(artifact.projectId, {
-        artifactId: artifact.publicId,
-        feedbackId: feedback.id,
-        sessionId,
-      })
-      await this.publishAnnotationChanged(artifact.publicId, artifact.projectId)
-      if (!this.running.has(artifact.projectId)) {
-        await this.drainAnnotationQueue(artifact.projectId)
-      }
+      await this.queueBusyAnnotation(artifact, feedback.id, sessionId)
       return
     }
     try {
       const record = await this.load(sessionId)
       if (!record?.threadId) throw unavailable()
+      // 并发提交在同一 await 窗口后可能已有其他轮次占槽，让出方转为排队而非报错失败。
+      if (this.running.has(artifact.projectId)) {
+        await this.queueBusyAnnotation(artifact, feedback.id, sessionId)
+        return
+      }
       const conversation = await this.start(
         record,
         feedback.body,
@@ -504,6 +525,15 @@ export class AgentSessions implements AnnotationAgentDispatcher {
       })
       await this.publishAnnotationChanged(artifact.publicId, artifact.projectId)
     } catch (error) {
+      if (
+        this.running.has(artifact.projectId) ||
+        (error instanceof DomainError &&
+          error.code === 'RESOURCE_CONFLICT' &&
+          error.message === '该项目已有 CLI 轮次在进行')
+      ) {
+        await this.queueBusyAnnotation(artifact, feedback.id, sessionId)
+        return
+      }
       await this.deps.feedbacks.annotations.setAgentDelivery(feedback.id, {
         sessionId,
         state: 'failed',
@@ -523,6 +553,8 @@ export class AgentSessions implements AnnotationAgentDispatcher {
     const next = queue.shift()
     if (!queue.length) this.annotationQueue.delete(projectId)
     if (!next) return
+    this.queuedFeedbackIds.delete(next.feedbackId)
+    this.drainingFeedbackIds.add(next.feedbackId)
     try {
       const [artifact, feedback] = await Promise.all([
         this.deps.artifacts.findByPublicId(next.artifactId),
@@ -534,7 +566,7 @@ export class AgentSessions implements AnnotationAgentDispatcher {
       }
       await this.launchAnnotationTurn(artifact, feedback, next.sessionId)
     } finally {
-      this.queuedFeedbackIds.delete(next.feedbackId)
+      this.drainingFeedbackIds.delete(next.feedbackId)
     }
     if (!this.running.has(projectId)) {
       await this.drainAnnotationQueue(projectId)

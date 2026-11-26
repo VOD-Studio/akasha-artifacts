@@ -381,6 +381,15 @@ export class InMemoryFeedbackRepository implements FeedbackRepository {
       thread.agent = structuredClone(delivery)
       this.discussions.set(id, thread)
     },
+    compareAndSetAgentDelivery: async (id, expected, next) => {
+      const thread = this.discussions.get(id)
+      const current = thread?.agent
+      if (current && current.state === expected.state && current.updatedAt === expected.updatedAt) {
+        thread.agent = structuredClone(next)
+        return structuredClone(next)
+      }
+      return current ? structuredClone(current) : undefined
+    },
     getAgentDelivery: async (id) => {
       const agent = this.discussions.get(id)?.agent
       return agent ? structuredClone(agent) : undefined

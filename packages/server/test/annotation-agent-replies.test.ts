@@ -385,3 +385,110 @@ it('前序轮次在 claimAgentDelivery 等待期间结束时，入队的批注�
     container.close()
   }
 })
+
+it('读取反馈期间若轮次恰好完成，reconcileDeliveries 不会覆盖已持久化的回复与版本', async () => {
+  const { container, launches, browser, req, publishBoundArtifact, listReview } =
+    createFixture(':memory:')
+  try {
+    const artifactId = await publishBoundArtifact()
+    const created = await req(`/artifacts/${artifactId}/feedback`, 'POST', browser, {
+      project: 'design',
+      version: 1,
+      kind: 'comment',
+      audience: 'agent',
+      element: { blockId: 'hero-title' },
+      body: '更新标题并回复',
+    })
+    expect(created.status).toBe(201)
+    const { feedback } = (await created.json()) as { feedback: Feedback }
+    await vi.waitFor(() => expect(launches).toHaveLength(2))
+
+    // 在 annotations.list 返回旧的 running 快照后、reconcileDeliveries 运行前完成本轮执行。
+    const annotations = container.repositories.feedbacks.annotations
+    const originalList = annotations.list.bind(annotations)
+    let intercepted = false
+    annotations.list = async (id, includeDrafts) => {
+      const snapshot = await originalList(id, includeDrafts)
+      if (!intercepted && snapshot[feedback.id]?.agent?.state === 'running') {
+        intercepted = true
+        const tool = { Authorization: `Bearer ${launches[1]?.request.token ?? ''}` }
+        expect(
+          (
+            await req(`/agent/tool/artifacts/${artifactId}`, 'PATCH', tool, {
+              project: 'design',
+              baseVersion: 1,
+              edits: [{ old_str: '旧标题', new_str: '竞态完成标题' }],
+            })
+          ).status,
+        ).toBe(200)
+        launches[1]?.resolve('竞态窗口内已完成并发布 v2。')
+        await vi.waitFor(async () => {
+          const latest = await annotations.getAgentDelivery(feedback.id)
+          expect(latest?.state).toBe('published')
+        })
+      }
+      return snapshot
+    }
+
+    const review = await listReview(artifactId)
+    expect(intercepted).toBe(true)
+    expect(review.threads[feedback.id]?.agent).toMatchObject({
+      state: 'published',
+      reply: '竞态窗口内已完成并发布 v2。',
+      publications: [{ artifactId, version: 2 }],
+    })
+    // 持久化记录未被覆盖为 failed。
+    const stored = await annotations.getAgentDelivery(feedback.id)
+    expect(stored?.state).toBe('published')
+    expect(stored?.reply).toBe('竞态窗口内已完成并发布 v2。')
+  } finally {
+    container.close()
+  }
+})
+
+it('空闲时并发提交两条发给 Agent 的批注时，落败方自动入队而非标为失败', async () => {
+  const { container, launches, browser, req, publishBoundArtifact, listReview } =
+    createFixture('memory')
+  try {
+    const artifactId = await publishBoundArtifact()
+    const [resA, resB] = await Promise.all([
+      req(`/artifacts/${artifactId}/feedback`, 'POST', browser, {
+        project: 'design',
+        version: 1,
+        kind: 'comment',
+        audience: 'agent',
+        element: { blockId: 'hero-title' },
+        body: '并发批注 A',
+      }),
+      req(`/artifacts/${artifactId}/feedback`, 'POST', browser, {
+        project: 'design',
+        version: 1,
+        kind: 'comment',
+        audience: 'agent',
+        element: { blockId: 'hero-title' },
+        body: '并发批注 B',
+      }),
+    ])
+    expect(resA.status).toBe(201)
+    expect(resB.status).toBe(201)
+    const fbA = ((await resA.json()) as { feedback: Feedback }).feedback
+    const fbB = ((await resB.json()) as { feedback: Feedback }).feedback
+
+    await vi.waitFor(() => expect(launches).toHaveLength(2))
+    const mid = await listReview(artifactId)
+    const states = [mid.threads[fbA.id]?.agent?.state, mid.threads[fbB.id]?.agent?.state].sort()
+    expect(states).toEqual(['queued', 'running'])
+
+    launches[1]?.resolve('第一条并发批注已完成。')
+    await vi.waitFor(() => expect(launches).toHaveLength(3))
+    launches[2]?.resolve('第二条并发批注已完成。')
+
+    await vi.waitFor(async () => {
+      const done = await listReview(artifactId)
+      expect(done.threads[fbA.id]?.agent?.state).toBe('replied')
+      expect(done.threads[fbB.id]?.agent?.state).toBe('replied')
+    })
+  } finally {
+    container.close()
+  }
+})

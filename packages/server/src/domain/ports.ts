@@ -1,5 +1,6 @@
 import type {
   AnnotationAgentDelivery,
+  AnnotationAgentState,
   AnnotationReply,
   AnnotationResolution,
   AnnotationThread,
@@ -124,6 +125,12 @@ export interface AnnotationRepository {
   claimAgentDelivery(feedbackId: string, delivery: AnnotationAgentDelivery): Promise<boolean>
   /** 更新已绑定 Agent 投递的执行状态、真实回复与发布版本。 */
   setAgentDelivery(feedbackId: string, delivery: AnnotationAgentDelivery): Promise<void>
+  /** 仅当持久化记录仍匹配观测到的状态与更新时间时才更新；否则保留并返回当前已落库记录。 */
+  compareAndSetAgentDelivery(
+    feedbackId: string,
+    expected: { state: AnnotationAgentState; updatedAt: string },
+    next: AnnotationAgentDelivery,
+  ): Promise<AnnotationAgentDelivery | undefined>
   /** 读取单条批注的已绑定 Agent 投递记录。 */
   getAgentDelivery(feedbackId: string): Promise<AnnotationAgentDelivery | undefined>
 }

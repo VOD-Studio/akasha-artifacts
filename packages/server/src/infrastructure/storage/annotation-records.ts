@@ -178,6 +178,26 @@ export function createSqlAnnotationRepository(
         delivery.updatedAt,
       ])
     },
+    async compareAndSetAgentDelivery(feedbackId, expected, next) {
+      const updated = await execute<{ feedbackId: string }>([
+        `UPDATE annotation_agent_deliveries
+         SET state = ?, session_id = ?, turn_id = ?, reply = ?, error = ?, publications_json = ?, updated_at = ?
+         WHERE feedback_id = ? AND state = ? AND updated_at = ?
+         RETURNING feedback_id AS "feedbackId"`,
+        next.state,
+        next.sessionId ?? null,
+        next.turnId ?? null,
+        next.reply ?? null,
+        next.error ?? null,
+        JSON.stringify(next.publications),
+        next.updatedAt,
+        feedbackId,
+        expected.state,
+        expected.updatedAt,
+      ])
+      if (updated.length > 0) return next
+      return this.getAgentDelivery(feedbackId)
+    },
     async getAgentDelivery(feedbackId) {
       const rows = await execute<AgentDeliveryRow>([
         `SELECT feedback_id AS "feedbackId", state, session_id AS "sessionId",
