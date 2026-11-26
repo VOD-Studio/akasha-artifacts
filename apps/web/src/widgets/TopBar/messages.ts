@@ -13,6 +13,13 @@ export const messages = {
   ],
   作品菜单: ['Werkmenü', 'قائمة العمل', 'Artifact menu'],
   复制链接: ['Link kopieren', 'نسخ الرابط', 'Copy link'],
+  全屏查看: ['Vollbild öffnen', 'عرض بملء الشاشة', 'Enter full screen'],
+  退出全屏: ['Vollbild verlassen', 'مغادرة ملء الشاشة', 'Exit full screen'],
+  无法切换全屏: [
+    'Vollbildmodus konnte nicht geändert werden',
+    'تعذّر تغيير وضع ملء الشاشة',
+    'Could not change full-screen mode',
+  ],
   取消收藏: ['Aus Favoriten entfernen', 'إزالة من المفضلة', 'Remove from favorites'],
   收藏: ['Zu Favoriten hinzufügen', 'إضافة إلى المفضلة', 'Add to favorites'],
   重命名: ['Umbenennen', 'إعادة التسمية', 'Rename'],

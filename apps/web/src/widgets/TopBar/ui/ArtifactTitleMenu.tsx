@@ -37,6 +37,7 @@ import { getRequestErrorMessage } from '@/shared/api/error'
 import { useMessages } from '@/shared/i18n'
 import { useReloadArtifactMutation } from '../hooks/use-reload-artifact'
 import { messages } from '../messages'
+import { HostDisplayItems } from './HostDisplayItems'
 
 interface ArtifactTitleMenuProps {
   artifact: Artifact
@@ -146,6 +147,7 @@ export function ArtifactTitleMenu({
             <Link2 size={14} />
             {t('复制链接')}
           </DropdownMenuItem>
+          <HostDisplayItems />
           {!shared && favorites.data ? (
             <DropdownMenuItem disabled={setFavorite.isPending} onSelect={toggleFavorite}>
               <Star size={14} />
