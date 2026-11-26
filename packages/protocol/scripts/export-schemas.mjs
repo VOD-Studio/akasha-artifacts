@@ -39,6 +39,7 @@ const SCHEMAS = {
   DesignSystemPreviewInput: protocol.DesignSystemPreviewInputSchema,
   DesignSystemPreviewOutput: protocol.DesignSystemPreviewOutputSchema,
   DesignSystemPublishInput: protocol.DesignSystemPublishInputSchema,
+  DesignSystemGenerateInput: protocol.DesignSystemGenerateInputSchema,
   DesignSystemWriteOutput: protocol.DesignSystemWriteOutputSchema,
   ArtifactStorageOperation: protocol.ArtifactStorageOperationSchema,
   ArtifactPublishInput: protocol.ArtifactPublishInputSchema,

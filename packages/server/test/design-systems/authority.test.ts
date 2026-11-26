@@ -12,7 +12,7 @@ import { createLocalContainer } from '../../src/app/create-local-container.js'
 import { sqliteHub } from '../hub-sharing/sqlite-hub.js'
 import { brand } from './brand.js'
 
-it('an edit link is not a project grant, including when a different owner previews the same brand', async () => {
+it('an edit link is not a project grant, including when a different owner supplies the system id', async () => {
   const hub = await sqliteHub()
   const owner = await hub.login('owner')
   const other = await hub.login('member')
@@ -24,6 +24,7 @@ it('an edit link is not a project grant, including when a different owner previe
     return z.object({ project: ProjectSchema }).parse(await response.json()).project.id
   }
   const ownId = await project(owner)
+  const otherId = await project(other)
   const url = (id: string) => `/api/v1/projects/${encodeURIComponent(id)}/design-systems`
   const view = await hub.send(`${url(ownId)}/preview`, 'POST', owner, {
     draft: brand,
@@ -40,9 +41,11 @@ it('an edit link is not a project grant, including when a different owner previe
   })
   const { artifact } = DesignSystemWriteOutputSchema.parse(await published.json())
   const { cookie } = await hub.link(`/api/v1/artifacts/${artifact.publicId}`, owner)
-  const input = { draft: brand, buildApproved: false }
-  expect((await hub.send(`${url(ownId)}/preview`, 'POST', cookie, input)).status).toBe(404)
-  expect((await hub.send(`${url(ownId)}/preview`, 'POST', other, input)).status).toBe(404)
+  const input = { id: artifact.publicId, version: 1, slug: 'stolen', title: 'Not authorized' }
+  expect((await hub.send(`${url(ownId)}/generate`, 'POST', cookie, input)).status).toBe(404)
+  expect((await hub.send(`${url(ownId)}/generate`, 'POST', other, input)).status).toBe(404)
+  expect((await hub.send(`${url(otherId)}/generate`, 'POST', other, input)).status).toBe(404)
+  expect((await hub.send(`${url(ownId)}/generate`, 'POST', owner, input)).status).toBe(201)
 })
 
 it('never imports unchecked on-disk design systems, including before the watcher sees an edit', async () => {

@@ -146,9 +146,51 @@ export const DesignSystemPublishInputSchema = DesignSystemPreviewInputSchema.ext
 )
 export type DesignSystemPublishInput = z.infer<typeof DesignSystemPublishInputSchema>
 
+/** 从同项目的指定固定版本创建新的、独立的单画板设计。 */
+export const DesignSystemGenerateInputSchema = z.object({
+  id: PublicIdSchema,
+  version: z.number().int().positive(),
+  slug: SlugSchema,
+  title: z.string().trim().min(1).max(512),
+  // 未选择单个组件时生成完整系统示例；不读取头版本。
+  component: component.optional(),
+})
+export type DesignSystemGenerateInput = z.infer<typeof DesignSystemGenerateInputSchema>
+
 /** 返回已提交的制品及其不可变源码，而非构建任务。 */
 export const DesignSystemWriteOutputSchema = z.object({
   artifact: ArtifactSchema,
   version: VersionSchema,
 })
 export type DesignSystemWriteOutput = z.infer<typeof DesignSystemWriteOutputSchema>
+
+const referenceSchema = z.object({
+  id: PublicIdSchema,
+  version: z.number().int().positive(),
+  sourceVersion: DesignSystemPreviewOutputSchema.shape.sourceVersion,
+  components: z.array(component).max(32),
+})
+/** 生成时使用的固定来源；写在生成稿源码中，不授予打开系统的权限。 */
+export type DesignSystemReference = z.infer<typeof referenceSchema>
+const referencePrefix = '// @akasha/design-system '
+
+/** 移除 JSON 中的 JS 行分隔符，保持可直接嵌入独立源码首行。 */
+export function designSystemReferenceHeader(reference: DesignSystemReference): string {
+  return (
+    referencePrefix +
+    JSON.stringify(reference).replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029')
+  )
+}
+
+/** 仅检查首行；普通 React 源码、手改无效的标记都没有可导航的固定来源。 */
+export function readDesignSystemReference(source: string): DesignSystemReference | null {
+  if (!source.startsWith(referencePrefix)) return null
+  const end = source.indexOf('\n')
+  if (end < 0 || end > 64 * 1024) return null
+  try {
+    const parsed = referenceSchema.safeParse(JSON.parse(source.slice(referencePrefix.length, end)))
+    return parsed.success ? parsed.data : null
+  } catch {
+    return null
+  }
+}

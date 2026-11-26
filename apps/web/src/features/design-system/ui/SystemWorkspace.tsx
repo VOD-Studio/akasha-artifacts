@@ -17,6 +17,7 @@ import { LanguageMenu, useMessages } from '@/shared/i18n'
 import { messages } from '../messages'
 import { componentKey } from '../model/review'
 import { AssetReview } from './AssetReview'
+import { GenerateArtboard } from './GenerateArtboard'
 import { GuidanceFields } from './GuidanceFields'
 import { type SystemBaseline, SystemEditor } from './SystemEditor'
 import { SystemPreview } from './SystemPreview'
@@ -28,6 +29,7 @@ interface SystemWorkspaceProps {
   sandboxOrigin: string
   onBack: () => void
   onVersion: (version?: number) => void
+  onOpenArtifact: (id: string) => void
 }
 
 /** 系统来源单独审阅，不把系统清单当作 React 源码放进通用画板编辑器。 */
@@ -38,6 +40,7 @@ export function SystemWorkspace({
   sandboxOrigin,
   onBack,
   onVersion,
+  onOpenArtifact,
 }: SystemWorkspaceProps) {
   const { t } = useMessages(messages)
   const { artifact, version, access } = detail
@@ -182,6 +185,16 @@ export function SystemWorkspace({
               source={snapshot.previewSource}
               sandboxOrigin={sandboxOrigin}
             />
+            {canManage && (
+              <GenerateArtboard
+                key={version.version}
+                id={artifact.publicId}
+                projectId={artifact.projectId}
+                version={version.version}
+                components={snapshot.draft.components}
+                onOpenArtifact={onOpenArtifact}
+              />
+            )}
           </>
         )}
       </div>

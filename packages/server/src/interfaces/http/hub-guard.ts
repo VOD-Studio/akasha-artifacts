@@ -241,7 +241,7 @@ export function mountHubGuard(
     }
 
     const designSystem =
-      /^\/api\/v1\/projects\/([^/]+)\/design-systems\/(preview|publish)$/.exec(path)
+      /^\/api\/v1\/projects\/([^/]+)\/design-systems\/(preview|publish|generate)$/.exec(path)
     if (designSystem) {
       if (
         method !== 'POST' ||

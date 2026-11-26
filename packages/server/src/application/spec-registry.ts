@@ -141,7 +141,7 @@ const BUILTIN_SPECS: ArtifactSpecDefinition[] = [
   {
     type: 'design-system',
     guide:
-      '设计系统必须在项目内通过 design-systems/preview 审阅，再通过 publish 发布。普通源码发布、编辑和目录监听不能替代来源授权。',
+      '设计系统必须在项目内通过 design-systems/preview 审阅，再通过 publish 发布。普通源码发布、编辑和目录监听不能替代来源授权；generate 从已审阅的固定版本生成新设计。',
   },
   {
     type: 'react',

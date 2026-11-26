@@ -1,5 +1,6 @@
 import {
   AuthorSchema,
+  DesignSystemGenerateInputSchema,
   DesignSystemPreviewInputSchema,
   DesignSystemPublishInputSchema,
 } from '@akasha/protocol'
@@ -21,6 +22,7 @@ export function mountDesignSystemRoutes(
   const root = '/api/v1/projects/:projectId/design-systems'
   const author = AuthorSchema.optional().default('human:local')
   const publishSchema = DesignSystemPublishInputSchema.safeExtend({ author })
+  const generateSchema = DesignSystemGenerateInputSchema.extend({ author })
   app.use(
     `${root}/*`,
     bodyLimit({
@@ -46,5 +48,12 @@ export function mountDesignSystemRoutes(
       input.author,
     )
     return c.json(result, result.version.version === 1 ? 201 : 200)
+  })
+  app.post(`${root}/generate`, async (c) => {
+    const input = await parseJsonBody(c.req.raw, generateSchema)
+    return c.json(
+      await deps.service.designSystems.generate(c.req.param('projectId'), input, input.author),
+      201,
+    )
   })
 }

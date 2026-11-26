@@ -3,6 +3,7 @@ import {
   DesignSystemPreviewOutputSchema,
   DesignSystemSnapshotSchema,
   DesignSystemWriteOutputSchema,
+  readDesignSystemReference,
   removedDesignSystemItems,
 } from '@akasha/protocol'
 import { expect, it, onTestFinished } from 'vitest'
@@ -56,9 +57,25 @@ it('publishes a brand without building code or fetching its Figma reference', as
   const snapshot = DesignSystemSnapshotSchema.parse(JSON.parse(system.version.source))
   expect(snapshot.draft).toEqual(brand)
   expect(snapshot.sourceVersion).toBe(sourceVersion)
-  expect(snapshot.previewSource).toContain('data:font/ttf;base64,')
-  expect(snapshot.previewSource).toContain('data:image/svg+xml;base64,')
-  expect(snapshot.previewSource).not.toContain('https://www.figma.com')
+  const board = DesignSystemWriteOutputSchema.parse(
+    await (
+      await api.post('generate', {
+        id: system.artifact.publicId,
+        version: 1,
+        slug: 'brand-board',
+        title: 'Brand board',
+      })
+    ).json(),
+  )
+  expect(board.version.source).toContain('data:font/ttf;base64,')
+  expect(board.version.source).toContain('data:image/svg+xml;base64,')
+  expect(board.version.source).not.toContain('https://www.figma.com')
+  expect(readDesignSystemReference(board.version.source)).toEqual({
+    id: system.artifact.publicId,
+    version: 1,
+    sourceVersion,
+    components: [],
+  })
 })
 
 it('pins the actual selected implementation, keeps human guidance, and requires each removal', async () => {
@@ -69,6 +86,17 @@ it('pins the actual selected implementation, keeps human guidance, and requires 
     await (await api.publish(original, before.reviewToken, 'components')).json(),
   )
   const id = system.artifact.publicId
+  const selected = { path: 'src/Button.tsx', exportName: 'ConfirmButton' }
+  const generate = async (version: number, slug: string) =>
+    DesignSystemWriteOutputSchema.parse(
+      await (
+        await api.post('generate', { id, version, slug, title: slug, component: selected })
+      ).json(),
+    )
+  const first = await generate(1, 'before')
+  expect(first.version.source).toContain('Sent from original')
+  expect(first.version.source).not.toContain('Private badge implementation')
+  expect(first.version.source).toContain('#e01234')
   const next = buttons('#167abc')
   next.files = next.files.filter((f) => f.path !== 'src/Badge.tsx')
   next.components = next.components.filter((c) => c.path !== 'src/Badge.tsx')
@@ -103,7 +131,17 @@ it('pins the actual selected implementation, keeps human guidance, and requires 
   expect(
     DesignSystemSnapshotSchema.parse(JSON.parse(latest.version.source)).draft.guidance.instructions,
   ).toBe(original.guidance.instructions)
+  const second = await generate(2, 'after')
+  expect(second.version.source).toContain('#167abc')
+  expect(readDesignSystemReference(second.version.source)).toEqual({
+    id,
+    version: 2,
+    sourceVersion: after.sourceVersion,
+    components: [selected],
+  })
+  expect((await api.fixed(first.artifact.publicId, 1)).version).toEqual(first.version)
   expect((await api.fixed(id, 1)).version).toEqual(system.version)
+  expect((await generate(1, 'pinned-again')).version.source).toBe(first.version.source)
 })
 
 it('rejects unauthorized projects, missing or host dependencies, and all generic writes to a system', async () => {
@@ -152,6 +190,9 @@ it('rejects unauthorized projects, missing or host dependencies, and all generic
     await (await api.post('publish', create)).json(),
   )
   const id = system.artifact.publicId
+  expect(
+    (await api.post('generate', { id, version: 1, slug: 'copy', title: 'copy' }, 'two')).status,
+  ).toBe(404)
   expect(
     (
       await api.send('/api/v1/artifacts', {

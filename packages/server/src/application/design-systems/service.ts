@@ -1,8 +1,9 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { parseDesignSystem } from '@akasha/kit'
+import { generateDesignSystemBoard, parseDesignSystem } from '@akasha/kit'
 import type {
   Author,
   DesignSystemDraft,
+  DesignSystemGenerateInput,
   DesignSystemPreviewInput,
   DesignSystemPreviewOutput,
   DesignSystemPublishInput,
@@ -101,6 +102,31 @@ export class DesignSystems {
       },
       'reviewed-system',
     )
+  }
+
+  async generate(project: string, input: DesignSystemGenerateInput, author: Author) {
+    const { snapshot } = await this.read(project, input.id, input.version)
+    const entry = input.component
+    const index = entry
+      ? snapshot.draft.components.findIndex(
+          (item) => item.path === entry.path && item.exportName === entry.exportName,
+        )
+      : null
+    if (index === -1) throw new DomainError('BAD_REQUEST', '该版本未审阅所选组件')
+    const source = generateDesignSystemBoard(
+      snapshot,
+      { id: input.id, version: input.version },
+      index,
+    )
+    return this.versions.publish({
+      projectId: project,
+      slug: input.slug,
+      title: input.title,
+      type: 'react',
+      source,
+      author,
+      createOnly: true,
+    })
   }
 
   private draftDigest(draft: DesignSystemDraft) {

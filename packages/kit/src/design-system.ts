@@ -1,5 +1,5 @@
 import type { DesignSystemDraft, DesignSystemSnapshot } from '@akasha/protocol'
-import { DesignSystemSnapshotSchema } from '@akasha/protocol'
+import { DesignSystemSnapshotSchema, designSystemReferenceHeader } from '@akasha/protocol'
 import type { KitParseResult } from './registry.js'
 
 const mimeTypes: Record<string, string> = {
@@ -28,6 +28,7 @@ export function designSystemPreviewSource(
   draft: DesignSystemDraft,
   sourceVersion: string,
   modules: readonly string[],
+  reference?: { id: string; version: number },
 ) {
   const assets = draft.files
     .filter((file) => file.kind === 'font' || file.kind === 'logo')
@@ -64,11 +65,11 @@ export function designSystemPreviewSource(
     compiledRanges.push([previewSource.length, previewSource.length + module.length])
     previewSource += `${module},\n`
   }
-  previewSource += `];\nconst model = ${JSON.stringify(model)};
+  previewSource += `];\nconst model = ${JSON.stringify(model)};\nconst reference = ${JSON.stringify(reference ?? null)};
 export default function DesignSystemBoard() {
   const h = React.createElement;
   const style = {display:'grid', alignContent:'start', justifyItems:'start', gap:model.spacing, padding:model.spacing, color:model.color, fontFamily:model.fontFamily || undefined};
-  return h('main', {style, 'data-ak-source-version':model.sourceVersion},
+  return h('main', {style, 'data-ak-system':reference?.id, 'data-ak-system-version':reference?.version, 'data-ak-source-version':model.sourceVersion},
     model.css && h('style', null, model.css),
     ...reviewed.map(({css},i) => css ? h('style',{key:'css'+i},css) : null),
     ...model.logos.map(item => h('img', {key:item.path, src:item.url, alt:item.path, style:{maxWidth:'100%', maxHeight:96, objectFit:'contain'}})),
@@ -77,4 +78,23 @@ export default function DesignSystemBoard() {
   );
 }\n`
   return { previewSource, compiledRanges }
+}
+
+/** 更换的只有可信入口；固定版本内的组件代码、样式和品牌资源不变。 */
+export function generateDesignSystemBoard(
+  snapshot: DesignSystemSnapshot,
+  reference: { id: string; version: number },
+  index: number | null,
+): string {
+  const ranges =
+    index === null ? snapshot.compiledRanges : snapshot.compiledRanges.slice(index, index + 1)
+  const modules = ranges.map(([start, end]) => snapshot.previewSource.slice(start, end))
+  const selected =
+    index === null ? snapshot.draft.components : snapshot.draft.components.slice(index, index + 1)
+  const header = designSystemReferenceHeader({
+    ...reference,
+    sourceVersion: snapshot.sourceVersion,
+    components: selected.map(({ path, exportName }) => ({ path, exportName })),
+  })
+  return `${header}\n${designSystemPreviewSource({ ...snapshot.draft, components: selected }, snapshot.sourceVersion, modules, reference).previewSource}`
 }

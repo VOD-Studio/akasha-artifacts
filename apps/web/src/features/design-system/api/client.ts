@@ -1,4 +1,5 @@
 import {
+  type DesignSystemGenerateInput,
   type DesignSystemPreviewInput,
   DesignSystemPreviewOutputSchema,
   type DesignSystemPublishInput,
@@ -24,4 +25,9 @@ export async function previewSystem(projectId: string, input: DesignSystemPrevie
 /** 同步写入必须提交审阅时的基准版本和逐项确认的移除项。 */
 export async function publishSystem(projectId: string, input: DesignSystemPublishInput) {
   return DesignSystemWriteOutputSchema.parse(await send(projectId, 'publish', input))
+}
+
+/** 生成独立画板，固定系统版本；不写回来源系统。 */
+export async function generateArtboard(projectId: string, input: DesignSystemGenerateInput) {
+  return DesignSystemWriteOutputSchema.parse(await send(projectId, 'generate', input))
 }

@@ -96,6 +96,14 @@ export const messages = {
   最新版本: ['Aktuelle Version', 'أحدث إصدار', 'Latest version'],
   来源指纹: ['Quellfingerabdruck', 'بصمة المصدر', 'Source fingerprint'],
   重新同步: ['Neu synchronisieren', 'إعادة المزامنة', 'Resync'],
+  从此版本生成画板: [
+    'Zeichenfläche aus dieser Version erstellen',
+    'إنشاء لوحة من هذا الإصدار',
+    'Generate artboard from this version',
+  ],
+  画板名称: ['Name der Zeichenfläche', 'اسم اللوحة', 'Artboard name'],
+  全部组件: ['Alle Komponenten', 'جميع المكونات', 'All components'],
+  生成画板: ['Zeichenfläche erstellen', 'إنشاء لوحة', 'Generate artboard'],
   返回作品库: ['Zur Bibliothek', 'العودة إلى المكتبة', 'Back to library'],
   返回系统版本: ['Zur Systemversion', 'العودة إلى إصدار النظام', 'Back to system version'],
   无法读取设计系统: [
