@@ -57,16 +57,6 @@ export const messages = {
   ],
   复制命令: ['Befehl kopieren', 'نسخ الأمر', 'Copy command'],
   已复制命令: ['Befehl kopiert', 'تم نسخ الأمر', 'Command copied'],
-  切换到浅色外观: [
-    'Zu hellem Design wechseln',
-    'التبديل إلى المظهر الفاتح',
-    'Switch to light theme',
-  ],
-  切换到深色外观: [
-    'Zu dunklem Design wechseln',
-    'التبديل إلى المظهر الداكن',
-    'Switch to dark theme',
-  ],
   '共 {count} 件作品': ['{count} Werke', '{count} من الأعمال', '{count} artifacts'],
   '{count} 个项目': ['{count} Projekte', '{count} مشاريع', '{count} projects'],
   '{count} 项收藏': ['{count} Favoriten', '{count} في المفضلة', '{count} favorites'],

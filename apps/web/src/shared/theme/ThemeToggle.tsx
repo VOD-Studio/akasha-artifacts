@@ -2,8 +2,20 @@ import { useTheme } from '@akasha/ui'
 import { Button } from '@akasha/ui/button'
 import { useId } from 'react'
 import { flushSync } from 'react-dom'
-import { useMessages } from '@/shared/i18n'
-import { messages } from '../messages'
+import { type Messages, useMessages } from '@/shared/i18n'
+
+const themeMessages = {
+  切换到浅色外观: [
+    'Zu hellem Design wechseln',
+    'التبديل إلى المظهر الفاتح',
+    'Switch to light theme',
+  ],
+  切换到深色外观: [
+    'Zu dunklem Design wechseln',
+    'التبديل إلى المظهر الداكن',
+    'Switch to dark theme',
+  ],
+} as const satisfies Messages
 
 const BLADE_COUNT = 6
 const SLANT_PCT = 10
@@ -168,7 +180,7 @@ function EclipseThemeIcon({ showSun }: { showSun: boolean }) {
 
 /** 亮/暗外观切换按钮：日蚀变形图标 + 6 道斜向建筑光幕百叶过渡。 */
 export function ThemeToggle() {
-  const { t } = useMessages(messages)
+  const { t } = useMessages(themeMessages)
   const { resolvedTheme, setTheme } = useTheme('system')
   const isDark = resolvedTheme === 'dark'
   const label = t(isDark ? '切换到浅色外观' : '切换到深色外观')

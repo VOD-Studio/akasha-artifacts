@@ -13,13 +13,13 @@ import { HubSharingPolicyLauncher } from '@/features/hub-sharing-policy'
 import { AkashaMark } from '@/shared/brand'
 import { isCloudHub } from '@/shared/config/runtime'
 import { LanguageMenu, useMessages } from '@/shared/i18n'
+import { ThemeToggle } from '@/shared/theme'
 import { useLibraryResults } from './hooks/useLibraryResults'
 import { messages } from './messages'
 import { useLibraryView } from './model/library-view'
 import { LibraryMenu } from './ui/LibraryMenu'
 import { LibraryLoading, LibraryResults } from './ui/LibraryResults'
 import { LibraryToolbar } from './ui/LibraryToolbar'
-import { ThemeToggle } from './ui/ThemeToggle'
 
 export interface LibraryShellProps {
   /** 缺省为个人预览；显式选择 Hub 时不跳至本机副本。 */
