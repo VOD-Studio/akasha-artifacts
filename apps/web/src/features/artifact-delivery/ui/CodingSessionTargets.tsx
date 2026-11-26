@@ -24,6 +24,12 @@ export function CodingSessionTargets({ reference }: { reference: ArtifactHandoff
     return (
       <section className="space-y-2" aria-live="polite">
         <p>{t('已绑定：{label}', { label })}</p>
+        <a
+          className="underline"
+          href={`/coding/${encodeURIComponent(reference.projectId)}/${encodeURIComponent(id)}`}
+        >
+          {t('打开编码工作区')}
+        </a>
         <p className="text-sm text-ink-muted">
           {t('在已授权工程中续接，或为 Claude Code 配置此会话。')}
         </p>

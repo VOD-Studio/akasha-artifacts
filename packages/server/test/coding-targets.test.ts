@@ -3,7 +3,7 @@ import { expect, it } from 'vitest'
 import { origin } from './hub-sharing/browser-client.js'
 import { sqliteHub } from './hub-sharing/sqlite-hub.js'
 
-it('作者将冻结设计交付给活跃远端工作区，重启后可续接且拒绝越权或过期写入', async () => {
+async function checkout() {
   const hub = await sqliteHub()
   const owner = await hub.login('owner')
   const guest = await hub.login('guest')
@@ -71,6 +71,11 @@ it('作者将冻结设计交付给活跃远端工作区，重启后可续接且�
         body: JSON.stringify(body),
       }),
     )
+  return { hub, owner, guest, token, reference, source, root, cli }
+}
+
+it('作者将冻结设计交付给活跃远端工作区，重启后可续接且拒绝越权或过期写入', async () => {
+  const { hub, owner, guest, token, reference, source, root, cli } = await checkout()
   expect((await hub.send(root, 'POST', owner, { label: '伪终端' })).status).toBe(403)
   const grant = await (await cli(root, token, { label: 'Remote checkout' })).json()
   const poll = `${root}/${grant.id}/poll`
@@ -114,4 +119,35 @@ it('作者将冻结设计交付给活跃远端工作区，重启后可续接且�
   })
   hub.advance(8 * 3600)
   expect((await remote('publish', { source: '<p>expired</p>' })).status).toBe(401)
+})
+
+it('作者可用 Web 续接指定会话并发布，访客和其他项目不能借地址读写', async () => {
+  const { hub, owner, guest, token, reference, source, root, cli } = await checkout()
+  const { id } = await (await cli(root, token, { reference, label: '订单工程' })).json()
+  const workspace = `${root}/${id}/workspace`
+  expect((await hub.send(workspace, 'POST', guest)).status).toBe(403)
+  expect(
+    (await hub.send(workspace.replace('github-101', 'github-202'), 'POST', owner)).status,
+  ).toBe(403)
+  expect(await (await hub.send(workspace, 'POST', owner)).json()).toMatchObject({
+    target: { id, label: '订单工程', bound: true },
+    snapshot: { reference, design: { source } },
+    publication: null,
+  })
+  const body = { source: source.replace('下单', '提交订单') }
+  expect((await hub.send(`${workspace}-publish`, 'POST', guest, body)).status).toBe(403)
+  const result = await hub.send(`${workspace}-publish`, 'POST', owner, body)
+  expect(result.status).toBe(201)
+  const publication = await result.json()
+  const reopened = await hub.open()
+  expect(await (await reopened.send(workspace, 'POST', owner)).json()).toMatchObject({
+    snapshot: { reference, design: { version: 1, source } },
+    publication: { ...publication, version: 2 },
+  })
+  expect((await reopened.send(`${workspace}-publish`, 'POST', owner, body)).status).toBe(409)
+  hub.advance(8 * 3600)
+  expect((await reopened.send(workspace, 'POST', owner)).status).toBe(401)
+  const signedInAgain = await reopened.login('owner')
+  expect((await reopened.send(workspace, 'POST', signedInAgain)).status).toBe(404)
+  expect((await reopened.send(`${workspace}-publish`, 'POST', signedInAgain, body)).status).toBe(404)
 })

@@ -31,6 +31,7 @@ export function mountCodingSessionRoutes(
   app.use(`${root}/targets`, smallBody)
   app.use(`${root}/:id/bind`, smallBody)
   app.use(`${root}/:id/publish`, bodyLimit({ maxSize: 16 * 1024 * 1024 }))
+  app.use(`${root}/:id/workspace-publish`, bodyLimit({ maxSize: 16 * 1024 * 1024 }))
   const tokenFor = (authorization?: string) =>
     authorization?.match(/^Bearer ([a-f0-9]{64})$/)?.[1] ?? ''
   app.post(root, async (c) => {
@@ -77,5 +78,15 @@ export function mountCodingSessionRoutes(
     )
     const input = await parseJsonBody(c.req.raw, CodingSessionPublishSchema)
     return c.json(await publishCodingSession(deps, id, reference, input), 201)
+  })
+  app.post(`${root}/:id/workspace`, async (c) => {
+    c.header('Cache-Control', 'no-store')
+    return c.json(await sessions.workspace(c.req.param('project'), c.req.param('id')))
+  })
+  app.post(`${root}/:id/workspace-publish`, async (c) => {
+    const id = c.req.param('id')
+    const { reference } = await sessions.forOwner(c.req.param('project'), id)
+    const input = await parseJsonBody(c.req.raw, CodingSessionPublishSchema)
+    return c.json(await publishCodingSession(deps, id, reference, input, 'human'), 201)
   })
 }

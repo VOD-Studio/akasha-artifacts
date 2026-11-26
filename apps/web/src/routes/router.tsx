@@ -14,6 +14,7 @@ import {
 } from '@tanstack/react-router'
 import { useLayoutEffect } from 'react'
 import { useWorkspaceStore } from '@/entities/workspace'
+import { CodingWorkspacePage } from '@/features/artifact-delivery'
 import { ArtifactCommandPalette } from '@/features/command-palette'
 import { HubInvitationPage } from '@/features/hub'
 import { HubSharingPolicyPage } from '@/features/hub-sharing-policy'
@@ -86,6 +87,13 @@ function ArtifactVersionPage() {
   )
 }
 
+function CodingRoute() {
+  const { project, session } = useParams({ from: '/coding/$project/$session' })
+  return (
+    <CodingWorkspacePage key={`${project}:${session}`} projectId={project} sessionId={session} />
+  )
+}
+
 function InvitationRoute() {
   const { id } = useParams({ from: '/invite/$id' })
   const navigate = useNavigate()
@@ -133,11 +141,18 @@ const adminSharingRoute = createRoute({
   component: AdminSharingRoute,
 })
 
+const codingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/coding/$project/$session',
+  component: CodingRoute,
+})
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   artifactHeadRoute,
   artifactVersionRoute,
   invitationRoute,
+  codingRoute,
   adminSharingRoute,
 ])
 

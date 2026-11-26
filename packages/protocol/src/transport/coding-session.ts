@@ -125,3 +125,11 @@ export const CodingSessionPublicationSchema = z
   })
   .refine((receipt) => receipt.path === `/a/${receipt.artifactId}/v/${receipt.version}`)
 export type CodingSessionPublication = z.infer<typeof CodingSessionPublicationSchema>
+
+/** Web 工作区凭作者身份打开；会话的原设计不随本次工程回传改变。 */
+export const CodingWorkspaceSchema = z.object({
+  target: CodingTargetSchema,
+  snapshot: CodingSessionReadSchema,
+  publication: CodingSessionPublicationSchema.nullable(),
+})
+export type CodingWorkspace = z.infer<typeof CodingWorkspaceSchema>

@@ -175,7 +175,7 @@ export function mountHubGuard(
     const defaultProject = principal ? `${hubProjectPrefix(principal)}default` : undefined
     const projectQuery = url.searchParams.get('projectId') ?? undefined
     const coding =
-      /^\/api\/v1\/projects\/([^/]+)\/coding-sessions(?:\/(targets)|\/[a-f0-9-]{36}\/(read|poll|publish|bind))?$/.exec(
+      /^\/api\/v1\/projects\/([^/]+)\/coding-sessions(?:\/(targets)|\/[a-f0-9-]{36}\/(read|poll|publish|bind|workspace|workspace-publish))?$/.exec(
         path,
       )
     if (coding && method === 'POST') {

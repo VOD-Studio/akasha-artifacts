@@ -137,6 +137,28 @@ export class CodingSessions {
     return this.snapshot(await this.authorize(project, id, token))
   }
 
+  /** 此入口只供已验证的项目所有者使用，不接受客户端重报作品或基线。 */
+  async forOwner(project: string, id: string) {
+    const { records } = await this.active(project)
+    const session = records.find((entry) => entry.id === id)
+    if (!session?.reference) throw new DomainError('NOT_FOUND', '编码会话未绑定或已过期')
+    return { reference: session.reference, target: { id, label: session.label, bound: true } }
+  }
+
+  async workspace(project: string, id: string) {
+    const { reference, target } = await this.forOwner(project, id)
+    const snapshot = await this.snapshot(reference)
+    const { artifactId, version } = reference
+    const [next] = await this.artifacts.getVersionSummaries(artifactId, version + 1)
+    // 会话只能从这个基线成功发布一次；恢复时不把其他作者的后继版本当作回传结果。
+    const mine =
+      next && (next.author === `agent:coding-${id}` || next.author === `human:coding-${id}`)
+    const publication = mine
+      ? { artifactId, version: next.version, path: `/a/${artifactId}/v/${next.version}` }
+      : null
+    return { target, snapshot, publication }
+  }
+
   private async snapshot(reference: ArtifactHandoffReference): Promise<CodingSessionRead> {
     const { artifactId, projectId, version } = reference
     const artifact = await this.artifacts.findByPublicId(artifactId)

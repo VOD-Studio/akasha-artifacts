@@ -3,6 +3,20 @@ import type { Messages } from '@/shared/i18n'
 export const messages = {
   '移交给 Agent': ['An Agent übergeben', 'تسليم إلى الوكيل', 'Hand off to agent'],
   编码会话: ['Coding-Sitzungen', 'جلسات البرمجة', 'Coding sessions'],
+  打开编码工作区: [
+    'Coding-Arbeitsbereich öffnen',
+    'فتح مساحة عمل البرمجة',
+    'Open coding workspace',
+  ],
+  编码工作区: ['Coding-Arbeitsbereich', 'مساحة عمل البرمجة', 'Coding workspace'],
+  固定选区: ['Fixierte Auswahl', 'التحديد الثابت', 'Pinned selection'],
+  作品源码: ['Quellcode des Werks', 'شيفرة العمل', 'Artifact source'],
+  发布新版本: ['Neue Version veröffentlichen', 'نشر إصدار جديد', 'Publish new version'],
+  '打开 v{version}': ['v{version} öffnen', 'فتح v{version}', 'Open v{version}'],
+  '基于 v{version}': ['Auf Basis von v{version}', 'استنادًا إلى v{version}', 'Based on v{version}'],
+  登录: ['Anmelden', 'تسجيل الدخول', 'Sign in'],
+  加载中: ['Wird geladen', 'جارٍ التحميل', 'Loading'],
+  重新加载: ['Neu laden', 'إعادة التحميل', 'Reload'],
   刷新目标: ['Ziele aktualisieren', 'تحديث الوجهات', 'Refresh targets'],
   复制固定引用: ['Feste Referenz kopieren', 'نسخ المرجع الثابت', 'Copy pinned reference'],
   '暂无可用会话。在目标工程的终端运行以下命令，再刷新目标。': [

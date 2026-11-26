@@ -49,6 +49,9 @@ it('显示目标终端的连接操作并只向选中的编码会话移交固定�
   fireEvent.click(screen.getByRole('button', { name: 'Refresh targets' }))
   fireEvent.click(await screen.findByRole('button', { name: /Hand off to remote-checkout/ }))
   await screen.findByText('Bound to remote-checkout')
+  expect(screen.getByRole('link', { name: 'Open coding workspace' }).getAttribute('href')).toBe(
+    `/coding/github-101%3Adesign/${id}`,
+  )
   expect(screen.getByText(/claude mcp add/).textContent).toContain(
     `akasha coding mcp --session ${id}`,
   )

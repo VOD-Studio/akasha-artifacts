@@ -219,6 +219,8 @@ The default scope is `private`, isolated by user and artifact. `shared` is reada
 
 To select a live target, run `akasha coding connect --label checkout` in the local checkout and leave the terminal open. In a remote checkout (including a browser IDE terminal) run `akasha login --hub <origin>` and `akasha coding connect --hub <origin> --project-id <id> --label checkout`. On the artifact choose **Hand off to agent → Refresh targets → Hand off to checkout**. The waiting terminal receives the pinned design; reopening the dialog for that selection lets you resume the same session. The Hub never starts a process on either machine.
 
+Choose **Open coding workspace** to return to that exact bound session in the browser. The bookmark contains only a project and session ID: the server checks your author login again. Inspect the pinned selection and component sources or edit the artifact source and publish. The preview link opens the new immutable version. Browser edits do not modify checkout files; use the authorized terminal for repository changes.
+
 In the project checkout, save the JSON object from **Hand off to Agent** as `handoff.json`. The following commands use the returned session ID, never a token:
 
 ```sh

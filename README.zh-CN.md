@@ -219,6 +219,8 @@ await window.akasha.storage.delete('layout')
 
 要选择正在等待的目标，在本机工程执行 `akasha coding connect --label checkout` 并保持终端打开。在远端工程（包括 Web IDE 的终端）中先运行 `akasha login --hub <origin>`，再运行 `akasha coding connect --hub <origin> --project-id <id> --label checkout`。打开作品的「移交给 Agent → 刷新目标 → 移交到 checkout」。终端会收到固定设计；以相同选区重新打开对话框可续接同一会话。Hub 不在任一机器上启动进程。
 
+点击「打开编码工作区」可在浏览器回到刚绑定的会话。书签只含项目和会话 ID，每次打开都要验证作者身份。可检查固定选区、组件来源，编辑作品源码并发布；预览链接打开新版本。浏览器不会改写工程文件，需要修改代码库时使用已授权终端。
+
 在项目目录中，把「移交给 Agent」的 JSON 对象保存为 `handoff.json`。以下命令使用签入返回的会话 ID，不传令牌：
 
 ```sh

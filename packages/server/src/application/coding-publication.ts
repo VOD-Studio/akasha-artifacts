@@ -15,6 +15,7 @@ export async function publishCodingSession(
   sessionId: string,
   reference: ArtifactHandoffReference,
   input: CodingSessionPublish,
+  actor: 'human' | 'agent' = 'agent',
 ): Promise<CodingSessionPublication> {
   const { artifactId, projectId, version: baseVersion } = reference
   const artifact = await deps.artifacts.findByPublicId(artifactId)
@@ -42,7 +43,7 @@ export async function publishCodingSession(
     projectId,
     baseVersion,
     source,
-    author: `agent:coding-${sessionId}`,
+    author: `${actor}:coding-${sessionId}`,
   })
   return { artifactId, version: version.version, path: `/a/${artifactId}/v/${version.version}` }
 }
