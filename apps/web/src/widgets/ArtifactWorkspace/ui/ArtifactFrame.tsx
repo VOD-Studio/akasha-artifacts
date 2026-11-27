@@ -213,7 +213,7 @@ export function ArtifactFrame({
   const [livePinRects, setLivePinRects] = useState<Record<string, ElementRect | null>>({})
   const selection = useSelectionStore((s) => selectionForVersion(s, artifactId, versionNumber))
   const selected =
-    !playback && selection && belongsToBoard(selection, id, scoped) ? selection : null
+    !isolated && selection && belongsToBoard(selection, id, scoped) ? selection : null
   const showComments = useWorkspaceStore((state) => state.showComments)
   const focusedFeedbackId = useSelectionStore((s) => s.focusedFeedbackId)
   const versionPins = useMemo(
@@ -390,9 +390,10 @@ export function ArtifactFrame({
 
     const send: FrameConnection['send'] = (message) => {
       if (message.type === 'highlight' && message.element) {
-        if (!belongsToBoard(message.element, id, scoped)) return
+        if (isolated || !belongsToBoard(message.element, id, scoped)) return
       }
       if (message.type === 'pins.track') {
+        if (isolated) return
         host.send({
           ...message,
           pins: message.pins.filter(({ element }) => belongsToBoard(element, id, scoped)),
@@ -460,12 +461,14 @@ export function ArtifactFrame({
             playable: message.playable === true,
             animated: message.animated,
           })
-          const currentSelection = selectionForVersion(selectionStore, artifactId, activeVersion)
-          const layer = selectionStore.layersByArtifact[artifactId]
-          if (currentSelection) {
-            send({ type: 'highlight', element: currentSelection, ...(layer ? { layer } : {}) })
+          if (!isolated) {
+            const currentSelection = selectionForVersion(selectionStore, artifactId, activeVersion)
+            const layer = selectionStore.layersByArtifact[artifactId]
+            if (currentSelection) {
+              send({ type: 'highlight', element: currentSelection, ...(layer ? { layer } : {}) })
+            }
+            trackPins(host, latest.current.versionPins)
           }
-          trackPins(host, latest.current.versionPins)
           if (scopedOverview && message.renderId !== undefined) {
             const readyRenderId = message.renderId
             const firstReady = renderedId !== readyRenderId
@@ -653,8 +656,8 @@ export function ArtifactFrame({
         styleLayerId: watchedStyle,
       })
     }
-    if (!playback && (needsRender || previous?.pins !== versionPins)) trackPins(host, versionPins)
-    if (!playback && needsRender && latest.current.selected) {
+    if (!isolated && (needsRender || previous?.pins !== versionPins)) trackPins(host, versionPins)
+    if (!isolated && needsRender && latest.current.selected) {
       host.send({ type: 'highlight', element: latest.current.selected })
     }
     applied.current = {
@@ -716,7 +719,7 @@ export function ArtifactFrame({
         tabIndex={interactive && (playback || !scoped) ? undefined : -1}
         className={`block h-full w-full border-0 bg-white ${interactive ? 'pointer-events-auto' : 'pointer-events-none'}`}
       />
-      {!playback && (
+      {!isolated && (
         <ElementOverlay
           selected={selected}
           pins={showComments ? versionPins : EMPTY_PINS}

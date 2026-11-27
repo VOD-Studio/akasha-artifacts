@@ -644,7 +644,7 @@ export function ArtifactWorkspace({
           notifyAgent={!access}
           pins={overview ? versionPins : EMPTY_FEEDBACKS}
           onFocusPin={(feedback) => focusAndRemember(feedback, false)}
-          hideSelectionBox={overview ? overlay?.hideSelectionBox : undefined}
+          hideSelectionBox={overview ? overlay?.hideSelectionBox : true}
           pinScale={overview ? overlay?.scale : undefined}
           purpose={purpose}
           register={overview ? registerFrame : register}
