@@ -765,7 +765,9 @@ body,
 
 .artifact-canvas-navigation,
 .artifact-canvas-zoom,
-.artifact-canvas-tools {
+.artifact-canvas-tools,
+.artifact-canvas-presentation-header,
+.artifact-canvas-presentation-dock {
   position: absolute;
   z-index: 2;
 }
@@ -776,9 +778,17 @@ body,
   max-width: calc(100% - 24px);
 }
 
+.artifact-canvas-presentation-header {
+  inset-block-start: calc(12px + env(safe-area-inset-top));
+  inset-inline-start: 12px;
+  max-width: calc(100% - 24px);
+}
+
 .artifact-canvas-nav-bar,
 .artifact-canvas-zoom,
-.artifact-canvas-tools {
+.artifact-canvas-tools,
+.artifact-canvas-presentation-header,
+.artifact-canvas-presentation-dock {
   --v-list-highlight-color: color-mix(in oklab, var(--foreground) 7%, transparent);
 
   display: flex;
@@ -800,21 +810,26 @@ body,
   max-width: 100%;
 }
 
-.artifact-canvas-tools {
+.artifact-canvas-tools,
+.artifact-canvas-presentation-dock {
   flex-wrap: wrap;
 }
 
 /* 浮岛内所有控件采用与 12px 外壳同心的 28px / 8px 圆角，消除黑圆点与方壳的割裂感。 */
 .artifact-canvas-nav-bar .v-button,
 .artifact-canvas-zoom .v-button,
-.artifact-canvas-tools .v-button {
+.artifact-canvas-tools .v-button,
+.artifact-canvas-presentation-header .v-button,
+.artifact-canvas-presentation-dock .v-button {
   block-size: 1.75rem;
   border-radius: var(--radius-8, 8px);
 }
 
 .artifact-canvas-nav-bar .v-button[data-icon-only="true"],
 .artifact-canvas-zoom .v-button[data-icon-only="true"],
-.artifact-canvas-tools .v-button[data-icon-only="true"] {
+.artifact-canvas-tools .v-button[data-icon-only="true"],
+.artifact-canvas-presentation-header .v-button[data-icon-only="true"],
+.artifact-canvas-presentation-dock .v-button[data-icon-only="true"] {
   inline-size: 1.75rem;
 }
 
@@ -822,6 +837,10 @@ body,
 .artifact-canvas-nav-bar .v-button--ghost:is(:hover, [aria-expanded="true"], [data-state="open"]),
 .artifact-canvas-zoom .v-button--ghost:is(:hover, [aria-expanded="true"], [data-state="open"]),
 .artifact-canvas-tools .v-button--ghost:is(:hover, [aria-expanded="true"], [data-state="open"]),
+.artifact-canvas-presentation-header
+  .v-button--ghost:is(:hover, [aria-expanded="true"], [data-state="open"]),
+.artifact-canvas-presentation-dock
+  .v-button--ghost:is(:hover, [aria-expanded="true"], [data-state="open"]),
 .artifact-canvas-list-menu .v-button--ghost:is(:hover, [aria-expanded="true"], [data-state="open"]),
 .artifact-canvas-nav-results
   .v-button--ghost:is(:hover, [aria-expanded="true"], [data-state="open"]) {
@@ -915,10 +934,31 @@ body,
   inset-inline-start: 14px;
 }
 
-.artifact-canvas-tools {
+.artifact-canvas-tools,
+.artifact-canvas-presentation-dock {
   inset-block-end: 14px;
   left: 50%;
   transform: translateX(-50%);
+}
+
+.artifact-canvas-presentation-dock {
+  inset-block-end: calc(14px + env(safe-area-inset-bottom));
+  justify-content: center;
+}
+
+.artifact-canvas-presentation-dock .v-button[data-active="true"] {
+  background-color: var(--canvas-selection-tint);
+  color: var(--canvas-selection-strong);
+  box-shadow: inset 0 0 0 1px var(--canvas-selection-border);
+}
+
+.artifact-canvas-presentation-dock
+  .v-button[data-active="true"]:where(:not(:disabled):not([aria-disabled="true"])):is(
+    :hover,
+    :active
+  ) {
+  background-color: color-mix(in oklab, var(--canvas-selection) 16%, transparent);
+  color: var(--canvas-selection-strong);
 }
 
 .artifact-canvas-notices {
