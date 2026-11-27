@@ -259,13 +259,13 @@ export function BoardInspector({
   const designLayer = board?.designLayers?.find(
     (item) => `${DESIGN_LAYER_BLOCK_PREFIX}${item.id}` === selectedBlock,
   )
-  let readOnlyLabel = t('只读')
-  if (readOnlyReason === 'historical' || version.version !== artifact.headVersion) {
-    readOnlyLabel = t('历史版本 · 只读')
-  } else if (readOnlyReason === 'local-auth') {
-    readOnlyLabel = t('只读 · 缺少本机会话凭证，请通过 akasha open 打开')
-  } else if (readOnlyReason === 'permission') {
-    readOnlyLabel = t('只读 · 无编辑权限')
+  let readOnlyLabel: string | null = null
+  if (readOnly) {
+    if (readOnlyReason === 'historical' || version.version !== artifact.headVersion) {
+      readOnlyLabel = t('历史版本 · 只读')
+    } else if (readOnlyReason === 'shared' || readOnlyReason === undefined) {
+      readOnlyLabel = t('只读')
+    }
   }
   const [extraLayers, setExtraLayers] = useState<(LayoutSelection & { scope: string }) | null>(null)
   const scope = JSON.stringify([artifact.publicId, board?.id])
@@ -415,7 +415,7 @@ export function BoardInspector({
                   </button>
                 </>
               ) : null}
-              {readOnly && (
+              {readOnlyLabel && (
                 <p className="border-b border-border/75 px-4 py-2 text-xs text-ink-muted">
                   {readOnlyLabel}
                 </p>

@@ -85,9 +85,7 @@ export function TopBar({
 
   const editing = !shareAccess && agentActivity?.state === 'editing'
   const readOnlySession = !shareAccess && !canWrite
-  let statusLabel: string | undefined
-  if (shareAccess) statusLabel = t(getShareRole(shareAccess, fixedVersion))
-  else if (readOnlySession) statusLabel = t('只读')
+  const statusLabel = shareAccess ? t(getShareRole(shareAccess, fixedVersion)) : undefined
   const readOnlyHint = isCloudHub()
     ? t('当前账户没有编辑权限')
     : t('当前会话未授权写入，请通过 akasha open 打开')

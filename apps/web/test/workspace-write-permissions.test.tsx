@@ -57,11 +57,14 @@ describe('会话写权限前置检测', () => {
     fireEvent.keyDown(screen.getByRole('button', { name: '作品菜单' }), { key: 'Enter' })
     expect(screen.queryByRole('menuitem', { name: '编辑代码' })).toBeNull()
     expect(screen.queryByRole('menuitem', { name: '收藏' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: '移交给 Agent' })).toBeNull()
+    expect(within(screen.getByRole('menu')).queryByText('只读')).toBeNull()
     fireEvent.keyDown(document.body, { key: 'Escape' })
 
     fireEvent.click(screen.getByRole('button', { name: '检查器' }))
     const inspector = within(await screen.findByRole('dialog', { name: '检查器' }))
-    expect(inspector.getByText('只读 · 缺少本机会话凭证，请通过 akasha open 打开')).toBeTruthy()
+    expect(inspector.queryByText(/只读/)).toBeNull()
+    expect(inspector.queryByRole('button', { name: '移交对象' })).toBeNull()
     expect(inspector.queryByRole('spinbutton', { name: '宽度' })).toBeNull()
 
     fireEvent.mouseDown(inspector.getByRole('tab', { name: '源码' }), { button: 0 })
@@ -93,7 +96,8 @@ describe('会话写权限前置检测', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '检查器' }))
     const inspector = within(await screen.findByRole('dialog', { name: '检查器' }))
-    expect(inspector.getByText('只读 · 无编辑权限')).toBeTruthy()
+    expect(inspector.queryByText(/只读/)).toBeNull()
+    expect(inspector.queryByRole('button', { name: '移交对象' })).toBeNull()
 
     const tweaksTab = await inspector.findByRole('tab', { name: '参数' })
     fireEvent.mouseDown(tweaksTab, { button: 0 })

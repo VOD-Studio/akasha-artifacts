@@ -332,7 +332,7 @@ export function ArtifactRouteView({
         )}
         hasActiveRound={rounds.some((round) => round.status !== 'closed')}
         onExport={() => openExport()}
-        onHandoff={() => openHandoff(detail.version.title)}
+        onHandoff={canWrite ? () => openHandoff(detail.version.title) : undefined}
         agentOpen={Boolean(agent?.open)}
         agentToggleRef={agentToggleRef}
         onToggleAgent={canTalkToAgent ? toggleAgent : undefined}
@@ -370,7 +370,7 @@ export function ArtifactRouteView({
             onOpenVersion={openVersion}
             onExportBoard={openExport}
             exportSelectionRef={exportSelectionRef}
-            onHandoff={openHandoff}
+            onHandoff={canWrite ? openHandoff : undefined}
             onAskAgent={canTalkToAgent ? askAgent : undefined}
             onOpenAgentConversation={canTalkToAgent ? () => openAgent() : undefined}
             onRegisterStateForwarder={registerStateForwarder}
