@@ -1,6 +1,6 @@
 import { Button } from '@akasha/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@akasha/ui/popover'
-import { ChevronDown, MessageCircle, PanelRight } from 'lucide-react'
+import { ChevronDown, MessageCircle, SlidersHorizontal } from 'lucide-react'
 import { useState } from 'react'
 import { useSelectionStore } from '@/entities/selection'
 import { useWorkspaceStore } from '@/entities/workspace'
@@ -54,12 +54,12 @@ export function WorkspacePanelButtons({
         aria-controls={inspectOpen ? 'design-inspector' : undefined}
         className={
           inspectOpen
-            ? 'bg-(--canvas-selection-tint) text-(--canvas-selection-strong) hover:bg-(--canvas-selection-tint)'
-            : undefined
+            ? 'size-[30px] rounded-lg border border-(--canvas-selection-border) bg-(--canvas-selection-tint) text-(--canvas-selection-strong) hover:bg-(--canvas-selection-tint)'
+            : 'size-[30px] rounded-lg border border-transparent text-ink-muted hover:bg-surface-subtle hover:text-ink'
         }
         onClick={toggleInspect}
       >
-        <PanelRight size={15} className="rtl:-scale-x-100" />
+        <SlidersHorizontal size={15} />
       </Button>
 
       <div
