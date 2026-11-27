@@ -1,6 +1,6 @@
 import { Button } from '@akasha/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@akasha/ui/popover'
-import { ChevronDown, MessageCircle, ScanLine } from 'lucide-react'
+import { ChevronDown, MessageCircle, PanelRight } from 'lucide-react'
 import { useState } from 'react'
 import { useSelectionStore } from '@/entities/selection'
 import { useWorkspaceStore } from '@/entities/workspace'
@@ -59,7 +59,7 @@ export function WorkspacePanelButtons({
         }
         onClick={toggleInspect}
       >
-        <ScanLine size={15} />
+        <PanelRight size={15} className="rtl:-scale-x-100" />
       </Button>
 
       <div

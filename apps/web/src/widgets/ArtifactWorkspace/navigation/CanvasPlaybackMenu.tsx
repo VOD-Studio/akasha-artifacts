@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from '@akasha/ui/dropdown-menu'
 import { ListHighlightItem } from '@akasha/ui/list-highlight'
-import { Focus, Pause, Play } from 'lucide-react'
+import { Maximize2, Pause, Play } from 'lucide-react'
 import { Fragment, useRef } from 'react'
 import type { CanvasBoard } from '@/entities/artifact'
 import { useMessages } from '@/shared/i18n'
@@ -27,8 +27,8 @@ interface CanvasPlaybackMenuProps {
 }
 
 const GROUPS = [
-  { key: 'static', label: '静态画板', action: '展开画板：{title}', Icon: Focus },
-  { key: 'animation', label: '动画画板', action: '展开画板：{title}', Icon: Focus },
+  { key: 'static', label: '静态画板', action: '展开画板：{title}', Icon: Maximize2 },
+  { key: 'animation', label: '动画画板', action: '展开画板：{title}', Icon: Maximize2 },
   { key: 'prototype', label: '可交互原型', action: '播放原型：{title}', Icon: Play },
 ] as const
 

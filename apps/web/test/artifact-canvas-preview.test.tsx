@@ -270,10 +270,14 @@ it('大幅缩小画布再放大时不卸载已加载的画板，极小倍率下�
   }
   expect(screen.getByTitle('画板内容：宽屏首页')).toBe(desktopFrame)
   expect(desktopHeader?.dataset.compact).toBe('true')
+  expect(desktopHeader?.dataset.hideActions).toBe('true')
+  expect(Number(desktopHeader?.style.getPropertyValue('--board-header-scale'))).toBeLessThan(1)
 
   for (let i = 0; i < 18; i += 1) {
     fireEvent.wheel(viewport, { deltaY: -300, ctrlKey: true, clientX: 500, clientY: 300 })
   }
   expect(screen.getByTitle('画板内容：宽屏首页')).toBe(desktopFrame)
   expect(desktopHeader?.dataset.compact).toBeUndefined()
+  expect(desktopHeader?.dataset.hideActions).toBeUndefined()
 })
+

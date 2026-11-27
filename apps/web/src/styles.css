@@ -313,11 +313,14 @@ body,
 }
 
 .artifact-canvas-board-header {
-  inset-block-end: calc(100% + 6px);
-  inset-inline-start: 0;
-  display: inline-flex;
+  inset-block-end: calc(100% + calc(5px * var(--board-header-scale, 1)));
+  inset-inline: 0;
+  display: flex;
   align-items: center;
-  max-width: 100%;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
   transition: opacity 140ms ease-out;
 }
 
@@ -327,24 +330,23 @@ body,
 }
 
 .artifact-canvas-board-title {
+  flex: 0 1 auto;
   min-width: 0;
-  min-height: 26px;
-  max-width: min(18rem, 100%);
+  max-width: 100%;
   overflow: hidden;
   border: 0;
-  border-radius: var(--radius-full);
-  padding: 2px 8px;
+  border-radius: var(--radius-4, 4px);
+  padding: 1px 2px;
   background: transparent;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: calc(12px * var(--board-header-scale, 1));
   font-weight: 500;
+  line-height: 1.35;
   text-align: start;
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: inherit;
-  transition:
-    background-color 140ms ease-out,
-    color 140ms ease-out;
+  transition: color 140ms ease-out;
 }
 
 .artifact-canvas[data-tool="select"] .artifact-canvas-board-title {
@@ -354,12 +356,15 @@ body,
 .artifact-canvas-board-title:hover,
 .artifact-canvas-board-title:focus-visible {
   z-index: 1;
-  background: color-mix(in oklab, var(--card) 75%, transparent);
   color: var(--foreground);
 }
 
+.artifact-canvas-board-title:focus-visible {
+  outline: 2px solid var(--canvas-selection);
+  outline-offset: 2px;
+}
+
 .artifact-canvas-board[data-selected="true"] .artifact-canvas-board-title {
-  background: var(--canvas-selection-tint);
   color: var(--canvas-selection-strong);
   font-weight: 600;
 }
@@ -374,33 +379,13 @@ body,
 }
 
 .artifact-canvas-board-actions {
-  position: absolute;
-  inset-block-start: 50%;
-  inset-inline-start: calc(100% + 6px);
-  transform: translateY(-50%);
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
   gap: 1px;
-  padding: 2px;
-  border: 1px solid var(--ol);
-  border-radius: var(--radius-full);
-  background: color-mix(in oklab, var(--card) 86%, transparent);
-  box-shadow: var(--shadow-xs);
-  backdrop-filter: blur(14px) saturate(1.5);
-  -webkit-backdrop-filter: blur(14px) saturate(1.5);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 150ms ease-out;
-}
-
-/* 桥接标题与操作胶囊之间的空隙，指针移向操作按钮时不丢失 hover。 */
-.artifact-canvas-board-actions::before {
-  content: "";
-  position: absolute;
-  inset-block: -4px;
-  inset-inline-start: -8px;
-  width: 10px;
+  transition: opacity 140ms ease-out;
 }
 
 .artifact-canvas-board[data-selected="true"] .artifact-canvas-board-actions,
@@ -410,14 +395,26 @@ body,
   pointer-events: auto;
 }
 
-/* 抓手、绘图、建板和批注模式下隐藏板头操作胶囊，避免遮挡落点或劫持指针。 */
+/* 缩到极小时隐藏板头操作图标，避免挤占标题或溢出画板边界；键盘聚焦时仍保持可达。 */
+.artifact-canvas-board-header[data-hide-actions="true"] .artifact-canvas-board-actions {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.artifact-canvas-board-header[data-hide-actions="true"]
+  .artifact-canvas-board-actions:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 抓手、绘图、建板和批注模式下隐藏板头操作图标，避免遮挡落点或劫持指针。 */
 .artifact-canvas:not([data-tool="select"]) .artifact-canvas-board-actions {
   opacity: 0;
   pointer-events: none;
 }
 
 @media (hover: none) {
-  .artifact-canvas-board-actions {
+  .artifact-canvas-board-header:not([data-hide-actions="true"]) .artifact-canvas-board-actions {
     opacity: 1;
     pointer-events: auto;
   }

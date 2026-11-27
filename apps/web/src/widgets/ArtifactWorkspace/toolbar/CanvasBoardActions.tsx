@@ -2,7 +2,7 @@ import { ARTBOARD_GEOMETRY_LIMITS, type VersionSummary } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
 import { Spinner } from '@akasha/ui/indicator'
 import { Popover, PopoverContent, PopoverTrigger } from '@akasha/ui/popover'
-import { AlertCircle, Download, Ellipsis, Focus, Play, RotateCcw, X } from 'lucide-react'
+import { AlertCircle, Download, Ellipsis, Maximize2, Play, RotateCcw, X } from 'lucide-react'
 import { type MouseEventHandler, useState } from 'react'
 import type { CanvasBoard, CanvasBounds } from '@/entities/artifact'
 import { getRequestErrorMessage } from '@/shared/api/error'
@@ -29,24 +29,24 @@ export function CanvasBoardQuickActions({ title, onExpand, onPlay, onExport }: Q
         size="sm"
         variant="ghost"
         iconOnly
-        className="artifact-canvas-board-action size-7"
+        className="artifact-canvas-board-action size-6 rounded-[6px] text-ink-muted hover:bg-ink/7 hover:text-ink"
         aria-label={t('展开画板：{title}', { title })}
         title={t('展开画板')}
         onClick={onExpand}
       >
-        <Focus size={14} />
+        <Maximize2 size={13} />
       </Button>
       {onPlay && (
         <Button
           size="sm"
           variant="ghost"
           iconOnly
-          className="artifact-canvas-board-action size-7"
+          className="artifact-canvas-board-action size-6 rounded-[6px] text-ink-muted hover:bg-ink/7 hover:text-ink"
           aria-label={t('播放原型：{title}', { title })}
           title={t('播放原型')}
           onClick={onPlay}
         >
-          <Play size={14} />
+          <Play size={13} />
         </Button>
       )}
       {onExport && (
@@ -54,12 +54,12 @@ export function CanvasBoardQuickActions({ title, onExpand, onPlay, onExport }: Q
           size="sm"
           variant="ghost"
           iconOnly
-          className="artifact-canvas-board-action size-7"
+          className="artifact-canvas-board-action size-6 rounded-[6px] text-ink-muted hover:bg-ink/7 hover:text-ink"
           aria-label={t('导出画板：{title}', { title })}
           title={t('导出画板')}
           onClick={onExport}
         >
-          <Download size={14} />
+          <Download size={13} />
         </Button>
       )}
     </>
@@ -111,11 +111,11 @@ export function CanvasBoardActions({
           size="sm"
           iconOnly
           disabled={disabled}
-          className="artifact-canvas-board-action size-7"
+          className="artifact-canvas-board-action size-6 rounded-[6px] text-ink-muted hover:bg-ink/7 hover:text-ink"
           aria-label={t('设置画板：{title}', { title: board.title })}
           title={t('设置画板')}
         >
-          <Ellipsis size={14} />
+          <Ellipsis size={13} />
         </Button>
       </PopoverTrigger>
       <PopoverContent
