@@ -35,11 +35,11 @@ export function BoardInspectorTree({
     document.pages.find((page) => page.id === location?.pageId) ?? document.pages[0]
 
   return (
-    <section aria-label={t('页面、画板与图层')} className="h-full">
+    <section aria-label={t('页面、画板与图层')} className="max-h-[inherit]">
       <ScrollArea
         aria-label={t('页面、画板与图层')}
         tabIndex={-1}
-        className="h-full [--v-scroll-area-padding:8px_14px] [--v-scroll-area-surface:var(--popover)]"
+        className="max-h-[inherit] [--v-scroll-area-padding:8px_14px] [--v-scroll-area-surface:var(--popover)]"
       >
         {activePage && activePage.boards.length > 0 ? (
           <ul className="flex flex-col gap-0.5">

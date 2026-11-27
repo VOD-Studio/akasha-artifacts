@@ -311,6 +311,7 @@ export function BoardInspector({
   }
 
   const splitRef = useRef<HTMLDivElement>(null)
+  const treeWrapRef = useRef<HTMLDivElement>(null)
   const [treeHeight, setTreeHeight] = useState(DEFAULT_TREE_HEIGHT)
   const [resizingTree, setResizingTree] = useState(false)
 
@@ -328,7 +329,7 @@ export function BoardInspector({
     event.preventDefault()
     const target = event.currentTarget
     const startY = event.clientY
-    const startHeight = treeHeight
+    const startHeight = treeWrapRef.current?.clientHeight || treeHeight
     setResizingTree(true)
     target.setPointerCapture?.(event.pointerId)
 
@@ -374,7 +375,11 @@ export function BoardInspector({
             <div ref={splitRef} className="flex min-h-full flex-col">
               {activeTab !== 'tweaks' ? (
                 <>
-                  <div style={{ height: treeHeight }} className="shrink-0 overflow-hidden">
+                  <div
+                    ref={treeWrapRef}
+                    style={{ maxHeight: treeHeight }}
+                    className="shrink-0 overflow-hidden"
+                  >
                     <BoardInspectorTree
                       document={document}
                       location={location}

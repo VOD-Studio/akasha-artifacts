@@ -109,6 +109,8 @@ export const panelMessages = {
     'Native layer record · {version}',
   ],
   编辑整份源码: ['Gesamten Quellcode bearbeiten', 'تعديل الشيفرة بالكامل', 'Edit full source'],
+  复制源码: ['Quellcode kopieren', 'نسخ الشيفرة', 'Copy source'],
+  已复制: ['Kopiert', 'تم النسخ', 'Copied'],
   '唯一片段 · {scope}': [
     'Eindeutiger Ausschnitt · {scope}',
     'المقطع الفريد · {scope}',
