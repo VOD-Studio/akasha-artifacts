@@ -299,7 +299,7 @@ export function ArtifactRouteView({
   }
 
   return (
-    <div className="flex h-dvh flex-col bg-canvas text-ink">
+    <div className="flex h-dvh w-full flex-col overflow-hidden bg-canvas text-ink">
       <TopBar
         key={`topbar:${detail.artifact.publicId}`}
         artifact={detail.artifact}
@@ -342,7 +342,7 @@ export function ArtifactRouteView({
       {detail.artifact.type === 'react' && hasVersionSource(detail.version) && (
         <SystemSourceLink source={detail.version.source} />
       )}
-      <main className="relative flex min-h-0 min-w-0 flex-1">
+      <main className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
         {agent && (
           <AgentConversationPane
             key={`${detail.artifact.projectId}:${detail.artifact.publicId}`}

@@ -905,7 +905,7 @@ export function ArtifactWorkspace({
   }, [artifact.publicId])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-canvas">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-canvas">
       <main className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
         {editorMounted && shareCanEdit ? (
           <div

@@ -942,8 +942,14 @@ body,
 }
 
 .artifact-canvas-presentation-dock {
+  --ring: var(--canvas-selection);
   inset-block-end: calc(14px + env(safe-area-inset-bottom));
   justify-content: center;
+}
+
+.artifact-canvas-presentation-scroll > .v-scroll-area__viewport > .v-scroll-area__content {
+  display: flex;
+  min-block-size: 100%;
 }
 
 .artifact-canvas-presentation-dock .v-button[data-active="true"] {

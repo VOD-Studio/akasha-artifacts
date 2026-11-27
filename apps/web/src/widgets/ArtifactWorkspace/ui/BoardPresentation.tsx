@@ -81,23 +81,23 @@ export function BoardPresentation({
       aria-label={t(playback ? '交互预览' : '画板查看')}
       className={
         visible
-          ? 'relative flex min-h-0 min-w-0 flex-1 flex-col bg-canvas max-md:fixed max-md:inset-0 max-md:z-30 max-md:pt-[env(safe-area-inset-top)] max-md:pb-[env(safe-area-inset-bottom)]'
+          ? 'relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-canvas max-md:fixed max-md:inset-0 max-md:z-30 max-md:pt-[env(safe-area-inset-top)] max-md:pb-[env(safe-area-inset-bottom)]'
           : 'hidden'
       }
     >
       <div
         ref={scrollRef}
         dir="ltr"
-        className="artifact-canvas-surface min-h-0 flex-1 overflow-hidden"
+        className="artifact-canvas-surface min-h-0 min-w-0 flex-1 overflow-hidden"
       >
         <ScrollArea
           dir="ltr"
           orientation="both"
           aria-label={t('画板内容')}
           tabIndex={-1}
-          className="h-full w-full overscroll-contain [--v-scroll-area-padding:0px]"
+          className="artifact-canvas-presentation-scroll h-full w-full overscroll-contain [--v-scroll-area-padding:0px]"
         >
-          <div className="flex min-h-full min-w-max px-6 py-16">
+          <div className="flex min-h-full min-w-max flex-1 px-6 py-16">
             <div
               className="relative m-auto shrink-0 overflow-hidden bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05),0_12px_32px_-12px_rgba(0,0,0,0.12)] ring-1 ring-border/80"
               style={{
