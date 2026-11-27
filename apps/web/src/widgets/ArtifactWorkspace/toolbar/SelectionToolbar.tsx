@@ -12,6 +12,7 @@ import {
   type DesignLayerPaletteColor,
   type DesignLayerTextAlign,
   type EditOp,
+  type ElementRect,
   resolveDesignLayerColors,
 } from '@akasha/protocol'
 import { Button } from '@akasha/ui/button'
@@ -63,6 +64,10 @@ export interface SelectionToolbarProps {
   board: CanvasBoard
   runtimeLayer?: CanvasLayer
   designLayer?: DesignLayer
+  /** 当命中节点超出图层树上限或尚未拉回快照时，直接使用沙盒上报的静态源码位置。 */
+  sourceLoc?: string
+  /** 选中元素在画板固有坐标系内的矩形，用于原地文字编辑精准落位。 */
+  selectedRect?: ElementRect
   presentation: CanvasElementPresentation | null
   visualTarget: VisualEditTarget | null
   /** 仅在右栏停留在「属性」页签时成立；打开「源码」等其他页签不隐藏形状或文字快捷项。 */
@@ -134,7 +139,7 @@ function resolveToolbarBox(
   const estimatedWidth = Math.min(380, availableWidth)
   const maxLeft = Math.max(minLeft, maxRight - estimatedWidth)
   const left = Math.max(minLeft, Math.min(anchor.rect.x, maxLeft))
-  const topAbove = anchor.rect.y - 46
+  const topAbove = anchor.rect.y - 40
   const maxTop = Math.max(56, viewportHeight - 96)
   const top =
     topAbove >= 56
@@ -152,6 +157,8 @@ export function SelectionToolbar({
   board,
   runtimeLayer,
   designLayer,
+  sourceLoc,
+  selectedRect,
   presentation,
   visualTarget,
   propertiesOpen,
@@ -185,9 +192,10 @@ export function SelectionToolbar({
           )),
     )
   const isText = isNativeText || isRuntimeText
+  const activeSourceLoc = runtimeLayer?.sourceLoc ?? sourceLoc
   const canEditNative = Boolean(designLayer && canEditBoards && editing?.available)
   const canEditRuntime = Boolean(
-    !designLayer && canEditText && runtimeLayer?.sourceLoc && visualTarget && editing?.available,
+    !designLayer && canEditText && activeSourceLoc && visualTarget && editing?.available,
   )
   const canEdit = isNativeText || isNativeShape ? canEditNative : canEditRuntime
 
@@ -230,8 +238,8 @@ export function SelectionToolbar({
 
   const flowOrder = !designLayer ? visualTarget?.order : null
   const flowIndex =
-    flowOrder && runtimeLayer?.sourceLoc
-      ? flowOrder.siblings.findIndex((item) => item.loc === runtimeLayer.sourceLoc)
+    flowOrder && activeSourceLoc
+      ? flowOrder.siblings.findIndex((item) => item.loc === activeSourceLoc)
       : -1
   const canMoveUp = Boolean(canEditRuntime && flowOrder && flowIndex > 0)
   const canMoveDown = Boolean(
@@ -259,10 +267,10 @@ export function SelectionToolbar({
     textAlign?: DesignLayerTextAlign
     colorHex?: string
   }) => {
-    if (!canEditRuntime || !runtimeLayer?.sourceLoc || !visualTarget) return
+    if (!canEditRuntime || !activeSourceLoc || !visualTarget) return
     const nextClassName = updateTailwindTextClasses(visualTarget.className, patch)
     if (nextClassName === visualTarget.className) return
-    void onApplyRuntimeOp({ kind: 'className', loc: runtimeLayer.sourceLoc, value: nextClassName })
+    void onApplyRuntimeOp({ kind: 'className', loc: activeSourceLoc, value: nextClassName })
   }
 
   const applyColorChoice = (choice: DesignLayerColor) => {
@@ -352,7 +360,11 @@ export function SelectionToolbar({
             else applyRuntimeStyle({ fontSize })
           }}
         >
-          <SelectTrigger controlSize="sm" aria-label={t('字号')} className="w-20">
+          <SelectTrigger
+            controlSize="sm"
+            aria-label={t('字号')}
+            className="w-[4.875rem] tabular-nums"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -371,7 +383,7 @@ export function SelectionToolbar({
             else applyRuntimeStyle({ fontWeight })
           }}
         >
-          <SelectTrigger controlSize="sm" aria-label={t('字重')} className="w-22">
+          <SelectTrigger controlSize="sm" aria-label={t('字重')} className="w-[4.75rem]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -409,58 +421,99 @@ export function SelectionToolbar({
           <Button
             size="sm"
             variant="ghost"
+            iconOnly
             aria-label={colorControlLabel}
             title={colorControlLabel}
           >
             <span
               aria-hidden="true"
-              className="inline-block size-3.5 rounded-full border border-border"
+              className="inline-block size-3.5 rounded-sm border border-black/15 shadow-2xs"
               style={{ backgroundColor: activeSwatchColor }}
             />
-            <span className="text-xs">{colorControlLabel}</span>
           </Button>
         </PopoverTrigger>
-        <PopoverContent side="top" className="w-56 space-y-2 p-2.5" aria-label={colorControlLabel}>
-          <div className="flex flex-wrap gap-1">
+        <PopoverContent
+          side="top"
+          sideOffset={8}
+          className="w-56 space-y-2.5 rounded-xl border border-ol bg-popover/96 p-2.5 shadow-(--shadow-float) backdrop-blur-lg"
+          aria-label={colorControlLabel}
+        >
+          <div className="flex items-center justify-between gap-1">
             {DESIGN_LAYER_COLORS.map((key: DesignLayerPaletteColor) => {
               const swatch = DESIGN_LAYER_PALETTE[key]
               const preview = isNativeShape ? swatch.surface : swatch.foreground
-              const selected = designLayer?.color === key
+              const selected =
+                designLayer?.color === key ||
+                normalizedSwatchHex.toLowerCase() === preview.toLowerCase()
+              const label = t(DESIGN_LAYER_COLOR_LABELS[key])
               return (
-                <Button
+                <button
                   key={key}
-                  size="sm"
-                  variant={selected ? 'secondary' : 'ghost'}
+                  type="button"
+                  aria-label={label}
+                  title={label}
                   aria-pressed={selected}
+                  className={`inline-flex size-7 items-center justify-center rounded-full transition-transform hover:scale-105 focus-visible:outline-2 focus-visible:outline-(--canvas-selection) ${
+                    selected
+                      ? 'ring-2 ring-(--canvas-selection) ring-offset-2 ring-offset-popover'
+                      : 'ring-1 ring-border/70'
+                  }`}
                   onClick={() => applyColorChoice(key)}
                 >
                   <span
                     aria-hidden="true"
-                    className="inline-block size-3 rounded-full border border-border"
+                    className="size-5 rounded-full border border-black/10"
                     style={{ backgroundColor: preview }}
                   />
-                  <span>{t(DESIGN_LAYER_COLOR_LABELS[key])}</span>
-                </Button>
+                </button>
               )
             })}
           </div>
           <form className="flex items-center gap-1.5" onSubmit={submitCustomHex}>
+            <label className="relative inline-flex size-7 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-border">
+              <span className="sr-only">{colorControlLabel}</span>
+              <input
+                type="color"
+                className="absolute inset-0 size-full cursor-pointer opacity-0"
+                value={HEX_COLOR.test(hexDraft.trim()) ? hexDraft.trim() : normalizedSwatchHex}
+                onChange={(event) => {
+                  const next = event.currentTarget.value
+                  setHexDraft(next)
+                  applyColorChoice(next.toLowerCase() as DesignLayerColor)
+                }}
+              />
+              <span
+                aria-hidden="true"
+                className="size-full"
+                style={{
+                  backgroundColor: HEX_COLOR.test(hexDraft.trim())
+                    ? hexDraft.trim()
+                    : normalizedSwatchHex,
+                }}
+              />
+            </label>
             <Input
               type="text"
               controlSize="sm"
               dir="ltr"
               aria-label={t('自定义颜色')}
               placeholder="#202733"
+              className="h-7 flex-1 font-mono text-xs"
               value={hexDraft}
               onChange={(event) => setHexDraft(event.target.value)}
             />
-            <Button size="sm" type="submit" disabled={!HEX_COLOR.test(hexDraft.trim())}>
+            <Button
+              size="sm"
+              type="submit"
+              disabled={!HEX_COLOR.test(hexDraft.trim())}
+              className="h-7 shrink-0 rounded-lg bg-(--canvas-selection) px-2.5 text-xs text-(--canvas-selection-foreground) hover:bg-(--canvas-selection-strong)"
+            >
               {t('应用')}
             </Button>
           </form>
           {draftContrast ? (
             <p
-              className={`rounded px-1.5 py-0.5 text-xs tabular-nums ${
+              className={`rounded-md px-2 py-1 text-[11px] tabular-nums ${
                 draftContrast.level === 'fail'
                   ? 'bg-destructive/10 font-medium text-destructive'
                   : 'bg-surface-subtle text-ink-muted'
@@ -509,20 +562,26 @@ export function SelectionToolbar({
         <Button
           size="sm"
           variant="ghost"
-          leftIcon={<PencilLine size={14} />}
+          iconOnly
+          aria-label={t('编辑文字')}
+          title={t('编辑文字')}
           onClick={(event) => {
             const rect = event.currentTarget.getBoundingClientRect()
             if (isNativeText && designLayer) {
               textTools?.edit(board, designLayer, { x: rect.left, y: rect.bottom + 6 })
-            } else if (runtimeLayer?.sourceLoc && visualTarget?.text !== null && visualTarget) {
-              textTools?.editSource(board, runtimeLayer.sourceLoc, visualTarget.text, {
-                x: rect.left,
-                y: rect.bottom + 6,
-              })
+            } else if (activeSourceLoc && visualTarget?.text !== null && visualTarget) {
+              textTools?.editSource(
+                board,
+                activeSourceLoc,
+                visualTarget.text,
+                { x: rect.left, y: rect.bottom + 6 },
+                selectedRect,
+                presentation ?? undefined,
+              )
             }
           }}
         >
-          {t('编辑文字')}
+          <PencilLine size={13} />
         </Button>
       ) : null}
 
@@ -533,7 +592,7 @@ export function SelectionToolbar({
         <output
           data-testid="selection-contrast-hint"
           aria-live="polite"
-          className={`rounded px-1.5 py-1 text-xs tabular-nums ${
+          className={`rounded-md px-1.5 py-0.5 text-[11px] leading-tight tabular-nums ${
             contrast.level === 'fail'
               ? 'bg-destructive/10 font-medium text-destructive'
               : 'bg-surface-subtle text-ink-muted'
@@ -569,7 +628,7 @@ export function SelectionToolbar({
                 else applyRuntimeStyle({ textAlign: align })
               }}
             >
-              <Icon size={14} />
+              <Icon size={13} />
             </Button>
           ))}
         </fieldset>
@@ -586,7 +645,7 @@ export function SelectionToolbar({
             aria-pressed={Boolean(designLayer?.flipX)}
             onClick={() => anchor.onFlip('horizontal')}
           >
-            <FlipHorizontal2 size={14} />
+            <FlipHorizontal2 size={13} />
           </Button>
           <Button
             size="sm"
@@ -597,7 +656,7 @@ export function SelectionToolbar({
             aria-pressed={Boolean(designLayer?.flipY)}
             onClick={() => anchor.onFlip('vertical')}
           >
-            <FlipVertical2 size={14} />
+            <FlipVertical2 size={13} />
           </Button>
         </div>
       ) : null}
@@ -613,7 +672,7 @@ export function SelectionToolbar({
             title={`${t('上移一层')} (Alt+↑)`}
             onClick={() => anchor.onReorderFlow(-1)}
           >
-            <ArrowUp size={14} />
+            <ArrowUp size={13} />
           </Button>
           <Button
             size="sm"
@@ -624,23 +683,30 @@ export function SelectionToolbar({
             title={`${t('下移一层')} (Alt+↓)`}
             onClick={() => anchor.onReorderFlow(1)}
           >
-            <ArrowDown size={14} />
+            <ArrowDown size={13} />
           </Button>
         </div>
       ) : null}
 
       {showComment ? (
-        <Button
-          size="sm"
-          variant="ghost"
-          leftIcon={<MessageCircle size={14} />}
-          onClick={(event) => {
-            const rect = event.currentTarget.getBoundingClientRect()
-            onComment({ x: rect.left, y: rect.bottom + 8 })
-          }}
-        >
-          {t('批注')}
-        </Button>
+        <>
+          {showEditText || isText || showColor || showFlip || showFlowReorder ? (
+            <span aria-hidden="true" className="mx-0.5 h-3.5 w-px shrink-0 bg-border/80" />
+          ) : null}
+          <Button
+            size="sm"
+            variant="ghost"
+            iconOnly
+            aria-label={t('批注')}
+            title={t('批注')}
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect()
+              onComment({ x: rect.left, y: rect.bottom + 8 })
+            }}
+          >
+            <MessageCircle size={13} />
+          </Button>
+        </>
       ) : null}
     </div>
   )

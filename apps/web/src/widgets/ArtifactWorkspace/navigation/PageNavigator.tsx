@@ -9,6 +9,7 @@ import {
 import { SearchInput } from '@akasha/ui/input'
 import { ListHighlight, ListHighlightItem } from '@akasha/ui/list-highlight'
 import { Popover, PopoverContent, PopoverTrigger } from '@akasha/ui/popover'
+import { ScrollArea } from '@akasha/ui/scroll-area'
 import {
   Check,
   ChevronDown,
@@ -128,6 +129,7 @@ export function PageNavigator({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const actionOrigin = useRef<HTMLButtonElement | null>(null)
+  const searching = query.trim().length > 0
   const results = useMemo(() => {
     const search = query.trim().toLocaleLowerCase()
     const matches = (text: string) => text.toLocaleLowerCase().includes(search)
@@ -222,7 +224,11 @@ export function PageNavigator({
           />
         </div>
         <ListHighlight>
-          <div className="artifact-canvas-nav-results">
+          <ScrollArea
+            aria-label={t('页面与画板')}
+            tabIndex={-1}
+            className="artifact-canvas-nav-results [--v-scroll-area-padding:6px] [--v-scroll-area-surface:var(--popover)]"
+          >
             {results.length === 0 && (
               <p className="px-2.5 py-4 text-center text-xs text-ink-muted">
                 {t('没有匹配的页面或画板')}
@@ -231,8 +237,12 @@ export function PageNavigator({
             {results.map(({ entry, boards, title }) => {
               const isCurrent = entry.id === page?.id
               return (
-                <fieldset key={entry.id} aria-label={title} className="min-w-0 not-first:mt-2">
-                  <ListHighlightItem>
+                <fieldset
+                  key={entry.id}
+                  aria-label={title}
+                  className={searching ? 'min-w-0 not-first:mt-2' : 'min-w-0 not-first:mt-0.5'}
+                >
+                  <ListHighlightItem active={!searching && isCurrent}>
                     <div
                       className="artifact-canvas-nav-page-row"
                       data-current={isCurrent ? 'true' : undefined}
@@ -253,6 +263,9 @@ export function PageNavigator({
                       <span className="shrink-0 pe-0.5 text-[11px] text-ink-muted tabular-nums">
                         {t('{count} 张画板', { count: entry.boards.length })}
                       </span>
+                      {!searching && isCurrent ? (
+                        <Check size={13} aria-hidden="true" className="shrink-0 text-ink" />
+                      ) : null}
                       <PageMenu
                         page={entry}
                         canEdit={Boolean(pageEditing) && entry.ownedBoardCount !== undefined}
@@ -261,7 +274,7 @@ export function PageNavigator({
                       />
                     </div>
                   </ListHighlightItem>
-                  {boards.length > 0 && (
+                  {searching && boards.length > 0 && (
                     <div className="ms-3 mt-0.5 space-y-0.5 border-s border-border/75 ps-1.5">
                       {boards.map((board) => {
                         const active = isCurrent && board.id === selected
@@ -286,7 +299,7 @@ export function PageNavigator({
                 </fieldset>
               )
             })}
-          </div>
+          </ScrollArea>
         </ListHighlight>
         {pageEditing && (
           <div className="border-t border-border/70 p-1.5">

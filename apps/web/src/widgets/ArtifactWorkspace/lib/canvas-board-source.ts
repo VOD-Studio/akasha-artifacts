@@ -16,6 +16,7 @@ import {
 import type { CanvasBounds } from '@/entities/artifact'
 import { fitSelection } from './canvas-arrangement'
 import { removeCanvasBoards } from './canvas-edit-source'
+import { patchHtmlElementGeometry } from './html-element-geometry'
 
 /** 一次画板编辑只产生一个新快照。几何不包含相机状态。 */
 export type CanvasBoardEdit =
@@ -88,6 +89,14 @@ export type CanvasBoardEdit =
   | { kind: 'layerDelete'; boardId: string; layerId: string }
   | { kind: 'layerDeleteMany'; boardId: string; layerIds: readonly string[] }
   | { kind: 'layerText'; boardId: string; layerId: string; text: string }
+  | {
+      kind: 'htmlElementGeometry'
+      boardId: string
+      loc: string
+      translateDelta?: { dx: number; dy: number }
+      width?: number
+      height?: number
+    }
 
 /** 版本重放用真实源码，而不是可变 DOM 或相机快照。 */
 export interface CanvasSourceChange {
@@ -339,6 +348,16 @@ export function editCanvasBoards(
       if (!DesignLayersSchema.safeParse(layers).success)
         throw new Error('画板最多可容纳 96 个图层，标识必须唯一')
       board.raw.designLayers = layers
+      break
+    }
+    case 'htmlElementGeometry': {
+      const board = boards.get(edit.boardId)
+      if (!board || typeof board.raw.html !== 'string') {
+        throw new Error('该画板不支持直接移动或拉伸 HTML 元素')
+      }
+      const nextHtml = patchHtmlElementGeometry(board.raw.html, edit.loc, edit)
+      if (nextHtml === board.raw.html) return { before, after: source }
+      board.raw.html = nextHtml
       break
     }
     case 'layerGeometry':

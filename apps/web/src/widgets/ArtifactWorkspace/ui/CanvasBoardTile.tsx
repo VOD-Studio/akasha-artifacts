@@ -1,4 +1,4 @@
-import type { MouseEvent, PointerEvent, ReactNode } from 'react'
+import type { CSSProperties, MouseEvent, PointerEvent, ReactNode } from 'react'
 import type { CanvasBoard, CanvasBounds, CanvasPage } from '@/entities/artifact'
 import { useMessages } from '@/shared/i18n'
 import type { Camera } from '../lib/canvas-camera'
@@ -48,6 +48,14 @@ export function CanvasBoardTile({
   children,
 }: CanvasBoardTileProps) {
   const { t, dir } = useMessages(canvasToolsMessages)
+  const pixelWidth = bounds.width * camera.scale
+  const pixelHeight = bounds.height * camera.scale
+  const compactHeader = !isSelected && (pixelWidth < 110 || pixelHeight < 64)
+  const hideActions = pixelWidth < 160 || pixelHeight < 72
+  const headerScale = camera.scale >= 0.45 ? 1 : Math.max(0.72, Math.min(1, camera.scale / 0.45))
+  const headerStyle = {
+    '--board-header-scale': headerScale.toFixed(3),
+  } as CSSProperties
   return (
     <div
       className="artifact-canvas-board"
@@ -55,11 +63,17 @@ export function CanvasBoardTile({
       style={{
         left: camera.x + bounds.x * camera.scale,
         top: camera.y + bounds.y * camera.scale,
-        width: bounds.width * camera.scale,
-        height: bounds.height * camera.scale,
+        width: pixelWidth,
+        height: pixelHeight,
       }}
     >
-      <div dir={dir} className="artifact-canvas-board-header">
+      <div
+        dir={dir}
+        style={headerStyle}
+        data-compact={compactHeader ? 'true' : undefined}
+        data-hide-actions={hideActions ? 'true' : undefined}
+        className="artifact-canvas-board-header"
+      >
         {/* 标题、命中区与尺寸柄的指针边界由画布布局决定。 */}
         <button
           type="button"

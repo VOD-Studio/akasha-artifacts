@@ -11,6 +11,7 @@ import {
   type StateStreamSnapshot,
   type VersionSummary,
 } from '@akasha/protocol'
+import { ScrollArea } from '@akasha/ui/scroll-area'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from 'zustand'
 import type { CanvasBoard, LoadedCanvasBoard } from '@/entities/artifact'
@@ -61,6 +62,10 @@ interface ArtifactFrameProps {
   pins: readonly Feedback[]
   /** 图钉只打开原线程，不覆盖正在撰写的选区。 */
   onFocusPin: (feedback: Feedback) => void
+  /** 画布外层已绘制视口级选框时隐藏画板内重复描边。 */
+  hideSelectionBox?: boolean
+  /** 画布当前缩放倍率，用于保持批注图钉尺寸恒定可读。 */
+  pinScale?: number
   purpose: BoardFramePurpose
   /** 只有设计视图登记；试玩不接收设计视图的指认或编辑指令。 */
   register?: (id: string, frame: FrameConnection | null) => void
@@ -90,6 +95,8 @@ interface ArtifactFrameProps {
   /** 直改模式下沙盒上报选中元素时调用。 */
   onVisualSelect: (message: Extract<SandboxToShellMessage, { type: 'visual.select' }>) => void
 }
+
+const EMPTY_PINS: readonly Feedback[] = []
 
 interface PendingPreview {
   requestId: string
@@ -143,6 +150,8 @@ export function ArtifactFrame({
   notifyAgent,
   pins,
   onFocusPin,
+  hideSelectionBox,
+  pinScale,
   purpose,
   register,
   onReady,
@@ -204,7 +213,8 @@ export function ArtifactFrame({
   const [livePinRects, setLivePinRects] = useState<Record<string, ElementRect | null>>({})
   const selection = useSelectionStore((s) => selectionForVersion(s, artifactId, versionNumber))
   const selected =
-    !playback && selection && belongsToBoard(selection, id, scoped) ? selection : null
+    !isolated && selection && belongsToBoard(selection, id, scoped) ? selection : null
+  const showComments = useWorkspaceStore((state) => state.showComments)
   const focusedFeedbackId = useSelectionStore((s) => s.focusedFeedbackId)
   const versionPins = useMemo(
     () => pins.filter((pin) => pin.element && belongsToBoard(pin.element, id, scoped)),
@@ -380,9 +390,10 @@ export function ArtifactFrame({
 
     const send: FrameConnection['send'] = (message) => {
       if (message.type === 'highlight' && message.element) {
-        if (!belongsToBoard(message.element, id, scoped)) return
+        if (isolated || !belongsToBoard(message.element, id, scoped)) return
       }
       if (message.type === 'pins.track') {
+        if (isolated) return
         host.send({
           ...message,
           pins: message.pins.filter(({ element }) => belongsToBoard(element, id, scoped)),
@@ -450,12 +461,14 @@ export function ArtifactFrame({
             playable: message.playable === true,
             animated: message.animated,
           })
-          const currentSelection = selectionForVersion(selectionStore, artifactId, activeVersion)
-          const layer = selectionStore.layersByArtifact[artifactId]
-          if (currentSelection) {
-            send({ type: 'highlight', element: currentSelection, ...(layer ? { layer } : {}) })
+          if (!isolated) {
+            const currentSelection = selectionForVersion(selectionStore, artifactId, activeVersion)
+            const layer = selectionStore.layersByArtifact[artifactId]
+            if (currentSelection) {
+              send({ type: 'highlight', element: currentSelection, ...(layer ? { layer } : {}) })
+            }
+            trackPins(host, latest.current.versionPins)
           }
-          trackPins(host, latest.current.versionPins)
           if (scopedOverview && message.renderId !== undefined) {
             const readyRenderId = message.renderId
             const firstReady = renderedId !== readyRenderId
@@ -643,8 +656,8 @@ export function ArtifactFrame({
         styleLayerId: watchedStyle,
       })
     }
-    if (!playback && (needsRender || previous?.pins !== versionPins)) trackPins(host, versionPins)
-    if (!playback && needsRender && latest.current.selected) {
+    if (!isolated && (needsRender || previous?.pins !== versionPins)) trackPins(host, versionPins)
+    if (!isolated && needsRender && latest.current.selected) {
       host.send({ type: 'highlight', element: latest.current.selected })
     }
     applied.current = {
@@ -706,19 +719,23 @@ export function ArtifactFrame({
         tabIndex={interactive && (playback || !scoped) ? undefined : -1}
         className={`block h-full w-full border-0 bg-white ${interactive ? 'pointer-events-auto' : 'pointer-events-none'}`}
       />
-      {!playback && (
+      {!isolated && (
         <ElementOverlay
           selected={selected}
-          pins={versionPins}
+          pins={showComments ? versionPins : EMPTY_PINS}
           livePinRects={livePinRects}
           focusedFeedbackId={focusedFeedbackId}
+          hideSelectionBox={hideSelectionBox}
+          pinScale={pinScale}
           onSelectPin={onFocusPin}
         />
       )}
       {error?.version === versionNumber && (
-        <div
+        <ScrollArea
           dir={dir}
-          className="pointer-events-auto absolute inset-x-0 bottom-0 z-20 max-h-full overflow-auto p-2"
+          aria-label={t('画板内容')}
+          tabIndex={-1}
+          className="pointer-events-auto absolute inset-x-0 bottom-0 z-20 max-h-full [--v-scroll-area-padding:8px]"
         >
           {playback && (
             <p role="alert" className="rounded border border-border bg-surface p-3 text-sm">
@@ -745,7 +762,7 @@ export function ArtifactFrame({
               }
             />
           )}
-        </div>
+        </ScrollArea>
       )}
     </div>
   )

@@ -55,19 +55,32 @@ export async function serveSharedArtifact(c: Context, input: SharedRequest) {
     if (suffix === '') {
       if (rawVersion !== null && !/^[1-9]\d*$/.test(rawVersion)) return invalid(c)
       const number = fixed ?? (rawVersion === null ? artifact.headVersion : Number(rawVersion))
+      const sharedPermissions = {
+        canWrite: canEditSharedArtifact(grant),
+        canComment: grant.role !== 'view',
+      }
       if (url.searchParams.get('view') === 'canvas') {
         const entry = await workspace.getVersion(artifact, number)
         if (!entry) return hidden(c)
-        return c.json({
-          ...sharedArtifactDetail(artifact, entry.version, grant),
-          ...(artifact.type === 'artboard' && {
-            hubCanEditCanvas: rawVersion === null && canEditSharedArtifact(grant),
-          }),
-          ...(entry.canvas ? { canvas: entry.canvas } : {}),
-        })
+        return c.json(
+          {
+            ...sharedArtifactDetail(artifact, entry.version, grant),
+            ...sharedPermissions,
+            ...(artifact.type === 'artboard' && {
+              hubCanEditCanvas: rawVersion === null && canEditSharedArtifact(grant),
+            }),
+            ...(entry.canvas ? { canvas: entry.canvas } : {}),
+          },
+          200,
+          { 'Cache-Control': 'private, no-store' },
+        )
       }
       const version = await repositories.artifacts.getVersion(artifact.publicId, number)
-      return version ? c.json(sharedArtifactDetail(artifact, version, grant)) : hidden(c)
+      return version
+        ? c.json({ ...sharedArtifactDetail(artifact, version, grant), ...sharedPermissions }, 200, {
+            'Cache-Control': 'private, no-store',
+          })
+        : hidden(c)
     }
     if (suffix === '/boards') return forward()
     if (suffix !== '/feedback') return hidden(c)

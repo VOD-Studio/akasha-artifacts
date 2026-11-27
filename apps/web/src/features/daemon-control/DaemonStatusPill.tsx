@@ -32,11 +32,10 @@ const LOG_LEVEL_STYLES = {
 }
 
 const DOT_STYLES = {
-  ok: 'bg-success shadow-[0_0_0_3px_color-mix(in_oklab,var(--success)_20%,transparent)]',
-  warning: 'bg-warning shadow-[0_0_0_3px_color-mix(in_oklab,var(--warning)_22%,transparent)]',
-  danger:
-    'bg-destructive shadow-[0_0_0_3px_color-mix(in_oklab,var(--destructive)_20%,transparent)]',
-  neutral: 'bg-muted-foreground/60',
+  ok: 'bg-success',
+  warning: 'bg-warning',
+  danger: 'bg-destructive',
+  neutral: 'bg-muted-foreground/55',
 } as const
 
 function serviceIndicator(error: Error | null, pending: boolean, reconnecting: boolean) {

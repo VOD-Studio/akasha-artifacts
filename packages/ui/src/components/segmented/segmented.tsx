@@ -47,6 +47,8 @@ export interface SegmentedItem<V extends string = string> {
   trailing?: React.ReactNode
   /** 原生 tooltip */
   title?: string
+  /** 无障碍名称（纯图标项必填） */
+  ariaLabel?: string
   /** 是否禁用该段 */
   disabled?: boolean
   /** 自定义元素，如路由 Link，或被 Dropdown 触发器包裹的元素 */
@@ -76,8 +78,8 @@ export interface SegmentedProps<V extends string = string> {
   size?: 'sm' | 'default' | 'lg'
   /** 沿主轴撑满容器，各段等分 */
   block?: boolean
-  /** 外轮廓形状，默认 rounded */
-  rounded?: 'default' | 'full'
+  /** 外轮廓形状，默认胶囊；md 为 8/6 功能圆角（适合检查器表单行） */
+  rounded?: 'default' | 'md' | 'full'
   /** 整体禁用 */
   disabled?: boolean
   /**
@@ -193,7 +195,7 @@ export function Segmented<V extends string = string>({
   // biome-ignore lint/correctness/useExhaustiveDependencies: 条目增减或换值后需重新登记 ResizeObserver 的观察对象
   useEffect(() => {
     const track = trackRef.current
-    if (equal || !track) return
+    if (equal || !track || typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(measure)
     observer.observe(track)
     for (const item of track.querySelectorAll(ITEM_SELECTOR)) observer.observe(item)
@@ -373,6 +375,7 @@ export function Segmented<V extends string = string>({
               key={seg.value}
               {...props}
               type="button"
+              aria-label={seg.ariaLabel}
               {...(hasCustomRender
                 ? { 'aria-pressed': active }
                 : {

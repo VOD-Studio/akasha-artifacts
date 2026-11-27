@@ -1,5 +1,6 @@
 @import "../../styles/scrim.css";
 @import "../button/button.css";
+@import "../scroll-area/scroll-area.css";
 
 @layer components {
   .v-sheet {
@@ -85,11 +86,11 @@
   }
 
   .v-sheet__body {
+    --v-scroll-area-surface: var(--popover);
+    --v-scroll-area-padding: 4px 20px 20px;
+
     flex: 1 1 auto;
     min-block-size: 0;
-    padding: 4px 20px 20px;
-    overflow-y: auto;
-    overscroll-behavior: contain;
   }
 
   .v-sheet__footer {

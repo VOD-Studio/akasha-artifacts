@@ -285,7 +285,8 @@ export function useCanvasKeyboardEditing({
   }
 
   const onLayerKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
-    if (!selectedLayer || !activeBoard || event.nativeEvent.isComposing) return
+    if ((!selectedLayer && !selectedDesignLayer) || !activeBoard || event.nativeEvent.isComposing)
+      return
     const { key } = event
     if (key === 'F6' && !event.ctrlKey && !event.metaKey && !event.altKey) {
       if (focusSelectionToolbar()) {
@@ -303,7 +304,7 @@ export function useCanvasKeyboardEditing({
       focusBoardTitle(activeBoard.id)
       return
     }
-    if (key === 'Tab' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    if (selectedLayer && key === 'Tab' && !event.ctrlKey && !event.metaKey && !event.altKey) {
       const next = nextSiblingLayer(layers, selectedLayer.id, event.shiftKey ? -1 : 1)
       if (next) {
         event.preventDefault()
@@ -312,7 +313,7 @@ export function useCanvasKeyboardEditing({
       }
       return
     }
-    if (key === 'Enter' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    if (selectedLayer && key === 'Enter' && !event.ctrlKey && !event.metaKey && !event.altKey) {
       event.preventDefault()
       event.stopPropagation()
       if (event.shiftKey) {
@@ -362,6 +363,7 @@ export function useCanvasKeyboardEditing({
         void editing.change({ kind: 'layerGeometry', boardId: activeBoard.id, changes })
         return
       }
+      if (!selectedLayer) return
       const dir = key === 'ArrowUp' || key === 'ArrowLeft' ? -1 : 1
       const next = nextSiblingLayer(layers, selectedLayer.id, dir)
       if (next) {

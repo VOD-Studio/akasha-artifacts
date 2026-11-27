@@ -4,8 +4,10 @@ import {
   isAnnotationKind,
   type ReviewRound,
 } from '@akasha/protocol'
+import { Button } from '@akasha/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@akasha/ui/select'
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@akasha/ui/sheet'
+import { ListFilter, MessageSquareText } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { selectionForVersion, useSelectionStore } from '@/entities/selection'
 import { useWorkspaceStore } from '@/entities/workspace'
@@ -57,6 +59,8 @@ function InspectorContent({
 
   const [scope, setScope] = useState('all')
   const [resolution, setResolution] = useState('all')
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const hasActiveFilter = scope !== 'all' || resolution !== 'all'
   const focusedCard = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (focusedFeedbackId) focusedCard.current?.scrollIntoView?.({ block: 'nearest' })
@@ -118,38 +122,72 @@ function InspectorContent({
             />
           ) : null}
 
-          <div className="space-y-2 pt-1">
-            <div className="text-xs font-semibold text-ink-muted">
-              {t('反馈（{count}）', { count: ordered.length })}
+          <div className="space-y-2.5 pt-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-ink-muted">
+                {t('反馈（{count}）', { count: ordered.length })}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                iconOnly
+                aria-label={t('筛选批注')}
+                title={t('筛选批注')}
+                aria-expanded={filtersOpen || hasActiveFilter}
+                className={
+                  filtersOpen || hasActiveFilter
+                    ? 'relative size-7 rounded-lg bg-(--canvas-selection-tint) text-(--canvas-selection-strong)'
+                    : 'relative size-7 rounded-lg text-ink-muted hover:text-ink'
+                }
+                onClick={() => setFiltersOpen((open) => !open)}
+              >
+                <ListFilter size={14} />
+                {hasActiveFilter ? (
+                  <span
+                    aria-hidden="true"
+                    className="absolute top-1 end-1 size-1.5 rounded-full bg-(--canvas-selection)"
+                  />
+                ) : null}
+              </Button>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {pageFeedbackIds && (
-                <Select value={scope} onValueChange={changeScope}>
-                  <SelectTrigger aria-label={t('批注范围')} controlSize="sm">
+            {filtersOpen || hasActiveFilter ? (
+              <div className={pageFeedbackIds ? 'grid grid-cols-2 gap-1.5' : 'flex'}>
+                {pageFeedbackIds && (
+                  <Select value={scope} onValueChange={changeScope}>
+                    <SelectTrigger aria-label={t('批注范围')} controlSize="sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t('全部页面')}</SelectItem>
+                      <SelectItem value="page">{t('当前页面')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+                <Select value={resolution} onValueChange={changeResolution}>
+                  <SelectTrigger aria-label={t('解决状态')} controlSize="sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">{t('全部页面')}</SelectItem>
-                    <SelectItem value="page">{t('当前页面')}</SelectItem>
+                    <SelectItem value="all">{t('全部状态')}</SelectItem>
+                    <SelectItem value="open">{t('未解决')}</SelectItem>
+                    <SelectItem value="resolved">{t('已解决')}</SelectItem>
                   </SelectContent>
                 </Select>
-              )}
-              <Select value={resolution} onValueChange={changeResolution}>
-                <SelectTrigger aria-label={t('解决状态')} controlSize="sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t('全部状态')}</SelectItem>
-                  <SelectItem value="open">{t('未解决')}</SelectItem>
-                  <SelectItem value="resolved">{t('已解决')}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+              </div>
+            ) : null}
 
             {ordered.length === 0 && (
-              <p className="py-2 text-xs text-ink-muted">
-                {feedbacks.length ? t('没有符合条件的反馈') : t('暂无反馈')}
-              </p>
+              <div className="flex flex-col items-center gap-1.5 rounded-xl border border-dashed border-border/80 px-4 py-8 text-center">
+                <MessageSquareText size={18} className="text-ink-muted/60" />
+                <p className="text-xs font-medium text-ink">
+                  {feedbacks.length ? t('没有符合条件的反馈') : t('暂无反馈')}
+                </p>
+                {!feedbacks.length && (
+                  <p className="max-w-52 text-[11px] leading-relaxed text-ink-muted">
+                    {t('点击工具栏批注按钮，在画布任意位置点击即可添加。')}
+                  </p>
+                )}
+              </div>
             )}
             {ordered.map((feedback) => (
               <InspectorFeedbackCard

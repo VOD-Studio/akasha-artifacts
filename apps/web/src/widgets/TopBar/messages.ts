@@ -42,6 +42,17 @@ export const messages = {
   仅查看: ['Nur ansehen', 'عرض فقط', 'Can view'],
   可编辑: ['Darf bearbeiten', 'يمكنه التحرير', 'Can edit'],
   可批注: ['Darf kommentieren', 'يمكنه التعليق', 'Can comment'],
+  只读: ['Schreibgeschützt', 'للقراءة فقط', 'Read-only'],
+  '当前会话未授权写入，请通过 akasha open 打开': [
+    'Diese Sitzung darf nicht schreiben. Bitte über akasha open öffnen.',
+    'هذه الجلسة غير مخوّلة بالكتابة؛ افتحها عبر akasha open.',
+    'This session cannot write. Open it via akasha open.',
+  ],
+  当前账户没有编辑权限: [
+    'Dieses Konto hat keine Bearbeitungsrechte.',
+    'لا يملك هذا الحساب صلاحية التعديل.',
+    'This account does not have edit permission.',
+  ],
   返回作品库: ['Zur Bibliothek', 'العودة إلى المكتبة', 'Back to library'],
   'Agent 正在修改': ['Agent bearbeitet das Werk', 'الوكيل يحرّر العمل', 'Agent is editing'],
   返回画布: ['Zur Leinwand', 'العودة إلى مساحة الرسم', 'Back to canvas'],
@@ -51,4 +62,17 @@ export const messages = {
   检查器: ['Inspektor', 'المفتّش', 'Inspector'],
   评审: ['Review', 'مراجعة', 'Review'],
   批注: ['Kommentare', 'تعليقات', 'Comments'],
+  显示画布批注: [
+    'Kommentare auf der Zeichenfläche anzeigen',
+    'إظهار التعليقات على المساحة',
+    'Show comments on canvas',
+  ],
+  隐藏画布批注: [
+    'Kommentare auf der Zeichenfläche ausblenden',
+    'إخفاء التعليقات على المساحة',
+    'Hide comments on canvas',
+  ],
+  更多批注选项: ['Weitere Kommentaroptionen', 'خيارات تعليقات إضافية', 'More comment options'],
+  查看全部批注: ['Alle Kommentare anzeigen', 'عرض جميع التعليقات', 'Show all comments'],
+  查看评审面板: ['Review-Bereich anzeigen', 'عرض لوحة المراجعة', 'Show review panel'],
 } as const satisfies Messages

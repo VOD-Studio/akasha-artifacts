@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
+import { setLocale } from '../src/shared/i18n'
 import {
   artifact,
   design,
@@ -85,7 +86,10 @@ it('画板表单打开后收到新版本时，保留未保存布局而不提交�
   const alert = screen.getByRole('alert')
   expect(within(alert).getByText('未保存的改动已保留（基于 v1）。')).toBeTruthy()
   expect(within(alert).getByRole('button', { name: '下载草稿' })).toBeTruthy()
+  expect(within(alert).getByRole('button', { name: '关闭' })).toBeTruthy()
   expect(screen.getByTitle<HTMLIFrameElement>('画板内容：宽屏首页').width).toBe('1000')
+  fireEvent.click(within(alert).getByRole('button', { name: '关闭' }))
+  expect(screen.queryByRole('alert')).toBeNull()
   expect(
     request.mock.calls.some(
       ([path, init]) => path === '/api/v1/artifacts' && init?.method === 'POST',
@@ -234,4 +238,46 @@ it('Shift 多选可一次对齐并分组，重选组成员时联动选择', asyn
   expect(doc().boards[1].layoutGroup).toBeUndefined()
   fireEvent.click(desktop())
   expect(mobile().getAttribute('aria-pressed')).toBe('false')
+})
+
+it('保存鉴权失败切换语言时同步更新错误文案，并支持重试提交草稿', async () => {
+  setLocale('en')
+  try {
+    const editor = showEditableWorkspace(detailFor())
+    const request = vi.mocked(fetch)
+    const previous = request.getMockImplementation()
+    let failAuth = true
+    request.mockImplementation(async (path, init) => {
+      if (path === '/api/v1/artifacts' && init?.method === 'POST' && failAuth) {
+        return Response.json(
+          { error: { code: 'UNAUTHORIZED', message: 'Sign in first.' } },
+          { status: 401 },
+        )
+      }
+      if (!previous) throw new Error('缺少保存请求处理器')
+      return previous(path, init)
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Artboard settings: 宽屏首页' }))
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Width' }), {
+      target: { value: '960' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(within(alert).getByText('Sign in first.')).toBeTruthy()
+    expect(within(alert).getByRole('button', { name: 'Retry' })).toBeTruthy()
+
+    act(() => setLocale('zh-CN'))
+    expect(within(alert).getByText('请先登录')).toBeTruthy()
+    expect(within(alert).getByText('未保存的改动已保留（基于 v1）。')).toBeTruthy()
+
+    failAuth = false
+    fireEvent.click(within(alert).getByRole('button', { name: '重试' }))
+    await waitFor(() => expect(editor.current.version.version).toBe(2))
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByTitle<HTMLIFrameElement>('画板内容：宽屏首页').width).toBe('960')
+  } finally {
+    setLocale('zh-CN')
+  }
 })

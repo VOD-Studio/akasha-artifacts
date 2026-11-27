@@ -27,6 +27,8 @@ it('重叠密集区只启动 24 块近景画板，退回鸟瞰时一块都不启
   const distant = planViewport(index, { ...DEFAULT_CAMERA, scale: 0.1 }, viewport, selected, null)
   expect(distant.boards).toEqual(boards)
   expect(distant.detail).toEqual([])
+  const overview = planViewport(index, { ...DEFAULT_CAMERA, scale: 0.25 }, viewport, selected, null)
+  expect(overview.detail).toEqual([selected, ...boards.slice(0, 23).map(({ id }) => id)])
 })
 
 it('平移和拖拽按新的包围盒安排正文，屏外的键盘焦点保留但不继续加载', () => {

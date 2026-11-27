@@ -384,7 +384,8 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
       )
     })
 
-    fireEvent.click(screen.getByRole('button', { name: '批注' }))
+    fireEvent.click(screen.getByRole('button', { name: '更多批注选项' }))
+    fireEvent.click(screen.getByRole('button', { name: /查看全部批注/ }))
     const drawer = screen.getByRole('dialog', { name: '批注与评审' })
     expect(drawer.getAttribute('aria-modal')).toBe('false')
     const zoomIn = screen.getByRole('button', { name: '放大' })
@@ -425,7 +426,8 @@ describe('apps/web 外壳工作台、Bridge 安全与 FSD 分层守卫', () => {
     })
     expect(container.querySelector('iframe')).toBe(iframe)
     expect(zoomRatio()).toBe(reviewZoom)
-    fireEvent.click(screen.getByRole('button', { name: '批注' }))
+    fireEvent.click(screen.getByRole('button', { name: '更多批注选项' }))
+    fireEvent.click(screen.getByRole('button', { name: /查看全部批注/ }))
     expect((screen.getByLabelText('批注内容') as HTMLTextAreaElement).value).toBe(
       '请把按钮改成次要描边样式',
     )

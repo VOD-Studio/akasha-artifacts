@@ -28,6 +28,13 @@
   --decoration-foreground: var(--background);
   --scrollbar-thumb: light-dark(rgb(28 25 23 / 0.2), rgb(250 248 245 / 0.2));
   --library-glass-shadow: inset 0 1px 0 rgb(255 255 255 / 0.55), 0 8px 24px -14px rgb(0 0 0 / 0.09);
+  /* 画布设计工具选区、悬停高亮、批注图钉与激活工具的统一设计蓝色阶，避免使用墨黑色描边。 */
+  --canvas-selection: light-dark(#2563eb, #60a5fa);
+  --canvas-selection-strong: light-dark(#1d4ed8, #3b82f6);
+  --canvas-selection-tint: light-dark(rgb(37 99 235 / 0.1), rgb(96 165 250 / 0.18));
+  --canvas-selection-tint-soft: light-dark(rgb(37 99 235 / 0.05), rgb(96 165 250 / 0.1));
+  --canvas-selection-border: light-dark(rgb(37 99 235 / 0.42), rgb(96 165 250 / 0.5));
+  --canvas-selection-foreground: light-dark(#ffffff, #0b1220);
 }
 
 .dark {
@@ -235,69 +242,49 @@ body,
   outline: none;
 }
 
-/* Akasha 刀锋棱面指针体系：取材品牌双切角几何，暖纸白 + 墨黑分面配外白晕，浅/深画布皆清晰锐利。 */
+/* 画布工具指针体系：选择保留系统原生箭头；其余工具采用克制的 24px 细线矢量指针，配白外晕适配深浅画布。 */
 .artifact-canvas[data-tool="select"] {
-  cursor:
-    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='28'%20height='28'%20viewBox='0%200%2028%2028'%3E%3Cpath%20d='M3%203L22%208.8L11.8%2011.8L8.8%2022Z'%20fill='none'%20stroke='%23ffffff'%20stroke-width='2.8'%20stroke-linejoin='round'/%3E%3Cpath%20d='M14.6%2014.6L19.4%2016L16%2019.4Z'%20fill='none'%20stroke='%23ffffff'%20stroke-width='2.4'%20stroke-linejoin='round'/%3E%3Cpath%20d='M3%203L11.8%2011.8L8.8%2022Z'%20fill='%23faf9f5'%20stroke='%231c1b19'%20stroke-width='1.2'%20stroke-linejoin='round'/%3E%3Cpath%20d='M3%203L22%208.8L11.8%2011.8Z'%20fill='%231c1b19'%20stroke='%231c1b19'%20stroke-width='1.2'%20stroke-linejoin='round'/%3E%3Cpath%20d='M14.6%2014.6L19.4%2016L16%2019.4Z'%20fill='%233b3833'%20stroke='%231c1b19'%20stroke-width='1'%20stroke-linejoin='round'/%3E%3C/svg%3E")
-    3 3,
-    default;
+  cursor: default;
 }
 
 .artifact-canvas[data-tool="text"] {
   cursor:
-    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='28'%20height='28'%20viewBox='0%200%2028%2028'%3E%3Cpath%20d='M7.5%205.5L11%207L14.5%205.5M11%207v10M7.5%2018.5L11%2017L14.5%2018.5M17%2017.5h6M20%2017.5v5.5'%20fill='none'%20stroke='%23ffffff'%20stroke-width='3.4'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Cpath%20d='M7.5%205.5L11%207L14.5%205.5M11%207v10M7.5%2018.5L11%2017L14.5%2018.5M17%2017.5h6M20%2017.5v5.5'%20fill='none'%20stroke='%231c1b19'%20stroke-width='1.5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E")
-    11 12,
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M9%205.5c1.5%200%203%20.8%203%202v9c0%201.2-1.5%202-3%202m6-13c-1.5%200-3%20.8-3%202v9c0%201.2%201.5%202%203%202'%20fill='none'%20stroke='%23ffffff'%20stroke-width='3'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Cpath%20d='M9%205.5c1.5%200%203%20.8%203%202v9c0%201.2-1.5%202-3%202m6-13c-1.5%200-3%20.8-3%202v9c0%201.2%201.5%202%203%202'%20fill='none'%20stroke='%231c1b19'%20stroke-width='1.35'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E")
+    12 12,
     text;
 }
 
-.artifact-canvas[data-tool="artboard"] {
+.artifact-canvas[data-tool="artboard"],
+.artifact-canvas[data-tool="note"],
+.artifact-canvas[data-tool="rectangle"],
+.artifact-canvas[data-tool="ellipse"],
+.artifact-canvas[data-tool="pick"],
+.artifact-canvas[data-marquee="true"] {
   cursor:
-    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='28'%20height='28'%20viewBox='0%200%2028%2028'%3E%3Cpath%20d='M10%203v4.5M10%2012.5v4.5M3%2010h4.5M12.5%2010h4.5M16%2018.5h7.5M16%2022h7.5M18.5%2016v7.5M22%2016v7.5'%20fill='none'%20stroke='%23ffffff'%20stroke-width='3.2'%20stroke-linecap='round'/%3E%3Cpath%20d='M10%203v4.5M10%2012.5v4.5M3%2010h4.5M12.5%2010h4.5M16%2018.5h7.5M16%2022h7.5M18.5%2016v7.5M22%2016v7.5'%20fill='none'%20stroke='%231c1b19'%20stroke-width='1.5'%20stroke-linecap='round'/%3E%3C/svg%3E")
-    10 10,
-    crosshair;
-}
-
-.artifact-canvas[data-tool="note"] {
-  cursor:
-    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='28'%20height='28'%20viewBox='0%200%2028%2028'%3E%3Cpath%20d='M9%203v4M9%2011v4M3%209h4M11%209h4'%20fill='none'%20stroke='%23ffffff'%20stroke-width='3.2'%20stroke-linecap='round'/%3E%3Cpath%20d='M15%2015h9v6.2L21.2%2024H15z'%20fill='%23ffffff'%20stroke='%23ffffff'%20stroke-width='2.6'%20stroke-linejoin='round'/%3E%3Cpath%20d='M9%203v4M9%2011v4M3%209h4M11%209h4'%20fill='none'%20stroke='%231c1b19'%20stroke-width='1.5'%20stroke-linecap='round'/%3E%3Cpath%20d='M15%2015h9v6.2L21.2%2024H15z'%20fill='%23f5efe0'%20stroke='%231c1b19'%20stroke-width='1.3'%20stroke-linejoin='round'/%3E%3Cpath%20d='M21.2%2024v-2.8H24'%20fill='none'%20stroke='%231c1b19'%20stroke-width='1.2'%20stroke-linejoin='round'/%3E%3C/svg%3E")
-    9 9,
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M12%204.5v15M4.5%2012h15'%20fill='none'%20stroke='%23ffffff'%20stroke-width='3'%20stroke-linecap='round'/%3E%3Cpath%20d='M12%204.5v15M4.5%2012h15'%20fill='none'%20stroke='%231c1b19'%20stroke-width='1.25'%20stroke-linecap='round'/%3E%3C/svg%3E")
+    12 12,
     crosshair;
 }
 
 .artifact-canvas[data-tool="stroke"] {
   cursor:
-    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='28'%20height='28'%20viewBox='0%200%2028%2028'%3E%3Cpath%20d='M3.5%2024.5L6%2017.2L19%204.2L23.8%209L10.8%2022Z'%20fill='none'%20stroke='%23ffffff'%20stroke-width='3'%20stroke-linejoin='round'/%3E%3Cpath%20d='M6%2017.2L19%204.2L21.4%206.6L8.4%2019.6Z'%20fill='%231c1b19'%20stroke='%231c1b19'%20stroke-width='1.2'%20stroke-linejoin='round'/%3E%3Cpath%20d='M8.4%2019.6L21.4%206.6L23.8%209L10.8%2022Z'%20fill='%23faf9f5'%20stroke='%231c1b19'%20stroke-width='1.2'%20stroke-linejoin='round'/%3E%3Cpath%20d='M3.5%2024.5L6%2017.2L10.8%2022Z'%20fill='%231c1b19'/%3E%3C/svg%3E")
-    3 24,
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3.5%2020.5l1.5-5.5L15.8%204.2a1.7%201.7%200%200%201%202.4%200l1.6%201.6a1.7%201.7%200%200%201%200%202.4L9%2019l-5.5%201.5z'%20fill='%23ffffff'%20stroke='%23ffffff'%20stroke-width='2.6'%20stroke-linejoin='round'/%3E%3Cpath%20d='M3.5%2020.5l1.5-5.5L15.8%204.2a1.7%201.7%200%200%201%202.4%200l1.6%201.6a1.7%201.7%200%200%201%200%202.4L9%2019l-5.5%201.5z'%20fill='%23ffffff'%20stroke='%231c1b19'%20stroke-width='1.35'%20stroke-linejoin='round'/%3E%3Cpath%20d='M14%206l4%204M5%2015l4%204'%20fill='none'%20stroke='%231c1b19'%20stroke-width='1.25'/%3E%3Cpath%20d='M3.5%2020.5l.8-3%202.2%202.2-3%20.8z'%20fill='%231c1b19'/%3E%3C/svg%3E")
+    3 21,
     crosshair;
 }
 
 .artifact-canvas[data-tool="pen"] {
   cursor:
-    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='28'%20height='28'%20viewBox='0%200%2028%2028'%3E%3Cpath%20d='M3.5%203.5L16.5%207.8L21.2%2017.2L17.2%2021.2L7.8%2016.5Z'%20fill='none'%20stroke='%23ffffff'%20stroke-width='3'%20stroke-linejoin='round'/%3E%3Cpath%20d='M3.5%203.5L16.5%207.8L21.2%2017.2L19.2%2019.2Z'%20fill='%231c1b19'%20stroke='%231c1b19'%20stroke-width='1.2'%20stroke-linejoin='round'/%3E%3Cpath%20d='M3.5%203.5L19.2%2019.2L17.2%2021.2L7.8%2016.5Z'%20fill='%23faf9f5'%20stroke='%231c1b19'%20stroke-width='1.2'%20stroke-linejoin='round'/%3E%3Ccircle%20cx='12.8'%20cy='12.8'%20r='1.7'%20fill='%23faf9f5'%20stroke='%231c1b19'%20stroke-width='1.1'/%3E%3C/svg%3E")
-    3 3,
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M4%204l12.5%204.2%203.3%207.4-4.2%204.2-7.4-3.3L4%204z'%20fill='%23ffffff'%20stroke='%23ffffff'%20stroke-width='2.6'%20stroke-linejoin='round'/%3E%3Cpath%20d='M4%204l12.5%204.2%203.3%207.4-4.2%204.2-7.4-3.3L4%204z'%20fill='%23ffffff'%20stroke='%231c1b19'%20stroke-width='1.35'%20stroke-linejoin='round'/%3E%3Cpath%20d='M4%204l7.2%207.2'%20fill='none'%20stroke='%231c1b19'%20stroke-width='1.25'%20stroke-linecap='round'/%3E%3Ccircle%20cx='12.5'%20cy='12.5'%20r='1.5'%20fill='%231c1b19'/%3E%3C/svg%3E")
+    4 4,
     crosshair;
 }
 
-.artifact-canvas[data-tool="rectangle"] {
+.artifact-canvas[data-tool="comment"] {
   cursor:
-    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='28'%20height='28'%20viewBox='0%200%2028%2028'%3E%3Cpath%20d='M10%203v4.5M10%2012.5v4.5M3%2010h4.5M12.5%2010h4.5'%20fill='none'%20stroke='%23ffffff'%20stroke-width='3.2'%20stroke-linecap='round'/%3E%3Crect%20x='15.5'%20y='16'%20width='8.5'%20height='7'%20rx='1.2'%20fill='%23ffffff'%20stroke='%23ffffff'%20stroke-width='2.6'/%3E%3Cpath%20d='M10%203v4.5M10%2012.5v4.5M3%2010h4.5M12.5%2010h4.5'%20fill='none'%20stroke='%231c1b19'%20stroke-width='1.5'%20stroke-linecap='round'/%3E%3Crect%20x='15.5'%20y='16'%20width='8.5'%20height='7'%20rx='1.2'%20fill='%23faf9f5'%20stroke='%231c1b19'%20stroke-width='1.4'/%3E%3C/svg%3E")
-    10 10,
-    crosshair;
-}
-
-.artifact-canvas[data-tool="ellipse"] {
-  cursor:
-    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='28'%20height='28'%20viewBox='0%200%2028%2028'%3E%3Cpath%20d='M10%203v4.5M10%2012.5v4.5M3%2010h4.5M12.5%2010h4.5'%20fill='none'%20stroke='%23ffffff'%20stroke-width='3.2'%20stroke-linecap='round'/%3E%3Ccircle%20cx='19.8'%20cy='19.5'%20r='4.2'%20fill='%23ffffff'%20stroke='%23ffffff'%20stroke-width='2.6'/%3E%3Cpath%20d='M10%203v4.5M10%2012.5v4.5M3%2010h4.5M12.5%2010h4.5'%20fill='none'%20stroke='%231c1b19'%20stroke-width='1.5'%20stroke-linecap='round'/%3E%3Ccircle%20cx='19.8'%20cy='19.5'%20r='4.2'%20fill='%23faf9f5'%20stroke='%231c1b19'%20stroke-width='1.4'/%3E%3C/svg%3E")
-    10 10,
-    crosshair;
-}
-
-.artifact-canvas[data-tool="pick"],
-.artifact-canvas[data-marquee="true"] {
-  cursor:
-    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='28'%20height='28'%20viewBox='0%200%2028%2028'%3E%3Cpath%20d='M10%202.5v5M10%2012.5v5M2.5%2010h5M12.5%2010h5'%20fill='none'%20stroke='%23ffffff'%20stroke-width='3.2'%20stroke-linecap='round'/%3E%3Cpath%20d='M10%202.5v5M10%2012.5v5M2.5%2010h5M12.5%2010h5'%20fill='none'%20stroke='%231c1b19'%20stroke-width='1.5'%20stroke-linecap='round'/%3E%3C/svg%3E")
-    10 10,
-    crosshair;
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M4%2019V11.5a7.5%207.5%200%201%201%207.5%207.5H4z'%20fill='%232563eb'%20stroke='%23ffffff'%20stroke-width='2'%20stroke-linejoin='round'/%3E%3Cpath%20d='M8.5%2010.2h6M8.5%2013.2h4'%20fill='none'%20stroke='%23ffffff'%20stroke-width='1.5'%20stroke-linecap='round'/%3E%3C/svg%3E")
+    4 19,
+    pointer;
 }
 
 .artifact-canvas[data-hand="true"] {
@@ -326,79 +313,79 @@ body,
 }
 
 .artifact-canvas-board-header {
-  inset-block-end: calc(100% + 6px);
-  inset-inline-start: 0;
-  display: inline-flex;
+  inset-block-end: calc(100% + calc(5px * var(--board-header-scale, 1)));
+  inset-inline: 0;
+  display: flex;
   align-items: center;
-  max-width: max(68px, 100%);
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  transition: opacity 140ms ease-out;
+}
+
+.artifact-canvas-board-header[data-compact="true"] {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .artifact-canvas-board-title {
+  flex: 0 1 auto;
   min-width: 0;
-  min-height: 26px;
-  max-width: min(18rem, 100%);
+  max-width: 100%;
   overflow: hidden;
   border: 0;
-  border-radius: var(--radius-full);
-  padding: 2px 8px;
+  border-radius: var(--radius-4, 4px);
+  padding: 1px 2px;
   background: transparent;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: calc(12px * var(--board-header-scale, 1));
   font-weight: 500;
+  line-height: 1.35;
   text-align: start;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: inherit;
+  transition: color 140ms ease-out;
+}
+
+.artifact-canvas[data-tool="select"] .artifact-canvas-board-title {
   cursor: pointer;
-  transition:
-    background-color 140ms ease-out,
-    color 140ms ease-out;
 }
 
 .artifact-canvas-board-title:hover,
 .artifact-canvas-board-title:focus-visible {
   z-index: 1;
-  background: color-mix(in oklab, var(--card) 75%, transparent);
   color: var(--foreground);
 }
 
-.artifact-canvas-board[data-selected="true"] .artifact-canvas-board-title {
-  background: var(--primary);
-  color: var(--primary-foreground);
+.artifact-canvas-board-title:focus-visible {
+  outline: 2px solid var(--canvas-selection);
+  outline-offset: 2px;
 }
 
-.artifact-canvas-board-title[data-movable="true"] {
+.artifact-canvas-board[data-selected="true"] .artifact-canvas-board-title {
+  color: var(--canvas-selection-strong);
+  font-weight: 600;
+}
+
+.artifact-canvas[data-tool="select"] .artifact-canvas-board-title[data-movable="true"] {
   cursor: grab;
   user-select: none;
 }
 
+.artifact-canvas[data-dragging="true"] .artifact-canvas-board-title {
+  cursor: grabbing;
+}
+
 .artifact-canvas-board-actions {
-  position: absolute;
-  inset-block-start: 50%;
-  inset-inline-start: calc(100% + 6px);
-  transform: translateY(-50%);
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
   gap: 1px;
-  padding: 2px;
-  border: 1px solid var(--ol);
-  border-radius: var(--radius-full);
-  background: color-mix(in oklab, var(--card) 86%, transparent);
-  box-shadow: var(--shadow-xs);
-  backdrop-filter: blur(14px) saturate(1.5);
-  -webkit-backdrop-filter: blur(14px) saturate(1.5);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 150ms ease-out;
-}
-
-/* 桥接标题与操作胶囊之间的空隙，指针移向操作按钮时不丢失 hover。 */
-.artifact-canvas-board-actions::before {
-  content: "";
-  position: absolute;
-  inset-block: -4px;
-  inset-inline-start: -8px;
-  width: 10px;
+  transition: opacity 140ms ease-out;
 }
 
 .artifact-canvas-board[data-selected="true"] .artifact-canvas-board-actions,
@@ -408,8 +395,26 @@ body,
   pointer-events: auto;
 }
 
+/* 缩到极小时隐藏板头操作图标，避免挤占标题或溢出画板边界；键盘聚焦时仍保持可达。 */
+.artifact-canvas-board-header[data-hide-actions="true"] .artifact-canvas-board-actions {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.artifact-canvas-board-header[data-hide-actions="true"]
+  .artifact-canvas-board-actions:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 抓手、绘图、建板和批注模式下隐藏板头操作图标，避免遮挡落点或劫持指针。 */
+.artifact-canvas:not([data-tool="select"]) .artifact-canvas-board-actions {
+  opacity: 0;
+  pointer-events: none;
+}
+
 @media (hover: none) {
-  .artifact-canvas-board-actions {
+  .artifact-canvas-board-header:not([data-hide-actions="true"]) .artifact-canvas-board-actions {
     opacity: 1;
     pointer-events: auto;
   }
@@ -422,7 +427,7 @@ body,
   z-index: 2;
   width: 10px;
   height: 10px;
-  border: 2px solid var(--primary);
+  border: 1.5px solid var(--canvas-selection);
   border-radius: var(--radius-full);
   background: var(--card);
   box-shadow: var(--shadow-xs);
@@ -467,7 +472,16 @@ body,
 }
 
 .artifact-canvas-board[data-selected="true"] .artifact-canvas-board-clip {
-  outline: 2px solid var(--primary);
+  outline: 1.5px solid var(--canvas-selection);
+}
+
+.artifact-canvas[data-tool="select"]
+  .artifact-canvas-board:hover:not([data-selected="true"])
+  .artifact-canvas-board-clip,
+.artifact-canvas[data-tool="comment"]
+  .artifact-canvas-board:hover:not([data-selected="true"])
+  .artifact-canvas-board-clip {
+  outline: 1.5px solid var(--canvas-selection-border);
 }
 
 .artifact-canvas-board-frame {
@@ -486,8 +500,8 @@ body,
 .artifact-canvas-marquee {
   position: absolute;
   z-index: 3;
-  border: 1px solid var(--primary);
-  background: color-mix(in oklab, var(--primary) 14%, transparent);
+  border: 1px solid var(--canvas-selection);
+  background: var(--canvas-selection-tint);
   pointer-events: none;
 }
 
@@ -501,37 +515,209 @@ body,
   background: transparent;
 }
 
+.artifact-canvas-layer-hover {
+  position: absolute;
+  z-index: 2;
+  border: 1.5px solid var(--canvas-selection);
+  border-radius: 2px;
+  background: var(--canvas-selection-tint-soft);
+  pointer-events: none;
+}
+
+.artifact-canvas-layer-hover-tag {
+  position: absolute;
+  left: -1px;
+  max-width: 168px;
+  overflow: hidden;
+  border-radius: 4px;
+  padding: 2px 6px;
+  background: var(--canvas-selection);
+  color: var(--canvas-selection-foreground);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow: var(--shadow-xs);
+  pointer-events: none;
+}
+
 .artifact-canvas-layer-focus {
   position: absolute;
   z-index: 3;
-  border: 2px solid var(--primary);
-  border-radius: 3px;
+  border: 1.5px solid var(--canvas-selection);
+  border-radius: 2px;
   background: transparent;
   pointer-events: none;
 }
 
+.artifact-canvas-layer-focus[data-movable="true"] {
+  pointer-events: auto;
+  cursor: default;
+  touch-action: none;
+}
+
+.artifact-canvas-layer-focus[data-transforming="true"] {
+  background: var(--canvas-selection-tint-soft);
+}
+
+.artifact-canvas[data-dragging="true"] .artifact-canvas-layer-focus {
+  cursor: grabbing;
+}
+
 .artifact-canvas-layer-focus:focus-visible {
-  outline: 2px solid var(--ring);
+  outline: 2px solid var(--canvas-selection);
   outline-offset: 2px;
 }
 
+.artifact-canvas-layer-handle {
+  position: absolute;
+  z-index: 4;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  margin-top: -4px;
+  border: 1.5px solid var(--canvas-selection);
+  border-radius: 2px;
+  background: var(--card);
+  box-shadow: var(--shadow-xs);
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.artifact-canvas-layer-handle::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+}
+
+.artifact-canvas-comment-pin-draft {
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+  transform: translate3d(0, -100%, 0);
+}
+
+.artifact-canvas-inline-text {
+  position: absolute;
+  z-index: 5;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.artifact-canvas-inline-text-box {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border: 1px dashed var(--canvas-selection);
+  border-radius: 2px;
+  background: var(--canvas-selection-tint-soft);
+}
+
+.artifact-canvas-inline-text-box[data-filled="true"] {
+  border-width: 1.5px;
+  border-style: solid;
+  background: transparent;
+}
+
+.artifact-canvas-inline-text-box[data-kind="note"] {
+  border-width: 1.5px;
+  border-style: solid;
+  box-shadow: var(--shadow-sm);
+}
+
+.artifact-canvas-inline-text-actions {
+  position: absolute;
+  inset-block-start: calc(100% + 6px);
+  inset-inline-end: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--ol);
+  border-radius: var(--radius-8, 8px);
+  padding: 2px;
+  background: color-mix(in oklab, var(--card) 92%, transparent);
+  box-shadow: var(--shadow-float);
+  backdrop-filter: blur(14px) saturate(1.5);
+  -webkit-backdrop-filter: blur(14px) saturate(1.5);
+}
+
 .artifact-canvas-selection-toolbar {
+  --primary: var(--canvas-selection);
+  --primary-foreground: var(--canvas-selection-foreground);
+  --ring: var(--canvas-selection);
+
   position: absolute;
   z-index: 4;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   width: max-content;
   max-width: calc(100% - 24px);
   border: 1px solid var(--ol);
-  border-radius: var(--radius-12, 12px);
-  padding: 4px 6px;
-  background: color-mix(in oklab, var(--card) 86%, transparent);
+  border-radius: 10px;
+  padding: 3px;
+  background: color-mix(in oklab, var(--card) 92%, transparent);
   color: var(--foreground);
   box-shadow: var(--shadow-float);
   backdrop-filter: blur(18px) saturate(1.65);
   -webkit-backdrop-filter: blur(18px) saturate(1.65);
+}
+
+.artifact-canvas-selection-toolbar .v-button {
+  block-size: 1.625rem;
+  border-radius: 7px;
+  padding-inline: 6px;
+}
+
+.artifact-canvas-selection-toolbar .v-button[data-icon-only="true"] {
+  inline-size: 1.625rem;
+  padding-inline: 0;
+}
+
+.artifact-canvas-selection-toolbar .v-button[aria-pressed="true"] {
+  background-color: var(--canvas-selection-tint);
+  color: var(--canvas-selection-strong);
+}
+
+.artifact-canvas-selection-toolbar .v-select-trigger {
+  --v-input-h: 1.625rem;
+
+  block-size: 1.625rem;
+  min-block-size: 1.625rem;
+  border-radius: 7px;
+  padding-inline: 6px;
+  gap: 2px;
+  font-size: 12px;
+}
+
+/* 切换选中元素与程序化定位画板时平滑过渡，手动拖曳或滚轮缩放期间保持零延迟直跟。 */
+.artifact-canvas[data-dragging="false"]:not([data-wheel="true"])
+  .artifact-canvas-layer-focus:not([data-transforming="true"]),
+.artifact-canvas[data-dragging="false"]:not([data-wheel="true"])
+  .artifact-canvas-selection-toolbar {
+  transition:
+    left 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    top 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.artifact-canvas[data-dragging="false"][data-camera-animating="true"]:not([data-wheel="true"])
+  .artifact-canvas-board,
+.artifact-canvas[data-dragging="false"][data-camera-animating="true"]:not([data-wheel="true"])
+  .artifact-canvas-layer-focus:not([data-transforming="true"]),
+.artifact-canvas[data-dragging="false"][data-camera-animating="true"]:not([data-wheel="true"])
+  .artifact-canvas-selection-toolbar {
+  transition:
+    left 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    top 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .artifact-canvas-board-title:focus-visible,
@@ -576,7 +762,9 @@ body,
 
 .artifact-canvas-navigation,
 .artifact-canvas-zoom,
-.artifact-canvas-tools {
+.artifact-canvas-tools,
+.artifact-canvas-presentation-header,
+.artifact-canvas-presentation-dock {
   position: absolute;
   z-index: 2;
 }
@@ -587,9 +775,17 @@ body,
   max-width: calc(100% - 24px);
 }
 
+.artifact-canvas-presentation-header {
+  inset-block-start: calc(12px + env(safe-area-inset-top));
+  inset-inline-start: 12px;
+  max-width: calc(100% - 24px);
+}
+
 .artifact-canvas-nav-bar,
 .artifact-canvas-zoom,
-.artifact-canvas-tools {
+.artifact-canvas-tools,
+.artifact-canvas-presentation-header,
+.artifact-canvas-presentation-dock {
   --v-list-highlight-color: color-mix(in oklab, var(--foreground) 7%, transparent);
 
   display: flex;
@@ -611,21 +807,26 @@ body,
   max-width: 100%;
 }
 
-.artifact-canvas-tools {
+.artifact-canvas-tools,
+.artifact-canvas-presentation-dock {
   flex-wrap: wrap;
 }
 
 /* 浮岛内所有控件采用与 12px 外壳同心的 28px / 8px 圆角，消除黑圆点与方壳的割裂感。 */
 .artifact-canvas-nav-bar .v-button,
 .artifact-canvas-zoom .v-button,
-.artifact-canvas-tools .v-button {
+.artifact-canvas-tools .v-button,
+.artifact-canvas-presentation-header .v-button,
+.artifact-canvas-presentation-dock .v-button {
   block-size: 1.75rem;
   border-radius: var(--radius-8, 8px);
 }
 
 .artifact-canvas-nav-bar .v-button[data-icon-only="true"],
 .artifact-canvas-zoom .v-button[data-icon-only="true"],
-.artifact-canvas-tools .v-button[data-icon-only="true"] {
+.artifact-canvas-tools .v-button[data-icon-only="true"],
+.artifact-canvas-presentation-header .v-button[data-icon-only="true"],
+.artifact-canvas-presentation-dock .v-button[data-icon-only="true"] {
   inline-size: 1.75rem;
 }
 
@@ -633,6 +834,10 @@ body,
 .artifact-canvas-nav-bar .v-button--ghost:is(:hover, [aria-expanded="true"], [data-state="open"]),
 .artifact-canvas-zoom .v-button--ghost:is(:hover, [aria-expanded="true"], [data-state="open"]),
 .artifact-canvas-tools .v-button--ghost:is(:hover, [aria-expanded="true"], [data-state="open"]),
+.artifact-canvas-presentation-header
+  .v-button--ghost:is(:hover, [aria-expanded="true"], [data-state="open"]),
+.artifact-canvas-presentation-dock
+  .v-button--ghost:is(:hover, [aria-expanded="true"], [data-state="open"]),
 .artifact-canvas-list-menu .v-button--ghost:is(:hover, [aria-expanded="true"], [data-state="open"]),
 .artifact-canvas-nav-results
   .v-button--ghost:is(:hover, [aria-expanded="true"], [data-state="open"]) {
@@ -692,18 +897,33 @@ body,
   color: var(--muted-foreground);
 }
 
+/* 画布工具栏激活项改用克制的淡蓝高亮，避免生硬的黑块。 */
+.artifact-canvas-tools .v-button--primary {
+  background-color: var(--canvas-selection-tint);
+  color: var(--canvas-selection-strong);
+  box-shadow: inset 0 0 0 1px var(--canvas-selection-border);
+}
+
+.artifact-canvas-tools
+  .v-button--primary:where(:not(:disabled):not([aria-disabled="true"])):is(:hover, :active) {
+  background-color: color-mix(in oklab, var(--canvas-selection) 16%, transparent);
+  color: var(--canvas-selection-strong);
+}
+
 .artifact-canvas-split-tool[data-active="true"] {
-  background: var(--foreground);
+  background: var(--canvas-selection-tint);
+  box-shadow: inset 0 0 0 1px var(--canvas-selection-border);
 }
 
 .artifact-canvas-split-tool[data-active="true"] > .v-button:first-child,
 .artifact-canvas-split-tool[data-active="true"] .artifact-canvas-tool-caret {
-  color: var(--background);
+  background-color: transparent;
+  color: var(--canvas-selection-strong);
   box-shadow: none;
 }
 
 .artifact-canvas-split-tool[data-active="true"] .artifact-canvas-tool-caret {
-  border-inline-start: 1px solid color-mix(in oklab, var(--background) 18%, transparent);
+  border-inline-start: 1px solid var(--canvas-selection-border);
 }
 
 .artifact-canvas-zoom {
@@ -711,16 +931,65 @@ body,
   inset-inline-start: 14px;
 }
 
-.artifact-canvas-tools {
+.artifact-canvas-tools,
+.artifact-canvas-presentation-dock {
   inset-block-end: 14px;
   left: 50%;
   transform: translateX(-50%);
+}
+
+.artifact-canvas-presentation-dock {
+  --ring: var(--canvas-selection);
+  inset-block-end: calc(14px + env(safe-area-inset-bottom));
+  justify-content: center;
+}
+
+.artifact-canvas-presentation-scroll > .v-scroll-area__viewport > .v-scroll-area__content {
+  display: flex;
+  min-block-size: 100%;
+}
+
+.artifact-canvas-presentation-dock .v-button[data-active="true"] {
+  background-color: var(--canvas-selection-tint);
+  color: var(--canvas-selection-strong);
+  box-shadow: inset 0 0 0 1px var(--canvas-selection-border);
+}
+
+.artifact-canvas-presentation-dock
+  .v-button[data-active="true"]:where(:not(:disabled):not([aria-disabled="true"])):is(
+    :hover,
+    :active
+  ) {
+  background-color: color-mix(in oklab, var(--canvas-selection) 16%, transparent);
+  color: var(--canvas-selection-strong);
+}
+
+.artifact-canvas-notices {
+  position: absolute;
+  z-index: 5;
+  inset-block-end: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 24px);
+  pointer-events: none;
+}
+
+.artifact-canvas-notices > * {
+  pointer-events: auto;
 }
 
 @media (width < 768px) {
   .artifact-canvas-zoom {
     inset-block-end: 58px;
     max-inline-size: calc(100% - 24px);
+  }
+
+  .artifact-canvas-notices {
+    inset-block-end: 102px;
   }
 }
 
@@ -743,8 +1012,124 @@ body,
 .artifact-canvas-nav-results {
   min-height: 0;
   max-height: min(46vh, 20rem);
-  overflow: auto;
-  padding: 6px;
+}
+
+/* 检查器与批注面板采用统一的柔和设计蓝强调与克制标签栏，消除突兀黑框与高饱和黑底。 */
+#design-inspector,
+#artifact-inspector {
+  --primary: var(--canvas-selection);
+  --primary-foreground: var(--canvas-selection-foreground);
+  --ring: var(--canvas-selection);
+  --v-switch-on: var(--canvas-selection);
+  --v-switch-on-hover: var(--canvas-selection-strong);
+}
+
+#design-inspector .v-slider {
+  block-size: 22px;
+}
+
+#design-inspector .v-slider__track {
+  inset-block-start: 9px;
+}
+
+#design-inspector .v-slider__range {
+  background: var(--canvas-selection);
+}
+
+#design-inspector .v-slider > span:has(> .v-slider__thumb) {
+  inset-block-start: 3px;
+}
+
+#design-inspector .v-slider__thumb {
+  inline-size: 15px;
+  block-size: 15px;
+}
+
+#design-inspector .v-slider__thumb:hover {
+  border-color: var(--canvas-selection);
+}
+
+#design-inspector .v-select-trigger,
+#design-inspector .v-input-control {
+  --v-input-h: 2rem;
+
+  block-size: 2rem;
+  min-block-size: 2rem;
+  border-color: transparent;
+  border-radius: 8px;
+  background-color: var(--muted);
+  padding-inline: 10px;
+  font-size: 13px;
+}
+
+#design-inspector .v-select-trigger:hover,
+#design-inspector .v-input-control:hover {
+  border-color: color-mix(in oklab, var(--border) 70%, transparent);
+}
+
+#design-inspector .v-select-trigger:focus-visible,
+#design-inspector .v-select-trigger[data-state="open"],
+#design-inspector .v-input-control:focus-within {
+  border-color: var(--canvas-selection);
+  background-color: var(--card);
+}
+
+#design-inspector .v-sheet__body {
+  --v-scroll-area-padding: 0px;
+}
+
+#design-inspector .v-sheet__header {
+  min-block-size: 44px;
+  justify-content: center;
+  padding: 0 48px 0 16px;
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 75%, transparent);
+}
+
+#design-inspector > .v-sheet__close {
+  inset-block-start: 8px;
+  inset-inline-end: 10px;
+}
+
+#design-inspector .v-tabs {
+  --v-tabs-item-height: 2.75rem;
+}
+
+#design-inspector .v-tabs__list-wrap {
+  border-bottom: 0;
+}
+
+#design-inspector .v-tabs__list {
+  gap: 1.25rem;
+  font-size: 0.8125rem;
+}
+
+#design-inspector .v-tabs__tab {
+  padding-inline: 0;
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+
+#design-inspector .v-tabs__tab:hover:not(:disabled) {
+  color: var(--foreground);
+}
+
+#design-inspector .v-tabs__tab[aria-selected="true"] {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+#design-inspector .v-tabs__tab:focus-visible {
+  outline: none;
+  border-radius: 0;
+  box-shadow: inset 0 -2px 0 var(--canvas-selection);
+}
+
+#design-inspector .v-tabs__indicator {
+  display: none;
+}
+
+#design-inspector .v-tabs__panel {
+  margin-block-start: 0;
 }
 
 .artifact-canvas-nav-page-row {
@@ -907,6 +1292,9 @@ body,
   .artifact-canvas-nav-page-row,
   .artifact-canvas-nav-more,
   .artifact-canvas-split-tool,
+  .artifact-canvas-board,
+  .artifact-canvas-layer-focus,
+  .artifact-canvas-selection-toolbar,
   .disclosure-chevron {
     transition: none;
   }

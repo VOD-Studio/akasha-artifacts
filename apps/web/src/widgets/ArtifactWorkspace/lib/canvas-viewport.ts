@@ -1,7 +1,7 @@
 import type { CanvasBoard, CanvasBounds } from '@/entities/artifact'
 import type { Camera } from './canvas-camera'
 
-export const DETAIL_SCALE = 0.4
+export const DETAIL_SCALE = 0.22
 export const MAX_DETAIL_BOARDS = 24
 export const MAX_ANIMATED_BOARDS = 6
 const HEADER_PX = 36

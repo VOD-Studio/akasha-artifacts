@@ -1,4 +1,5 @@
-import type { MouseEvent, ReactNode } from 'react'
+import type { DesignLayer } from '@akasha/protocol'
+import type { MouseEvent, PointerEvent, ReactNode } from 'react'
 import type { CanvasBoard } from '@/entities/artifact'
 import { useMessages } from '@/shared/i18n'
 import type { CanvasBoardEditing } from '../hooks/useCanvasBoardEditing'
@@ -13,6 +14,7 @@ export type CanvasBoardInput =
   | 'gesture'
   | 'interactive'
   | 'select'
+  | 'comment'
   | { tool: DrawingTool; editing: CanvasBoardEditing }
 
 interface CanvasBoardSurfaceProps {
@@ -24,12 +26,16 @@ interface CanvasBoardSurfaceProps {
   onClearElement: () => void
   selectBoard: (id: string, additive?: boolean) => void
   onSelectPoint?: (boardId: string, point: Point) => void
+  onHoverPoint?: (boardId: string, point: Point) => void
+  onHoverClear?: (boardId?: string) => void
+  onCommentPoint?: (board: CanvasBoard, point: Point, anchor: Point) => void
+  onLayerCreated?: (boardId: string, layer: DesignLayer, savedVersion: number) => void
   onDrawingEnd: () => void
   onDraggingChange?: (dragging: boolean) => void
   children: ReactNode
 }
 
-/** 命中和双击按画板固有坐标定位；抓手、绘制和交互预览各自独占输入。 */
+/** 命中和双击按画板固有坐标定位；抓手、批注、绘制和交互预览各自独占输入。 */
 export function CanvasBoardSurface({
   board,
   scale,
@@ -39,13 +45,29 @@ export function CanvasBoardSurface({
   onClearElement,
   selectBoard,
   onSelectPoint,
+  onHoverPoint,
+  onHoverClear,
+  onCommentPoint,
+  onLayerCreated,
   onDrawingEnd,
   onDraggingChange,
   children,
 }: CanvasBoardSurfaceProps) {
   const { t } = useMessages(canvasToolsMessages)
+  const hoverContent = (event: PointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType === 'touch' || event.buttons !== 0 || !onHoverPoint) return
+    const point = pointInBoard(board, event.currentTarget.getBoundingClientRect(), {
+      x: event.clientX,
+      y: event.clientY,
+    })
+    if (point) onHoverPoint(board.id, point)
+  }
+  const leaveContent = () => {
+    onHoverClear?.(board.id)
+  }
   const activateContent = (event: MouseEvent<HTMLButtonElement>) => {
     if (event.detail === 2) return
+    onHoverClear?.(board.id)
     onClearElement()
     selectBoard(board.id, event.shiftKey)
     if (event.detail !== 1 || event.shiftKey || !onSelectPoint) return
@@ -55,12 +77,26 @@ export function CanvasBoardSurface({
     })
     if (point) onSelectPoint(board.id, point)
   }
+  const placeComment = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    const rect = event.currentTarget.getBoundingClientRect()
+    const anchor =
+      event.detail === 0
+        ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+        : { x: event.clientX, y: event.clientY }
+    const point = pointInBoard(board, rect, anchor)
+    if (!point) return
+    selectBoard(board.id)
+    onCommentPoint?.(board, point, anchor)
+    onHoverClear?.(board.id)
+  }
   const editText = (event: MouseEvent<HTMLButtonElement>) => {
     if (!textTools || (board.type !== 'html' && board.type !== 'react')) return
     const anchor = { x: event.clientX, y: event.clientY }
     const point = pointInBoard(board, event.currentTarget.getBoundingClientRect(), anchor)
     if (!point) return
     event.preventDefault()
+    onHoverClear?.(board.id)
     selectBoard(board.id)
     textTools.pick(board, point, anchor)
   }
@@ -98,8 +134,23 @@ export function CanvasBoardSurface({
             aria-label={t('选择画板：{title}', { title: board.title })}
             data-board-content={board.id}
             className="artifact-canvas-board-hit"
+            onPointerMove={hoverContent}
+            onPointerLeave={leaveContent}
             onClick={activateContent}
             onDoubleClick={editText}
+          />
+        )}
+        {input === 'comment' && (
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label={t('在{title}添加批注', { title: board.title })}
+            title={t('点击画板或元素添加批注，Esc 退出')}
+            data-board-comment={board.id}
+            className="artifact-canvas-board-hit z-2"
+            onPointerMove={hoverContent}
+            onPointerLeave={leaveContent}
+            onClick={placeComment}
           />
         )}
       </div>
@@ -117,7 +168,11 @@ export function CanvasBoardSurface({
             if (layer.kind === 'text' || layer.kind === 'note') {
               textTools?.place(board, layer, base, anchor)
             } else {
-              input.editing.change({ kind: 'layerCreate', boardId: board.id, layer }, base)
+              void input.editing.change(
+                { kind: 'layerCreate', boardId: board.id, layer },
+                base,
+                (saved) => onLayerCreated?.(board.id, layer, saved.version),
+              )
             }
           }}
         />

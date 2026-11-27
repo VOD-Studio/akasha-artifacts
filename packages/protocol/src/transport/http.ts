@@ -141,6 +141,10 @@ export type ArtifactWorkspaceDetail = WorkspaceVersion & {
   hubRestricted?: true
   /** Hub 对当前画布和身份的裁决；本机工作台不返回，固定快照一律不可共编。 */
   hubCanEditCanvas?: boolean
+  /** 当前会话能否写入此作品（发布版本、改写运行状态或回退）；缺省时按兼容旧契约处理。 */
+  canWrite?: boolean
+  /** 当前会话能否发表、回复或处理批注；缺省时按兼容旧契约处理。 */
+  canComment?: boolean
 }
 
 /** 复制固定快照或把原制品移动到当前服务内已登记的项目。 */

@@ -45,7 +45,11 @@ it('从独立检查器选择其他页面的画板并查看固定版本的真实�
   fireEvent.click(screen.getByRole('button', { name: '检查器' }))
   const inspector = screen.getByRole('dialog', { name: '检查器' })
   expect(within(inspector).getByText('选择画板以查看属性')).toBeTruthy()
-  fireEvent.click(within(inspector).getByText('状态'))
+  expect(within(inspector).getByRole('button', { name: '宽屏首页' })).toBeTruthy()
+  expect(within(inspector).queryByRole('button', { name: '预约完成' })).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: '页面与画板' }))
+  fireEvent.click(screen.getByRole('button', { name: '状态' }))
+  expect(within(inspector).queryByRole('button', { name: '宽屏首页' })).toBeNull()
   fireEvent.click(within(inspector).getByRole('button', { name: '预约完成' }))
 
   const canvas = screen.getByRole('region', { name: '画布' })
@@ -54,7 +58,7 @@ it('从独立检查器选择其他页面的画板并查看固定版本的真实�
   expect(within(inspector).getByText('#ffffff')).toBeTruthy()
   expect(within(inspector).queryByRole('button', { name: '保存' })).toBeNull()
   fireEvent.keyDown(within(inspector).getByRole('tab', { name: '源码' }), { key: 'Enter' })
-  expect(within(inspector).getByText(/"description":"已确认时段"/)).toBeTruthy()
+  expect(within(inspector).getByText(/"description":\s*"已确认时段"/)).toBeTruthy()
   expect(within(inspector).getByText('整份作品快照')).toBeTruthy()
   expect(within(inspector).queryByRole('button', { name: '编辑整份源码' })).toBeNull()
   expect(within(inspector).getByText('历史版本 · 只读')).toBeTruthy()
@@ -89,7 +93,7 @@ it('参数确认绑定打开时的版本；协作者发布新版后不能把旧�
   fireEvent.click(screen.getByRole('button', { name: '封面' }))
   act(() => useWorkspaceStore.getState().setInspectorTab('inspect'))
   const panel = within(screen.getByRole('dialog', { name: '检查器' }))
-  fireEvent.keyDown(panel.getByRole('tab', { name: '画板参数' }), { key: 'Enter' })
+  fireEvent.keyDown(panel.getByRole('tab', { name: '参数' }), { key: 'Enter' })
   fireEvent.change(panel.getByRole('spinbutton', { name: '速度' }), { target: { value: '5' } })
   fireEvent.click(panel.getByRole('button', { name: '应用参数…' }))
   expect(await screen.findByRole('button', { name: '发布新版本' })).toBeTruthy()
@@ -124,7 +128,7 @@ it.each(['分享编辑访客', '固定头版本'] as const)(
     fireEvent.click(screen.getByRole('button', { name: '封面' }))
     act(() => useWorkspaceStore.getState().setInspectorTab('inspect'))
     const inspector = within(screen.getByRole('dialog', { name: '检查器' }))
-    fireEvent.keyDown(inspector.getByRole('tab', { name: '画板参数' }), { key: 'Enter' })
+    fireEvent.keyDown(inspector.getByRole('tab', { name: '参数' }), { key: 'Enter' })
     const speed = inspector.getByRole('spinbutton', { name: '速度' })
     fireEvent.change(speed, { target: { value: '7' } })
     expect(speed).toHaveProperty('value', '7')
@@ -146,7 +150,7 @@ it('仅查看的分享链接允许读画板源码，不暴露保存或整稿编�
   const inspector = within(screen.getByRole('dialog', { name: '检查器' }))
   expect(inspector.getByText('1440 × 900')).toBeTruthy()
   expect(inspector.queryByRole('button', { name: '保存' })).toBeNull()
-  expect(inspector.queryByRole('tab', { name: '画板参数' })).toBeNull()
+  expect(inspector.queryByRole('tab', { name: '参数' })).toBeNull()
   fireEvent.keyDown(inspector.getByRole('tab', { name: '源码' }), { key: 'Enter' })
   expect(inspector.getByText('画板源码')).toBeTruthy()
   expect(inspector.getByText('<h1>桌面预约</h1>')).toBeTruthy()
@@ -366,4 +370,148 @@ it('新版到达时将同板稳定块重绑到新节点，不捡起占用旧选�
   const reopened = screen.getByRole('dialog', { name: '检查器' })
   expect(within(reopened).getByRole('button', { name: '新版手机预约', pressed: true })).toBeTruthy()
   expect(within(reopened).getByRole('button', { name: '占旧路径', pressed: false })).toBeTruthy()
+})
+
+it('图层树默认折叠 svg 子树，检查器属性随选中的 HTML 文本元素动态切换', async () => {
+  stubResizeObserver()
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input)
+    if (url.includes('/visual-edit?')) {
+      return Response.json({
+        target: {
+          tagName: 'h1',
+          text: '桌面预约',
+          className: 'text-2xl font-bold',
+          order: null,
+        },
+      })
+    }
+    return Response.json({})
+  })
+  showWorkspace(detailFor())
+  const desktop = sandbox(screen.getByTitle<HTMLIFrameElement>('画板内容：宽屏首页'))
+  desktop.receive({ type: 'ready' })
+  fireEvent.click(screen.getByRole('button', { name: '宽屏首页' }))
+  act(() => useWorkspaceStore.getState().setInspectorTab('inspect'))
+  const inspector = screen.getByRole('dialog', { name: '检查器' })
+
+  desktop.receive({
+    type: 'inspect.layers.snapshot',
+    version: 1,
+    truncated: false,
+    layers: [
+      { id: 'svg-root', tag: 'svg', selector: 'svg', label: '<svg>', width: 120, height: 120 },
+      {
+        id: 'svg-rect',
+        parentId: 'svg-root',
+        tag: 'rect',
+        selector: 'svg > rect',
+        label: '<rect>',
+        width: 40,
+        height: 40,
+      },
+      {
+        id: 'heading-1',
+        tag: 'h1',
+        selector: 'h1',
+        sourceLoc: '1:1',
+        label: '桌面预约',
+        width: 240,
+        height: 36,
+      },
+    ],
+  })
+
+  const svgToggle = within(inspector).getByRole('button', { name: '展开图层' })
+  expect(svgToggle.getAttribute('aria-expanded')).toBe('false')
+  expect(within(inspector).queryByRole('button', { name: '<rect>' })).toBeNull()
+
+  // 展开 svg 并选中子图层 <rect> 后，直接点击父节点收起箭头也能立刻收起
+  fireEvent.click(svgToggle)
+  const rectBtn = within(inspector).getByRole('button', { name: '<rect>' })
+  fireEvent.click(rectBtn)
+  expect(rectBtn.getAttribute('aria-pressed')).toBe('true')
+  fireEvent.click(within(inspector).getByRole('button', { name: '折叠图层' }))
+  expect(within(inspector).queryByRole('button', { name: '<rect>' })).toBeNull()
+  fireEvent.click(within(inspector).getByRole('button', { name: '宽屏首页' }))
+
+  // 未选元素时展示画板外观属性，不展示元素排版区块
+  expect(within(inspector).getByText('外观')).toBeTruthy()
+  expect(within(inspector).queryByText('排版与文字')).toBeNull()
+
+  // 选中 HTML 标题元素并收到沙盒样式后，动态切为元素排版属性
+  fireEvent.click(within(inspector).getByRole('button', { name: '桌面预约' }))
+  desktop.receive({
+    type: 'inspect.select',
+    reason: 'sync',
+    version: 1,
+    layerId: 'heading-1',
+    layerSelector: 'h1',
+    element: {
+      boardId: 'desktop',
+      selector: 'h1',
+      loc: '1:1',
+      textPreview: '桌面预约',
+      rect: { x: 24, y: 18, width: 240, height: 36 },
+    },
+    presentation: {
+      isText: true,
+      fontSize: 24,
+      fontWeight: 700,
+      color: '#111827',
+      backgroundColor: '#ffffff',
+      textAlign: 'left',
+    },
+  })
+
+  expect(within(inspector).getByRole('heading', { name: '文本' })).toBeTruthy()
+  expect(within(inspector).getByRole<HTMLInputElement>('spinbutton', { name: '宽度' }).value).toBe(
+    '240',
+  )
+  expect(within(inspector).getByRole<HTMLInputElement>('spinbutton', { name: '高度' }).value).toBe(
+    '36',
+  )
+  expect(within(inspector).getByRole('button', { name: '高级' })).toBeTruthy()
+  expect(await within(inspector).findByRole('button', { name: '编辑文字' })).toBeTruthy()
+})
+
+it('检查器源码页按内容收紧画板树高度并格式化压缩快照与单行 SVG', async () => {
+  stubResizeObserver()
+  const writeText = vi.fn().mockResolvedValue(undefined)
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText },
+  })
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="880" viewBox="0 0 1440 880"><title id="title">画布操作栏</title><rect x="0" y="0" width="1440" height="880" fill="#E9ECE7"/><g transform="translate(16 14)"><path d="M0 0h24v24H0z"/></g></svg>'
+  const rawSource = JSON.stringify({
+    pages: [{ id: 'controls', title: '操作栏与播放' }],
+    boards: [
+      { id: 'controls', title: '画布操作栏', pageId: 'controls', html: svg },
+      { id: 'playback', title: '全局播放菜单', pageId: 'controls', html: '<h1>播放</h1>' },
+    ],
+  })
+  showWorkspace(detailFor(1, rawSource))
+  act(() => useWorkspaceStore.getState().setInspectorTab('inspect'))
+  const inspector = screen.getByRole('dialog', { name: '检查器' })
+
+  const treeContainer = within(inspector)
+    .getByRole('button', { name: '画布操作栏' })
+    .closest('section')?.parentElement
+  expect(treeContainer?.style.height).toBe('')
+  expect(treeContainer?.style.maxHeight).toBe('216px')
+
+  fireEvent.keyDown(within(inspector).getByRole('tab', { name: '源码' }), { key: 'Enter' })
+  const snapshotRegion = within(inspector).getByRole('region', { name: '整份作品快照' })
+  expect(snapshotRegion.textContent).toContain('\n  "boards": [\n')
+  expect(within(inspector).queryByRole('button', { name: '向右滚动' })).toBeNull()
+
+  fireEvent.click(within(inspector).getByRole('button', { name: '复制源码' }))
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith(rawSource))
+
+  fireEvent.click(within(inspector).getByRole('button', { name: '画布操作栏' }))
+  const boardRegion = within(inspector).getByRole('region', { name: '画板源码' })
+  expect(boardRegion.textContent).toContain('\n  <title id="title">画布操作栏</title>\n')
+  expect(boardRegion.textContent).toContain('\n  <g transform="translate(16 14)">\n')
+  expect(boardRegion.textContent).toContain('\n    <path d="M0 0h24v24H0z"/>\n')
 })

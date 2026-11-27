@@ -1,7 +1,9 @@
 import {
   type Artifact,
+  type CanvasElementPresentation,
   DESIGN_LAYER_BLOCK_PREFIX,
   type DesignLayer,
+  type ElementRect,
   type ElementRef,
   type SandboxToShellMessage,
   type VersionSummary,
@@ -32,13 +34,25 @@ export interface CanvasTextTools {
   place: (board: CanvasBoard, layer: DesignTextLayer, base: VersionSummary, anchor: Point) => void
   /** 检查器可从已选文字对象直接进入同一编辑器。 */
   edit: (board: CanvasBoard, layer: DesignTextLayer, anchor: Point) => void
-  /** 选区工具栏可从已验证的静态源码文字直接进入同一编辑器。 */
-  editSource: (board: CanvasBoard, loc: string, text: string, anchor: Point) => void
+  /** 选区工具栏或双击静态元素可直接进入画布原地文字编辑器。 */
+  editSource: (
+    board: CanvasBoard,
+    loc: string,
+    text: string,
+    anchor: Point,
+    rect?: ElementRect,
+    presentation?: CanvasElementPresentation,
+  ) => void
 }
 
 /** 一个已定位的编辑或只读提示，保留打开时的版本和外壳定位。 */
 export type CanvasTextDraft = { anchor: Point; base: VersionSummary } & (
-  | (CanvasTextTarget & { restoredText?: string })
+  | (Extract<CanvasTextTarget, { kind: 'source' }> & {
+      restoredText?: string
+      rect?: ElementRect
+      presentation?: CanvasElementPresentation
+    })
+  | (Extract<CanvasTextTarget, { kind: 'create' | 'native' }> & { restoredText?: string })
   | { kind: 'readOnly'; element: ElementRef; message: string }
 )
 
@@ -60,6 +74,7 @@ interface TextEditingInput {
   readBoard: (board: CanvasBoard) => CanvasBoard | undefined
   send: (boardId: string, message: ShellOutgoingPayload) => void
   annotate: (element: ElementRef) => void
+  onLayerCreated?: (boardId: string, layer: DesignLayer, savedVersion: number) => void
 }
 
 /** 只处理最新一次双击请求；用户输入始终以打开时的快照为基准。 */
@@ -160,7 +175,16 @@ export function useInlineCanvasText(input: TextEditingInput) {
           loc,
         })
         if (target?.text !== undefined && target.text !== null) {
-          finish({ kind: 'source', boardId: sourceBoard, anchor, base, loc, text: target.text })
+          finish({
+            kind: 'source',
+            boardId: sourceBoard,
+            anchor,
+            base,
+            loc,
+            text: target.text,
+            rect: element.rect,
+            presentation: message.presentation,
+          })
           return
         }
       } catch (cause) {
@@ -209,7 +233,7 @@ export function useInlineCanvasText(input: TextEditingInput) {
       pending.current = null
       setDraft({ kind: 'native', boardId: board.id, anchor, base: input.version, layer })
     },
-    editSource(board, loc, text, anchor) {
+    editSource(board, loc, text, anchor, rect, presentation) {
       if (draft || !input.enabled || !input.editing.available) return
       pending.current = null
       setDraft({
@@ -219,6 +243,8 @@ export function useInlineCanvasText(input: TextEditingInput) {
         base: input.version,
         loc,
         text,
+        rect,
+        presentation,
       })
     },
   }
@@ -270,10 +296,14 @@ export function useInlineCanvasText(input: TextEditingInput) {
           clearSavedText,
         )
       } else {
+        const created: DesignLayer = { ...draft.layer, text }
         staged = await input.editing.change(
-          { kind: 'layerCreate', boardId: draft.boardId, layer: { ...draft.layer, text } },
+          { kind: 'layerCreate', boardId: draft.boardId, layer: created },
           base,
-          clearSavedText,
+          (saved) => {
+            clearSavedText()
+            input.onLayerCreated?.(draft.boardId, created, saved.version)
+          },
         )
       }
       if (!staged) throw new Error('无法保存文字，请处理画布上的提示后重试。')

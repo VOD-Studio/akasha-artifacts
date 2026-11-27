@@ -87,6 +87,19 @@ export const canvasToolsMessages = {
   '在{title}{action}': ['{action}: {title}', '{action}: {title}', '{action} on {title}'],
   画布批注: ['Anmerkungen zur Zeichenfläche', 'تعليقات مساحة الرسم', 'Canvas comments'],
   批注: ['Kommentieren', 'تعليق', 'Comment'],
+  '在{title}添加批注': [
+    'Kommentar auf {title} hinzufügen',
+    'إضافة تعليق على {title}',
+    'Add comment on {title}',
+  ],
+  '点击画板或元素添加批注，Esc 退出': [
+    'Auf Zeichenfläche oder Element klicken zum Kommentieren, Esc zum Beenden',
+    'انقر على لوحة أو عنصر لإضافة تعليق، Esc للخروج',
+    'Click an artboard or element to comment. Press Esc to exit.',
+  ],
+  '调整尺寸：{handle}': ['Größe ändern: {handle}', 'تغيير الحجم: {handle}', 'Resize: {handle}'],
+  '输入文本…': ['Text eingeben…', 'أدخل نصًا…', 'Type text…'],
+  '输入便签…': ['Notiz eingeben…', 'أدخل ملاحظة…', 'Type a note…'],
   编辑元素: ['Element bearbeiten', 'تعديل العنصر', 'Edit element'],
   排列画板: ['Zeichenflächen anordnen', 'ترتيب لوحات الرسم', 'Arrange artboards'],
   '排列画板（Shift 多选）': [

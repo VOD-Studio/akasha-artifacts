@@ -20,6 +20,8 @@ interface ScrollAreaOptions extends ComponentProps<'div'> {
   orientation?: ScrollOrientation
   /** 调整内部滚动视口；className 只作用于外层布局。 */
   viewportClassName?: string
+  /** 横向滚动时是否显示左右翻页按钮；窄代码区等场景可关闭以免遮挡内容。 */
+  showPageButtons?: boolean
 }
 
 /**
@@ -45,6 +47,7 @@ export function ScrollArea({
   className,
   viewportClassName,
   orientation = 'vertical',
+  showPageButtons = true,
   children,
   ...props
 }: ScrollAreaProps) {
@@ -115,7 +118,7 @@ export function ScrollArea({
         <Scrollbar axis="horizontal" metrics={metrics} viewport={viewportRef} />
       )}
 
-      {orientation !== 'vertical' && (
+      {orientation !== 'vertical' && showPageButtons && (
         <>
           <Button
             iconOnly

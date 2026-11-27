@@ -15,7 +15,7 @@ import {
 
 setupCanvasTest()
 
-it('打印版式和本板辅助线一次发布，撤销不影响另一张画板', async () => {
+it('打印版式和本板辅助线修改即保存，撤销不影响另一张画板', async () => {
   stubResizeObserver()
   const editor = showEditableWorkspace(detailFor())
   fireEvent.click(screen.getByRole('button', { name: '宽屏首页' }))
@@ -24,14 +24,14 @@ it('打印版式和本板辅助线一次发布，撤销不影响另一张画板'
   fireEvent.click(panel.getByText('打印与辅助线'))
   expect(panel.queryByRole('radio', { name: 'A4' })).toBeNull()
   fireEvent.click(panel.getByRole('radio', { name: '流式' }))
+  await waitFor(() => expect(editor.current.version.version).toBe(2))
   fireEvent.click(panel.getByRole('radio', { name: 'Letter' }))
+  await waitFor(() => expect(editor.current.version.version).toBe(3))
   fireEvent.change(panel.getByRole('spinbutton', { name: '位置（px）' }), {
     target: { value: '120' },
   })
   fireEvent.click(panel.getByRole('button', { name: '添加辅助线' }))
-  expect(editor.current.version.version).toBe(1)
-  fireEvent.click(panel.getByRole('button', { name: '保存打印设置' }))
-  await waitFor(() => expect(editor.current.version.version).toBe(2))
+  await waitFor(() => expect(editor.current.version.version).toBe(4))
   const saved = JSON.parse(editor.current.version.source)
   expect(saved.boards[0]).toMatchObject({
     printLayout: { mode: 'flow', paper: 'letter' },
@@ -39,11 +39,14 @@ it('打印版式和本板辅助线一次发布，撤销不影响另一张画板'
   })
   expect(saved.boards[1]).toEqual(design.boards[1])
   fireEvent.click(screen.getByRole('button', { name: '撤销画布编辑' }))
-  await waitFor(() => expect(editor.current.version.version).toBe(3))
-  expect(JSON.parse(editor.current.version.source).boards).toEqual(design.boards)
+  await waitFor(() => expect(editor.current.version.version).toBe(5))
+  expect(JSON.parse(editor.current.version.source).boards[0]).toMatchObject({
+    printLayout: { mode: 'flow', paper: 'letter' },
+  })
+  expect(JSON.parse(editor.current.version.source).boards[1]).toEqual(design.boards[1])
 })
 
-it('英文打印草稿不覆盖新版：重新载入后显示该板的新纸型和辅助线', () => {
+it('英文打印设置实时同步新版画板的纸型和辅助线', async () => {
   stubResizeObserver()
   const sourceWithGuide = (position: number) =>
     JSON.stringify({
@@ -65,16 +68,13 @@ it('英文打印草稿不覆盖新版：重新载入后显示该板的新纸型�
     act(() => useWorkspaceStore.getState().setInspectorTab('inspect'))
     fireEvent.click(screen.getByText('Print and guides'))
     const form = within(screen.getByRole('form', { name: 'Print and guides' }))
-    fireEvent.click(form.getByRole('button', { name: 'Remove guide: Horizontal · 24 px' }))
-    fireEvent.click(form.getByRole('radio', { name: 'A4' }))
+    expect(form.getByRole('radio', { name: 'Letter' }).getAttribute('aria-checked')).toBe('true')
     editor.receiveAgentSource(sourceWithGuide(48))
-    const save = form.getByRole('button', { name: 'Save print settings' })
-    expect(save).toHaveProperty('disabled', true)
-    fireEvent.click(save)
-    expect(editor.submittedVersion).toBeUndefined()
-    fireEvent.click(form.getByRole('button', { name: 'Load current settings' }))
-    expect(form.getByRole('radio', { name: 'Letter' })).toHaveProperty('checked', true)
+    expect(form.getByRole('radio', { name: 'Letter' }).getAttribute('aria-checked')).toBe('true')
     expect(form.getByText('Horizontal · 48 px')).toBeTruthy()
+    fireEvent.click(form.getByRole('button', { name: 'Remove guide: Horizontal · 48 px' }))
+    await waitFor(() => expect(editor.current.version.version).toBe(3))
+    expect(form.queryByText('Horizontal · 48 px')).toBeNull()
   } finally {
     act(() => setLocale('zh-CN'))
   }
@@ -97,7 +97,6 @@ it('英文用户调整旧稿的打印版式时，说明要修正的视口，不�
     fireEvent.click(screen.getByText('Print and guides'))
     const form = within(screen.getByRole('form', { name: 'Print and guides' }))
     fireEvent.click(form.getByRole('radio', { name: 'Flow' }))
-    fireEvent.click(form.getByRole('button', { name: 'Save print settings' }))
     expect((await screen.findByRole('alert')).textContent).toContain(
       'Correct the artboard viewport width and height first',
     )

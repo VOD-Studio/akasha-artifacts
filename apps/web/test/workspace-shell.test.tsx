@@ -20,11 +20,21 @@ afterEach(() => {
 })
 
 const journeys = [
-  ['zh-CN', '简体中文', '批注', '批注与评审', '关闭', '导出画板：确认订单', '导出范围'],
+  [
+    'zh-CN',
+    '简体中文',
+    '更多批注选项',
+    /查看全部批注/,
+    '批注与评审',
+    '关闭',
+    '导出画板：确认订单',
+    '导出范围',
+  ],
   [
     'en',
     'English',
-    'Comments',
+    'More comment options',
+    /Show all comments/,
     'Comments and review',
     'Close',
     'Export artboard: 确认订单',
@@ -33,7 +43,8 @@ const journeys = [
   [
     'de',
     'Deutsch',
-    'Kommentare',
+    'Weitere Kommentaroptionen',
+    /Alle Kommentare anzeigen/,
     'Kommentare und Review',
     'Schließen',
     'Zeichenfläche exportieren: 确认订单',
@@ -42,7 +53,8 @@ const journeys = [
   [
     'ar',
     'العربية',
-    'تعليقات',
+    'خيارات تعليقات إضافية',
+    /عرض جميع التعليقات/,
     'التعليقات والمراجعة',
     'إغلاق',
     'تصدير لوحة الرسم: 确认订单',
@@ -52,7 +64,7 @@ const journeys = [
 
 it.each(journeys)(
   '%s 从作品库选板、审阅并导出同一份作者画稿',
-  async (locale, name, comments, panelTitle, close, exportAction, scope) => {
+  async (locale, name, commentMenu, showAllComments, panelTitle, close, exportAction, scope) => {
     const { router } = openWorkspace(false, true, undefined, undefined, '/')
     const link = await screen.findByRole('link', { name: title })
     const language = screen.getByRole('button', { name: '界面语言' })
@@ -65,8 +77,11 @@ it.each(journeys)(
     const board = await screen.findByRole('button', { name: '确认订单' })
     fireEvent.click(board)
     const address = router.state.location.href
-    const comment = within(screen.getByRole('banner')).getByRole('button', { name: comments })
-    fireEvent.click(comment)
+    const moreComments = within(screen.getByRole('banner')).getByRole('button', {
+      name: commentMenu,
+    })
+    fireEvent.click(moreComments)
+    fireEvent.click(await screen.findByRole('button', { name: showAllComments }))
     const panel = await screen.findByRole('dialog', { name: panelTitle })
     expect(panel.getAttribute('aria-modal')).toBe('false')
     expect(panel.getAttribute('data-side')).toBe(locale === 'ar' ? 'left' : 'right')

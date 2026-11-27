@@ -560,15 +560,21 @@ export function mountHubGuard(
         const restricted =
           role === 'owner' && (await repositories.sharing.getScope(artifact.publicId)).restricted
         const canvas = artifact.type === 'artboard' && url.searchParams.get('view') === 'canvas'
-        if (restricted || canvas)
-          return c.json({
+        const canWrite = writer && principal?.kind === 'session'
+        const canComment = Boolean(principal && principal.kind !== 'cli')
+        return c.json(
+          {
             ...jsonObject.parse(await response.json()),
+            canWrite,
+            canComment,
             ...(restricted && { hubRestricted: true }),
             ...(canvas && {
-              hubCanEditCanvas:
-                writer && principal?.kind === 'session' && !url.searchParams.has('version'),
+              hubCanEditCanvas: canWrite && !url.searchParams.has('version'),
             }),
-          })
+          },
+          200,
+          { 'Cache-Control': 'private, no-store' },
+        )
       }
       return response
     }

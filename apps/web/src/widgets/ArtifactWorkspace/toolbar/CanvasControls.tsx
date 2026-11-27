@@ -81,7 +81,7 @@ export function CanvasToolbar({
   onFitSelection,
   visualEditActive,
   artboardTool,
-  onComment,
+  commentTool,
   history,
   arrangementMenu,
 }: {
@@ -97,7 +97,7 @@ export function CanvasToolbar({
   onFitSelection: (() => void) | undefined
   visualEditActive: boolean | undefined
   artboardTool?: { active: boolean; disabled: boolean; toggle: () => void }
-  onComment: () => void
+  commentTool: { active: boolean; disabled: boolean; toggle: () => void }
   history?: Pick<CanvasBoardEditing, 'undo' | 'redo'>
   arrangementMenu?: ReactNode
 }) {
@@ -124,7 +124,7 @@ export function CanvasToolbar({
       if (key === 'g') action = onToggleGuides
     } else if (key === 'v') action = () => onChangeTool(false)
     else if (key === 'h') action = () => onChangeTool(true)
-    else if (key === 'c') action = onComment
+    else if (key === 'c' && !commentTool.disabled) action = commentTool.toggle
     else if ((key === 'a' || key === 'f') && artboardTool && !artboardTool.disabled)
       action = artboardTool.toggle
     else if (designTools && !designTools.disabled) {
@@ -143,10 +143,18 @@ export function CanvasToolbar({
     return () => window.removeEventListener('keydown', handleKey)
   }, [])
   const [shapesOpen, setShapesOpen] = useState(false)
-  const selectActive = !hand && !designTools?.value && !artboardTool?.active && !visualEditActive
+  const selectActive =
+    !hand &&
+    !designTools?.value &&
+    !artboardTool?.active &&
+    !commentTool.active &&
+    !visualEditActive
   const shape = designTools?.value?.kind
   const penActive = shape === 'stroke' || shape === 'pen'
   const shapeActive = shape === 'rectangle' || shape === 'ellipse'
+  let ShapeIcon = Shapes
+  if (shape === 'rectangle') ShapeIcon = DRAWING_TOOLS.rectangle.icon
+  else if (shape === 'ellipse') ShapeIcon = DRAWING_TOOLS.ellipse.icon
   const selectShape = (tool: DrawingTool) => {
     designTools?.change(tool)
     setShapesOpen(false)
@@ -409,7 +417,7 @@ export function CanvasToolbar({
                       aria-pressed={shapeActive}
                       disabled={designTools.disabled}
                     >
-                      <Shapes size={15} />
+                      <ShapeIcon size={15} />
                     </Button>
                   </ListHighlightItem>
                 </PopoverTrigger>
@@ -465,13 +473,15 @@ export function CanvasToolbar({
           <IslandDivider />
           <ListHighlightItem>
             <Button
-              variant="ghost"
+              variant={commentTool.active ? 'primary' : 'ghost'}
               size="sm"
               iconOnly
               aria-label={t('画布批注')}
               title={`${t('批注')} (C)`}
               aria-keyshortcuts="C"
-              onClick={onComment}
+              aria-pressed={commentTool.active}
+              disabled={commentTool.disabled}
+              onClick={commentTool.toggle}
             >
               <MessageCircle size={15} />
             </Button>

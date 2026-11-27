@@ -236,7 +236,9 @@ export function ArtifactRouteView({
   }
   const openHandoff = (label: string, scope?: HandoffScope) =>
     setHandoffTarget({ label, reference: getHandoffReference(detail, scope) })
-  const canTalkToAgent = !cloudHub && !shareAccess
+  const canWrite = detail.canWrite !== false
+  const canComment = detail.canComment !== false
+  const canTalkToAgent = !cloudHub && !shareAccess && canWrite
   const agent =
     canTalkToAgent && agentPanel?.artifactId === detail.artifact.publicId ? agentPanel : null
 
@@ -297,7 +299,7 @@ export function ArtifactRouteView({
   }
 
   return (
-    <div className="flex h-dvh flex-col bg-canvas text-ink">
+    <div className="flex h-dvh w-full flex-col overflow-hidden bg-canvas text-ink">
       <TopBar
         key={`topbar:${detail.artifact.publicId}`}
         artifact={detail.artifact}
@@ -305,6 +307,8 @@ export function ArtifactRouteView({
         versions={versions}
         fixedVersion={viewingFixedVersion}
         shareAccess={shareAccess}
+        canWrite={canWrite}
+        canComment={canComment}
         onShare={cloudHub && !shareAccess ? openShare : undefined}
         onTransfer={
           shareAccess
@@ -316,9 +320,19 @@ export function ArtifactRouteView({
           (count, feedback) => count + Number(isAnnotationKind(feedback.kind)),
           0,
         )}
+        unresolvedCount={feedbacks.reduce(
+          (count, feedback) =>
+            count +
+            Number(
+              isAnnotationKind(feedback.kind) &&
+                feedback.status !== 'resolved' &&
+                !feedbackQuery.data?.threads?.[feedback.id]?.resolution,
+            ),
+          0,
+        )}
         hasActiveRound={rounds.some((round) => round.status !== 'closed')}
         onExport={() => openExport()}
-        onHandoff={() => openHandoff(detail.version.title)}
+        onHandoff={canWrite ? () => openHandoff(detail.version.title) : undefined}
         agentOpen={Boolean(agent?.open)}
         agentToggleRef={agentToggleRef}
         onToggleAgent={canTalkToAgent ? toggleAgent : undefined}
@@ -328,7 +342,7 @@ export function ArtifactRouteView({
       {detail.artifact.type === 'react' && hasVersionSource(detail.version) && (
         <SystemSourceLink source={detail.version.source} />
       )}
-      <main className="relative flex min-h-0 min-w-0 flex-1">
+      <main className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
         {agent && (
           <AgentConversationPane
             key={`${detail.artifact.projectId}:${detail.artifact.publicId}`}
@@ -356,7 +370,7 @@ export function ArtifactRouteView({
             onOpenVersion={openVersion}
             onExportBoard={openExport}
             exportSelectionRef={exportSelectionRef}
-            onHandoff={openHandoff}
+            onHandoff={canWrite ? openHandoff : undefined}
             onAskAgent={canTalkToAgent ? askAgent : undefined}
             onOpenAgentConversation={canTalkToAgent ? () => openAgent() : undefined}
             onRegisterStateForwarder={registerStateForwarder}

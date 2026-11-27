@@ -2,6 +2,7 @@
 import type { Feedback } from '@akasha/protocol'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
+import { useSelectionStore } from '@/entities/selection'
 import {
   artifact,
   design,
@@ -254,4 +255,145 @@ it('页面隐藏时暂停已运行画板，返回时不重建帧而恢复动画'
     '*',
   )
   expect(screen.getByTitle('画板内容：动效封面')).toBe(frame)
+})
+
+it('大幅缩小画布再放大时不卸载已加载的画板，极小倍率下隐藏未选中板头避免标题重叠', () => {
+  showWorkspace()
+  const viewport = screen.getByRole('region', { name: '画布' })
+  const desktopFrame = screen.getByTitle<HTMLIFrameElement>('画板内容：宽屏首页')
+  const desktopHeader = screen
+    .getByRole('button', { name: '宽屏首页' })
+    .closest<HTMLElement>('.artifact-canvas-board-header')
+  expect(desktopHeader?.dataset.compact).toBeUndefined()
+
+  for (let i = 0; i < 18; i += 1) {
+    fireEvent.wheel(viewport, { deltaY: 300, ctrlKey: true, clientX: 500, clientY: 300 })
+  }
+  expect(screen.getByTitle('画板内容：宽屏首页')).toBe(desktopFrame)
+  expect(desktopHeader?.dataset.compact).toBe('true')
+  expect(desktopHeader?.dataset.hideActions).toBe('true')
+  expect(Number(desktopHeader?.style.getPropertyValue('--board-header-scale'))).toBeLessThan(1)
+
+  for (let i = 0; i < 18; i += 1) {
+    fireEvent.wheel(viewport, { deltaY: -300, ctrlKey: true, clientX: 500, clientY: 300 })
+  }
+  expect(screen.getByTitle('画板内容：宽屏首页')).toBe(desktopFrame)
+  expect(desktopHeader?.dataset.compact).toBeUndefined()
+  expect(desktopHeader?.dataset.hideActions).toBeUndefined()
+})
+
+it('展开画板与播放页均支持缩放与视图快捷键，避免进入播放页后键盘操作失效', () => {
+  const source = JSON.stringify({
+    ...design,
+    boards: design.boards.map((board) =>
+      board.id === 'mobile'
+        ? { ...board, presentation: { interactive: true }, html: '<button>开始</button>' }
+        : board,
+    ),
+  })
+  showWorkspace(detailFor(1, source))
+  const overview = screen.getByRole('region', { name: '画布' })
+  fireEvent.click(within(overview).getByRole('button', { name: '展开画板：手机首页' }))
+  const focus = screen.getByRole('region', { name: '画板查看' })
+  const focusZoom = () => within(focus).getByLabelText('画板缩放比例').textContent
+
+  fireEvent.keyDown(window, { key: '+' })
+  expect(focusZoom()).toBe('125%')
+  fireEvent.keyDown(window, { key: '0' })
+  expect(focusZoom()).toBe('100%')
+  fireEvent.keyDown(window, { key: '!', code: 'Digit2', shiftKey: true })
+  expect(within(focus).getByRole('button', { name: '填充宽度' }).getAttribute('aria-pressed')).toBe(
+    'true',
+  )
+  fireEvent.keyDown(window, { key: '!', code: 'Digit1', shiftKey: true })
+  expect(within(focus).getByRole('button', { name: '适应窗口' }).getAttribute('aria-pressed')).toBe(
+    'true',
+  )
+
+  fireEvent.click(within(focus).getByRole('button', { name: '播放原型：手机首页' }))
+  const playback = screen.getByRole('region', { name: '交互预览' })
+  const playbackZoom = () => within(playback).getByLabelText('画板缩放比例').textContent
+  fireEvent.keyDown(window, { key: '+' })
+  expect(playbackZoom()).toBe('125%')
+  fireEvent.keyDown(window, { key: '-' })
+  expect(playbackZoom()).toBe('100%')
+  fireEvent.keyDown(window, { key: '!', code: 'Digit2', shiftKey: true })
+  expect(
+    within(playback).getByRole('button', { name: '填充宽度' }).getAttribute('aria-pressed'),
+  ).toBe('true')
+})
+
+it('总览选中画板元素后进入画板查看或交互预览，不会把选框或高亮带入展示帧', () => {
+  stubResizeObserver()
+  const source = JSON.stringify({
+    ...design,
+    boards: design.boards.map((board) => ({
+      ...board,
+      presentation:
+        board.id === 'mobile' ? { interactive: true } : { animation: false, interactive: false },
+    })),
+  })
+  showWorkspace(detailFor(1, source))
+
+  useSelectionStore.getState().setSelectedElement(artifact.publicId, {
+    boardId: 'desktop',
+    selector: ':scope > div:nth-of-type(1) > svg > rect',
+    rect: { x: 24, y: 36, width: 120, height: 80 },
+    textPreview: '封面矩形',
+  })
+
+  const trigger = screen.getByRole('button', { name: '播放' })
+  fireEvent.keyDown(trigger, { key: 'Enter' })
+  fireEvent.click(
+    within(screen.getByRole('group', { name: '静态画板' })).getByRole('menuitem', {
+      name: '展开画板：宽屏首页',
+    }),
+  )
+
+  const focus = screen.getByRole('region', { name: '画板查看' })
+  const focusFrame = within(focus).getByTitle<HTMLIFrameElement>('画板内容：宽屏首页')
+  const focusSandbox = sandbox(focusFrame)
+  focusSandbox.receive({ type: 'ready' })
+  focusSandbox.receive({ type: 'rendered', version: 1, playable: false })
+
+  expect(within(focus).queryByTestId('shell-element-overlay')).toBeNull()
+  expect(within(focus).queryByTestId('overlay-select-box')).toBeNull()
+  expect(focusSandbox.post).not.toHaveBeenCalledWith(
+    expect.objectContaining({ type: 'highlight' }),
+    '*',
+  )
+  expect(focusSandbox.post).not.toHaveBeenCalledWith(
+    expect.objectContaining({ type: 'pins.track' }),
+    '*',
+  )
+
+  fireEvent.click(within(focus).getByRole('button', { name: '返回总览' }))
+  expect(useSelectionStore.getState().selectedByArtifact[artifact.publicId]?.selector).toBe(
+    ':scope > div:nth-of-type(1) > svg > rect',
+  )
+
+  useSelectionStore.getState().setSelectedElement(artifact.publicId, {
+    boardId: 'mobile',
+    selector: ':scope > button:nth-of-type(1)',
+    rect: { x: 16, y: 20, width: 100, height: 40 },
+  })
+  fireEvent.keyDown(screen.getByRole('button', { name: '播放' }), { key: 'Enter' })
+  fireEvent.click(
+    within(screen.getByRole('group', { name: '可交互原型' })).getByRole('menuitem', {
+      name: '播放原型：手机首页',
+    }),
+  )
+
+  const playback = screen.getByRole('region', { name: '交互预览' })
+  const playFrame = within(playback).getByTitle<HTMLIFrameElement>('画板内容：手机首页')
+  const playSandbox = sandbox(playFrame)
+  playSandbox.receive({ type: 'ready' })
+  playSandbox.receive({ type: 'rendered', version: 1, playable: true })
+
+  expect(within(playback).queryByTestId('shell-element-overlay')).toBeNull()
+  expect(within(playback).queryByTestId('overlay-select-box')).toBeNull()
+  expect(playSandbox.post).not.toHaveBeenCalledWith(
+    expect.objectContaining({ type: 'highlight' }),
+    '*',
+  )
 })

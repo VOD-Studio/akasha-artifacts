@@ -188,7 +188,8 @@ it('新建页面保存为头版本，空页不继承未分组画板', async () =
   expect(editor.submittedVersion).toBe(1)
   expect(screen.queryByTitle('画板内容：旧画板')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: '页面与画板' }))
-  fireEvent.click(screen.getByRole('button', { name: '旧画板' }))
+  expect(screen.queryByRole('button', { name: '旧画板' })).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: '未分组' }))
   expect(screen.getByTitle('画板内容：旧画板')).toBeTruthy()
 })
 
